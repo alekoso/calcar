@@ -87,7 +87,7 @@ export default async function handler(req, res) {
         authorization: 'Bearer ' + process.env.OPENAI_API_KEY,
       },
       body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || 'gpt-4o',
+        model: process.env.OPENAI_MODEL || 'gpt-5.6-terra',
         max_tokens: 6000,
         response_format: { type: 'json_object' },
         messages: [{ role: 'user', content }],
