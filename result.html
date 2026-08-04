@@ -254,7 +254,7 @@
   .lightbox img{max-width:94vw;max-height:92vh;border-radius:10px}
   .state-select{height:40px;border:1px solid var(--line);border-radius:10px;padding:0 10px;font-size:14px;background:#fff;color:var(--text);max-width:190px;font-family:inherit}
   .state-select:focus{outline:2px solid var(--blue);outline-offset:-1px}
-  .vin-line b{letter-spacing:1.2px;font-size:13.5px}
+  .vin-line b{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:13px;letter-spacing:.8px;font-weight:700}
 </style>
 </head>
 <body>
@@ -594,7 +594,9 @@ function renderHeaderBlocks(){
   const eq = v.equipment || [];
   document.getElementById('chipsEl').innerHTML = eq.map(e => `<div class="chip">${esc(e)}</div>`).join('');
 
-  const flags = DATA.flags || [];
+  const FLAG_ORDER = {bad:0, warn:1, ok:2, unknown:3};
+  const flags = (DATA.flags || []).slice().sort((a,b) =>
+    (FLAG_ORDER[a.status] ?? 3) - (FLAG_ORDER[b.status] ?? 3));
   document.getElementById('flagsEl').innerHTML = flags.map(f => {
     const cls = ['ok','warn','bad','unknown'].includes(f.status) ? f.status : 'unknown';
     return `<div class="flag"><div class="dot ${cls}"></div>${esc(f.text)}</div>`;
@@ -952,24 +954,19 @@ function pdfName() {
 async function downloadPdf(btn) {
   const label = btn.textContent;
   btn.disabled = true; btn.textContent = 'Готую PDF…';
-  const holder = document.createElement('div');
   try {
     const report = buildReport();
-    holder.style.cssText = 'position:fixed;left:-10000px;top:0;background:#fff;padding:24px';
-    holder.appendChild(report);
-    document.body.appendChild(holder);
     await html2pdf().set({
       margin: [10, 10],
       filename: pdfName(),
       image: { type: 'jpeg', quality: 0.92 },
-      html2canvas: { scale: 2, useCORS: true },
+      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
       jsPDF: { unit: 'mm', format: 'a4' },
       pagebreak: { mode: ['css', 'legacy'] },
-    }).from(report).save();
+    }).from(report.outerHTML, 'string').save();
   } catch (e) {
-    window.print();
+    alert('Не вдалося згенерувати PDF: ' + (e && e.message ? e.message : 'невідома помилка'));
   } finally {
-    holder.remove();
     btn.disabled = false; btn.textContent = label;
   }
 }
