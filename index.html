@@ -343,6 +343,11 @@ btn.addEventListener('click', async () => {
     const data = await r.json();
     if (!r.ok || data.error) throw new Error(data.error || 'Помилка сервера');
     sessionStorage.setItem('calcarResult', JSON.stringify(data));
+    try {
+      sessionStorage.setItem('calcarPhotos', JSON.stringify(photos));
+    } catch (e) {
+      try { sessionStorage.setItem('calcarPhotos', JSON.stringify(photos.slice(0, 6))); } catch (e2) {}
+    }
     location.href = '/result.html';
   } catch (e) {
     setError(e.message || 'Щось пішло не так, спробуй ще раз');
