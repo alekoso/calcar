@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>calcar.ai — прорахунок лота під ключ</title>
+<style>
+  :root{
+    --navy:#17334f;
+    --blue:#2557a7;
+    --blue-soft:#eaf1fb;
+    --green:#149a3f;
+    --green-soft:#e8f6ed;
+    --orange:#ff6d24;
+    --red:#d6382c;
+    --red-soft:#fdecea;
+    --amber:#b97a00;
+    --amber-soft:#fdf4e0;
+    --bg:#f4f5f7;
+    --card:#ffffff;
+    --line:#e6e8ec;
+    --text:#1b2532;
+    --muted:#6b7684;
+    --radius:12px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    background:var(--bg);color:var(--text);font-size:15px;line-height:1.45;
+    padding-bottom:88px;
+  }
+  .num{font-variant-numeric:tabular-nums}
+
+  /* ---------- header ---------- */
+  header{background:var(--navy);color:#fff;position:sticky;top:0;z-index:50}
+  .header-in{max-width:1160px;margin:0 auto;padding:0 20px;height:56px;display:flex;align-items:center;gap:14px}
+  .logo{font-weight:800;font-size:20px;letter-spacing:.2px}
+  .logo span{color:var(--orange)}
+  .beta{font-size:11px;background:rgba(255,255,255,.14);padding:2px 8px;border-radius:20px;letter-spacing:.4px}
+  .header-right{margin-left:auto;display:flex;align-items:center;gap:16px;font-size:13px}
+  .header-right a{color:#cfd9e4;text-decoration:none}
+  .avatar{width:30px;height:30px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
+
+  .wrap{max-width:1160px;margin:0 auto;padding:20px}
+
+  /* ---------- search bar ---------- */
+  .searchbar{display:flex;gap:10px;margin-bottom:20px}
+  .searchbar input{
+    flex:1;height:48px;border:1px solid var(--line);border-radius:var(--radius);
+    padding:0 16px;font-size:14px;background:var(--card);color:var(--text);
+  }
+  .searchbar input:focus{outline:2px solid var(--blue);outline-offset:-1px}
+  .btn-primary{
+    background:var(--orange);color:#fff;border:none;border-radius:var(--radius);
+    height:48px;padding:0 24px;font-size:15px;font-weight:700;cursor:pointer;white-space:nowrap;
+  }
+  .btn-primary:hover{background:#e85f1a}
+  .btn-secondary{
+    background:#fff;color:var(--blue);border:1px solid var(--blue);border-radius:var(--radius);
+    height:44px;padding:0 20px;font-size:14px;font-weight:600;cursor:pointer;
+  }
+  .btn-ghost{
+    background:transparent;color:var(--blue);border:1px dashed var(--blue);border-radius:10px;
+    height:42px;padding:0 18px;font-size:14px;font-weight:600;cursor:pointer;width:100%;margin-top:12px;
+  }
+  .btn-ghost:hover{background:var(--blue-soft)}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:20px;overflow:hidden}
+  .card-head{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .card-head h2{font-size:16px;font-weight:700}
+  .card-body{padding:20px}
+  .hint{font-size:12.5px;color:var(--muted)}
+
+  .badge{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:20px;letter-spacing:.2px}
+  .badge.green{background:var(--green-soft);color:var(--green)}
+  .badge.blue{background:var(--blue-soft);color:var(--blue)}
+
+  /* ---------- lot card ---------- */
+  .photos{display:grid;grid-template-columns:2fr 1fr 1fr;gap:6px;padding:6px}
+  .photos .ph{border-radius:8px;background:linear-gradient(135deg,#2c3e50,#4b6479);position:relative;overflow:hidden;aspect-ratio:4/2.6}
+  .photos .ph.main{grid-row:span 2;aspect-ratio:auto}
+  .photos .ph::after{
+    content:attr(data-label);position:absolute;inset:auto 8px 8px auto;
+    font-size:11px;color:rgba(255,255,255,.85);background:rgba(0,0,0,.35);
+    padding:2px 8px;border-radius:12px;
+  }
+  .lot-title{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding:16px 20px 4px}
+  .lot-title h1{font-size:22px;font-weight:800}
+  .lot-meta{padding:0 20px 16px;display:flex;gap:20px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+  .lot-meta b{color:var(--text);font-weight:600}
+
+  /* ---------- spec ---------- */
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{background:var(--bg);border:1px solid var(--line);border-radius:20px;padding:5px 12px;font-size:13px}
+  .spec-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:16px}
+  .spec-grid div b{display:block;font-size:14px;font-weight:700}
+  .spec-grid div span{font-size:12px;color:var(--muted)}
+
+  /* ---------- damage ---------- */
+  .flags{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:18px}
+  .flag{display:flex;align-items:center;gap:10px;background:var(--bg);border-radius:10px;padding:10px 14px;font-size:13.5px;font-weight:600}
+  .dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+  .dot.ok{background:var(--green)}
+  .dot.bad{background:var(--red)}
+  .dot.warn{background:var(--amber)}
+  .dmg-note{background:var(--blue-soft);border-radius:10px;padding:12px 16px;font-size:13.5px;color:#274b7a}
+
+  /* ---------- estimate rows ---------- */
+  .est-head{
+    display:grid;grid-template-columns:44px minmax(200px,1.2fr) auto 130px 36px;gap:14px;
+    font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700;
+    padding:6px 0 10px;border-bottom:1px solid var(--line);
+  }
+  .est-head.simple{grid-template-columns:44px 1fr 130px 36px}
+  .est-row{
+    display:grid;grid-template-columns:44px minmax(200px,1.2fr) auto 130px 36px;
+    gap:14px;align-items:center;padding:13px 0;border-bottom:1px solid var(--line);
+  }
+  .est-row.simple{grid-template-columns:44px 1fr 130px 36px}
+  .est-row.off .part-cell,.est-row.off .seg,.est-row.off .money{opacity:.38}
+  .part-name{font-weight:600;font-size:14px}
+  .part-sub{font-size:12px;color:var(--muted);margin-top:2px}
+  .conf{font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;margin-left:6px;vertical-align:1px}
+  .conf.sure{background:var(--red-soft);color:var(--red)}
+  .conf.likely{background:var(--amber-soft);color:var(--amber)}
+
+  .seg{display:inline-flex;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:3px;gap:3px;justify-self:start}
+  .seg button{
+    border:none;background:transparent;border-radius:8px;padding:6px 12px;
+    font-size:12.5px;cursor:pointer;color:var(--muted);font-weight:600;line-height:1.25;text-align:center;
+  }
+  .seg button b{display:block;font-size:13px;color:var(--text);font-weight:700}
+  .seg button.active{background:var(--blue);color:#fff}
+  .seg button.active b{color:#fff}
+  .seg button:disabled{opacity:.35;cursor:default}
+
+  .toggle{
+    appearance:none;width:40px;height:24px;border-radius:20px;background:#cdd3da;position:relative;
+    cursor:pointer;transition:background .15s;flex-shrink:0;
+  }
+  .toggle:checked{background:var(--green)}
+  .toggle::after{
+    content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;
+    background:#fff;transition:left .15s;box-shadow:0 1px 3px rgba(0,0,0,.25);
+  }
+  .toggle:checked::after{left:19px}
+
+  .money{position:relative;display:flex;align-items:center;justify-self:end}
+  .money::before{content:"$";position:absolute;left:12px;font-weight:700;font-size:13.5px;color:var(--muted)}
+  .money input{
+    width:130px;height:40px;border:1px solid var(--line);border-radius:10px;padding:0 12px 0 26px;
+    font-size:14.5px;font-weight:700;text-align:right;color:var(--text);background:#fff;
+    font-variant-numeric:tabular-nums;font-family:inherit;
+  }
+  .money input:focus{outline:2px solid var(--blue);outline-offset:-1px}
+
+  .del{
+    width:32px;height:32px;border:none;background:transparent;border-radius:8px;cursor:pointer;
+    color:#aab2bc;font-size:17px;line-height:1;display:flex;align-items:center;justify-content:center;
+  }
+  .del:hover{background:var(--red-soft);color:var(--red)}
+
+  .name-input{
+    width:100%;height:40px;border:1px solid var(--line);border-radius:10px;padding:0 12px;
+    font-size:14px;font-weight:600;color:var(--text);font-family:inherit;
+  }
+  .name-input:focus{outline:2px solid var(--blue);outline-offset:-1px}
+
+  .subtotal{
+    display:flex;justify-content:space-between;align-items:center;
+    background:var(--bg);border-radius:10px;padding:14px 16px;margin-top:16px;font-weight:800;font-size:16px;
+  }
+  .cat-legend{font-size:12.5px;color:var(--muted);margin-top:12px;line-height:1.6}
+
+  /* ---------- logistics ---------- */
+  .log-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 48px}
+  @media(max-width:820px){.log-grid{grid-template-columns:1fr}}
+  .cost-row{
+    display:flex;align-items:center;justify-content:space-between;gap:16px;
+    height:66px;border-bottom:1px solid var(--line);
+  }
+  .cost-row:last-child{border-bottom:none}
+  @media(max-width:820px){.cost-row:last-child{border-bottom:1px solid var(--line)}}
+  .cost-row .lbl{font-size:14px;font-weight:600}
+  .cost-row .lbl span{display:block;font-size:12px;color:var(--muted);font-weight:400;margin-top:1px}
+
+  /* ---------- verdict ---------- */
+  .verdict-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-bottom:18px}
+  .v-cell{background:var(--bg);border-radius:10px;padding:16px}
+  .v-cell .lbl{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:6px}
+  .v-cell .val{font-size:26px;font-weight:800;letter-spacing:-.4px}
+  .profit{color:var(--green)}
+  .loss{color:var(--red)}
+  .risk-line{display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:14px;font-weight:600}
+  .v-actions{display:flex;gap:12px;margin-top:18px;flex-wrap:wrap}
+
+  /* ---------- bottom bar ---------- */
+  .bottombar{
+    position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);
+    box-shadow:0 -4px 16px rgba(20,35,55,.08);z-index:60;
+  }
+  .bottombar-in{max-width:1160px;margin:0 auto;padding:12px 20px;display:flex;align-items:center;gap:20px}
+  .bb-total b{font-size:20px;font-weight:800}
+  .bb-total span{display:block;font-size:11.5px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px}
+  .bb-profit{font-size:14px;font-weight:700}
+  .bottombar .btn-primary{margin-left:auto;height:44px}
+
+  @media(max-width:720px){
+    .photos{grid-template-columns:1fr 1fr}
+    .photos .ph.main{grid-column:span 2;aspect-ratio:4/2.6}
+    .est-head{display:none}
+    .est-row{grid-template-columns:44px 1fr 36px !important;grid-template-areas:"t name del" ". seg seg" ". price price"}
+    .est-row>.toggle{grid-area:t}
+    .est-row>.part-cell{grid-area:name}
+    .est-row>.seg{grid-area:seg}
+    .est-row>.money{grid-area:price;justify-self:start}
+    .est-row>.del{grid-area:del}
+    .cost-row{height:auto;padding:12px 0}
+    .bb-profit{display:none}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-in">
+    <div class="logo">calcar<span>.ai</span></div>
+    <div class="beta">beta</div>
+    <div class="header-right">
+      <a href="#">Мої прорахунки</a>
+      <div class="avatar">А</div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="searchbar">
+    <input type="text" value="https://www.copart.com/lot/58214390-2021-toyota-rav4-xle" spellcheck="false">
+    <button class="btn-primary">Прорахувати лот</button>
+  </div>
+
+  <!-- lot card -->
+  <div class="card">
+    <div class="photos">
+      <div class="ph main" data-label="Фото лота 1/10"></div>
+      <div class="ph" data-label="Пошкодження"></div>
+      <div class="ph" data-label="Салон"></div>
+      <div class="ph" data-label="VIN"></div>
+      <div class="ph" data-label="Двигун"></div>
+    </div>
+    <div class="lot-title">
+      <h1>Toyota RAV4 XLE 2021</h1>
+      <span class="badge blue">Copart · Лот 58214390</span>
+    </div>
+    <div class="lot-meta">
+      <div>Пробіг <b>38 412 mi · 61 820 км</b></div>
+      <div>Документи <b>Clean Title (FL)</b></div>
+      <div>Пошкодження <b>Front End</b></div>
+      <div>Статус <b>Run &amp; Drive</b></div>
+      <div>Склад <b>Orlando South, FL</b></div>
+    </div>
+  </div>
+
+  <!-- VIN spec -->
+  <div class="card">
+    <div class="card-head">
+      <h2>Комплектація за VIN</h2>
+      <span class="badge green">Заводські дані</span>
+      <span class="hint" style="margin-left:auto">2T3W1RFV8MC112847</span>
+    </div>
+    <div class="card-body">
+      <div class="spec-grid">
+        <div><b>2.5 л бензин</b><span>Двигун A25A-FKS, 203 к.с.</span></div>
+        <div><b>Автомат, 8 ст.</b><span>Коробка передач</span></div>
+        <div><b>Повний AWD</b><span>Привід</span></div>
+        <div><b>XLE</b><span>Рівень комплектації</span></div>
+      </div>
+      <div class="chips">
+        <div class="chip">Світлодіодні фари</div>
+        <div class="chip">Камера заднього огляду</div>
+        <div class="chip">Підігрів сидінь</div>
+        <div class="chip">Двозонний клімат</div>
+        <div class="chip">Toyota Safety Sense 2.0</div>
+        <div class="chip">Безключовий доступ</div>
+        <div class="chip">Люк</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI damage report -->
+  <div class="card">
+    <div class="card-head">
+      <h2>Розбір пошкоджень</h2>
+      <span class="badge blue">AI-аналіз 10 фото</span>
+    </div>
+    <div class="card-body">
+      <div class="flags">
+        <div class="flag"><div class="dot ok"></div>Подушки безпеки не спрацювали</div>
+        <div class="flag"><div class="dot ok"></div>Силова структура без видимих деформацій</div>
+        <div class="flag"><div class="dot ok"></div>Слідів затоплення немає</div>
+        <div class="flag"><div class="dot warn"></div>Можливі приховані пошкодження за бампером</div>
+      </div>
+      <div class="dmg-note">
+        Заявлений тип пошкодження Front End збігається з фото. Удар передньої лівої частини на низькій швидкості.
+        Стан підвіски та радіаторів достовірно оцінити за фото неможливо — до робіт додано резерв на приховані пошкодження.
+      </div>
+    </div>
+  </div>
+
+  <!-- PARTS -->
+  <div class="card">
+    <div class="card-head">
+      <h2>Запчастини</h2>
+      <span class="hint" style="margin-left:auto">Обирайте категорію, правте ціну, вимикайте або видаляйте позиції</span>
+    </div>
+    <div class="card-body" style="padding-top:12px">
+      <div class="est-head">
+        <div></div><div>Деталь</div><div>Категорія</div><div style="text-align:right">Ціна</div><div></div>
+      </div>
+      <div id="partRows"></div>
+      <button class="btn-ghost" id="addPart">+ Додати запчастину</button>
+      <div class="subtotal">
+        <span>Запчастини разом</span>
+        <span class="num" id="partsTotal">$0</span>
+      </div>
+      <div class="cat-legend">
+        <b>Нова оригінал</b> — де прочерк, у продажу відсутня. ·
+        <b>Нова аналог</b> — нова неоригінальна деталь (Тайвань: TYC, Depo та ін.). ·
+        <b>Б/в оригінал</b> — заводська деталь з розборки або авто-донора.
+        Ціни підібрано платформою, будь-яку можна змінити вручну.
+      </div>
+    </div>
+  </div>
+
+  <!-- WORKS -->
+  <div class="card">
+    <div class="card-head">
+      <h2>Роботи</h2>
+      <span class="hint" style="margin-left:auto">Впишіть ціни свого майстра — ми даємо лише орієнтир</span>
+    </div>
+    <div class="card-body" style="padding-top:12px">
+      <div class="est-head simple">
+        <div></div><div>Робота</div><div style="text-align:right">Ціна</div><div></div>
+      </div>
+      <div id="workRows"></div>
+      <button class="btn-ghost" id="addWork">+ Додати роботу</button>
+      <div class="subtotal">
+        <span>Роботи разом</span>
+        <span class="num" id="worksTotal">$0</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- logistics & customs -->
+  <div class="card">
+    <div class="card-head">
+      <h2>Лот, доставка та розмитнення</h2>
+      <span class="hint" style="margin-left:auto">Мито, акциз і ПДВ рахуються від ставки. Усі поля можна редагувати</span>
+    </div>
+    <div class="card-body">
+      <div class="log-grid">
+        <div>
+          <div class="cost-row">
+            <div class="lbl">Ставка на аукціоні<span>Ціна, за яку плануєте виграти лот</span></div>
+            <div class="money"><input id="bid" type="number" value="7800" min="0"></div>
+          </div>
+          <div class="cost-row">
+            <div class="lbl">Збори аукціону Copart<span>Комісія, gate fee, інтернет-ставка</span></div>
+            <div class="money"><input id="auctionFees" type="number" value="0" min="0"></div>
+          </div>
+          <div class="cost-row">
+            <div class="lbl">Доставка по США до порту</div>
+            <div class="money"><input id="usDelivery" type="number" value="450" min="0"></div>
+          </div>
+          <div class="cost-row">
+            <div class="lbl">Морський фрахт до Одеси</div>
+            <div class="money"><input id="freight" type="number" value="1250" min="0"></div>
+          </div>
+          <div class="cost-row">
+            <div class="lbl">Порт, експедитор, розвантаження</div>
+            <div class="money"><input id="port" type="number" value="350" min="0"></div>
+          </div>
+        </div>
+        <div>
+          <div class="cost-row">
+            <div class="lbl">Ввізне мито 10%</div>
+            <div class="money"><input id="duty" type="number" value="0" min="0"></div>
+          </div>
+          <div class="cost-row">
+            <div class="lbl">Акциз<span>Бензин 2.5 л · вік 5 років</span></div>
+            <div class="money"><input id="excise" type="number" value="0" min="0"></div>
+          </div>
+          <div class="cost-row">
+            <div class="lbl">ПДВ 20%</div>
+            <div class="money"><input id="vat" type="number" value="0" min="0"></div>
+          </div>
+          <div class="cost-row">
+            <div class="lbl">Брокер</div>
+            <div class="money"><input id="broker" type="number" value="300" min="0"></div>
+          </div>
+          <div class="cost-row">
+            <div class="lbl">Сертифікація, облік, доставка по Україні</div>
+            <div class="money"><input id="uaFinal" type="number" value="670" min="0"></div>
+          </div>
+        </div>
+      </div>
+      <div class="subtotal">
+        <span>Лот + логістика + розмитнення</span>
+        <span class="num" id="logisticsTotal">$0</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- verdict -->
+  <div class="card">
+    <div class="card-head"><h2>Підсумок</h2></div>
+    <div class="card-body">
+      <div class="verdict-grid">
+        <div class="v-cell">
+          <div class="lbl">Під ключ в Україні</div>
+          <div class="val num" id="grandTotal">$0</div>
+        </div>
+        <div class="v-cell">
+          <div class="lbl">Середня ціна в Україні</div>
+          <div class="val num">$27 500</div>
+        </div>
+        <div class="v-cell">
+          <div class="lbl">Ваша вигода</div>
+          <div class="val num" id="profit">$0</div>
+        </div>
+        <div class="v-cell">
+          <div class="lbl">Стеля ставки</div>
+          <div class="val num" id="maxBid">$0</div>
+        </div>
+      </div>
+      <div class="risk-line"><div class="dot ok"></div>Ризик угоди: низький</div>
+      <div class="hint">Подушки цілі, структура без деформацій, чистий тайтл. Основна невизначеність — приховані пошкодження за бампером.</div>
+      <div class="v-actions">
+        <button class="btn-primary">Завантажити PDF</button>
+        <button class="btn-secondary">Поділитися прорахунком</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="bottombar">
+  <div class="bottombar-in">
+    <div class="bb-total"><span>Під ключ</span><b class="num" id="bbTotal">$0</b></div>
+    <div class="bb-profit num" id="bbProfit"></div>
+    <button class="btn-primary">Завантажити PDF</button>
+  </div>
+</div>
+
+<script>
+/* ================= data ================= */
+const UA_MARKET_PRICE = 27500;
+const catLabels = {orig:'Нова оригінал', alt:'Нова аналог', used:'Б/в оригінал'};
+
+let rowId = 0;
+const partRows = [];
+const workRows = [];
+
+function makeRow(cfg) {
+  return Object.assign({
+    id: 'r' + (++rowId),
+    name:'', sub:'', conf:null,
+    prices:null, cat:null,
+    price:0, on:true, custom:false,
+  }, cfg);
+}
+
+/* --- запчастини від AI --- */
+[
+  {name:'Бампер передній', sub:'Під фарбування', conf:'sure',
+   prices:{orig:null, alt:210, used:160}, cat:'alt'},
+  {name:'Капот', sub:'Деформація, заміна', conf:'sure',
+   prices:{orig:null, alt:290, used:220}, cat:'used'},
+  {name:'Фара ліва LED', sub:'Комплектація XLE — світлодіодна', conf:'sure',
+   prices:{orig:940, alt:380, used:420}, cat:'used'},
+  {name:'Крило переднє ліве', sub:'Заміна', conf:'sure',
+   prices:{orig:310, alt:140, used:95}, cat:'alt'},
+  {name:'Радіатор + конденсатор', sub:'Ймовірне пошкодження від удару', conf:'likely',
+   prices:{orig:560, alt:240, used:180}, cat:'alt'},
+  {name:'Підсилювач бампера', sub:'Ймовірна деформація', conf:'likely',
+   prices:{orig:280, alt:120, used:90}, cat:'used'},
+  {name:'Кріплення, витратні матеріали', sub:'Кліпси, рідини, дрібниці', conf:'sure',
+   prices:{orig:null, alt:120, used:null}, cat:'alt'},
+].forEach(cfg => {
+  const r = makeRow(cfg);
+  r.price = r.prices[r.cat];
+  partRows.push(r);
+});
+
+/* --- роботи --- */
+[
+  {name:'Рихтування, фарбування, збірка', sub:'Орієнтир для регіону: $550–900', price:720},
+  {name:'Резерв на приховані пошкодження', sub:'Запас під те, що відкриється після розбирання', price:300},
+].forEach(cfg => workRows.push(makeRow(cfg)));
+
+/* ================= render ================= */
+const partsEl = document.getElementById('partRows');
+const worksEl = document.getElementById('workRows');
+
+function renderPartRow(r) {
+  const div = document.createElement('div');
+  div.className = 'est-row';
+  div.id = r.id;
+
+  const confBadge = r.conf === 'sure' ? '<span class="conf sure">точно</span>'
+    : r.conf === 'likely' ? '<span class="conf likely">ймовірно</span>' : '';
+
+  const nameCell = r.custom
+    ? `<div class="part-cell"><input class="name-input" data-field="name" value="${r.name}" placeholder="Назва деталі"></div>`
+    : `<div class="part-cell"><div class="part-name">${r.name}${confBadge}</div>
+       ${r.sub ? `<div class="part-sub">${r.sub}</div>` : ''}</div>`;
+
+  let seg = '<div class="seg">';
+  for (const cat of ['orig','alt','used']) {
+    const known = r.prices && r.prices[cat] !== null && r.prices[cat] !== undefined;
+    const disabled = r.prices && r.prices[cat] === null ? 'disabled' : '';
+    seg += `<button data-cat="${cat}" ${disabled} class="${r.cat === cat ? 'active' : ''}">
+      ${catLabels[cat]}${known ? '<b>$' + r.prices[cat] + '</b>' : ''}
+    </button>`;
+  }
+  seg += '</div>';
+
+  div.innerHTML = `
+    <input type="checkbox" class="toggle" ${r.on ? 'checked' : ''}>
+    ${nameCell}
+    ${seg}
+    <div class="money"><input type="number" data-field="price" value="${r.price}" min="0"></div>
+    <button class="del" title="Видалити позицію">✕</button>
+  `;
+  return div;
+}
+
+function renderWorkRow(r) {
+  const div = document.createElement('div');
+  div.className = 'est-row simple';
+  div.id = r.id;
+
+  const nameCell = r.custom
+    ? `<div class="part-cell"><input class="name-input" data-field="name" value="${r.name}" placeholder="Назва роботи"></div>`
+    : `<div class="part-cell"><div class="part-name">${r.name}</div>
+       ${r.sub ? `<div class="part-sub">${r.sub}</div>` : ''}</div>`;
+
+  div.innerHTML = `
+    <input type="checkbox" class="toggle" ${r.on ? 'checked' : ''}>
+    ${nameCell}
+    <div class="money"><input type="number" data-field="price" value="${r.price}" min="0"></div>
+    <button class="del" title="Видалити позицію">✕</button>
+  `;
+  return div;
+}
+
+partRows.forEach(r => partsEl.appendChild(renderPartRow(r)));
+workRows.forEach(r => worksEl.appendChild(renderWorkRow(r)));
+
+/* ================= events ================= */
+function findRow(id) {
+  return partRows.find(x => x.id === id) || workRows.find(x => x.id === id);
+}
+function removeRow(r) {
+  let i = partRows.indexOf(r);
+  if (i > -1) partRows.splice(i, 1);
+  i = workRows.indexOf(r);
+  if (i > -1) workRows.splice(i, 1);
+}
+
+function bindList(el) {
+  el.addEventListener('click', e => {
+    const rowEl = e.target.closest('.est-row');
+    if (!rowEl) return;
+    const r = findRow(rowEl.id);
+
+    const segBtn = e.target.closest('.seg button');
+    if (segBtn && !segBtn.disabled) {
+      r.cat = segBtn.dataset.cat;
+      rowEl.querySelectorAll('.seg button').forEach(b => b.classList.remove('active'));
+      segBtn.classList.add('active');
+      if (r.prices && r.prices[r.cat] !== null && r.prices[r.cat] !== undefined) {
+        r.price = r.prices[r.cat];
+        rowEl.querySelector('.money input').value = r.price;
+      }
+      recalc();
+      return;
+    }
+    if (e.target.closest('.del')) {
+      removeRow(r);
+      rowEl.remove();
+      recalc();
+    }
+  });
+  el.addEventListener('change', e => {
+    const rowEl = e.target.closest('.est-row');
+    if (!rowEl) return;
+    const r = findRow(rowEl.id);
+    if (e.target.classList.contains('toggle')) { r.on = e.target.checked; recalc(); }
+  });
+  el.addEventListener('input', e => {
+    const rowEl = e.target.closest('.est-row');
+    if (!rowEl) return;
+    const r = findRow(rowEl.id);
+    if (e.target.dataset.field === 'price') { r.price = Math.max(0, Number(e.target.value) || 0); recalc(); }
+    if (e.target.dataset.field === 'name') r.name = e.target.value;
+  });
+}
+bindList(partsEl);
+bindList(worksEl);
+
+document.getElementById('addPart').addEventListener('click', () => {
+  const r = makeRow({custom:true, prices:{}, cat:null});
+  partRows.push(r);
+  partsEl.appendChild(renderPartRow(r));
+  document.getElementById(r.id).querySelector('.name-input').focus();
+  recalc();
+});
+document.getElementById('addWork').addEventListener('click', () => {
+  const r = makeRow({custom:true});
+  workRows.push(r);
+  worksEl.appendChild(renderWorkRow(r));
+  document.getElementById(r.id).querySelector('.name-input').focus();
+  recalc();
+});
+
+/* ================= logistics ================= */
+const fmt = n => '$' + Math.round(n).toLocaleString('uk-UA').replace(/,/g, ' ');
+const val = id => Math.max(0, Number(document.getElementById(id).value) || 0);
+
+function copartFees(bid) {
+  if (bid <= 0) return 0;
+  let fee;
+  if (bid < 1000) fee = bid * 0.14 + 80;
+  else if (bid < 5000) fee = bid * 0.085 + 190;
+  else if (bid < 10000) fee = bid * 0.065 + 340;
+  else fee = bid * 0.055 + 480;
+  return fee + 95 + 129;
+}
+
+const EXCISE = Math.round(2.5 * 50 * 5 * 1.08); /* об'єм · €50 · вік 5 р. · курс €→$ */
+
+function autoFill() {
+  const bid = val('bid');
+  const duty = bid * 0.10;
+  document.getElementById('auctionFees').value = Math.round(copartFees(bid));
+  document.getElementById('duty').value = Math.round(duty);
+  document.getElementById('excise').value = EXCISE;
+  document.getElementById('vat').value = Math.round((bid + duty + EXCISE) * 0.20);
+}
+
+document.getElementById('bid').addEventListener('input', () => { autoFill(); recalc(); });
+['auctionFees','usDelivery','freight','port','duty','excise','vat','broker','uaFinal']
+  .forEach(id => document.getElementById(id).addEventListener('input', recalc));
+
+/* ================= totals ================= */
+function sumRows(list) {
+  return list.reduce((s, r) => s + (r.on ? r.price : 0), 0);
+}
+
+function recalc() {
+  [...partRows, ...workRows].forEach(r => {
+    const el = document.getElementById(r.id);
+    if (el) el.classList.toggle('off', !r.on);
+  });
+
+  const parts = sumRows(partRows);
+  const works = sumRows(workRows);
+  const repair = parts + works;
+  document.getElementById('partsTotal').textContent = fmt(parts);
+  document.getElementById('worksTotal').textContent = fmt(works);
+
+  const logistics = val('bid') + val('auctionFees') + val('usDelivery') + val('freight')
+    + val('port') + val('duty') + val('excise') + val('vat') + val('broker') + val('uaFinal');
+  document.getElementById('logisticsTotal').textContent = fmt(logistics);
+
+  const grand = logistics + repair;
+  const profit = UA_MARKET_PRICE - grand;
+
+  document.getElementById('grandTotal').textContent = fmt(grand);
+  document.getElementById('bbTotal').textContent = fmt(grand);
+
+  const profitEl = document.getElementById('profit');
+  profitEl.textContent = (profit >= 0 ? '+' : '−') + fmt(Math.abs(profit));
+  profitEl.className = 'val num ' + (profit >= 0 ? 'profit' : 'loss');
+
+  const bbProfit = document.getElementById('bbProfit');
+  bbProfit.textContent = profit >= 0
+    ? 'Вигода ' + fmt(profit) + ' до ринку України'
+    : 'Дорожче ринку на ' + fmt(-profit);
+  bbProfit.style.color = profit >= 0 ? 'var(--green)' : 'var(--red)';
+
+  /* стеля ставки: вигода = 10% ринку */
+  const fixed = val('usDelivery') + val('freight') + val('port') + val('broker') + val('uaFinal') + repair;
+  const target = UA_MARKET_PRICE * 0.9;
+  let lo = 0, hi = 60000;
+  const totalAtBid = b => {
+    const d = b * 0.10;
+    return b + copartFees(b) + d + EXCISE + (b + d + EXCISE) * 0.20 + fixed;
+  };
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (totalAtBid(mid) < target) lo = mid; else hi = mid;
+  }
+  document.getElementById('maxBid').textContent = fmt(Math.floor(lo / 100) * 100);
+}
+
+autoFill();
+recalc();
+</script>
+</body>
+</html>
