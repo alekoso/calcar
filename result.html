@@ -247,9 +247,19 @@
     .print-head{display:flex;justify-content:space-between;align-items:baseline;padding:0 0 14px;font-size:13px;color:#555}
     .print-head b{font-size:18px;color:#1b2532}
   }
+  .photo-strip{display:flex;gap:6px;overflow-x:auto;padding:10px 10px 4px}
+  .photo-strip img{height:86px;border-radius:8px;flex:0 0 auto;cursor:pointer;display:block}
+  .lightbox{position:fixed;inset:0;background:rgba(10,18,28,.88);z-index:100;display:none;align-items:center;justify-content:center;cursor:zoom-out}
+  .lightbox.open{display:flex}
+  .lightbox img{max-width:94vw;max-height:92vh;border-radius:10px}
+  .state-select{height:40px;border:1px solid var(--line);border-radius:10px;padding:0 10px;font-size:14px;background:#fff;color:var(--text);max-width:190px;font-family:inherit}
+  .state-select:focus{outline:2px solid var(--blue);outline-offset:-1px}
+  .vin-line b{letter-spacing:1.2px;font-size:13.5px}
 </style>
 </head>
 <body>
+
+<div class="lightbox" id="lightbox"><img id="lightboxImg" src="" alt=""></div>
 
 <header>
   <div class="header-in">
@@ -364,6 +374,42 @@
       <div class="log-grid">
         <div>
           <div class="cost-row">
+            <div class="lbl">Штат складу лота<span>Підставить типову доставку і фрахт для маршруту</span></div>
+            <select class="state-select" id="usState">
+              <option value="">Оберіть штат</option>
+              <option value="FL">Флорида (FL)</option>
+              <option value="GA">Джорджія (GA)</option>
+              <option value="SC">Пд. Кароліна (SC)</option>
+              <option value="NC">Пн. Кароліна (NC)</option>
+              <option value="VA">Вірджинія (VA)</option>
+              <option value="MD">Меріленд (MD)</option>
+              <option value="NJ">Нью-Джерсі (NJ)</option>
+              <option value="NY">Нью-Йорк (NY)</option>
+              <option value="PA">Пенсильванія (PA)</option>
+              <option value="MA">Массачусетс (MA)</option>
+              <option value="CT">Коннектикут (CT)</option>
+              <option value="TX">Техас (TX)</option>
+              <option value="OK">Оклахома (OK)</option>
+              <option value="LA">Луїзіана (LA)</option>
+              <option value="AL">Алабама (AL)</option>
+              <option value="TN">Теннессі (TN)</option>
+              <option value="OH">Огайо (OH)</option>
+              <option value="MI">Мічиган (MI)</option>
+              <option value="IN">Індіана (IN)</option>
+              <option value="IL">Іллінойс (IL)</option>
+              <option value="MO">Міссурі (MO)</option>
+              <option value="WI">Вісконсин (WI)</option>
+              <option value="MN">Міннесота (MN)</option>
+              <option value="CO">Колорадо (CO)</option>
+              <option value="UT">Юта (UT)</option>
+              <option value="AZ">Аризона (AZ)</option>
+              <option value="NV">Невада (NV)</option>
+              <option value="CA">Каліфорнія (CA)</option>
+              <option value="OR">Орегон (OR)</option>
+              <option value="WA">Вашингтон (WA)</option>
+            </select>
+          </div>
+          <div class="cost-row">
             <div class="lbl">Ставка на аукціоні<span>Ціна, за яку плануєте виграти лот</span></div>
             <div class="money"><input id="bid" type="number" value="7800" min="0"></div>
           </div>
@@ -429,7 +475,6 @@
       <div class="safety-strike" id="safetyStrike">⚠ Подушки безпеки виключені з кошторису. Авто без відновлених подушок небезпечне — це позначення залишиться у вердикті та PDF.</div>
       <div class="v-actions">
         <button class="btn-primary">Завантажити PDF</button>
-        <button class="btn-secondary">Поділитися прорахунком</button>
       </div>
     </div>
   </div>
@@ -500,25 +545,33 @@ function renderHeaderBlocks(){
   document.getElementById('lotBadge').textContent = 'AI-прорахунок';
   document.getElementById('modeHint').textContent = 'Прорахунок на основі ваших фото. Ціни орієнтовні — уточнюйте перед торгами';
 
+  const vinVal = DATA._meta?.vin || DATA.vin || '';
+  const vinFromPhoto = DATA._meta?.vin_source === 'photo';
   const meta = [];
+  if (vinVal) meta.push(`<span class="vin-line">VIN <b>${esc(vinVal)}</b></span>${vinFromPhoto ? ' <span class="badge blue">зчитано з фото</span>' : ''}`);
   if (v.mileage_note) meta.push(`Пробіг <b>${esc(v.mileage_note)}</b>`);
   if (DATA.lot_notes) meta.push(`<b style="color:var(--amber)">${esc(DATA.lot_notes)}</b>`);
   document.getElementById('lotMeta').innerHTML = meta.map(m => `<div>${m}</div>`).join('');
 
 
-  const vinVal = DATA._meta?.vin || DATA.vin || '';
-  const vinSrc = DATA._meta?.vin_source === 'photo' ? ' · зчитано з фото' : '';
-  document.getElementById('vinHint').textContent = vinVal ? vinVal + vinSrc : '';
+  document.getElementById('vinHint').textContent = '';
 
-  /* фото користувача */
+  /* фото користувача — компактна стрічка */
   try {
     const ph = JSON.parse(sessionStorage.getItem('calcarPhotos') || '[]');
     if (ph.length) {
       const grid = document.getElementById('photosGrid');
-      grid.innerHTML = ph.map((src, idx) =>
-        `<div class="ph${idx === 0 ? ' main' : ''}"><img src="${src}" alt=""></div>`
-      ).join('');
+      grid.className = 'photo-strip';
+      grid.innerHTML = ph.map(src => `<img src="${src}" alt="">`).join('');
       grid.style.display = '';
+      grid.addEventListener('click', e => {
+        if (e.target.tagName === 'IMG') {
+          document.getElementById('lightboxImg').src = e.target.src;
+          document.getElementById('lightbox').classList.add('open');
+        }
+      });
+      document.getElementById('lightbox').addEventListener('click', () =>
+        document.getElementById('lightbox').classList.remove('open'));
     }
   } catch(e){}
 
@@ -694,6 +747,23 @@ document.getElementById('addWork').addEventListener('click', () => {
 const fmt = n => '$' + Math.round(n).toLocaleString('uk-UA').replace(/,/g, ' ');
 const val = id => Math.max(0, Number(document.getElementById(id).value) || 0);
 
+const STATE_RATES = {
+  FL:[450,1250], GA:[400,1250], SC:[420,1250], NC:[450,1300], VA:[420,1300], MD:[400,1300],
+  NJ:[400,1300], NY:[420,1300], PA:[500,1300], MA:[450,1300], CT:[430,1300],
+  TX:[500,1400], OK:[650,1450], LA:[450,1400], AL:[450,1350], TN:[550,1350],
+  OH:[650,1350], MI:[700,1350], IN:[600,1350], IL:[650,1400], MO:[650,1400],
+  WI:[750,1400], MN:[800,1450], CO:[950,1500], UT:[1000,1600], AZ:[900,1700],
+  NV:[950,1800], CA:[700,1850], OR:[700,1900], WA:[650,1900],
+};
+document.getElementById('usState').addEventListener('change', e => {
+  const rate = STATE_RATES[e.target.value];
+  if (rate) {
+    document.getElementById('usDelivery').value = rate[0];
+    document.getElementById('freight').value = rate[1];
+    recalc();
+  }
+});
+
 function copartFees(bid) {
   if (bid <= 0) return 0;
   let fee;
@@ -776,51 +846,102 @@ function recalc() {
 autoFill();
 recalc();
 
-/* ================= PDF в одне натискання ================= */
-function buildReportClone() {
-  const clone = document.querySelector('.wrap').cloneNode(true);
-  clone.style.maxWidth = '820px';
-  clone.style.padding = '0';
+/* ================= PDF: окремий чистий звіт ================= */
+function esc2(s){ return esc(s); }
+function money2(n){ return '$' + Math.round(n).toLocaleString('uk-UA').replace(/,/g, ' '); }
 
-  /* прибрати керування */
-  clone.querySelectorAll('.topbar,.toggle,.del,.seg,.btn-ghost,.v-actions,.print-head').forEach(el => el.remove());
-  /* вимкнені позиції не друкуємо */
-  clone.querySelectorAll('.est-row.off').forEach(el => el.remove());
-  /* інпути -> текст */
-  clone.querySelectorAll('.money').forEach(m => {
-    const inp = m.querySelector('input');
-    const v = inp ? (Number(inp.value) || 0) : 0;
-    const span = document.createElement('div');
-    span.style.cssText = 'font-weight:700;font-size:14px;white-space:nowrap;justify-self:end';
-    span.className = 'num';
-    span.textContent = '$' + v.toLocaleString('uk-UA').replace(/,/g, ' ');
-    m.replaceWith(span);
-  });
-  clone.querySelectorAll('.name-input').forEach(inp => {
-    const span = document.createElement('div');
-    span.style.cssText = 'font-weight:600;font-size:14px';
-    span.textContent = inp.value || '';
-    inp.replaceWith(span);
-  });
-  /* зони — розгорнути */
-  clone.querySelectorAll('details').forEach(d => d.setAttribute('open',''));
-  /* шапка звіту */
-  const head = document.createElement('div');
-  head.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;padding:4px 0 16px';
-  head.innerHTML = '<div style="font-weight:800;font-size:20px">calcar</div>' +
-    '<div style="font-size:12px;color:#6b7684">' +
-    (DATA.vehicle?.title || '') + ' · ' + new Date().toLocaleDateString('uk-UA') + '</div>';
-  clone.prepend(head);
-  /* підвал */
-  const foot = document.createElement('div');
-  foot.style.cssText = 'text-align:center;font-size:11px;color:#9aa4b0;padding:8px 0 4px';
-  foot.textContent = 'Прорахунок згенеровано на calcar.ai · ціни орієнтовні';
-  clone.append(foot);
-  /* правила розбиття сторінок */
-  const st = document.createElement('style');
-  st.textContent = '.est-row,.cost-row,.flag,.v-cell,.card-head,.subtotal,.zone-row{page-break-inside:avoid}';
-  clone.prepend(st);
-  return clone;
+function buildReport() {
+  const v = DATA.vehicle || {};
+  const el = document.createElement('div');
+  el.style.cssText = 'width:700px;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif;color:#1b2532;font-size:12.5px;line-height:1.45;background:#fff';
+
+  const dot = s => `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:${
+    s==='ok' ? '#149a3f' : s==='bad' ? '#d6382c' : s==='warn' ? '#b97a00' : '#9aa4b0'}"></span>`;
+  const h2 = t => `<div style="font-size:14px;font-weight:800;margin:16px 0 6px;padding-bottom:4px;border-bottom:2px solid #17334f">${t}</div>`;
+  const row = (a, b, c) => `<tr style="page-break-inside:avoid"><td style="padding:5px 8px 5px 0;border-bottom:1px solid #eee">${a}</td>` +
+    (c !== undefined ? `<td style="padding:5px 8px;border-bottom:1px solid #eee;color:#6b7684">${b}</td><td style="padding:5px 0;border-bottom:1px solid #eee;text-align:right;font-weight:700;white-space:nowrap">${c}</td>` :
+    `<td style="padding:5px 0;border-bottom:1px solid #eee;text-align:right;font-weight:700;white-space:nowrap">${b}</td>`) + '</tr>';
+  const totalRow = (t, s) => `<tr><td style="padding:8px 8px 8px 0;font-weight:800;font-size:13px">${t}</td><td></td><td style="padding:8px 0;text-align:right;font-weight:800;font-size:13px;white-space:nowrap">${s}</td></tr>`;
+
+  let html = `<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
+    <div style="font-size:20px;font-weight:800">calcar<span style="color:#ff6d24">.</span></div>
+    <div style="font-size:11px;color:#6b7684">${new Date().toLocaleDateString('uk-UA')}</div>
+  </div>`;
+
+  /* фото */
+  try {
+    const ph = JSON.parse(sessionStorage.getItem('calcarPhotos') || '[]').slice(0, 4);
+    if (ph.length) html += '<div style="display:flex;gap:5px;margin-bottom:12px">' +
+      ph.map(s => `<img src="${s}" style="height:96px;width:${Math.floor(690/ph.length)}px;object-fit:cover;border-radius:6px">`).join('') + '</div>';
+  } catch(e){}
+
+  html += `<div style="font-size:19px;font-weight:800">${esc2(v.title || 'Авто')}</div>`;
+  const vinVal = DATA._meta?.vin || DATA.vin || '';
+  const sub = [];
+  if (vinVal) sub.push('VIN ' + esc2(vinVal) + (DATA._meta?.vin_source === 'photo' ? ' (зчитано з фото)' : ''));
+  if (v.mileage_note) sub.push(esc2(v.mileage_note));
+  if (sub.length) html += `<div style="color:#6b7684;margin-top:2px">${sub.join(' · ')}</div>`;
+  if (DATA.lot_notes) html += `<div style="color:#b97a00;font-weight:600;margin-top:6px">${esc2(DATA.lot_notes)}</div>`;
+
+  /* комплектація */
+  const spec = [v.engine, v.transmission, v.drive, v.trim].filter(Boolean).map(esc2).join(' · ');
+  if (spec) html += h2('Комплектація') + `<div>${spec}</div>`;
+  if ((v.equipment || []).length) html += `<div style="color:#6b7684;margin-top:3px">${v.equipment.map(esc2).join(', ')}</div>`;
+
+  /* розбір */
+  html += h2('Розбір пошкоджень');
+  (DATA.flags || []).forEach(f => { html += `<div style="margin:3px 0;page-break-inside:avoid">${dot(f.status)}<b>${esc2(f.text)}</b></div>`; });
+  if (DATA.damage_note) html += `<div style="background:#eaf1fb;border-radius:8px;padding:8px 10px;margin-top:6px;color:#274b7a">${esc2(DATA.damage_note)}</div>`;
+  const zones = Array.isArray(DATA.zones) ? DATA.zones : [];
+  if (zones.length) {
+    html += '<div style="margin-top:8px">';
+    zones.forEach(z => { html += `<div style="margin:3px 0;page-break-inside:avoid">${dot(z.status)}<b>${esc2(z.zone)}.</b> <span style="color:#6b7684">${esc2(z.note)}</span></div>`; });
+    html += '</div>';
+  }
+
+  /* запчастини */
+  const activeParts = partRows.filter(x => x.on);
+  if (activeParts.length) {
+    html += h2('Запчастини') + '<table style="width:100%;border-collapse:collapse">';
+    activeParts.forEach(p => { html += row(`<b>${esc2(p.name)}</b>${p.sub ? `<div style="color:#8a94a1;font-size:11px">${esc2(p.sub)}</div>` : ''}`, p.cat ? (catLabels[p.cat] || '') : '', money2(p.price)); });
+    html += totalRow('Запчастини разом', money2(sumRows(partRows))) + '</table>';
+  }
+
+  /* роботи */
+  const activeWorks = workRows.filter(x => x.on);
+  if (activeWorks.length) {
+    html += h2('Роботи') + '<table style="width:100%;border-collapse:collapse">';
+    activeWorks.forEach(w => { html += row(`<b>${esc2(w.name)}</b>${w.sub ? `<div style="color:#8a94a1;font-size:11px">${esc2(w.sub)}</div>` : ''}`, money2(w.price)); });
+    html += totalRow('Роботи разом', money2(sumRows(workRows))).replace('<td></td>', '') + '</table>';
+  }
+
+  /* логістика */
+  const L = [
+    ['Ставка на аукціоні', val('bid')], ['Збори аукціону', val('auctionFees')],
+    ['Доставка по США до порту', val('usDelivery')], ['Морський фрахт до Одеси', val('freight')],
+    ['Порт, експедитор, розвантаження', val('port')], ['Ввізне мито 10%', val('duty')],
+    ['Акциз', val('excise')], ['ПДВ 20%', val('vat')], ['Брокер', val('broker')],
+    ['Сертифікація, облік, доставка по Україні', val('uaFinal')],
+  ];
+  html += h2('Лот, доставка та розмитнення') + '<table style="width:100%;border-collapse:collapse">';
+  L.forEach(([n, s]) => { html += row(n, money2(s)); });
+  const logistics = L.reduce((a, [, s]) => a + s, 0);
+  html += totalRow('Лот + логістика + розмитнення', money2(logistics)).replace('<td></td>', '') + '</table>';
+
+  /* підсумок */
+  const grand = logistics + sumRows(partRows) + sumRows(workRows);
+  html += `<div style="background:#f4f5f7;border-radius:10px;padding:12px 14px;margin-top:14px;display:flex;justify-content:space-between;align-items:center;page-break-inside:avoid">
+    <div style="font-size:12px;font-weight:700;color:#6b7684;text-transform:uppercase;letter-spacing:.5px">Під ключ в Україні</div>
+    <div style="font-size:22px;font-weight:800">${money2(grand)}</div>
+  </div>`;
+  const riskTxt = document.getElementById('riskLine').textContent;
+  html += `<div style="margin-top:8px;font-weight:700">${esc2(riskTxt)}</div>`;
+  const safetyOff = partRows.some(x => x.safety && !x.on);
+  if (safetyOff) html += `<div style="color:#d6382c;font-weight:700;margin-top:4px">⚠ Подушки безпеки виключені з кошторису — авто без відновлених подушок небезпечне.</div>`;
+  html += `<div style="text-align:center;color:#9aa4b0;font-size:10.5px;margin-top:16px">Прорахунок згенеровано на calcar.ai · ціни орієнтовні, не є офіційним кошторисом</div>`;
+
+  el.innerHTML = html;
+  return el;
 }
 
 function pdfName() {
@@ -828,60 +949,33 @@ function pdfName() {
   return 'calcar-' + t + '.pdf';
 }
 
-function pdfWorker() {
-  const clone = buildReportClone();
-  const holder = document.createElement('div');
-  holder.style.cssText = 'position:fixed;left:-10000px;top:0;width:860px;background:#f4f5f7;padding:20px';
-  holder.appendChild(clone);
-  document.body.appendChild(holder);
-  const worker = html2pdf().set({
-    margin: [8, 6],
-    filename: pdfName(),
-    image: { type: 'jpeg', quality: 0.92 },
-    html2canvas: { scale: 2, useCORS: true },
-    jsPDF: { unit: 'mm', format: 'a4' },
-    pagebreak: { mode: ['css', 'legacy'] },
-  }).from(clone);
-  return { worker, cleanup: () => holder.remove() };
-}
-
 async function downloadPdf(btn) {
   const label = btn.textContent;
   btn.disabled = true; btn.textContent = 'Готую PDF…';
+  const holder = document.createElement('div');
   try {
-    const { worker, cleanup } = pdfWorker();
-    await worker.save();
-    cleanup();
+    const report = buildReport();
+    holder.style.cssText = 'position:fixed;left:-10000px;top:0;background:#fff;padding:24px';
+    holder.appendChild(report);
+    document.body.appendChild(holder);
+    await html2pdf().set({
+      margin: [10, 10],
+      filename: pdfName(),
+      image: { type: 'jpeg', quality: 0.92 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: 'mm', format: 'a4' },
+      pagebreak: { mode: ['css', 'legacy'] },
+    }).from(report).save();
   } catch (e) {
-    window.print(); /* запасний варіант */
+    window.print();
   } finally {
+    holder.remove();
     btn.disabled = false; btn.textContent = label;
   }
 }
 
-async function sharePdf(btn) {
-  const label = btn.textContent;
-  btn.disabled = true; btn.textContent = 'Готую PDF…';
-  try {
-    const { worker, cleanup } = pdfWorker();
-    const blob = await worker.outputPdf('blob');
-    cleanup();
-    const file = new File([blob], pdfName(), { type: 'application/pdf' });
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({ files: [file], title: 'Прорахунок calcar' });
-    } else {
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = pdfName();
-      a.click();
-    }
-  } catch (e) { /* користувач міг просто закрити меню шерингу */ }
-  finally { btn.disabled = false; btn.textContent = label; }
-}
-
 document.querySelectorAll('button').forEach(b => {
   if (b.textContent.includes('PDF')) b.addEventListener('click', () => downloadPdf(b));
-  if (b.textContent.includes('Поділитися')) b.addEventListener('click', () => sharePdf(b));
 });
 document.getElementById('printMeta').textContent =
   (DATA.vehicle?.title || '') + ' · ' + new Date().toLocaleDateString('uk-UA') + ' · calcar.ai';
