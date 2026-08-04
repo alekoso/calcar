@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>calcar — прорахунок</title>
+<title>calcar: прорахунок лота</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -31,7 +31,7 @@
   body{
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
     background:var(--bg);color:var(--text);font-size:15px;line-height:1.45;
-    padding-bottom:88px;
+    padding-bottom:32px;
   }
   .num{font-variant-numeric:tabular-nums}
 
@@ -87,7 +87,7 @@
     font-size:11px;color:rgba(255,255,255,.85);background:rgba(0,0,0,.35);
     padding:2px 8px;border-radius:12px;
   }
-  .lot-title{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding:16px 20px 4px}
+  .lot-title{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:16px 20px 4px}
   .lot-title h1{font-size:22px;font-weight:800}
   .lot-meta{padding:0 20px 16px;display:flex;gap:20px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
   .lot-meta b{color:var(--text);font-weight:600}
@@ -200,16 +200,6 @@
   .safety-strike.show{display:block}
   .v-actions{display:flex;gap:12px;margin-top:18px;flex-wrap:wrap}
 
-  .bottombar{
-    position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);
-    box-shadow:0 -4px 16px rgba(20,35,55,.08);z-index:60;
-  }
-  .bottombar-in{max-width:1160px;margin:0 auto;padding:12px 20px;display:flex;align-items:center;gap:20px}
-  .bb-total b{font-size:20px;font-weight:800}
-  .bb-total span{display:block;font-size:11.5px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px}
-  .bb-profit{font-size:14px;font-weight:700}
-  .bottombar .btn-primary{margin-left:auto;height:44px}
-
   @media(max-width:720px){
     .photos{grid-template-columns:1fr 1fr}
     .photos .ph.main{grid-column:span 2;aspect-ratio:4/2.6}
@@ -221,7 +211,6 @@
     .est-row>.money{grid-area:price;justify-self:start}
     .est-row>.del{grid-area:del}
     .cost-row{height:auto;padding:12px 0}
-    .bb-profit{display:none}
   }
   .zones{margin-top:14px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
   .zones summary{
@@ -252,7 +241,11 @@
   .lightbox{position:fixed;inset:0;background:rgba(10,18,28,.88);z-index:100;display:none;align-items:center;justify-content:center;cursor:zoom-out}
   .lightbox.open{display:flex}
   .lightbox img{max-width:94vw;max-height:92vh;border-radius:10px}
-  .state-select{height:40px;border:1px solid var(--line);border-radius:10px;padding:0 10px;font-size:14px;background:#fff;color:var(--text);max-width:190px;font-family:inherit}
+  .state-select{
+    height:40px;border:1px solid var(--line);border-radius:10px;font-size:14px;color:var(--text);font-family:inherit;
+    appearance:none;-webkit-appearance:none;padding:0 30px 0 12px;
+    background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7684' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") no-repeat right 10px center;
+  }
   .state-select:focus{outline:2px solid var(--blue);outline-offset:-1px}
   .vin-line{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:13px;letter-spacing:.8px;font-weight:700;color:var(--text)}
 </style>
@@ -337,10 +330,10 @@
         <span class="num" id="partsTotal">$0</span>
       </div>
       <div class="cat-legend">
-        <b>Нова оригінал</b> — де прочерк, у продажу відсутня. ·
-        <b>Нова аналог</b> — нова неоригінальна деталь (Тайвань: TYC, Depo та ін.). ·
-        <b>Б/в оригінал</b> — заводська деталь з розборки або авто-донора.
-        Ціни орієнтовні, розраховані платформою — будь-яку можна змінити вручну.
+        <b>Нова оригінал</b>: де прочерк, у продажу відсутня. ·
+        <b>Нова аналог</b>: нова неоригінальна деталь (Тайвань, TYC, Depo та ін.). ·
+        <b>Б/в оригінал</b>: заводська деталь з розборки або авто-донора.
+        Ціни орієнтовні, розраховані платформою, будь-яку можна змінити вручну.
       </div>
     </div>
   </div>
@@ -349,7 +342,7 @@
   <div class="card">
     <div class="card-head">
       <h2>Роботи</h2>
-      <span class="hint" style="margin-left:auto">Впишіть ціни свого майстра — ми даємо лише орієнтир</span>
+      <span class="hint" style="margin-left:auto">Впишіть ціни свого майстра, ми даємо лише орієнтир</span>
     </div>
     <div class="card-body" style="padding-top:12px">
       <div class="est-head simple">
@@ -368,7 +361,7 @@
   <div class="card" id="maintCard" style="display:none">
     <div class="card-head">
       <h2>Обслуговування за пробігом</h2>
-      <span class="hint" style="margin-left:auto">Рекомендовано під пробіг цього авто — вимикай зайве</span>
+      <span class="hint" style="margin-left:auto">Рекомендовано під пробіг цього авто, вимикай зайве</span>
     </div>
     <div class="card-body" style="padding-top:12px">
       <div class="est-head simple">
@@ -489,22 +482,15 @@
           <div class="val num" id="grandTotal">$0</div>
         </div>
       </div>
-      <div class="risk-line" id="riskLine"><div class="dot ok"></div>Ризик угоди: —</div>
+      <div class="risk-line" id="riskLine"><div class="dot ok"></div>Ризик угоди</div>
       <div class="hint" id="riskHint"></div>
-      <div class="safety-strike" id="safetyStrike">⚠ Подушки безпеки виключені з кошторису. Авто без відновлених подушок небезпечне — це позначення залишиться у вердикті та PDF.</div>
+      <div class="safety-strike" id="safetyStrike">⚠ Подушки безпеки виключені з кошторису. Авто без відновлених подушок небезпечне, це позначення залишиться у вердикті та PDF.</div>
       <div class="v-actions">
         <button class="btn-primary">Завантажити PDF</button>
       </div>
     </div>
   </div>
 
-</div>
-
-<div class="bottombar">
-  <div class="bottombar-in">
-    <div class="bb-total"><span>Під ключ</span><b class="num" id="bbTotal">$0</b></div>
-    <button class="btn-primary">Завантажити PDF</button>
-  </div>
 </div>
 
 <script>
@@ -560,13 +546,13 @@ if (DATA.reserve) {
 });
 
 /* ================= шапка, комплектація, розбір ================= */
-function esc(s){ return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function esc(s){ return String(s ?? '').replace(/\s*—\s*/g, ', ').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
 function renderHeaderBlocks(){
   const v = DATA.vehicle || {};
   document.getElementById('lotTitle').textContent = v.title || 'Авто';
   document.getElementById('lotBadge').textContent = 'AI-прорахунок';
-  document.getElementById('modeHint').textContent = 'Прорахунок на основі ваших фото. Ціни орієнтовні — уточнюйте перед торгами';
+  document.getElementById('modeHint').textContent = 'Прорахунок на основі ваших фото. Ціни орієнтовні, уточнюйте перед торгами';
 
   const vinVal = DATA._meta?.vin || DATA.vin || '';
   const vinFromPhoto = DATA._meta?.vin_source === 'photo';
@@ -635,8 +621,8 @@ function renderHeaderBlocks(){
   const [cls, label] = hasBad ? ['bad','високий'] : hasWarn ? ['warn','середній'] : ['ok','низький'];
   document.getElementById('riskLine').innerHTML = `<div class="dot ${cls}"></div>Ризик угоди: ${label}`;
   document.getElementById('riskHint').textContent = hasBad
-    ? 'Знайдені критичні пошкодження — уважно перевір кошторис і закладай запас.'
-    : 'Основна невизначеність — приховані пошкодження, які не видно по фото.';
+    ? 'Знайдені критичні пошкодження, уважно перевір кошторис і закладай запас.'
+    : 'Основна невизначеність: приховані пошкодження, які не видно по фото.';
 }
 renderHeaderBlocks();
 
@@ -819,11 +805,11 @@ function computeExcise() {
   const age = Math.min(15, Math.max(1, 2026 - year));
   const disp = Number(v.displacement_l) || 0;
   if (v.fuel === 'hybrid') {
-    document.getElementById('exciseNote').innerHTML = '<span style="font-weight:400;color:var(--muted)">гібрид — фіксований €100</span>';
+    document.getElementById('exciseNote').innerHTML = '<span style="font-weight:400;color:var(--muted)">гібрид: фіксований €100</span>';
     return Math.round(100 * EUR);
   }
   if (v.fuel === 'electric') {
-    document.getElementById('exciseNote').innerHTML = '<span style="font-weight:400;color:var(--muted)">електро — €1 за кВт·год, впиши точно</span>';
+    document.getElementById('exciseNote').innerHTML = '<span style="font-weight:400;color:var(--muted)">електро: €1 за кВт·год, впиши точно</span>';
     return 0;
   }
   if (!disp || !year) {
@@ -879,7 +865,6 @@ function recalc() {
 
   const grand = logistics + repair;
   document.getElementById('grandTotal').textContent = fmt(grand);
-  document.getElementById('bbTotal').textContent = fmt(grand);
 
 }
 
@@ -1089,7 +1074,7 @@ function generatePdf() {
   const riskTxt = document.getElementById('riskLine').textContent.trim();
   dotLine(riskTxt.includes('високий') ? 'bad' : riskTxt.includes('середній') ? 'warn' : 'ok', riskTxt, '');
   const safetyOff = partRows.some(x => x.safety && !x.on);
-  if (safetyOff) para('Подушки безпеки виключені з кошторису — авто без відновлених подушок небезпечне.', 8.5, COLORS.bad);
+  if (safetyOff) para('Подушки безпеки виключені з кошторису. Авто без відновлених подушок небезпечне.', 8.5, COLORS.bad);
 
   ensure(8);
   y += 3;
