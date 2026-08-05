@@ -59,6 +59,21 @@
     padding:0 16px;font-size:15px;color:var(--text);letter-spacing:.5px;
   }
   .hf-row input[type=text]:focus{outline:2px solid var(--blue);outline-offset:-1px}
+  .hf-select{
+    flex:1;min-width:160px;height:52px;border:1px solid var(--line);border-radius:12px;font-size:15px;
+    color:var(--text);font-family:inherit;appearance:none;-webkit-appearance:none;padding:0 34px 0 14px;
+    background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7684' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") no-repeat right 12px center;
+  }
+  .hf-select:focus{outline:2px solid var(--blue);outline-offset:-1px}
+  .main-upload{padding:26px 18px;justify-content:center;font-size:15px;border-width:2px}
+  .bid-wrap{position:relative;flex:1;min-width:220px;display:flex;align-items:center}
+  .bid-wrap span{position:absolute;left:14px;font-weight:700;color:var(--muted)}
+  .bid-wrap input{
+    width:100%;height:52px;border:1px solid var(--line);border-radius:12px;
+    padding:0 14px 0 28px;font-size:15px;font-weight:600;color:var(--text);font-family:inherit;
+  }
+  .bid-wrap input:focus{outline:2px solid var(--blue);outline-offset:-1px}
+  .hf-extra{margin-top:12px;font-size:12.5px;color:var(--muted);font-weight:600}
   .upload{
     display:flex;align-items:center;gap:10px;border:1px dashed #b9c2cd;border-radius:12px;
     padding:12px 16px;margin-top:10px;color:var(--muted);font-size:14px;cursor:pointer;
@@ -154,16 +169,54 @@
     <p class="sub">Встав VIN та фото лота з аукціону, і AI розбере пошкодження, порахує ремонт, розмитнення та повну ціну під ключ в Україні.</p>
 
     <div class="hero-form">
-      <div class="hf-row">
-        <input type="text" id="vin" placeholder="VIN, наприклад 5TDKBRCH0RS14442" maxlength="17" spellcheck="false" autocapitalize="characters">
-        <button class="btn-primary" id="analyzeBtn">Прорахувати лот</button>
-      </div>
-      <label class="upload" for="photoInput">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        <span id="uploadText">Додати фото лота (3–12 фото: кузов, зона удару, салон, кермо, стеля). Без фото: прорахунок лише за VIN</span>
+      <label class="upload main-upload" for="photoInput">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <span id="uploadText">Додай 3–12 фото лота: кузов з усіх боків, зона удару, салон, кермо, стеля</span>
       </label>
       <input type="file" id="photoInput" accept="image/*" multiple style="display:none">
       <div class="previews" id="previews"></div>
+      <div class="hf-row" style="margin-top:12px">
+        <div class="bid-wrap"><span>$</span><input type="number" id="bidInput" min="0" placeholder="Ставка, за яку плануєш виграти лот"></div>
+        <button class="btn-primary" id="analyzeBtn">Прорахувати лот</button>
+      </div>
+      <div class="hf-extra">Підвищать точність (необов'язково):</div>
+      <div class="hf-row" style="margin-top:8px">
+        <input type="text" id="vin" placeholder="VIN, 17 символів" maxlength="17" spellcheck="false" autocapitalize="characters" style="flex:1;min-width:170px">
+        <input type="text" id="damage" placeholder="Тип пошкодження (Front End…)" style="flex:1.1;min-width:170px">
+        <select id="lotState" class="hf-select">
+<option value="">Штат складу</option>
+          <option value="FL">Флорида (FL)</option>
+          <option value="GA">Джорджія (GA)</option>
+          <option value="SC">Пд. Кароліна (SC)</option>
+          <option value="NC">Пн. Кароліна (NC)</option>
+          <option value="VA">Вірджинія (VA)</option>
+          <option value="MD">Меріленд (MD)</option>
+          <option value="NJ">Нью-Джерсі (NJ)</option>
+          <option value="NY">Нью-Йорк (NY)</option>
+          <option value="PA">Пенсильванія (PA)</option>
+          <option value="MA">Массачусетс (MA)</option>
+          <option value="CT">Коннектикут (CT)</option>
+          <option value="TX">Техас (TX)</option>
+          <option value="OK">Оклахома (OK)</option>
+          <option value="LA">Луїзіана (LA)</option>
+          <option value="AL">Алабама (AL)</option>
+          <option value="TN">Теннессі (TN)</option>
+          <option value="OH">Огайо (OH)</option>
+          <option value="MI">Мічиган (MI)</option>
+          <option value="IN">Індіана (IN)</option>
+          <option value="IL">Іллінойс (IL)</option>
+          <option value="MO">Міссурі (MO)</option>
+          <option value="WI">Вісконсин (WI)</option>
+          <option value="MN">Міннесота (MN)</option>
+          <option value="CO">Колорадо (CO)</option>
+          <option value="UT">Юта (UT)</option>
+          <option value="AZ">Аризона (AZ)</option>
+          <option value="NV">Невада (NV)</option>
+          <option value="CA">Каліфорнія (CA)</option>
+          <option value="OR">Орегон (OR)</option>
+          <option value="WA">Вашингтон (WA)</option>
+        </select>
+      </div>
       <div class="hf-status" id="status"></div>
       <div class="hf-note">
         <span><b>Перший прорахунок безкоштовний</b></span>
@@ -338,7 +391,12 @@ btn.addEventListener('click', async () => {
     const r = await fetch('/api/analyze', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ vin, images: photos }),
+      body: JSON.stringify({
+        vin, images: photos,
+        bid: Number(document.getElementById('bidInput').value) || 0,
+        damage: document.getElementById('damage').value.trim(),
+        state: document.getElementById('lotState').value,
+      }),
     });
     const data = await r.json();
     if (!r.ok || data.error) throw new Error(data.error || 'Помилка сервера');
