@@ -171,18 +171,18 @@
     <div class="hero-form">
       <label class="upload main-upload" for="photoInput">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        <span id="uploadText">Додай 3–12 фото лота: кузов з усіх боків, зона удару, салон, кермо, стеля</span>
+        <span id="uploadText">Додай 3–12 фото лота: кузов з усіх боків, зона удару, салон, кермо, стеля <b style="color:#d6382c">*</b></span>
+        <span style="font-size:12px;color:#d6382c;margin-left:4px;white-space:nowrap">обов'язково</span>
       </label>
       <input type="file" id="photoInput" accept="image/*" multiple style="display:none">
       <div class="previews" id="previews"></div>
       <div class="hf-row" style="margin-top:12px">
-        <div class="bid-wrap"><span>$</span><input type="number" id="bidInput" min="0" placeholder="Ставка, за яку плануєш виграти лот"></div>
+        <div class="bid-wrap"><span>$</span><input type="number" id="bidInput" min="0" placeholder="Ціна лота"></div>
         <button class="btn-primary" id="analyzeBtn">Прорахувати лот</button>
       </div>
       <div class="hf-extra">Підвищать точність (необов'язково):</div>
       <div class="hf-row" style="margin-top:8px">
-        <input type="text" id="vin" placeholder="VIN, 17 символів" maxlength="17" spellcheck="false" autocapitalize="characters" style="flex:1;min-width:170px">
-        <input type="text" id="damage" placeholder="Тип пошкодження (Front End…)" style="flex:1.1;min-width:170px">
+        <input type="text" id="vin" placeholder="VIN, 17 символів" maxlength="17" spellcheck="false" autocapitalize="characters" style="flex:2;min-width:220px">
         <select id="lotState" class="hf-select">
 <option value="">Штат складу</option>
           <option value="FL">Флорида (FL)</option>
@@ -394,7 +394,6 @@ btn.addEventListener('click', async () => {
       body: JSON.stringify({
         vin, images: photos,
         bid: Number(document.getElementById('bidInput').value) || 0,
-        damage: document.getElementById('damage').value.trim(),
         state: document.getElementById('lotState').value,
       }),
     });
