@@ -65,7 +65,6 @@
     background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7684' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") no-repeat right 12px center;
   }
   .hf-select:focus{outline:2px solid var(--blue);outline-offset:-1px}
-  .main-upload{padding:26px 18px;justify-content:center;font-size:15px;border-width:2px}
   .bid-wrap{position:relative;flex:1;min-width:220px;display:flex;align-items:center}
   .bid-wrap span{position:absolute;left:14px;font-weight:700;color:var(--muted)}
   .bid-wrap input{
@@ -74,13 +73,16 @@
   }
   .bid-wrap input:focus{outline:2px solid var(--blue);outline-offset:-1px}
   .hf-extra{margin-top:12px;font-size:12.5px;color:var(--muted);font-weight:600}
-  .upload{
-    display:flex;align-items:center;gap:10px;border:1px dashed #b9c2cd;border-radius:12px;
-    padding:12px 16px;margin-top:10px;color:var(--muted);font-size:14px;cursor:pointer;
-    transition:border-color .15s,background .15s;
+  .dropzone{
+    display:flex;flex-direction:column;align-items:center;gap:7px;text-align:center;
+    border:2px dashed #b9c2cd;border-radius:14px;padding:26px 16px;margin-top:2px;
+    color:var(--muted);cursor:pointer;transition:border-color .15s,background .15s;
   }
-  .upload:hover{border-color:var(--blue);background:var(--blue-soft);color:var(--blue)}
-  .upload svg{flex-shrink:0}
+  .dropzone:hover{border-color:var(--blue);background:var(--blue-soft)}
+  .dropzone svg{color:#8a94a1}
+  .dz-title{font-size:15.5px;font-weight:700;color:var(--text)}
+  .dz-sub{font-size:13px;color:var(--muted)}
+  .req{color:#d6382c}
   .btn-primary{
     background:var(--orange);color:#fff;border:none;border-radius:12px;
     height:52px;padding:0 28px;font-size:16px;font-weight:700;cursor:pointer;white-space:nowrap;
@@ -169,10 +171,10 @@
     <p class="sub">Встав VIN та фото лота з аукціону, і AI розбере пошкодження, порахує ремонт, розмитнення та повну ціну під ключ в Україні.</p>
 
     <div class="hero-form">
-      <label class="upload main-upload" for="photoInput">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        <span id="uploadText">Додай 3–12 фото лота: кузов з усіх боків, зона удару, салон, кермо, стеля <b style="color:#d6382c">*</b></span>
-        <span style="font-size:12px;color:#d6382c;margin-left:4px;white-space:nowrap">обов'язково</span>
+      <label class="dropzone" for="photoInput">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <div class="dz-title" id="uploadText">Додай фото лота <b class="req">*</b></div>
+        <div class="dz-sub" id="uploadSub">3–12 фото: кузов з усіх боків, зона удару, салон, кермо, стеля</div>
       </label>
       <input type="file" id="photoInput" accept="image/*" multiple style="display:none">
       <div class="previews" id="previews"></div>
@@ -331,9 +333,15 @@ function renderPreviews(){
     d.innerHTML = `<img src="${src}"><button type="button" data-i="${i}">✕</button>`;
     previews.appendChild(d);
   });
-  document.getElementById('uploadText').textContent = photos.length
-    ? `Фото додано: ${photos.length} з ${MAX_PHOTOS}. Можна додати ще`
-    : 'Додати фото лота (3–12 фото: кузов, зона удару, салон, кермо, стеля). Без фото: прорахунок лише за VIN';
+  const dzTitle = document.getElementById('uploadText');
+  const dzSub = document.getElementById('uploadSub');
+  if (photos.length) {
+    dzTitle.textContent = `Фото додано: ${photos.length} з ${MAX_PHOTOS}`;
+    dzSub.textContent = 'Натисни, щоб додати ще';
+  } else {
+    dzTitle.innerHTML = 'Додай фото лота <b class="req">*</b>';
+    dzSub.textContent = '3–12 фото: кузов з усіх боків, зона удару, салон, кермо, стеля';
+  }
 }
 previews.addEventListener('click', e => {
   const b = e.target.closest('button[data-i]');
