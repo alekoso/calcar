@@ -284,9 +284,10 @@ async function buildInputFromExample(actor, url, token) {
   } catch (e) { return null; }
 }
 
-/* ---- запуск актора: пробуємо кілька схем входу ---- */
-async function runActor(actor, inputs, token) {
+/* ---- запуск актора: пробуємо кілька схем входу; ім'я обов'язкового поля читаємо з помилки Apify ---- */
+async function runActor(actor, inputs, token, url) {
   let lastErr = 'unknown';
+  const triedFields = new Set(inputs.flatMap(i => Object.keys(i)));
   for (const input of inputs) {
     try {
       const r = await fetch(
@@ -297,7 +298,19 @@ async function runActor(actor, inputs, token) {
           body: JSON.stringify(input),
         }
       );
-      if (!r.ok) { lastErr = 'HTTP ' + r.status + ' ' + (await r.text()).slice(0, 200); continue; }
+      if (!r.ok) {
+        const body = (await r.text()).slice(0, 300);
+        lastErr = 'HTTP ' + r.status + ' ' + body;
+        /* Apify сам каже, якого поля бракує: "Field input.startUrl is required" */
+        const m = /input\.(\w+)(?:\s+is required|.*?must)/i.exec(body);
+        if (m && url && !triedFields.has(m[1])) {
+          triedFields.add(m[1]);
+          inputs.push({ [m[1]]: url, maxItems: 1 });
+          inputs.push({ [m[1]]: [url], maxItems: 1 });
+          inputs.push({ [m[1]]: [{ url }], maxItems: 1 });
+        }
+        continue;
+      }
       const items = await r.json();
       if (Array.isArray(items) && items.length) return items;
       lastErr = 'порожній результат';
@@ -329,6 +342,7 @@ export default async function handler(req, res) {
     const actor = isIaai ? IAAI_ACTOR : COPART_ACTOR;
     const inputs = isIaai
       ? [
+          { startUrl: url, maxItems: 1 },
           { startUrls: [{ url }], maxItems: 1 },
           { url, maxItems: 1 },
           { urls: [url], maxItems: 1 },
@@ -336,6 +350,7 @@ export default async function handler(req, res) {
           { startUrls: [url], maxItems: 1 },
         ]
       : [
+          { startUrl: url, maxItems: 1 },
           { searchUrl: url, maxItems: 1 },
           { url, maxItems: 1 },
           { startUrls: [{ url }], maxItems: 1 },
@@ -345,7 +360,7 @@ export default async function handler(req, res) {
     const fromExample = await buildInputFromExample(actor, url, process.env.APIFY_TOKEN);
     if (fromExample) inputs.unshift(fromExample);
 
-    const items = await runActor(actor, inputs, process.env.APIFY_TOKEN);
+    const items = await runActor(actor, inputs, process.env.APIFY_TOKEN, url);
     const item = items[0];
     if (!item) {
       return res.status(404).json({ error: 'Лот не знайдено. Перевір посилання або завантаж фото вручну' });
