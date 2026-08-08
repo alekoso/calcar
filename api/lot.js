@@ -297,10 +297,13 @@ async function buildInputFromExample(actor, url, token) {
 async function runActor(actor, inputs, token, url, toLot) {
   const attempts = [];
   let bestNoPhoto = null;
+  let paidRuns = 0;
+  const MAX_PAID_RUNS = 2;
   const triedFields = new Set(inputs.flatMap(i => Object.keys(i)));
   const label = input => Object.keys(input).filter(k => !/^(max|proxy)/i.test(k)).join('+')
     + (input.proxyConfiguration ? '+proxy' : '');
   for (const input of inputs) {
+    if (paidRuns >= MAX_PAID_RUNS) break;
     try {
       const r = await fetch(
         `https://api.apify.com/v2/acts/${actor}/run-sync-get-dataset-items?token=${token}&timeout=120`,
@@ -316,18 +319,20 @@ async function runActor(actor, inputs, token, url, toLot) {
         const m = /input\.(\w+)(?:\s+is required|.*?must)/i.exec(body);
         if (m && url && !triedFields.has(m[1])) {
           triedFields.add(m[1]);
-          inputs.push({ [m[1]]: url, maxItems: 1, proxyConfiguration: { useApifyProxy: true } });
-          inputs.push({ [m[1]]: [{ url }], maxItems: 1, proxyConfiguration: { useApifyProxy: true } });
+          /* помилки валідації безкоштовні: актор ще не запускався */
           inputs.push({ [m[1]]: [url], maxItems: 1 });
+          inputs.push({ [m[1]]: url, maxItems: 1 });
+          inputs.push({ [m[1]]: [{ url }], maxItems: 1 });
         }
         continue;
       }
       const items = await r.json();
+      paidRuns += 1; /* успішний запуск актора вже оплачений, навіть якщо результат нам не підходить */
       if (!Array.isArray(items) || !items.length) { attempts.push(label(input) + ': порожньо'); continue; }
       const lot = toLot(items[0]);
       if (lot && lot.images.length) return lot;
       bestNoPhoto = bestNoPhoto || lot;
-      attempts.push(label(input) + ': без фото');
+      attempts.push(label(input) + (lot === null ? ': чужий лот' : ': без фото'));
     } catch (e) {
       attempts.push(label(input) + ': ' + String(e.message).slice(0, 60));
     }
@@ -358,33 +363,32 @@ export default async function handler(req, res) {
     else return res.status(400).json({ error: 'Встав посилання на лот Copart чи IAAI' });
 
     const actor = isIaai ? IAAI_ACTOR : COPART_ACTOR;
-    const PROXY = { useApifyProxy: true };
-    /* IAAI захищений антиботом: без proxyConfiguration актор отримує заглушки.
-       Консоль Apify підставляє proxy за замовчуванням, тому ручні запуски працюють. */
+    /* Точні поля входу, підтверджені реальними запусками:
+       - IAAI (easyapi): робоче поле detailUrls (масив рядків), startUrls актор ігнорує
+         і скрапить свій демо-лот із дефолтів схеми. Канонічний формат посилання має суфікс ~US.
+       - Copart (parseforge): startUrl.
+       Актор IAAI платний за результат (~$0.19/лот), тому НІЯКОГО перебору:
+       рівно один платний запуск на запит. */
+    let iaaiUrl = url;
+    if (isIaai) {
+      iaaiUrl = url.replace(/\/VehicleDetail\/(\d+)(?![\d~])/i, '/VehicleDetail/$1~US');
+    }
     const inputs = isIaai
-      ? [
-          { startUrls: [{ url }], maxItems: 1, proxyConfiguration: PROXY },
-          { startUrls: [url], maxItems: 1, proxyConfiguration: PROXY },
-          { startUrls: [{ url }], maxItems: 1, proxyConfiguration: PROXY, proxy: PROXY },
-          { startUrls: [{ url }], maxItems: 1 },
-          { urls: [url], maxItems: 1, proxyConfiguration: PROXY },
-          { url, maxItems: 1, proxyConfiguration: PROXY },
-          { startUrl: url, maxItems: 1, proxyConfiguration: PROXY },
-        ]
-      : [
-          { startUrl: url, maxItems: 1 },
-          { searchUrl: url, maxItems: 1 },
-          { url, maxItems: 1 },
-          { startUrls: [{ url }], maxItems: 1, proxyConfiguration: PROXY },
-          { searchUrls: [url], maxItems: 1 },
-        ];
+      ? [{ detailUrls: [iaaiUrl], maxItems: 1 }]
+      : [{ startUrl: url, maxItems: 1 }, { searchUrl: url, maxItems: 1 }];
 
-    const fromExample = await buildInputFromExample(actor, url, process.env.APIFY_TOKEN);
-    if (fromExample) inputs.unshift(fromExample);
+    /* останній резерв, не перед перевіреним полем */
+    const fromExample = await buildInputFromExample(actor, isIaai ? iaaiUrl : url, process.env.APIFY_TOKEN);
+    if (fromExample) inputs.push(fromExample);
 
+    /* захист від підміни: якщо актор повернув інший лот (свій демо-приклад тощо),
+       це відмова, а не матеріал для аналізу */
+    const reqId = isIaai ? (/VehicleDetail\/(\d+)/i.exec(url) || [])[1] : null;
     const toLot = item => {
-      try { return isIaai ? normalizeGeneric(item, 'iaai') : normalize(item); }
-      catch (e) { return null; }
+      try {
+        if (reqId && !JSON.stringify(item).includes(reqId)) return null;
+        return isIaai ? normalizeGeneric(item, 'iaai') : normalize(item);
+      } catch (e) { return null; }
     };
 
     let lot;
