@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>calcar: прорахунок лота</title>
+<title>CalCar: прорахунок лота</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -46,6 +46,8 @@
 
   .wrap{max-width:1160px;margin:0 auto;padding:20px}
 
+  .btn-auth{display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(255,255,255,.35);border-radius:20px;padding:7px 14px;color:#fff!important;font-weight:600;font-size:13px;text-decoration:none;transition:background .15s,border-color .15s}
+  .btn-auth:hover{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.6)}
   .topbar{display:flex;align-items:center;gap:14px;margin-bottom:20px;flex-wrap:wrap}
   .btn-back{
     display:inline-flex;align-items:center;background:#fff;color:var(--blue);border:1px solid var(--blue);
@@ -256,26 +258,25 @@
 
 <header>
   <div class="header-in">
-    <a class="logo" href="/"><img src="/favicon-32.png" alt=""> calcar</a>
+    <a class="logo" href="/"><img src="/favicon-32.png" alt=""> CalCar</a>
     <div class="beta">beta</div>
     <div class="header-right">
-      <a href="#">Мої прорахунки</a>
-      <div class="avatar">А</div>
+      <a class="btn-auth" href="/cabinet.html">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg>
+        Мої прорахунки
+      </a>
     </div>
   </div>
 </header>
 
 <div class="wrap">
 
-  <div class="print-head"><b>calcar</b><span id="printMeta"></span></div>
+  <div class="print-head"><b>CalCar</b><span id="printMeta"></span></div>
 
   <div class="topbar">
     <a class="btn-back" href="/">← Новий прорахунок</a>
     <span class="hint" id="modeHint"></span>
-    <span style="margin-left:auto;display:flex;gap:10px;align-items:center">
-      <a class="btn-back" id="cabinetLink" href="/cabinet.html" style="display:none">Кабінет</a>
-      <a class="btn-back" id="lotLink" href="#" target="_blank" rel="noopener" style="display:none">Відкрити лот на аукціоні ↗</a>
-    </span>
+    <a class="btn-back" id="lotLink" href="#" target="_blank" rel="noopener" style="display:none;margin-left:auto">Відкрити лот на аукціоні ↗</a>
   </div>
 
   <!-- lot card -->
@@ -535,9 +536,6 @@ if (DATA._meta?.lot_url) {
   ll.href = DATA._meta.lot_url;
   ll.style.display = '';
 }
-if (SB) SB.auth.getSession().then(({ data }) => {
-  if (data?.session) document.getElementById('cabinetLink').style.display = '';
-});
 const LIVE = true;
 
 /* ================= стан рядків ================= */
@@ -1046,7 +1044,7 @@ function generatePdf() {
   doc.setFillColor(...COLORS.orange);
   doc.circle(M + 4, y - 2, 2.2, 'F');
   doc.setFont('DejaVu', 'bold'); doc.setFontSize(15); setC(COLORS.navy);
-  doc.text('calcar', M + 11, y);
+  doc.text('CalCar', M + 11, y);
   doc.setFont('DejaVu', 'normal'); doc.setFontSize(8); setC(COLORS.muted);
   doc.text(new Date().toLocaleDateString('uk-UA'), PW - M, y, { align: 'right' });
   y += 8;
@@ -1151,7 +1149,7 @@ function generatePdf() {
   ensure(8);
   y += 3;
   doc.setFont('DejaVu', 'normal'); doc.setFontSize(7.5); setC(COLORS.unknown);
-  doc.text('Прорахунок згенеровано на calcar.ai · ціни орієнтовні, не є офіційним кошторисом', PW / 2, y, { align: 'center' });
+  doc.text('Прорахунок згенеровано на calcar.io · ціни орієнтовні, не є офіційним кошторисом', PW / 2, y, { align: 'center' });
 
   return doc;
 }
@@ -1172,7 +1170,7 @@ document.querySelectorAll('button').forEach(b => {
   if (b.textContent.includes('PDF')) b.addEventListener('click', () => downloadPdf(b));
 });
 document.getElementById('printMeta').textContent =
-  (DATA.vehicle?.title || '') + ' · ' + new Date().toLocaleDateString('uk-UA') + ' · calcar.ai';
+  (DATA.vehicle?.title || '') + ' · ' + new Date().toLocaleDateString('uk-UA') + ' · calcar.io';
 </script>
 </body>
 </html>

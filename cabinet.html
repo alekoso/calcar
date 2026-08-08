@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Кабінет — calcar.ai</title>
+<title>Кабінет — CalCar</title>
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
 <style>
   :root{--navy:#17334f;--blue:#2557a7;--orange:#ff6d24;--red:#c0392b;--bg:#f4f5f7;--card:#fff;--line:#e6e8ec;--text:#1b2532;--muted:#6b7684}
@@ -13,62 +13,86 @@
   .header-in{max-width:960px;margin:0 auto;padding:0 20px;height:56px;display:flex;align-items:center;gap:12px}
   .logo{display:flex;align-items:center;gap:9px;font-weight:800;font-size:20px;color:#fff;text-decoration:none}
   .logo img{width:28px;height:28px;border-radius:7px}
-  .header-right{margin-left:auto;font-size:13px}
-  .header-right a{color:#cfd9e4;text-decoration:none;cursor:pointer}
+  .header-right{margin-left:auto}
+  .btn-out{display:none;align-items:center;gap:8px;border:1px solid rgba(255,255,255,.35);border-radius:20px;padding:7px 14px;color:#fff;font-weight:600;font-size:13px;background:none;cursor:pointer}
+  .btn-out:hover{background:rgba(255,255,255,.12)}
   .wrap{max-width:960px;margin:0 auto;padding:28px 20px 60px}
   h1{font-size:24px;font-weight:800;letter-spacing:-.3px;margin-bottom:18px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px}
   .muted{color:var(--muted)}
-  input[type=email]{height:48px;border:1px solid var(--line);border-radius:10px;padding:0 14px;font-size:15px;width:100%;max-width:340px}
-  .btn{background:var(--orange);color:#fff;border:none;border-radius:10px;height:48px;padding:0 22px;font-size:15px;font-weight:700;cursor:pointer}
+
+  /* ---------- auth ---------- */
+  .auth-wrap{max-width:420px;margin:56px auto 0;text-align:center}
+  .auth-logo{width:52px;height:52px;border-radius:14px;margin-bottom:18px}
+  .auth-wrap h1{margin-bottom:6px}
+  .auth-sub{color:var(--muted);font-size:14px;margin-bottom:24px}
+  .auth-card{padding:28px;text-align:left}
+  .btn-google{display:flex;width:100%;align-items:center;justify-content:center;gap:10px;background:#fff;color:#3c4043;border:1px solid #dadce0;border-radius:10px;height:50px;font-size:15px;font-weight:600;cursor:pointer}
+  .btn-google:hover{background:#f7f8fa}
+  .or{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:12.5px;margin:18px 0}
+  .or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
+  input[type=email]{height:50px;border:1px solid var(--line);border-radius:10px;padding:0 14px;font-size:15px;width:100%}
+  input[type=email]:focus{outline:2px solid var(--blue);outline-offset:-1px}
+  .btn{width:100%;margin-top:10px;background:var(--orange);color:#fff;border:none;border-radius:10px;height:50px;font-size:15px;font-weight:700;cursor:pointer}
+  .btn:hover{background:#e85f1a}
   .btn:disabled{opacity:.6;cursor:default}
-  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-  .status{margin-top:12px;font-size:13.5px}
+  .status{margin-top:12px;font-size:13.5px;text-align:center}
   .status.ok{color:#149a3f}.status.err{color:var(--red)}
-  .report{display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--line)}
+  .auth-legal{margin-top:16px;font-size:12px;color:var(--muted);text-align:center}
+
+  /* ---------- reports ---------- */
+  #reports{padding:6px 0}
+  .report{display:flex;align-items:center;gap:14px;padding:16px 22px;cursor:pointer;position:relative;border-bottom:1px solid var(--line);transition:background .12s}
   .report:last-child{border-bottom:none}
+  .report:hover{background:#f8fafc}
   .report .t{font-weight:700}
   .report .d{font-size:12.5px;color:var(--muted)}
-  .report a.open{margin-left:auto;color:var(--blue);text-decoration:none;font-weight:600;white-space:nowrap}
-  .report button.del{background:none;border:none;color:#b9c2cd;font-size:17px;cursor:pointer;padding:4px}
-  .report button.del:hover{color:var(--red)}
-  .empty{color:var(--muted);padding:8px 0}
-  .btn-google{display:inline-flex;align-items:center;gap:10px;background:#fff;color:#3c4043;border:1px solid #dadce0;border-radius:10px;height:48px;padding:0 20px;font-size:15px;font-weight:600;cursor:pointer}
-  .btn-google:hover{background:#f7f8fa}
-  .or{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:12.5px;margin:16px 0}
-  .or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
+  .report .go{margin-left:auto;color:#b9c2cd;font-size:18px}
+  .kebab{background:none;border:none;color:#8a94a3;font-size:19px;cursor:pointer;padding:6px 8px;border-radius:8px;line-height:1}
+  .kebab:hover{background:#eef1f5;color:var(--text)}
+  .menu{position:absolute;right:16px;top:calc(100% - 10px);background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(15,25,40,.12);z-index:5;display:none;min-width:150px;overflow:hidden}
+  .menu.open{display:block}
+  .menu button{display:block;width:100%;text-align:left;background:none;border:none;padding:11px 14px;font-size:14px;cursor:pointer;color:var(--red)}
+  .menu button:hover{background:#fdf1ef}
+  .empty{color:var(--muted);padding:18px 22px}
 </style>
 </head>
 <body>
 <header>
   <div class="header-in">
-    <a class="logo" href="/"><img src="/favicon-32.png" alt=""> calcar</a>
-    <div class="header-right"><a id="signOut" style="display:none">Вийти</a></div>
+    <a class="logo" href="/"><img src="/favicon-32.png" alt=""> CalCar</a>
+    <div class="header-right">
+      <button class="btn-out" id="signOut">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        Вийти
+      </button>
+    </div>
   </div>
 </header>
 
 <div class="wrap">
   <!-- not configured -->
-  <div class="card" id="noCfg" style="display:none">
+  <div class="card" id="noCfg" style="display:none;padding:22px">
     <b>Кабінет ще не підключено</b>
     <p class="muted" style="margin-top:6px">Потрібно вписати ключі Supabase у файл config.js. Розрахунки працюють і без цього.</p>
   </div>
 
   <!-- auth -->
-  <div id="authBox" style="display:none">
-    <h1>Вхід у кабінет</h1>
-    <div class="card">
+  <div class="auth-wrap" id="authBox" style="display:none">
+    <img class="auth-logo" src="/favicon-32.png" alt="CalCar">
+    <h1>Вхід у CalCar</h1>
+    <div class="auth-sub">Твої прорахунки збережуться в кабінеті, до них можна буде повернутися будь-коли</div>
+    <div class="card auth-card">
       <button class="btn-google" id="googleBtn">
         <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.71-1.57 2.68-3.89 2.68-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.47.9 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/></svg>
-        Увійти через Google
+        Продовжити з Google
       </button>
       <div class="or"><span>або поштою</span></div>
-      <div class="row">
-        <input type="email" id="email" placeholder="you@example.com" autocomplete="email">
-        <button class="btn" id="sendLink">Надіслати посилання</button>
-      </div>
+      <input type="email" id="email" placeholder="you@example.com" autocomplete="email">
+      <button class="btn" id="sendLink">Надіслати посилання для входу</button>
       <div class="status" id="authStatus"></div>
     </div>
+    <div class="auth-legal">Без паролів. Один прорахунок — безкоштовно.</div>
   </div>
 
   <!-- reports -->
@@ -96,6 +120,7 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
     document.getElementById('authBox').style.display = '';
     document.getElementById('listBox').style.display = 'none';
     document.getElementById('signOut').style.display = 'none';
+
     document.getElementById('googleBtn').onclick = async () => {
       const { error } = await SB.auth.signInWithOAuth({
         provider: 'google',
@@ -117,7 +142,7 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
       const { error } = await SB.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + '/cabinet.html' } });
       btn.disabled = false;
       if (error) { st.className = 'status err'; st.textContent = 'Не вдалося надіслати: ' + error.message; }
-      else { st.className = 'status ok'; st.textContent = 'Лист надіслано. Відкрий його і натисни посилання, вхід відбудеться автоматично'; }
+      else { st.className = 'status ok'; st.textContent = 'Лист надіслано. Відкрий його і натисни посилання'; }
     };
   }
 
@@ -125,7 +150,7 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
     document.getElementById('authBox').style.display = 'none';
     document.getElementById('listBox').style.display = '';
     const so = document.getElementById('signOut');
-    so.style.display = '';
+    so.style.display = 'inline-flex';
     so.onclick = async () => { await SB.auth.signOut(); location.reload(); };
 
     const box = document.getElementById('reports');
@@ -142,19 +167,35 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
           <div class="t"></div>
           <div class="d">${new Date(r.created_at).toLocaleString('uk-UA')}</div>
         </div>
-        <a class="open" href="/result.html?id=${r.id}">Відкрити →</a>
-        <button class="del" title="Видалити">✕</button>
+        <span class="go">→</span>
+        <button class="kebab" title="Дії">⋯</button>
+        <div class="menu"><button class="del">Видалити прорахунок</button></div>
       </div>`).join('');
-    /* назви — текстом, без вставки HTML */
+
     box.querySelectorAll('.report').forEach((el, idx) => {
       el.querySelector('.t').textContent = rows[idx].title || 'Прорахунок';
-      el.querySelector('.del').onclick = async () => {
-        if (!confirm('Видалити цей прорахунок?')) return;
+
+      /* відкриття: клік будь-де по рядку */
+      el.addEventListener('click', () => { location.href = '/result.html?id=' + el.dataset.id; });
+
+      /* меню з трьома крапками */
+      const kebab = el.querySelector('.kebab');
+      const menu = el.querySelector('.menu');
+      kebab.addEventListener('click', ev => {
+        ev.stopPropagation();
+        document.querySelectorAll('.menu.open').forEach(m => { if (m !== menu) m.classList.remove('open'); });
+        menu.classList.toggle('open');
+      });
+      menu.querySelector('.del').addEventListener('click', async ev => {
+        ev.stopPropagation();
+        menu.classList.remove('open');
+        if (!confirm('Видалити цей прорахунок? Дію не можна скасувати')) return;
         await SB.from('reports').delete().eq('id', el.dataset.id);
         el.remove();
         if (!box.querySelector('.report')) showList();
-      };
+      });
     });
+    document.addEventListener('click', () => document.querySelectorAll('.menu.open').forEach(m => m.classList.remove('open')));
   }
 
   SB.auth.onAuthStateChange((_e, session) => { if (session) showList(); });
