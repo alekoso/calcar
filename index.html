@@ -65,14 +65,18 @@
     background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7684' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") no-repeat right 12px center;
   }
   .hf-select:focus{outline:2px solid var(--blue);outline-offset:-1px}
-  .bid-wrap{position:relative;flex:1;min-width:220px;display:flex;align-items:center}
+  .bid-wrap{position:relative;flex:0 1 150px;min-width:130px;display:flex;align-items:center}
   .bid-wrap span{position:absolute;left:14px;font-weight:700;color:var(--muted)}
   .bid-wrap input{
     width:100%;height:52px;border:1px solid var(--line);border-radius:12px;
     padding:0 14px 0 28px;font-size:15px;font-weight:600;color:var(--text);font-family:inherit;
   }
   .bid-wrap input:focus{outline:2px solid var(--blue);outline-offset:-1px}
-  .hf-extra{margin-top:12px;font-size:12.5px;color:var(--muted);font-weight:600}
+  .bid-hint{margin-top:8px;font-size:12.5px;color:var(--muted)}
+  .hf-note{display:flex;flex-wrap:wrap;align-items:center;margin-top:14px;font-size:13px;color:var(--muted)}
+  .hf-note span+span::before{content:"·";margin:0 10px;color:#c3cad2}
+  .manual{margin-top:20px}
+  .manual>summary{font-size:13.5px}
   .manual{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
   .manual summary{cursor:pointer;font-size:13.5px;color:var(--blue);font-weight:600;list-style:none}
   .manual summary::-webkit-details-marker{display:none}
@@ -174,18 +178,23 @@
 <div class="hero">
   <div class="hero-in">
     <h1>Скільки коштує пригнати<br>це авто зі США? <em>Дізнайся за хвилину</em></h1>
-    <p class="sub">Встав посилання на лот Copart, і AI сам підтягне дані та фото, розбере пошкодження, порахує ремонт, розмитнення та повну ціну під ключ в Україні.</p>
+    <p class="sub">Встав посилання на лот Copart чи IAAI, і AI сам підтягне дані та фото, розбере пошкодження, порахує ремонт, розмитнення та повну ціну під ключ в Україні.</p>
 
     <div class="hero-form">
       <div class="hf-row">
-        <input type="text" id="lotQuery" placeholder="Посилання на лот Copart або IAAI" spellcheck="false" style="flex:1;min-width:240px">
+        <input type="text" id="lotQuery" placeholder="Посилання на лот Copart або IAAI" spellcheck="false" style="flex:2.6;min-width:280px">
         <div class="bid-wrap"><span>$</span><input type="number" id="bidInput" min="0" placeholder="Ціна лота"></div>
         <button class="btn-primary" id="analyzeBtn">Прорахувати</button>
       </div>
+      <div class="bid-hint">Ціна лота: сума в $, за яку плануєш виграти авто на аукціоні. Необов'язково, можна вписати чи змінити вже в прорахунку</div>
       <div class="hf-status" id="status"></div>
-
+      <div class="hf-note">
+        <span><b>Перший прорахунок безкоштовний</b></span>
+        <span>Без картки</span>
+        <span>Результат за ~60 секунд</span>
+      </div>
       <details class="manual" id="manualBlock">
-        <summary>Немає посилання? Завантажити фото вручну</summary>
+        <summary>Немає посилання? Завантаж фото вручну або порахуй лише за VIN</summary>
         <label class="dropzone" for="photoInput">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
           <div class="dz-title" id="uploadText">Додай фото лота</div>
@@ -230,12 +239,6 @@
         </select>
         </div>
       </details>
-
-      <div class="hf-note">
-        <span><b>Перший прорахунок безкоштовний</b></span>
-        <span>Без картки</span>
-        <span>Результат за ~60 секунд</span>
-      </div>
     </div>
 
   </div>
@@ -395,7 +398,7 @@ btn.addEventListener('click', async () => {
   const bid = Number(document.getElementById('bidInput').value) || 0;
 
   if (!query && photos.length === 0 && vin.length !== 17) {
-    setError('Встав посилання на лот Copart або завантаж фото вручну'); return;
+    setError('Встав посилання на лот Copart чи IAAI або завантаж фото вручну'); return;
   }
   if (!query && photos.length > 0 && photos.length < 3) {
     setError('Для розбору пошкоджень потрібно щонайменше 3 фото'); return;

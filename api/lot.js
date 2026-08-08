@@ -316,14 +316,15 @@ export default async function handler(req, res) {
     const q = String((req.body || {}).query || '').trim();
     if (!q) return res.status(400).json({ error: 'Вкажи посилання на лот або номер лота' });
 
-    const digits = q.replace(/\D/g, '');
-    const isIaai = /iaai\.com/i.test(q);
-    const isCopart = /copart\.com/i.test(q);
+    const cleaned = q.replace(/\s/g, '');
+    const digits = cleaned.replace(/\D/g, '');
+    const isIaai = /iaai\.com/i.test(cleaned);
+    const isCopart = /copart\.com/i.test(cleaned);
 
     let url;
-    if (isIaai || isCopart) url = q.split('?')[0];
+    if (isIaai || isCopart) url = cleaned.split('?')[0];
     else if (digits.length >= 7 && digits.length <= 9) url = 'https://www.copart.com/lot/' + digits;
-    else return res.status(400).json({ error: 'Встав посилання на лот Copart чи IAAI або номер лота Copart' });
+    else return res.status(400).json({ error: 'Встав посилання на лот Copart чи IAAI' });
 
     const actor = isIaai ? IAAI_ACTOR : COPART_ACTOR;
     const inputs = isIaai
