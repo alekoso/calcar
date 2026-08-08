@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Кабінет — calcar.ai</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<style>
+  :root{--navy:#17334f;--blue:#2557a7;--orange:#ff6d24;--red:#c0392b;--bg:#f4f5f7;--card:#fff;--line:#e6e8ec;--text:#1b2532;--muted:#6b7684}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);font-size:15px;line-height:1.5}
+  header{background:var(--navy);color:#fff}
+  .header-in{max-width:960px;margin:0 auto;padding:0 20px;height:56px;display:flex;align-items:center;gap:12px}
+  .logo{display:flex;align-items:center;gap:9px;font-weight:800;font-size:20px;color:#fff;text-decoration:none}
+  .logo img{width:28px;height:28px;border-radius:7px}
+  .header-right{margin-left:auto;font-size:13px}
+  .header-right a{color:#cfd9e4;text-decoration:none;cursor:pointer}
+  .wrap{max-width:960px;margin:0 auto;padding:28px 20px 60px}
+  h1{font-size:24px;font-weight:800;letter-spacing:-.3px;margin-bottom:18px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px}
+  .muted{color:var(--muted)}
+  input[type=email]{height:48px;border:1px solid var(--line);border-radius:10px;padding:0 14px;font-size:15px;width:100%;max-width:340px}
+  .btn{background:var(--orange);color:#fff;border:none;border-radius:10px;height:48px;padding:0 22px;font-size:15px;font-weight:700;cursor:pointer}
+  .btn:disabled{opacity:.6;cursor:default}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .status{margin-top:12px;font-size:13.5px}
+  .status.ok{color:#149a3f}.status.err{color:var(--red)}
+  .report{display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--line)}
+  .report:last-child{border-bottom:none}
+  .report .t{font-weight:700}
+  .report .d{font-size:12.5px;color:var(--muted)}
+  .report a.open{margin-left:auto;color:var(--blue);text-decoration:none;font-weight:600;white-space:nowrap}
+  .report button.del{background:none;border:none;color:#b9c2cd;font-size:17px;cursor:pointer;padding:4px}
+  .report button.del:hover{color:var(--red)}
+  .empty{color:var(--muted);padding:8px 0}
+</style>
+</head>
+<body>
+<header>
+  <div class="header-in">
+    <a class="logo" href="/"><img src="/favicon-32.png" alt=""> calcar</a>
+    <div class="header-right"><a id="signOut" style="display:none">Вийти</a></div>
+  </div>
+</header>
+
+<div class="wrap">
+  <!-- not configured -->
+  <div class="card" id="noCfg" style="display:none">
+    <b>Кабінет ще не підключено</b>
+    <p class="muted" style="margin-top:6px">Потрібно вписати ключі Supabase у файл config.js. Розрахунки працюють і без цього.</p>
+  </div>
+
+  <!-- auth -->
+  <div id="authBox" style="display:none">
+    <h1>Вхід у кабінет</h1>
+    <div class="card">
+      <p class="muted" style="margin-bottom:14px">Введи пошту, ми надішлемо лист із посиланням для входу. Без паролів.</p>
+      <div class="row">
+        <input type="email" id="email" placeholder="you@example.com" autocomplete="email">
+        <button class="btn" id="sendLink">Надіслати посилання</button>
+      </div>
+      <div class="status" id="authStatus"></div>
+    </div>
+  </div>
+
+  <!-- reports -->
+  <div id="listBox" style="display:none">
+    <h1>Мої прорахунки</h1>
+    <div class="card" id="reports"><div class="empty">Завантаження…</div></div>
+  </div>
+</div>
+
+<script src="/config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const cfg = window.CALCAR_SUPABASE || {};
+if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
+  document.getElementById('noCfg').style.display = '';
+} else {
+  const SB = supabase.createClient(cfg.url, cfg.anon);
+
+  async function boot() {
+    const { data } = await SB.auth.getSession();
+    if (data?.session) showList(); else showAuth();
+  }
+
+  function showAuth() {
+    document.getElementById('authBox').style.display = '';
+    document.getElementById('listBox').style.display = 'none';
+    document.getElementById('signOut').style.display = 'none';
+    const btn = document.getElementById('sendLink');
+    btn.onclick = async () => {
+      const email = document.getElementById('email').value.trim();
+      const st = document.getElementById('authStatus');
+      if (!/.+@.+\..+/.test(email)) { st.className = 'status err'; st.textContent = 'Схоже, це не пошта'; return; }
+      btn.disabled = true;
+      const { error } = await SB.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + '/cabinet.html' } });
+      btn.disabled = false;
+      if (error) { st.className = 'status err'; st.textContent = 'Не вдалося надіслати: ' + error.message; }
+      else { st.className = 'status ok'; st.textContent = 'Лист надіслано. Відкрий його і натисни посилання, вхід відбудеться автоматично'; }
+    };
+  }
+
+  async function showList() {
+    document.getElementById('authBox').style.display = 'none';
+    document.getElementById('listBox').style.display = '';
+    const so = document.getElementById('signOut');
+    so.style.display = '';
+    so.onclick = async () => { await SB.auth.signOut(); location.reload(); };
+
+    const box = document.getElementById('reports');
+    const { data: rows, error } = await SB.from('reports')
+      .select('id,title,created_at').order('created_at', { ascending: false }).limit(100);
+    if (error) { box.innerHTML = '<div class="empty">Не вдалося завантажити список</div>'; return; }
+    if (!rows.length) {
+      box.innerHTML = '<div class="empty">Поки що порожньо. Зроби прорахунок на головній, і він збережеться тут автоматично</div>';
+      return;
+    }
+    box.innerHTML = rows.map(r => `
+      <div class="report" data-id="${r.id}">
+        <div>
+          <div class="t"></div>
+          <div class="d">${new Date(r.created_at).toLocaleString('uk-UA')}</div>
+        </div>
+        <a class="open" href="/result.html?id=${r.id}">Відкрити →</a>
+        <button class="del" title="Видалити">✕</button>
+      </div>`).join('');
+    /* назви — текстом, без вставки HTML */
+    box.querySelectorAll('.report').forEach((el, idx) => {
+      el.querySelector('.t').textContent = rows[idx].title || 'Прорахунок';
+      el.querySelector('.del').onclick = async () => {
+        if (!confirm('Видалити цей прорахунок?')) return;
+        await SB.from('reports').delete().eq('id', el.dataset.id);
+        el.remove();
+        if (!box.querySelector('.report')) showList();
+      };
+    });
+  }
+
+  SB.auth.onAuthStateChange((_e, session) => { if (session) showList(); });
+  boot();
+}
+</script>
+</body>
+</html>

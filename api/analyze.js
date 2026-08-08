@@ -225,6 +225,7 @@ export default async function handler(req, res) {
       keys: lot?.keys || null,
       run_and_drive: lot?.run_and_drive ?? null,
       airbags: lot?.airbags || null,
+      lot_url: lot?.lot_url || null,
       est_retail_value: lot?.est_retail_value || null,
       battery_kwh: lot?.battery_kwh || null,
       photos: (lot?.images || []).slice(0, 12).map(i => i.url),

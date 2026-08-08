@@ -170,7 +170,7 @@
     <a class="logo" href="/"><img src="/favicon-32.png" alt=""> calcar</a>
     <div class="beta">beta</div>
     <div class="header-right">
-      <a href="#">Увійти</a>
+      <a href="/cabinet.html" id="authLink">Увійти</a>
     </div>
   </div>
 </header>
@@ -442,6 +442,22 @@ btn.addEventListener('click', async () => {
     if (!r.ok || data.error) throw new Error(data.error || 'Помилка сервера');
 
     sessionStorage.setItem('calcarResult', JSON.stringify(data));
+
+    /* якщо користувач у кабінеті — зберігаємо звіт (фото-URL так, важкі data:-фото ні) */
+    try {
+      if (window.SB) {
+        const { data: s } = await window.SB.auth.getSession();
+        if (s?.session) {
+          const clean = JSON.parse(JSON.stringify(data));
+          if (clean._meta?.photos) clean._meta.photos = clean._meta.photos.filter(u => typeof u === 'string' && !u.startsWith('data:'));
+          await window.SB.from('reports').insert({
+            user_id: s.session.user.id,
+            title: (data.vehicle?.title || 'Прорахунок') + (data._meta?.lot_number ? ' · лот ' + data._meta.lot_number : ''),
+            data: clean,
+          });
+        }
+      }
+    } catch (e) { /* збереження не блокує показ результату */ }
     try {
       const gallery = lot ? (data._meta?.photos || []) : photos;
       sessionStorage.setItem('calcarPhotos', JSON.stringify(gallery));
@@ -456,6 +472,17 @@ btn.addEventListener('click', async () => {
     btn.disabled = false;
   }
 });
+</script>
+<script src="/config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(function () {
+  if (typeof supabase === 'undefined' || !window.CALCAR_SUPABASE?.url) return;
+  window.SB = supabase.createClient(window.CALCAR_SUPABASE.url, window.CALCAR_SUPABASE.anon);
+  window.SB.auth.getSession().then(({ data }) => {
+    if (data?.session) document.getElementById('authLink').textContent = 'Кабінет';
+  });
+})();
 </script>
 </body>
 </html>

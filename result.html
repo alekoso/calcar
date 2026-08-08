@@ -272,6 +272,10 @@
   <div class="topbar">
     <a class="btn-back" href="/">← Новий прорахунок</a>
     <span class="hint" id="modeHint"></span>
+    <span style="margin-left:auto;display:flex;gap:10px;align-items:center">
+      <a class="btn-back" id="cabinetLink" href="/cabinet.html" style="display:none">Кабінет</a>
+      <a class="btn-back" id="lotLink" href="#" target="_blank" rel="noopener" style="display:none">Відкрити лот на аукціоні ↗</a>
+    </span>
   </div>
 
   <!-- lot card -->
@@ -493,14 +497,47 @@
 
 </div>
 
+<script src="/config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-/* ================= лише живий прорахунок ================= */
+/* ================= джерело даних ================= */
+const SB = (typeof supabase !== 'undefined' && window.CALCAR_SUPABASE?.url)
+  ? supabase.createClient(window.CALCAR_SUPABASE.url, window.CALCAR_SUPABASE.anon)
+  : null;
+
+/* збережений звіт із кабінету: тягнемо в sessionStorage і перезаходимо звичайним маршрутом */
+const REPORT_ID = new URLSearchParams(location.search).get('id');
+if (REPORT_ID) {
+  if (!SB) { location.replace('/'); }
+  else {
+    SB.from('reports').select('data').eq('id', REPORT_ID).single().then(({ data: row, error }) => {
+      if (error || !row?.data?.vehicle) { location.replace('/cabinet.html'); return; }
+      try {
+        sessionStorage.setItem('calcarResult', JSON.stringify(row.data));
+        sessionStorage.setItem('calcarPhotos', JSON.stringify(row.data._meta?.photos || []));
+      } catch(e){}
+      location.replace('/result.html');
+    });
+  }
+  throw '';
+}
+
 let DATA = null;
 try {
   const raw = sessionStorage.getItem('calcarResult');
   if (raw) DATA = JSON.parse(raw);
 } catch(e){}
 if (!DATA || !DATA.vehicle) { location.replace('/'); throw new Error('no result'); }
+
+/* кнопка на лот + лінк у кабінет */
+if (DATA._meta?.lot_url) {
+  const ll = document.getElementById('lotLink');
+  ll.href = DATA._meta.lot_url;
+  ll.style.display = '';
+}
+if (SB) SB.auth.getSession().then(({ data }) => {
+  if (data?.session) document.getElementById('cabinetLink').style.display = '';
+});
 const LIVE = true;
 
 /* ================= стан рядків ================= */
