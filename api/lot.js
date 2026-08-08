@@ -1,4 +1,4 @@
-export const config = { maxDuration: 90 };
+export const config = { maxDuration: 300 };
 
 const COPART_ACTOR = 'parseforge~copart-public-search-scraper';
 const IAAI_ACTOR = process.env.IAAI_ACTOR || 'easyapi~iaai-vehicle-detail-scraper';
@@ -170,15 +170,20 @@ function extractImageObjects(item) {
     if (Array.isArray(o)) { o.forEach(walk); return; }
     const u = o.hdUrl || o.highResUrl || o.fullUrl || o.hd_url || o.largeUrl || o.imageUrl
       || (o.thumbUrl && !o.hdUrl ? o.thumbUrl : null);
-    if (typeof u === 'string' && /^https?:/.test(u) && /iaai|copart|image|photo|resizer|retriever|imagekeys/i.test(u)) {
+    if (typeof u === 'string' && /^https?:/.test(u)
+        && /iaai|copart|image|photo|resizer|retriever|imagekeys/i.test(u)
+        && !IMG_JUNK_RE.test(u)) {
       found.push(u);
       return;
     }
     Object.values(o).forEach(walk);
   })(item);
-  /* дедуплікація за imageKeys або повним URL */
+  return found;
+}
+
+function dedupeImages(urls) {
   const seen = new Set();
-  return found.filter(u => {
+  return urls.filter(u => {
     const m = /imageKeys=([^&]+)/i.exec(u);
     const key = m ? m[1] : u;
     if (seen.has(key)) return false;
@@ -201,8 +206,9 @@ function normalizeGeneric(item, source) {
     : /diesel/.test(fuelRaw) ? 'diesel'
     : /tesla|rivian|lucid/i.test(String(make || '')) ? 'electric' : 'petrol';
 
-  const structured = extractImageObjects(item);
-  const imgs = (structured.length ? structured : [...images]).map(upscaleUrl);
+  /* об'єднуємо обидва збирачі: структурні hd-поля мають пріоритет,
+     deep-скан додає те, чого структурний прохід не побачив */
+  const imgs = dedupeImages([...extractImageObjects(item), ...images]).map(upscaleUrl);
 
   return {
     source,
@@ -289,13 +295,15 @@ async function buildInputFromExample(actor, url, token) {
    тому "щось повернулось" не вважається успіхом. Ім'я обов'язкового
    поля читаємо з помилки Apify. ---- */
 async function runActor(actor, inputs, token, url, toLot) {
-  let lastErr = 'unknown';
+  const attempts = [];
   let bestNoPhoto = null;
   const triedFields = new Set(inputs.flatMap(i => Object.keys(i)));
+  const label = input => Object.keys(input).filter(k => !/^(max|proxy)/i.test(k)).join('+')
+    + (input.proxyConfiguration ? '+proxy' : '');
   for (const input of inputs) {
     try {
       const r = await fetch(
-        `https://api.apify.com/v2/acts/${actor}/run-sync-get-dataset-items?token=${token}&timeout=90`,
+        `https://api.apify.com/v2/acts/${actor}/run-sync-get-dataset-items?token=${token}&timeout=120`,
         {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -304,25 +312,27 @@ async function runActor(actor, inputs, token, url, toLot) {
       );
       if (!r.ok) {
         const body = (await r.text()).slice(0, 300);
-        lastErr = 'HTTP ' + r.status + ' ' + body;
+        attempts.push(label(input) + ': HTTP ' + r.status);
         const m = /input\.(\w+)(?:\s+is required|.*?must)/i.exec(body);
         if (m && url && !triedFields.has(m[1])) {
           triedFields.add(m[1]);
-          inputs.push({ [m[1]]: url, maxItems: 1 });
+          inputs.push({ [m[1]]: url, maxItems: 1, proxyConfiguration: { useApifyProxy: true } });
+          inputs.push({ [m[1]]: [{ url }], maxItems: 1, proxyConfiguration: { useApifyProxy: true } });
           inputs.push({ [m[1]]: [url], maxItems: 1 });
-          inputs.push({ [m[1]]: [{ url }], maxItems: 1 });
         }
         continue;
       }
       const items = await r.json();
-      if (!Array.isArray(items) || !items.length) { lastErr = 'порожній результат'; continue; }
+      if (!Array.isArray(items) || !items.length) { attempts.push(label(input) + ': порожньо'); continue; }
       const lot = toLot(items[0]);
       if (lot && lot.images.length) return lot;
       bestNoPhoto = bestNoPhoto || lot;
-      lastErr = 'дані прийшли без фото (поле входу: ' + Object.keys(input).filter(k => !/^max/i.test(k)).join(',') + ')';
-    } catch (e) { lastErr = e.message; }
+      attempts.push(label(input) + ': без фото');
+    } catch (e) {
+      attempts.push(label(input) + ': ' + String(e.message).slice(0, 60));
+    }
   }
-  const err = new Error(lastErr);
+  const err = new Error(attempts.join(' · '));
   err.noPhotoLot = bestNoPhoto;
   throw err;
 }
@@ -348,20 +358,24 @@ export default async function handler(req, res) {
     else return res.status(400).json({ error: 'Встав посилання на лот Copart чи IAAI' });
 
     const actor = isIaai ? IAAI_ACTOR : COPART_ACTOR;
+    const PROXY = { useApifyProxy: true };
+    /* IAAI захищений антиботом: без proxyConfiguration актор отримує заглушки.
+       Консоль Apify підставляє proxy за замовчуванням, тому ручні запуски працюють. */
     const inputs = isIaai
       ? [
+          { startUrls: [{ url }], maxItems: 1, proxyConfiguration: PROXY },
+          { startUrls: [url], maxItems: 1, proxyConfiguration: PROXY },
+          { startUrls: [{ url }], maxItems: 1, proxyConfiguration: PROXY, proxy: PROXY },
           { startUrls: [{ url }], maxItems: 1 },
-          { startUrls: [url], maxItems: 1 },
-          { urls: [url], maxItems: 1 },
-          { url, maxItems: 1 },
-          { vehicleUrls: [url], maxItems: 1 },
-          { startUrl: url, maxItems: 1 },
+          { urls: [url], maxItems: 1, proxyConfiguration: PROXY },
+          { url, maxItems: 1, proxyConfiguration: PROXY },
+          { startUrl: url, maxItems: 1, proxyConfiguration: PROXY },
         ]
       : [
           { startUrl: url, maxItems: 1 },
           { searchUrl: url, maxItems: 1 },
           { url, maxItems: 1 },
-          { startUrls: [{ url }], maxItems: 1 },
+          { startUrls: [{ url }], maxItems: 1, proxyConfiguration: PROXY },
           { searchUrls: [url], maxItems: 1 },
         ];
 
