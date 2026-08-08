@@ -284,9 +284,13 @@ async function buildInputFromExample(actor, url, token) {
   } catch (e) { return null; }
 }
 
-/* ---- запуск актора: пробуємо кілька схем входу; ім'я обов'язкового поля читаємо з помилки Apify ---- */
-async function runActor(actor, inputs, token, url) {
+/* ---- запуск актора: перебираємо схеми входу, успіх = лот із ФОТО.
+   Актор може мовчки прийняти неправильне поле і повернути пустишку,
+   тому "щось повернулось" не вважається успіхом. Ім'я обов'язкового
+   поля читаємо з помилки Apify. ---- */
+async function runActor(actor, inputs, token, url, toLot) {
   let lastErr = 'unknown';
+  let bestNoPhoto = null;
   const triedFields = new Set(inputs.flatMap(i => Object.keys(i)));
   for (const input of inputs) {
     try {
@@ -301,7 +305,6 @@ async function runActor(actor, inputs, token, url) {
       if (!r.ok) {
         const body = (await r.text()).slice(0, 300);
         lastErr = 'HTTP ' + r.status + ' ' + body;
-        /* Apify сам каже, якого поля бракує: "Field input.startUrl is required" */
         const m = /input\.(\w+)(?:\s+is required|.*?must)/i.exec(body);
         if (m && url && !triedFields.has(m[1])) {
           triedFields.add(m[1]);
@@ -312,11 +315,16 @@ async function runActor(actor, inputs, token, url) {
         continue;
       }
       const items = await r.json();
-      if (Array.isArray(items) && items.length) return items;
-      lastErr = 'порожній результат';
+      if (!Array.isArray(items) || !items.length) { lastErr = 'порожній результат'; continue; }
+      const lot = toLot(items[0]);
+      if (lot && lot.images.length) return lot;
+      bestNoPhoto = bestNoPhoto || lot;
+      lastErr = 'дані прийшли без фото (поле входу: ' + Object.keys(input).filter(k => !/^max/i.test(k)).join(',') + ')';
     } catch (e) { lastErr = e.message; }
   }
-  throw new Error(lastErr);
+  const err = new Error(lastErr);
+  err.noPhotoLot = bestNoPhoto;
+  throw err;
 }
 
 export default async function handler(req, res) {
@@ -342,12 +350,12 @@ export default async function handler(req, res) {
     const actor = isIaai ? IAAI_ACTOR : COPART_ACTOR;
     const inputs = isIaai
       ? [
-          { startUrl: url, maxItems: 1 },
           { startUrls: [{ url }], maxItems: 1 },
-          { url, maxItems: 1 },
-          { urls: [url], maxItems: 1 },
-          { vehicleUrls: [url], maxItems: 1 },
           { startUrls: [url], maxItems: 1 },
+          { urls: [url], maxItems: 1 },
+          { url, maxItems: 1 },
+          { vehicleUrls: [url], maxItems: 1 },
+          { startUrl: url, maxItems: 1 },
         ]
       : [
           { startUrl: url, maxItems: 1 },
@@ -360,15 +368,18 @@ export default async function handler(req, res) {
     const fromExample = await buildInputFromExample(actor, url, process.env.APIFY_TOKEN);
     if (fromExample) inputs.unshift(fromExample);
 
-    const items = await runActor(actor, inputs, process.env.APIFY_TOKEN, url);
-    const item = items[0];
-    if (!item) {
-      return res.status(404).json({ error: 'Лот не знайдено. Перевір посилання або завантаж фото вручну' });
-    }
+    const toLot = item => {
+      try { return isIaai ? normalizeGeneric(item, 'iaai') : normalize(item); }
+      catch (e) { return null; }
+    };
 
-    const lot = isIaai ? normalizeGeneric(item, 'iaai') : normalize(item);
-    if (!lot.images.length) {
-      return res.status(404).json({ error: 'Фото лота не отримані. Завантаж їх вручну' });
+    let lot;
+    try {
+      lot = await runActor(actor, inputs, process.env.APIFY_TOKEN, url, toLot);
+    } catch (e) {
+      return res.status(404).json({
+        error: 'Фото лота не отримані (' + e.message + '). Завантаж фото вручну',
+      });
     }
     lot.lot_url = lot.lot_url || url;
     return res.status(200).json({ lot });
