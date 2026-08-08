@@ -1,9 +1,27 @@
 export const config = { maxDuration: 60 };
 
-const PROMPT = (vin, nhtsa, damage) => `Ти — експертна система calcar, яка оцінює пошкоджені авто з американських страхових аукціонів (Copart/IAAI) для пригону в Україну.
+const PROMPT = (vin, nhtsa, damage, lot) => `Ти — експертна система calcar, яка оцінює пошкоджені авто з американських страхових аукціонів (Copart/IAAI) для пригону в Україну.
 
 VIN від користувача: ${vin || 'не вказано'}
 Заявлений тип пошкодження з аукціону: ${damage || 'не вказано'}
+${lot ? `
+ОФІЦІЙНІ ДАНІ ЛОТА З АУКЦІОНУ (це факти, не вигадуй інше):
+${JSON.stringify({
+  lot: lot.lot_number, title: lot.title, trim: lot.trim, engine: lot.engine,
+  fuel: lot.fuel, displacement_l: lot.displacement_l, battery_kwh: lot.battery_kwh,
+  transmission: lot.transmission, drive: lot.drive, body: lot.body,
+  odometer_mi: lot.odometer_mi, odometer_status: lot.odometer_status,
+  primary_damage: lot.primary_damage, secondary_damage: lot.secondary_damage,
+  title_code: lot.title_code, title_group: lot.title_group,
+  keys: lot.keys, run_and_drive: lot.run_and_drive, airbags: lot.airbags,
+  location: lot.sale_location, est_retail_value: lot.est_retail_value,
+  equipment: lot.equipment,
+})}
+Використовуй ці дані як основу для "vehicle" (комплектація, двигун, коробка, привід, пробіг переведи в км). Фото аналізуй окремо і звіряй із заявленим пошкодженням.
+Якщо run_and_drive = false, це означає, що авто не заводилось або не рухалось на майданчику: додай це в ризики.
+Якщо keys = "NO", додай позицію на виготовлення ключа.
+Якщо airbags = "Deployed", це ОФІЦІЙНІ дані аукціону: статус подушок щонайменше "bad", по фото визнач, які саме спрацювали, і додай усі відповідні позиції (подушки, піропатрони, SRS).
+` : ''}
 Дані декодування VIN від NHTSA: ${nhtsa ? JSON.stringify(nhtsa) : 'недоступні'}
 
 Проаналізуй фото лота. ОБОВ'ЯЗКОВИЙ порядок аналізу — спочатку пройди чек-лист зон безпеки, зона за зоною:
@@ -60,27 +78,50 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { vin, images, damage, state, bid } = req.body || {};
+    const { vin, images, damage, state, bid, lot } = req.body || {};
     const bidNum = (Number(bid) > 0 && Number(bid) < 1000000) ? Math.round(Number(bid)) : null;
     const damageStr = (typeof damage === 'string' && damage.trim()) ? damage.trim().slice(0, 60) : null;
     const stateStr = (typeof state === 'string' && /^[A-Z]{2}$/.test(state)) ? state : null;
-    const imgs = (Array.isArray(images) ? images : []).filter(
+    let imgs = (Array.isArray(images) ? images : []).filter(
       i => typeof i === 'string' && /^data:image\/(?:jpeg|png|webp);base64,/.test(i)
     );
+
+    /* якщо прийшов лот з аукціону — тягнемо його фото самі */
+    if (lot && Array.isArray(lot.images) && lot.images.length && imgs.length === 0) {
+      const picked = lot.images.slice(0, 12);
+      const fetched = await Promise.all(picked.map(async im => {
+        try {
+          const r = await fetch(im.url);
+          if (!r.ok) return null;
+          const buf = Buffer.from(await r.arrayBuffer());
+          if (buf.length > 6_000_000) return null;
+          const mime = (r.headers.get('content-type') || 'image/jpeg').split(';')[0];
+          if (!/^image\/(jpeg|png|webp)$/.test(mime)) return null;
+          return `data:${mime};base64,` + buf.toString('base64');
+        } catch (e) { return null; }
+      }));
+      imgs = fetched.filter(Boolean);
+      if (imgs.length === 0) {
+        return res.status(502).json({ error: 'Не вдалося завантажити фото лота з аукціону. Завантаж фото вручну' });
+      }
+    }
     const hasVin = typeof vin === 'string' && vin.length === 17;
-    if (imgs.length === 0 && !hasVin) {
+    if (imgs.length === 0 && !hasVin && !lot) {
       return res.status(400).json({ error: 'Додай фото лота або повний VIN (17 символів)' });
     }
-    if (imgs.length > 0 && imgs.length < 3) {
-      return res.status(400).json({ error: 'Для розбору пошкоджень потрібно щонайменше 3 фото. Або залиш лише VIN — порахуємо без розбору' });
+    if (!lot && imgs.length > 0 && imgs.length < 3) {
+      return res.status(400).json({ error: 'Для розбору пошкоджень потрібно щонайменше 3 фото. Або залиш лише VIN, порахуємо без розбору' });
     }
 
     /* --- VIN decode via NHTSA (безкоштовно) --- */
     let nhtsa = null;
-    if (vin && vin.length >= 11) {
+    const vinRaw = (typeof vin === 'string' && vin.length >= 11) ? vin : (lot?.vin || '');
+    const vinClean = vinRaw.replace(/[^A-HJ-NPR-Z0-9*]/gi, '').slice(0, 17);
+    if (vinClean.length >= 11) {
+      /* NHTSA vPIC вміє декодувати часткові VIN із зірочками */
       try {
         const r = await fetch(
-          `https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/${encodeURIComponent(vin)}?format=json`
+          `https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/${encodeURIComponent(vinClean)}?format=json`
         );
         const j = await r.json();
         const row = j?.Results?.[0];
@@ -133,9 +174,13 @@ export default async function handler(req, res) {
       }
     }
     if (content.length < 3) {
-      return res.status(400).json({ error: 'Фото не розпізнані, спробуй ще раз' });
+      return res.status(400).json({
+        error: lot
+          ? 'З аукціону вдалося завантажити замало фото для розбору. Завантаж фото вручну'
+          : 'Фото не розпізнані, спробуй ще раз',
+      });
     }
-    content.push({ type: 'text', text: PROMPT(vin, nhtsa, damageStr) });
+    content.push({ type: 'text', text: PROMPT(vin, nhtsa, damageStr || lot?.primary_damage || null, lot || null) });
 
     const r = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -167,12 +212,22 @@ export default async function handler(req, res) {
 
     const detected = (typeof parsed.vin_detected === 'string' && parsed.vin_detected.length === 17)
       ? parsed.vin_detected.toUpperCase() : null;
+    const lotVin = lot?.vin && !lot.vin_masked ? lot.vin : null;
     parsed._meta = {
-      vin: hasVin ? vin : detected,
-      vin_source: hasVin ? 'user' : (detected ? 'photo' : null),
-      damage: damageStr,
-      state: stateStr,
+      vin: hasVin ? vin : (lotVin || detected || lot?.vin || null),
+      vin_source: hasVin ? 'user' : (lotVin ? 'lot' : (detected ? 'photo' : (lot?.vin ? 'lot_masked' : null))),
+      damage: damageStr || lot?.primary_damage || null,
+      state: stateStr || lot?.location_state || null,
       bid: bidNum,
+      lot_number: lot?.lot_number || null,
+      lot_url: lot?.lot_url || null,
+      title_code: lot?.title_code || null,
+      keys: lot?.keys || null,
+      run_and_drive: lot?.run_and_drive ?? null,
+      airbags: lot?.airbags || null,
+      est_retail_value: lot?.est_retail_value || null,
+      battery_kwh: lot?.battery_kwh || null,
+      photos: (lot?.images || []).slice(0, 12).map(i => i.url),
       analyzed_at: new Date().toISOString(),
     };
     return res.status(200).json(parsed);

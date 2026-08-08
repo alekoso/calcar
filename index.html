@@ -73,6 +73,12 @@
   }
   .bid-wrap input:focus{outline:2px solid var(--blue);outline-offset:-1px}
   .hf-extra{margin-top:12px;font-size:12.5px;color:var(--muted);font-weight:600}
+  .manual{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+  .manual summary{cursor:pointer;font-size:13.5px;color:var(--blue);font-weight:600;list-style:none}
+  .manual summary::-webkit-details-marker{display:none}
+  .manual summary::before{content:"+ ";font-weight:700}
+  .manual[open] summary::before{content:"− "}
+  .manual .dropzone{margin-top:12px}
   .dropzone{
     display:flex;flex-direction:column;align-items:center;gap:7px;text-align:center;
     border:2px dashed #b9c2cd;border-radius:14px;padding:26px 16px;margin-top:2px;
@@ -168,24 +174,28 @@
 <div class="hero">
   <div class="hero-in">
     <h1>Скільки коштує пригнати<br>це авто зі США? <em>Дізнайся за хвилину</em></h1>
-    <p class="sub">Встав VIN та фото лота з аукціону, і AI розбере пошкодження, порахує ремонт, розмитнення та повну ціну під ключ в Україні.</p>
+    <p class="sub">Встав посилання на лот Copart, і AI сам підтягне дані та фото, розбере пошкодження, порахує ремонт, розмитнення та повну ціну під ключ в Україні.</p>
 
     <div class="hero-form">
-      <label class="dropzone" for="photoInput">
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        <div class="dz-title" id="uploadText">Додай фото лота <b class="req">*</b></div>
-        <div class="dz-sub" id="uploadSub">3–12 фото: кузов з усіх боків, зона удару, салон, кермо, стеля</div>
-      </label>
-      <input type="file" id="photoInput" accept="image/*" multiple style="display:none">
-      <div class="previews" id="previews"></div>
-      <div class="hf-row" style="margin-top:12px">
+      <div class="hf-row">
+        <input type="text" id="lotQuery" placeholder="Посилання на лот Copart або IAAI" spellcheck="false" style="flex:1;min-width:240px">
         <div class="bid-wrap"><span>$</span><input type="number" id="bidInput" min="0" placeholder="Ціна лота"></div>
-        <button class="btn-primary" id="analyzeBtn">Прорахувати лот</button>
+        <button class="btn-primary" id="analyzeBtn">Прорахувати</button>
       </div>
-      <div class="hf-extra">Підвищать точність (необов'язково):</div>
-      <div class="hf-row" style="margin-top:8px">
-        <input type="text" id="vin" placeholder="VIN, 17 символів" maxlength="17" spellcheck="false" autocapitalize="characters" style="flex:2;min-width:220px">
-        <select id="lotState" class="hf-select">
+      <div class="hf-status" id="status"></div>
+
+      <details class="manual" id="manualBlock">
+        <summary>Немає посилання? Завантажити фото вручну</summary>
+        <label class="dropzone" for="photoInput">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <div class="dz-title" id="uploadText">Додай фото лота</div>
+          <div class="dz-sub" id="uploadSub">3–12 фото: кузов з усіх боків, зона удару, салон, кермо, стеля</div>
+        </label>
+        <input type="file" id="photoInput" accept="image/*" multiple style="display:none">
+        <div class="previews" id="previews"></div>
+        <div class="hf-row" style="margin-top:10px">
+          <input type="text" id="vin" placeholder="VIN, 17 символів" maxlength="17" spellcheck="false" autocapitalize="characters" style="flex:2;min-width:200px">
+          <select id="lotState" class="hf-select">
 <option value="">Штат складу</option>
           <option value="FL">Флорида (FL)</option>
           <option value="GA">Джорджія (GA)</option>
@@ -218,8 +228,9 @@
           <option value="OR">Орегон (OR)</option>
           <option value="WA">Вашингтон (WA)</option>
         </select>
-      </div>
-      <div class="hf-status" id="status"></div>
+        </div>
+      </details>
+
       <div class="hf-note">
         <span><b>Перший прорахунок безкоштовний</b></span>
         <span>Без картки</span>
@@ -237,8 +248,8 @@
     <div class="steps">
       <div class="step">
         <div class="n">1</div>
-        <b>Встав VIN і додай фото</b>
-        <p>Фото з лота Copart або IAAI: кузов з усіх боків, зона пошкодження, салон, кермо, стеля. Що більше фото, то точніший розбір.</p>
+        <b>Встав посилання на лот</b>
+        <p>Система сама підтягне з аукціону фото, VIN, пробіг, тип пошкодження, тайтл і заводську комплектацію. Якщо посилання немає, завантаж фото вручну.</p>
       </div>
       <div class="step">
         <div class="n">2</div>
@@ -352,12 +363,12 @@ function compress(file){
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
-      const scale = Math.min(1, 1000 / Math.max(img.width, img.height));
+      const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
       const c = document.createElement('canvas');
       c.width = Math.round(img.width * scale);
       c.height = Math.round(img.height * scale);
       c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-      resolve(c.toDataURL('image/jpeg', 0.78));
+      resolve(c.toDataURL('image/jpeg', 0.9));
     };
     img.onerror = reject;
     img.src = URL.createObjectURL(file);
@@ -379,39 +390,61 @@ const LOAD_MSGS_VIN = ['Читаю VIN…','Тягну заводські дан
 
 btn.addEventListener('click', async () => {
   clearStatus();
+  const query = document.getElementById('lotQuery').value.trim();
   const vin = document.getElementById('vin').value.trim().toUpperCase();
-  if (photos.length === 0 && vin.length !== 17) { setError('Додай фото лота або повний VIN (17 символів)'); return; }
-  if (photos.length > 0 && photos.length < 3) { setError('Для розбору пошкоджень потрібно щонайменше 3 фото. Або прибери фото і залиш лише VIN'); return; }
-  if (vin && vin.length !== 17) { setError('VIN має 17 символів. Або залиш поле порожнім'); return; }
+  const bid = Number(document.getElementById('bidInput').value) || 0;
+
+  if (!query && photos.length === 0 && vin.length !== 17) {
+    setError('Встав посилання на лот Copart або завантаж фото вручну'); return;
+  }
+  if (!query && photos.length > 0 && photos.length < 3) {
+    setError('Для розбору пошкоджень потрібно щонайменше 3 фото'); return;
+  }
 
   btn.disabled = true;
-  const LOAD_MSGS = photos.length ? LOAD_MSGS_FULL : LOAD_MSGS_VIN;
+  const MSGS = query
+    ? ['Тягну дані лота…','Завантажую фото з аукціону…','Розпізнаю авто…','Шукаю пошкодження…','Перевіряю подушки і структуру…','Складаю кошторис…','Ще трохи…']
+    : (photos.length ? LOAD_MSGS_FULL : LOAD_MSGS_VIN);
   let msgI = 0;
   statusEl.className = 'hf-status load';
-  statusEl.innerHTML = '<div class="spinner"></div><span id="loadMsg">' + LOAD_MSGS[0] + '</span>';
+  statusEl.innerHTML = '<div class="spinner"></div><span id="loadMsg">' + MSGS[0] + '</span>';
   const timer = setInterval(() => {
-    msgI = Math.min(msgI + 1, LOAD_MSGS.length - 1);
+    msgI = Math.min(msgI + 1, MSGS.length - 1);
     const el = document.getElementById('loadMsg');
-    if (el) el.textContent = LOAD_MSGS[msgI];
-  }, 6000);
+    if (el) el.textContent = MSGS[msgI];
+  }, 7000);
 
   try {
+    let lot = null;
+    if (query) {
+      const lr = await fetch('/api/lot', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ query }),
+      });
+      const ld = await lr.json();
+      if (!lr.ok || ld.error) throw new Error(ld.error || 'Не вдалося отримати лот');
+      lot = ld.lot;
+    }
+
     const r = await fetch('/api/analyze', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        vin, images: photos,
-        bid: Number(document.getElementById('bidInput').value) || 0,
+        vin, bid, lot,
+        images: lot ? [] : photos,
         state: document.getElementById('lotState').value,
       }),
     });
     const data = await r.json();
     if (!r.ok || data.error) throw new Error(data.error || 'Помилка сервера');
+
     sessionStorage.setItem('calcarResult', JSON.stringify(data));
     try {
-      sessionStorage.setItem('calcarPhotos', JSON.stringify(photos));
+      const gallery = lot ? (data._meta?.photos || []) : photos;
+      sessionStorage.setItem('calcarPhotos', JSON.stringify(gallery));
     } catch (e) {
-      try { sessionStorage.setItem('calcarPhotos', JSON.stringify(photos.slice(0, 6))); } catch (e2) {}
+      try { sessionStorage.setItem('calcarPhotos', JSON.stringify((photos || []).slice(0, 6))); } catch (e2) {}
     }
     location.href = '/result.html';
   } catch (e) {

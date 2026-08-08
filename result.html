@@ -559,7 +559,12 @@ function renderHeaderBlocks(){
   const meta = [];
   if (vinVal) meta.push(`<span class="vin-line">VIN ${esc(vinVal)}</span>${vinFromPhoto ? ' <span class="badge blue">зчитано з фото</span>' : ''}`);
   if (v.mileage_note) meta.push(`Пробіг <b>${esc(v.mileage_note)}</b>`);
-  if (DATA._meta?.damage) meta.push(`Заявлено <b>${esc(DATA._meta.damage)}</b>`);
+  if (DATA._meta?.damage) meta.push(`Пошкодження <b>${esc(DATA._meta.damage)}</b>`);
+  if (DATA._meta?.title_code) meta.push(`Тайтл <b>${esc(DATA._meta.title_code)}</b>`);
+  if (DATA._meta?.run_and_drive === false) meta.push(`<b style="color:var(--amber)">Не Run &amp; Drive</b>`);
+  if (DATA._meta?.keys === 'NO') meta.push(`<b style="color:var(--amber)">Без ключів</b>`);
+  if (/deploy/i.test(String(DATA._meta?.airbags || ''))) meta.push(`<b style="color:var(--red)">Подушки спрацювали (дані аукціону)</b>`);
+  if (DATA._meta?.lot_number) meta.push(`Лот <b>${esc(DATA._meta.lot_number)}</b>`);
   if (DATA.lot_notes) meta.push(`<b style="color:var(--amber)">${esc(DATA.lot_notes)}</b>`);
   document.getElementById('lotMeta').innerHTML = meta.map(m => `<div>${m}</div>`).join('');
 
@@ -810,8 +815,11 @@ function computeExcise() {
     return Math.round(100 * EUR);
   }
   if (v.fuel === 'electric') {
-    document.getElementById('exciseNote').innerHTML = '<span style="font-weight:400;color:var(--muted)">електро: €1 за кВт·год, впиши точно</span>';
-    return 0;
+    const kwh = Number(DATA._meta?.battery_kwh) || 0;
+    document.getElementById('exciseNote').innerHTML = kwh
+      ? `<span style="font-weight:400;color:var(--muted)">електро: €1 за кВт·год · батарея ${kwh} кВт·год</span>`
+      : '<span style="font-weight:400;color:var(--muted)">електро: €1 за кВт·год, впиши точно</span>';
+    return Math.round(kwh * EUR);
   }
   if (!disp || !year) {
     document.getElementById('exciseNote').innerHTML = '<span style="font-weight:400;color:var(--muted)">впиши вручну</span>';
@@ -1008,7 +1016,9 @@ function generatePdf() {
 
   /* ---------- фото ---------- */
   try {
-    const ph = JSON.parse(sessionStorage.getItem('calcarPhotos') || '[]').slice(0, 4);
+    const ph = JSON.parse(sessionStorage.getItem('calcarPhotos') || '[]')
+      .filter(s => typeof s === 'string' && s.startsWith('data:image/'))
+      .slice(0, 4);
     if (ph.length) {
       const g = 2, pw = (W - g * (ph.length - 1)) / ph.length, phH = pw * 0.68;
       ensure(phH + 4);
