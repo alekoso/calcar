@@ -194,17 +194,12 @@
   .v-cell .money{justify-self:stretch;width:100%}
   .profit{color:var(--green)}
   .loss{color:var(--red)}
-  .riskbig{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;margin-bottom:12px}
-  .riskbig-num{font-size:44px;font-weight:800;letter-spacing:-1px}
-  .riskbig-num .riskbig-of{font-size:20px;color:var(--muted);font-weight:700;margin-left:2px}
-  .riskbig-word{font-size:18px;font-weight:800;padding:4px 14px;border-radius:20px}
-  .riskbig-word.ok{background:#e4f6ea;color:#149a3f}
-  .riskbig-word.warn{background:#fdf3e0;color:#b47408}
-  .riskbig-word.bad{background:#fdeceb;color:var(--red)}
-  .risk-reasons{display:flex;flex-direction:column;gap:7px;margin-bottom:12px}
-  .risk-reasons .rr{display:flex;gap:9px;align-items:baseline;font-size:14px}
-  .risk-who{font-size:13.5px;color:var(--muted);border-top:1px solid var(--line);padding-top:12px}
-  .risk-who b{color:var(--text)}
+  .cost-row.row-bid{background:#fff6f0;border:1.5px solid #ffcfae;border-radius:10px;margin:2px -10px;padding:10px}
+  .cost-row.row-bid .lbl{font-weight:800}
+  .cost-row.row-bid .money input{border-color:var(--orange);border-width:2px;font-weight:800;background:#fff}
+  .cost-row.row-bid.pulse .money input{box-shadow:0 0 0 4px rgba(255,109,36,.18)}
+  .risk-badge{margin-left:auto;display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);font-weight:600}
+  .risk-badge b{color:var(--text);font-size:15px}
   #saveHint{font-size:12.5px;color:var(--muted);opacity:0;transition:opacity .3s}
   #saveHint.show{opacity:1}
   .risk-line{display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:14px;font-weight:600}
@@ -321,6 +316,7 @@
     <div class="card-head">
       <h2>Розбір пошкоджень</h2>
       <span class="badge blue" id="aiBadge">AI-аналіз фото</span>
+      <span class="risk-badge" id="riskBadge" style="display:none"><span class="dot ok" id="riskDot"></span>Ризик: <b id="riskScore">–</b>/10</span>
     </div>
     <div class="card-body">
       <div class="flags" id="flagsEl"></div>
@@ -333,18 +329,6 @@
   </div>
 
   <!-- PARTS -->
-  <div class="card" id="riskCard" style="display:none">
-    <div class="card-head"><h2>Ризик покупки</h2><span class="side-note">Фірмова оцінка CalCar за фактами лота і фото</span></div>
-    <div class="card-body">
-      <div class="riskbig">
-        <div class="riskbig-num"><span id="riskScore">–</span><span class="riskbig-of">/10</span></div>
-        <div class="riskbig-word" id="riskWord"></div>
-      </div>
-      <div class="risk-reasons" id="riskReasons"></div>
-      <div class="risk-who" id="riskWho"></div>
-    </div>
-  </div>
-
   <div class="card">
     <div class="card-head">
       <h2>Запчастини</h2>
@@ -452,9 +436,9 @@
               <option value="WA">Вашингтон (WA)</option>
             </select>
           </div>
-          <div class="cost-row">
-            <div class="lbl">Ставка на аукціоні<span>Ціна, за яку плануєте виграти лот</span></div>
-            <div class="money"><input id="bid" type="number" value="7800" min="0"></div>
+          <div class="cost-row row-bid">
+            <div class="lbl">Твоя ставка на аукціоні<span id="bidSub">Головне поле прорахунку: впиши суму, за яку плануєш виграти лот</span></div>
+            <div class="money"><input id="bid" type="number" value="" placeholder="0" min="0"></div>
           </div>
           <div class="cost-row">
             <div class="lbl">Збори аукціону<span>Комісія, gate fee, інтернет-ставка</span></div>
@@ -691,20 +675,18 @@ function renderHeaderBlocks(){
   dn.style.display = DATA.damage_note ? '' : 'none';
   document.getElementById('aiBadge').textContent = 'AI-аналіз ваших фото';
 
-  /* ризик у вердикті синхронізується з фірмовим балом */
+  /* ризик у вердикті: та сама цифра, що і в розборі */
   const rk = computeRisk();
-  const [cls, label] = rk.score >= 5.8 ? ['bad','високий'] : rk.score >= 3.5 ? ['warn','середній'] : ['ok','низький'];
-  document.getElementById('riskLine').innerHTML = `<div class="dot ${cls}"></div>Ризик угоди: ${label} · ${rk.score}/10`;
-  document.getElementById('riskHint').textContent = rk.score >= 5.8
+  document.getElementById('riskLine').innerHTML = `<div class="dot ${rk.cls}"></div>Ризик покупки: ${rk.score.toFixed(1)}/10`;
+  document.getElementById('riskHint').textContent = rk.cls === 'bad'
     ? 'Знайдені критичні фактори, уважно перевір кошторис і закладай запас.'
     : 'Основна невизначеність: приховані пошкодження, які не видно по фото.';
 }
 
 /* ================= Ризик покупки: детермінована формула =================
-   Бал рахується з фактів, а не з настрою моделі: однаковий лот завжди
-   дає однакову цифру. Складові не показуємо, причини показуємо. */
+   Тільки цифра, без ярликів: бал рахується з фактів, однаковий лот
+   завжди дає однаковий бал. Причини людина бачить у прапорцях вище. */
 function computeRisk() {
-  const reasons = [];
   const F = {};
   (DATA.flags || []).forEach(f => {
     const t = String(f.text || '');
@@ -715,47 +697,25 @@ function computeRisk() {
   });
   const W = { bad: 1, warn: .5, unknown: .4, ok: 0 };
   const w = f => W[f?.status] ?? 0;
-
-  let s = 1.2;
   const meta = DATA._meta || {};
 
-  /* подушки: офіційне поле аукціону сильніше за фото */
+  let s = 1.0;
   const airW = /deploy/i.test(String(meta.airbags || '')) ? 1 : w(F.air);
-  s += airW * 2.4;
-  if (airW === 1) reasons.push(['bad', F.air?.text || 'Подушки безпеки спрацювали']);
-  else if (airW > 0) reasons.push([F.air.status === 'warn' ? 'warn' : 'unknown', F.air.text]);
-  else if (F.air) reasons.push(['ok', F.air.text]);
-
+  s += airW * 1.9;
   s += w(F.str) * 2.0;
-  if (F.str && F.str.status !== 'ok') reasons.push([F.str.status, F.str.text]);
-  else if (F.str) reasons.push(['ok', F.str.text]);
-
   s += w(F.fld) * 2.2;
-  if (F.fld && F.fld.status !== 'ok' && F.fld.status !== 'unknown') reasons.push([F.fld.status, F.fld.text]);
-
-  s += w(F.hid) * 1.2;
-  if (F.hid && F.hid.status !== 'ok') reasons.push([F.hid.status, F.hid.text]);
-
-  if (meta.run_and_drive === false) { s += 0.8; reasons.push(['warn', 'Не Run & Drive: стан агрегатів невідомий до діагностики']); }
-  if (meta.keys === 'NO') { s += 0.4; reasons.push(['warn', 'Без ключів']); }
-
+  s += w(F.hid) * 1.1;
+  if (meta.run_and_drive === false) s += 0.6;
+  if (meta.keys === 'NO') s += 0.3;
   const title = String(meta.title_code || '');
-  if (/destr|non.?repair|parts|junk|burn|bos/i.test(title)) { s += 1.8; reasons.push(['bad', 'Тайтл: ' + title + ', реєстрація може бути неможливою']); }
-  else if (/salv/i.test(title)) { s += 0.4; }
-
+  if (/destr|non.?repair|parts|junk|burn|bos/i.test(title)) s += 1.8;
+  else if (/salv/i.test(title)) s += 0.3;
   const likely = (partRows || []).filter(p => p.conf === 'likely').length;
-  if (likely > 2) { s += Math.min(0.7, (likely - 2) * 0.12); reasons.push(['unknown', 'Ймовірних позицій у кошторисі: ' + likely + ', фінальний список після розбирання']); }
-
-  if (meta.run_and_drive === true) reasons.push(['ok', 'Run & Drive: авто заводиться і рухається']);
+  if (likely > 2) s += Math.min(0.6, (likely - 2) * 0.1);
 
   const score = Math.round(Math.min(9.7, Math.max(0.8, s)) * 10) / 10;
-  const word = score >= 7.6 ? 'Високий' : score >= 5.8 ? 'Підвищений' : score >= 3.5 ? 'Помірний' : 'Низький';
-  const wcls = score >= 5.8 ? 'bad' : score >= 3.5 ? 'warn' : 'ok';
-  const who = score >= 7.6 ? '<b>Кому підійде:</b> досвідченому імпортеру або на запчастини. Новачку краще розглянути інший лот'
-    : score >= 5.8 ? '<b>Кому підійде:</b> досвідченому покупцю з ретельною перевіркою кошторису та запасом на приховане'
-    : score >= 3.5 ? '<b>Кому підійде:</b> уважному покупцю, ризики керовані за умови огляду'
-    : '<b>Кому підійде:</b> і новачку, критичних факторів не знайдено';
-  return { score, word, wcls, who, reasons };
+  const cls = score >= 6.5 ? 'bad' : score >= 4 ? 'warn' : 'ok';
+  return { score, cls };
 }
 window.computeRisk = computeRisk;
 
@@ -763,14 +723,9 @@ function computeAndRenderRisk() {
   if (!(DATA.parts || []).length && !(DATA.flags || []).length) return;
   if ((DATA.flags || []).length === 1 && DATA.flags[0].status === 'unknown') return; /* режим лише за VIN */
   const rk = computeRisk();
-  document.getElementById('riskCard').style.display = '';
+  document.getElementById('riskBadge').style.display = '';
   document.getElementById('riskScore').textContent = rk.score.toFixed(1);
-  const wEl = document.getElementById('riskWord');
-  wEl.textContent = rk.word;
-  wEl.className = 'riskbig-word ' + rk.wcls;
-  document.getElementById('riskReasons').innerHTML = rk.reasons.map(([c, t]) =>
-    `<div class="rr"><div class="dot ${c}"></div><span>${esc(t)}</span></div>`).join('');
-  document.getElementById('riskWho').innerHTML = rk.who;
+  document.getElementById('riskDot').className = 'dot ' + rk.cls;
 }
 renderHeaderBlocks();
 
@@ -1028,7 +983,14 @@ function recalc() {
     document.getElementById('usDelivery').value = STATE_RATES[st][0];
     document.getElementById('freight').value = STATE_RATES[st][1];
   }
-  if (DATA._meta?.bid > 0) document.getElementById('bid').value = DATA._meta.bid;
+  if (DATA._meta?.bid > 0) {
+    document.getElementById('bid').value = DATA._meta.bid;
+    document.getElementById('bidSub').textContent = 'Підставлено поточний бід аукціону. Зміни на ставку, за яку плануєш виграти лот';
+  } else {
+    /* майбутній лот без бідів: поле порожнє і підсвічене, щоб точно не пропустили */
+    document.getElementById('bidSub').textContent = 'Торги ще не почались. Впиши ставку, за яку плануєш виграти лот, без неї підсумок неповний';
+    document.querySelector('.row-bid').classList.add('pulse');
+  }
 })();
 
 autoFill();
@@ -1296,10 +1258,8 @@ function generatePdf() {
   doc.text(money(grand), PW - M - 5, y + 3, { align: 'right' });
   y += 15;
 
-  const riskTxt = document.getElementById('riskLine').textContent.trim();
-  dotLine(riskTxt.includes('високий') ? 'bad' : riskTxt.includes('середній') ? 'warn' : 'ok', riskTxt, '');
   const rkPdf = computeRisk();
-  para(rkPdf.who.replace(/<[^>]+>/g, ''), 8.5, COLORS.muted);
+  dotLine(rkPdf.cls, document.getElementById('riskLine').textContent.trim(), '');
   const safetyOff = partRows.some(x => x.safety && !x.on);
   if (safetyOff) para('Подушки безпеки виключені з кошторису. Авто без відновлених подушок небезпечне.', 8.5, COLORS.bad);
 
