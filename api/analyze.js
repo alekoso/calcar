@@ -1,4 +1,4 @@
-export const config = { maxDuration: 60 };
+export const config = { maxDuration: 300 };
 
 const PROMPT = (vin, nhtsa, damage, lot) => `Ти — експертна система calcar, яка оцінює пошкоджені авто з американських страхових аукціонів (Copart/IAAI) для пригону в Україну.
 
@@ -90,19 +90,18 @@ export default async function handler(req, res) {
        Це прибирає ~14 с завантаження і ~20 МБ base64 з запиту — критично
        для ліміту функції 60 с. Резервний шлях (завантаження) нижче,
        спрацьовує лише якщо модель не змогла забрати картинки сама. */
-    /* PHOTO_QUALITY=max у Vercel env поверне hd-фото (для тарифу Pro).
-       За замовчуванням — збалансований режим: середня роздільність,
-       швидше читається моделлю, вкладаємось у ліміт 60 с. */
-    const wantMax = process.env.PHOTO_QUALITY === 'max';
+    /* Тариф Pro: ліміт функції 300 с, тому за замовчуванням — максимальна
+       якість фото. PHOTO_QUALITY=med примусово увімкне середню роздільність. */
+    const wantMax = process.env.PHOTO_QUALITY !== 'med';
     const pickUrl = im => (wantMax ? (im.url || im.med) : (im.med || im.url));
     const lotPhotoUrls = (lot && Array.isArray(lot.images))
-      ? lot.images.slice(0, 8).map(pickUrl).filter(u => typeof u === 'string' && /^https:/.test(u))
+      ? lot.images.slice(0, 12).map(pickUrl).filter(u => typeof u === 'string' && /^https:/.test(u))
       : [];
 
     async function downloadLotPhotos() {
-      const PHOTO_BUDGET_MS = 14000;   /* на все завантаження */
-      const PER_PHOTO_MS = 7000;       /* на одне фото */
-      const MAX_PHOTOS = 8;
+      const PHOTO_BUDGET_MS = 45000;   /* на все завантаження */
+      const PER_PHOTO_MS = 15000;      /* на одне фото */
+      const MAX_PHOTOS = 12;
       const started = Date.now();
 
       const picked = lot.images.slice(0, MAX_PHOTOS).map(im => ({ url: pickUrl(im) }));
@@ -200,7 +199,7 @@ export default async function handler(req, res) {
     const promptText = PROMPT(vin, nhtsa, damageStr || lot?.primary_damage || null, lot || null);
     const buildContent = sources => {
       const c = [];
-      for (const img of sources.slice(0, 8)) {
+      for (const img of sources.slice(0, 12)) {
         if (/^data:image\/(?:jpeg|png|webp);base64,/.test(img) || /^https:\/\//.test(img)) {
           c.push({ type: 'image_url', image_url: { url: img, detail: 'high' } });
         }
@@ -237,15 +236,28 @@ export default async function handler(req, res) {
       } finally { clearTimeout(t); }
     };
 
-    const modelBody = c => ({
-      model: process.env.OPENAI_MODEL || 'gpt-5.6-terra',
-      max_completion_tokens: 16000,
-      response_format: { type: 'json_object' },
-      messages: [{ role: 'user', content: c }],
-    });
+    /* Тариф Pro дає час на повноцінний аналіз: глибокі роздуми за замовчуванням.
+       REASONING_EFFORT у Vercel env може змінити рівень, 'off' — не надсилати. */
+    const EFFORT = process.env.REASONING_EFFORT || 'high';
+    const modelBody = (c, withEffort = true) => {
+      const b = {
+        model: process.env.OPENAI_MODEL || 'gpt-5.6-terra',
+        max_completion_tokens: 16000,
+        response_format: { type: 'json_object' },
+        messages: [{ role: 'user', content: c }],
+      };
+      if (withEffort && EFFORT !== 'off') b.reasoning_effort = EFFORT;
+      return b;
+    };
 
     const t0 = Date.now();
-    let data = await callModel(modelBody(content), 46000);
+    let data = await callModel(modelBody(content), 240000);
+
+    /* модель не підтримує reasoning_effort → пробуємо без нього */
+    if (data?.error && /reasoning_effort|unknown|unsupported|unrecognized/i.test(String(data.error.message || ''))) {
+      console.log('[analyze] reasoning_effort unsupported, retrying without it');
+      data = await callModel(modelBody(content, false), Math.max(60000, 250000 - (Date.now() - t0)));
+    }
 
     /* якщо модель не змогла забрати картинки за посиланням — резервний шлях:
        качаємо фото самі і повторюємо меншим набором */
@@ -256,10 +268,14 @@ export default async function handler(req, res) {
       if (downloaded.length >= 3) {
         content = buildContent(downloaded.slice(0, 5));
         usingUrls = false;
-        data = await callModel(modelBody(content), Math.max(12000, 50000 - (Date.now() - t0)));
+        data = await callModel(modelBody(content), Math.max(60000, 250000 - (Date.now() - t0)));
       }
     }
-    console.log('[analyze] mode', usingUrls ? 'urls' : 'base64', '| photos', content.length - 1, '| ai', Date.now() - t0, 'ms');
+    console.log('[analyze] mode', usingUrls ? 'urls' : 'base64',
+      '| photos', content.length - 1,
+      '| effort', EFFORT,
+      '| ai', Date.now() - t0, 'ms',
+      '| tokens', JSON.stringify(data?.usage || {}));
 
     if (data.error) {
       return res.status(502).json({ error: 'AI: ' + (data.error.message || 'помилка запиту') });
