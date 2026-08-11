@@ -86,16 +86,22 @@ export default async function handler(req, res) {
       i => typeof i === 'string' && /^data:image\/(?:jpeg|png|webp);base64,/.test(i)
     );
 
-    /* якщо прийшов лот з аукціону — тягнемо його фото самі.
-       Ліміт функції 60 с, тому: жорсткий бюджет на завантаження,
-       таймаут на кожне фото, і йдемо далі з тим, що встигло прийти. */
-    if (lot && Array.isArray(lot.images) && lot.images.length && imgs.length === 0) {
+    /* Фото лота НЕ качаємо на сервер: віддаємо моделі прямі посилання.
+       Це прибирає ~14 с завантаження і ~20 МБ base64 з запиту — критично
+       для ліміту функції 60 с. Резервний шлях (завантаження) нижче,
+       спрацьовує лише якщо модель не змогла забрати картинки сама. */
+    const lotPhotoUrls = (lot && Array.isArray(lot.images))
+      ? lot.images.slice(0, 8).map(im => im.url).filter(u => typeof u === 'string' && /^https:/.test(u))
+      : [];
+
+    async function downloadLotPhotos() {
       const PHOTO_BUDGET_MS = 14000;   /* на все завантаження */
       const PER_PHOTO_MS = 7000;       /* на одне фото */
       const MAX_PHOTOS = 8;
       const started = Date.now();
 
       const picked = lot.images.slice(0, MAX_PHOTOS);
+      if (!picked.length) return [];
       const grab = async im => {
         const ctl = new AbortController();
         const t = setTimeout(() => ctl.abort(), PER_PHOTO_MS);
@@ -119,14 +125,13 @@ export default async function handler(req, res) {
       ]);
       const results = await Promise.all(picked.map(im => withDeadline(grab(im)).catch(() => null)));
 
-      imgs = results.filter(Boolean);
-      console.log('[analyze] photos', imgs.length, 'of', picked.length, 'in', Date.now() - started, 'ms');
-      if (imgs.length === 0) {
-        return res.status(502).json({ error: 'Не вдалося завантажити фото лота з аукціону. Завантаж фото вручну' });
-      }
+      const out = results.filter(Boolean);
+      console.log('[analyze] fallback photos', out.length, 'of', picked.length, 'in', Date.now() - started, 'ms');
+      return out;
     }
     const hasVin = typeof vin === 'string' && vin.length === 17;
-    if (imgs.length === 0 && !hasVin && !lot) {
+    const photoCount = imgs.length || lotPhotoUrls.length;
+    if (photoCount === 0 && !hasVin && !lot) {
       return res.status(400).json({ error: 'Додай фото лота або повний VIN (17 символів)' });
     }
     if (!lot && imgs.length > 0 && imgs.length < 3) {
@@ -155,7 +160,7 @@ export default async function handler(req, res) {
     }
 
     /* --- лише VIN, без фото: комплектація + калькулятор, без AI --- */
-    if (imgs.length === 0) {
+    if (imgs.length === 0 && lotPhotoUrls.length === 0) {
       if (!nhtsa) {
         return res.status(400).json({ error: 'VIN не декодувався. Перевір символи або додай фото' });
       }
@@ -187,40 +192,70 @@ export default async function handler(req, res) {
     }
 
     /* --- збираємо контент для vision --- */
-    const content = [];
-    for (const img of imgs.slice(0, 8)) {
-      if (/^data:image\/(?:jpeg|png|webp);base64,/.test(img)) {
-        content.push({ type: 'image_url', image_url: { url: img, detail: 'high' } });
+    const promptText = PROMPT(vin, nhtsa, damageStr || lot?.primary_damage || null, lot || null);
+    const buildContent = sources => {
+      const c = [];
+      for (const img of sources.slice(0, 8)) {
+        if (/^data:image\/(?:jpeg|png|webp);base64,/.test(img) || /^https:\/\//.test(img)) {
+          c.push({ type: 'image_url', image_url: { url: img, detail: 'high' } });
+        }
       }
-    }
-    if (content.length < 3) {
+      if (c.length) c.push({ type: 'text', text: promptText });
+      return c;
+    };
+
+    let usingUrls = imgs.length === 0 && lotPhotoUrls.length > 0;
+    let content = buildContent(usingUrls ? lotPhotoUrls : imgs);
+
+    if (content.length - 1 < 3) {
       return res.status(400).json({
         error: lot
-          ? 'З аукціону вдалося завантажити замало фото для розбору. Завантаж фото вручну'
+          ? 'З аукціону вдалося отримати замало фото для розбору. Завантаж фото вручну'
           : 'Фото не розпізнані, спробуй ще раз',
       });
     }
-    content.push({ type: 'text', text: PROMPT(vin, nhtsa, damageStr || lot?.primary_damage || null, lot || null) });
 
-    const aiCtl = new AbortController();
-    const aiTimer = setTimeout(() => aiCtl.abort(), 38000);
-    const r = await fetch('https://api.openai.com/v1/chat/completions', {
-      signal: aiCtl.signal,
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: 'Bearer ' + process.env.OPENAI_API_KEY,
-      },
-      body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || 'gpt-5.6-terra',
-        max_completion_tokens: 16000,
-        response_format: { type: 'json_object' },
-        messages: [{ role: 'user', content }],
-      }),
+    const callModel = async (body, ms) => {
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), ms);
+      try {
+        const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+          signal: ctl.signal,
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: 'Bearer ' + process.env.OPENAI_API_KEY,
+          },
+          body: JSON.stringify(body),
+        });
+        return await resp.json();
+      } finally { clearTimeout(t); }
+    };
+
+    const modelBody = c => ({
+      model: process.env.OPENAI_MODEL || 'gpt-5.6-terra',
+      max_completion_tokens: 16000,
+      response_format: { type: 'json_object' },
+      messages: [{ role: 'user', content: c }],
     });
 
-    clearTimeout(aiTimer);
-    const data = await r.json();
+    const t0 = Date.now();
+    let data = await callModel(modelBody(content), 46000);
+
+    /* якщо модель не змогла забрати картинки за посиланням — резервний шлях:
+       качаємо фото самі і повторюємо меншим набором */
+    const imgErr = data?.error && /image|url|download|fetch/i.test(String(data.error.message || ''));
+    if (imgErr && usingUrls) {
+      console.log('[analyze] url mode failed, falling back to download:', data.error.message);
+      const downloaded = await downloadLotPhotos();
+      if (downloaded.length >= 3) {
+        content = buildContent(downloaded.slice(0, 5));
+        usingUrls = false;
+        data = await callModel(modelBody(content), Math.max(12000, 50000 - (Date.now() - t0)));
+      }
+    }
+    console.log('[analyze] mode', usingUrls ? 'urls' : 'base64', '| photos', content.length - 1, '| ai', Date.now() - t0, 'ms');
+
     if (data.error) {
       return res.status(502).json({ error: 'AI: ' + (data.error.message || 'помилка запиту') });
     }
