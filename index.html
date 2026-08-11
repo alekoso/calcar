@@ -187,8 +187,7 @@
 
     <div class="hero-form">
       <div class="hf-row">
-        <input type="text" id="lotQuery" placeholder="Посилання на лот Copart або IAAI" spellcheck="false" style="flex:2.6;min-width:280px">
-        <div class="bid-wrap"><span>$</span><input type="number" id="bidInput" min="0" placeholder="Ціна лота"></div>
+        <input type="text" id="lotQuery" placeholder="Посилання на лот Copart або IAAI" spellcheck="false" style="flex:1;min-width:280px">
         <button class="btn-primary" id="analyzeBtn">Прорахувати</button>
       </div>
       <div class="hf-status" id="status"></div>
@@ -399,7 +398,7 @@ btn.addEventListener('click', async () => {
   clearStatus();
   const query = document.getElementById('lotQuery').value.trim();
   const vin = document.getElementById('vin').value.trim().toUpperCase();
-  const bid = Number(document.getElementById('bidInput').value) || 0;
+  const bid = 0; /* ціна лота тепер вводиться всередині прорахунку */
 
   if (!query && photos.length === 0 && vin.length !== 17) {
     setError('Встав посилання на лот Copart чи IAAI або завантаж фото вручну'); return;
@@ -455,11 +454,12 @@ btn.addEventListener('click', async () => {
         if (s?.session) {
           const clean = JSON.parse(JSON.stringify(data));
           if (clean._meta?.photos) clean._meta.photos = clean._meta.photos.filter(u => typeof u === 'string' && !u.startsWith('data:'));
-          await window.SB.from('reports').insert({
+          const { data: row } = await window.SB.from('reports').insert({
             user_id: s.session.user.id,
             title: (data.vehicle?.title || 'Прорахунок') + (data._meta?.lot_number ? ' · лот ' + data._meta.lot_number : ''),
             data: clean,
-          });
+          }).select('id').single();
+          if (row?.id) sessionStorage.setItem('calcarReportId', row.id);
         }
       }
     } catch (e) { /* збереження не блокує показ результату */ }
