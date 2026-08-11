@@ -15,6 +15,7 @@ function pickImages(item, limit = 12) {
     return raw
       .map(im => ({
         url: im.highResUrl || im.fullUrl || im.thumbnailUrl,
+        med: im.fullUrl || im.highResUrl || im.thumbnailUrl,
         label: im.imageLabelCode || '',
         seq: im.imageSeqNumber || 999,
       }))
@@ -266,7 +267,13 @@ function normalizeGeneric(item, source) {
     buy_it_now: num(pick(flat, ['buyItNowPrice', 'buyNowPrice'])),
     est_retail_value: num(pick(flat, ['estimatedRetailValue', 'acv', 'actualCashValue', 'retailValue'])),
     acv: num(pick(flat, ['acv', 'actualCashValue'])),
-    images: imgs.slice(0, 14).map((url, i) => ({ url, label: '', seq: i })),
+    images: imgs.slice(0, 14).map((url, i) => ({
+      url,
+      med: String(url)
+        .replace(/([?&](?:width|w))=(\d+)/gi, '$1=1600')
+        .replace(/([?&](?:height|h))=(\d+)/gi, '$1=1200'),
+      label: '', seq: i,
+    })),
   };
 }
 

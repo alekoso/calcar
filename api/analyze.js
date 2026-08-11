@@ -90,8 +90,13 @@ export default async function handler(req, res) {
        Це прибирає ~14 с завантаження і ~20 МБ base64 з запиту — критично
        для ліміту функції 60 с. Резервний шлях (завантаження) нижче,
        спрацьовує лише якщо модель не змогла забрати картинки сама. */
+    /* PHOTO_QUALITY=max у Vercel env поверне hd-фото (для тарифу Pro).
+       За замовчуванням — збалансований режим: середня роздільність,
+       швидше читається моделлю, вкладаємось у ліміт 60 с. */
+    const wantMax = process.env.PHOTO_QUALITY === 'max';
+    const pickUrl = im => (wantMax ? (im.url || im.med) : (im.med || im.url));
     const lotPhotoUrls = (lot && Array.isArray(lot.images))
-      ? lot.images.slice(0, 8).map(im => im.url).filter(u => typeof u === 'string' && /^https:/.test(u))
+      ? lot.images.slice(0, 8).map(pickUrl).filter(u => typeof u === 'string' && /^https:/.test(u))
       : [];
 
     async function downloadLotPhotos() {
@@ -100,7 +105,7 @@ export default async function handler(req, res) {
       const MAX_PHOTOS = 8;
       const started = Date.now();
 
-      const picked = lot.images.slice(0, MAX_PHOTOS);
+      const picked = lot.images.slice(0, MAX_PHOTOS).map(im => ({ url: pickUrl(im) }));
       if (!picked.length) return [];
       const grab = async im => {
         const ctl = new AbortController();
