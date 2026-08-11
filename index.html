@@ -420,6 +420,18 @@ btn.addEventListener('click', async () => {
     if (el) el.textContent = MSGS[msgI];
   }, 7000);
 
+  /* сервер може віддати не JSON (таймаут платформи) — показуємо зрозумілий текст */
+  async function safeJson(resp) {
+    const txt = await resp.text();
+    try { return JSON.parse(txt); }
+    catch (e) {
+      if (resp.status === 504 || /timeout|timed out/i.test(txt)) {
+        throw new Error('Прорахунок не встиг завершитись за відведений час. Спробуй ще раз');
+      }
+      throw new Error('Сервер повернув несподівану відповідь (' + resp.status + '). Спробуй ще раз');
+    }
+  }
+
   try {
     let lot = null;
     if (query) {
@@ -428,7 +440,7 @@ btn.addEventListener('click', async () => {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ query }),
       });
-      const ld = await lr.json();
+      const ld = await safeJson(lr);
       if (!lr.ok || ld.error) throw new Error(ld.error || 'Не вдалося отримати лот');
       lot = ld.lot;
     }
@@ -442,7 +454,7 @@ btn.addEventListener('click', async () => {
         state: document.getElementById('lotState').value,
       }),
     });
-    const data = await r.json();
+    const data = await safeJson(r);
     if (!r.ok || data.error) throw new Error(data.error || 'Помилка сервера');
 
     sessionStorage.setItem('calcarResult', JSON.stringify(data));

@@ -86,12 +86,21 @@ export default async function handler(req, res) {
       i => typeof i === 'string' && /^data:image\/(?:jpeg|png|webp);base64,/.test(i)
     );
 
-    /* якщо прийшов лот з аукціону — тягнемо його фото самі */
+    /* якщо прийшов лот з аукціону — тягнемо його фото самі.
+       Ліміт функції 60 с, тому: жорсткий бюджет на завантаження,
+       таймаут на кожне фото, і йдемо далі з тим, що встигло прийти. */
     if (lot && Array.isArray(lot.images) && lot.images.length && imgs.length === 0) {
-      const picked = lot.images.slice(0, 12);
-      const fetched = await Promise.all(picked.map(async im => {
+      const PHOTO_BUDGET_MS = 14000;   /* на все завантаження */
+      const PER_PHOTO_MS = 7000;       /* на одне фото */
+      const MAX_PHOTOS = 8;
+      const started = Date.now();
+
+      const picked = lot.images.slice(0, MAX_PHOTOS);
+      const grab = async im => {
+        const ctl = new AbortController();
+        const t = setTimeout(() => ctl.abort(), PER_PHOTO_MS);
         try {
-          const r = await fetch(im.url);
+          const r = await fetch(im.url, { signal: ctl.signal });
           if (!r.ok) return null;
           const buf = Buffer.from(await r.arrayBuffer());
           if (buf.length > 6_000_000) return null;
@@ -99,8 +108,19 @@ export default async function handler(req, res) {
           if (!/^image\/(jpeg|png|webp)$/.test(mime)) return null;
           return `data:${mime};base64,` + buf.toString('base64');
         } catch (e) { return null; }
-      }));
-      imgs = fetched.filter(Boolean);
+        finally { clearTimeout(t); }
+      };
+
+      /* кожне фото має і власний таймаут, і спільний дедлайн:
+         що не встигло до дедлайну — повертає null, запит іде далі */
+      const withDeadline = p => Promise.race([
+        p,
+        new Promise(resolve => setTimeout(() => resolve(null), Math.max(0, PHOTO_BUDGET_MS - (Date.now() - started)))),
+      ]);
+      const results = await Promise.all(picked.map(im => withDeadline(grab(im)).catch(() => null)));
+
+      imgs = results.filter(Boolean);
+      console.log('[analyze] photos', imgs.length, 'of', picked.length, 'in', Date.now() - started, 'ms');
       if (imgs.length === 0) {
         return res.status(502).json({ error: 'Не вдалося завантажити фото лота з аукціону. Завантаж фото вручну' });
       }
@@ -168,7 +188,7 @@ export default async function handler(req, res) {
 
     /* --- збираємо контент для vision --- */
     const content = [];
-    for (const img of imgs.slice(0, 12)) {
+    for (const img of imgs.slice(0, 8)) {
       if (/^data:image\/(?:jpeg|png|webp);base64,/.test(img)) {
         content.push({ type: 'image_url', image_url: { url: img, detail: 'high' } });
       }
@@ -182,7 +202,10 @@ export default async function handler(req, res) {
     }
     content.push({ type: 'text', text: PROMPT(vin, nhtsa, damageStr || lot?.primary_damage || null, lot || null) });
 
+    const aiCtl = new AbortController();
+    const aiTimer = setTimeout(() => aiCtl.abort(), 38000);
     const r = await fetch('https://api.openai.com/v1/chat/completions', {
+      signal: aiCtl.signal,
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -196,6 +219,7 @@ export default async function handler(req, res) {
       }),
     });
 
+    clearTimeout(aiTimer);
     const data = await r.json();
     if (data.error) {
       return res.status(502).json({ error: 'AI: ' + (data.error.message || 'помилка запиту') });
@@ -232,6 +256,9 @@ export default async function handler(req, res) {
     };
     return res.status(200).json(parsed);
   } catch (e) {
+    if (e.name === 'AbortError') {
+      return res.status(504).json({ error: 'Аналіз не встиг завершитись. Спробуй ще раз, зазвичай з другої спроби швидше' });
+    }
     return res.status(500).json({ error: 'Внутрішня помилка: ' + e.message });
   }
 }
