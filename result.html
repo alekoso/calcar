@@ -194,12 +194,16 @@
   .v-cell .money{justify-self:stretch;width:100%}
   .profit{color:var(--green)}
   .loss{color:var(--red)}
-  .cost-row.row-bid{background:#fff6f0;border:1.5px solid #ffcfae;border-radius:10px;margin:2px -10px;padding:10px}
-  .cost-row.row-bid .lbl{font-weight:800}
-  .cost-row.row-bid .money input{border-color:var(--orange);border-width:2px;font-weight:800;background:#fff}
-  .cost-row.row-bid.pulse .money input{box-shadow:0 0 0 4px rgba(255,109,36,.18)}
+  .calc-controls{display:flex;gap:14px;flex-wrap:wrap;background:#fff6f0;border:1.5px solid #ffcfae;border-radius:12px;padding:14px 16px;margin-bottom:18px}
+  .cc-item{display:flex;flex-direction:column;gap:6px;min-width:220px;flex:1}
+  .cc-item label{font-size:13px;font-weight:800}
+  .cc-item input,.cc-item select{height:44px;border:1.5px solid var(--line);border-radius:9px;padding:0 12px;font-size:15px;background:#fff;font-weight:700}
+  .cc-bid input{border-color:var(--orange);border-width:2px}
+  .cc-bid.pulse input{box-shadow:0 0 0 4px rgba(255,109,36,.18)}
+  .cc-sub{font-size:11.5px;color:var(--muted);font-weight:400}
+  .calc-controls .state-select{width:100%}
   .risk-badge{margin-left:auto;display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);font-weight:600}
-  .risk-badge b{color:var(--text);font-size:15px}
+  .risk-badge b{color:var(--text);font-size:13.5px}
   #saveHint{font-size:12.5px;color:var(--muted);opacity:0;transition:opacity .3s}
   #saveHint.show{opacity:1}
   .risk-line{display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:14px;font-weight:600}
@@ -316,7 +320,7 @@
     <div class="card-head">
       <h2>Розбір пошкоджень</h2>
       <span class="badge blue" id="aiBadge">AI-аналіз фото</span>
-      <span class="risk-badge" id="riskBadge" style="display:none"><span class="dot ok" id="riskDot"></span>Ризик: <b id="riskScore">–</b>/10</span>
+      <span class="risk-badge" id="riskBadge" style="display:none"><span class="dot ok" id="riskDot"></span>Ризик: <b id="riskScore">–</b></span>
     </div>
     <div class="card-body">
       <div class="flags" id="flagsEl"></div>
@@ -398,11 +402,15 @@
       <span class="hint" style="margin-left:auto">Мито, акциз і ПДВ рахуються від ставки. Усі поля можна редагувати</span>
     </div>
     <div class="card-body">
-      <div class="log-grid">
-        <div>
-          <div class="cost-row">
-            <div class="lbl">Штат складу лота<span>Підставить типову доставку і фрахт для маршруту</span></div>
-            <select class="state-select" id="usState">
+      <div class="calc-controls">
+        <div class="cc-item cc-bid">
+          <label for="bid">Твоя ставка на аукціоні, $</label>
+          <input id="bid" type="number" value="" placeholder="0" min="0">
+          <span class="cc-sub" id="bidSub">Впиши суму, за яку плануєш виграти лот</span>
+        </div>
+        <div class="cc-item">
+          <label for="usState">Штат складу лота</label>
+          <select class="state-select" id="usState">
               <option value="">Оберіть штат</option>
               <option value="FL">Флорида (FL)</option>
               <option value="GA">Джорджія (GA)</option>
@@ -435,11 +443,11 @@
               <option value="OR">Орегон (OR)</option>
               <option value="WA">Вашингтон (WA)</option>
             </select>
-          </div>
-          <div class="cost-row row-bid">
-            <div class="lbl">Твоя ставка на аукціоні<span id="bidSub">Головне поле прорахунку: впиши суму, за яку плануєш виграти лот</span></div>
-            <div class="money"><input id="bid" type="number" value="" placeholder="0" min="0"></div>
-          </div>
+          <span class="cc-sub">Підставить типову доставку і фрахт</span>
+        </div>
+      </div>
+      <div class="log-grid">
+        <div>
           <div class="cost-row">
             <div class="lbl">Збори аукціону<span>Комісія, gate fee, інтернет-ставка</span></div>
             <div class="money"><input id="auctionFees" type="number" value="0" min="0"></div>
@@ -497,8 +505,6 @@
           <div class="val num" id="grandTotal">$0</div>
         </div>
       </div>
-      <div class="risk-line" id="riskLine"><div class="dot ok"></div>Ризик угоди</div>
-      <div class="hint" id="riskHint"></div>
       <div class="safety-strike" id="safetyStrike">⚠ Подушки безпеки виключені з кошторису. Авто без відновлених подушок небезпечне, це позначення залишиться у вердикті та PDF.</div>
       <div class="v-actions">
         <button class="btn-primary">Завантажити PDF</button>
@@ -675,12 +681,6 @@ function renderHeaderBlocks(){
   dn.style.display = DATA.damage_note ? '' : 'none';
   document.getElementById('aiBadge').textContent = 'AI-аналіз ваших фото';
 
-  /* ризик у вердикті: та сама цифра, що і в розборі */
-  const rk = computeRisk();
-  document.getElementById('riskLine').innerHTML = `<div class="dot ${rk.cls}"></div>Ризик покупки: ${rk.score.toFixed(1)}/10`;
-  document.getElementById('riskHint').textContent = rk.cls === 'bad'
-    ? 'Знайдені критичні фактори, уважно перевір кошторис і закладай запас.'
-    : 'Основна невизначеність: приховані пошкодження, які не видно по фото.';
 }
 
 /* ================= Ризик покупки: детермінована формула =================
@@ -724,7 +724,7 @@ function computeAndRenderRisk() {
   if ((DATA.flags || []).length === 1 && DATA.flags[0].status === 'unknown') return; /* режим лише за VIN */
   const rk = computeRisk();
   document.getElementById('riskBadge').style.display = '';
-  document.getElementById('riskScore').textContent = rk.score.toFixed(1);
+  document.getElementById('riskScore').textContent = rk.score.toFixed(1) + ' / 10';
   document.getElementById('riskDot').className = 'dot ' + rk.cls;
 }
 renderHeaderBlocks();
@@ -985,11 +985,11 @@ function recalc() {
   }
   if (DATA._meta?.bid > 0) {
     document.getElementById('bid').value = DATA._meta.bid;
-    document.getElementById('bidSub').textContent = 'Підставлено поточний бід аукціону. Зміни на ставку, за яку плануєш виграти лот';
+    document.getElementById('bidSub').textContent = 'Підставлено поточний бід аукціону, зміни на свою ставку';
   } else {
     /* майбутній лот без бідів: поле порожнє і підсвічене, щоб точно не пропустили */
-    document.getElementById('bidSub').textContent = 'Торги ще не почались. Впиши ставку, за яку плануєш виграти лот, без неї підсумок неповний';
-    document.querySelector('.row-bid').classList.add('pulse');
+    document.getElementById('bidSub').textContent = 'Торги ще не почались: впиши свою ставку, без неї підсумок неповний';
+    document.querySelector('.cc-bid').classList.add('pulse');
   }
 })();
 
@@ -1259,7 +1259,7 @@ function generatePdf() {
   y += 15;
 
   const rkPdf = computeRisk();
-  dotLine(rkPdf.cls, document.getElementById('riskLine').textContent.trim(), '');
+  dotLine(rkPdf.cls, 'Ризик покупки: ' + rkPdf.score.toFixed(1) + ' / 10', '');
   const safetyOff = partRows.some(x => x.safety && !x.on);
   if (safetyOff) para('Подушки безпеки виключені з кошторису. Авто без відновлених подушок небезпечне.', 8.5, COLORS.bad);
 

@@ -158,6 +158,9 @@
     background:rgba(0,0,0,.55);color:#fff;font-size:11px;line-height:1;cursor:pointer;
   }
   .hf-status{margin-top:10px;font-size:13.5px;font-weight:600;display:none}
+  .hf-status.info{display:block;color:var(--text)}
+  .hf-status a{color:var(--blue)}
+  .hf-status .reanalyze{font-weight:400;color:var(--muted)}
   .hf-status.err{display:block;color:#d6382c}
   .hf-status.load{display:flex;align-items:center;gap:10px;color:var(--blue)}
   .spinner{width:16px;height:16px;border:2.5px solid var(--blue-soft);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
@@ -420,6 +423,25 @@ btn.addEventListener('click', async () => {
     if (el) el.textContent = MSGS[msgI];
   }, 7000);
 
+  /* пошук уже готового звіту за цим самим лотом */
+  async function findExistingReport(q) {
+    try {
+      const { data: s } = await window.SB.auth.getSession();
+      if (!s?.session) return null;
+      const cleaned = q.replace(/\s/g, '').split('?')[0];
+      let { data: rows } = await window.SB.from('reports')
+        .select('id').eq('data->_meta->>lot_url', cleaned).limit(1);
+      if (rows && rows.length) return rows[0];
+      const digits = cleaned.replace(/\D/g, '');
+      if (digits.length >= 7 && digits.length <= 9) {
+        ({ data: rows } = await window.SB.from('reports')
+          .select('id').eq('data->_meta->>lot_number', digits).limit(1));
+        if (rows && rows.length) return rows[0];
+      }
+      return null;
+    } catch (e) { return null; }
+  }
+
   /* сервер може віддати не JSON (таймаут платформи) — показуємо зрозумілий текст */
   async function safeJson(resp) {
     const txt = await resp.text();
@@ -433,6 +455,23 @@ btn.addEventListener('click', async () => {
   }
 
   try {
+    /* якщо це авто вже аналізували — не витрачаємо запит, ведемо у звіт */
+    if (query && window.SB && !window.__forceReanalyze) {
+      const existing = await findExistingReport(query);
+      if (existing) {
+        statusEl.className = 'hf-status info';
+        statusEl.innerHTML = 'Це авто вже проаналізовано. <a href="/result.html?id=' + existing.id + '">Відкрити звіт</a>'
+          + ' <span class="reanalyze">або <a href="#" id="reanalyzeLink">прорахувати заново</a></span>';
+        document.getElementById('reanalyzeLink').onclick = ev => {
+          ev.preventDefault();
+          window.__forceReanalyze = existing.id;
+          document.getElementById('analyzeBtn').click();
+        };
+        setBusy(false);
+        return;
+      }
+    }
+
     let lot = null;
     if (query) {
       const lr = await fetch('/api/lot', {
@@ -466,12 +505,17 @@ btn.addEventListener('click', async () => {
         if (s?.session) {
           const clean = JSON.parse(JSON.stringify(data));
           if (clean._meta?.photos) clean._meta.photos = clean._meta.photos.filter(u => typeof u === 'string' && !u.startsWith('data:'));
-          const { data: row } = await window.SB.from('reports').insert({
-            user_id: s.session.user.id,
-            title: (data.vehicle?.title || 'Прорахунок') + (data._meta?.lot_number ? ' · лот ' + data._meta.lot_number : ''),
-            data: clean,
-          }).select('id').single();
-          if (row?.id) sessionStorage.setItem('calcarReportId', row.id);
+          const title = (data.vehicle?.title || 'Прорахунок') + (data._meta?.lot_number ? ' · лот ' + data._meta.lot_number : '');
+          if (window.__forceReanalyze) {
+            await window.SB.from('reports').update({ title, data: clean }).eq('id', window.__forceReanalyze);
+            sessionStorage.setItem('calcarReportId', window.__forceReanalyze);
+            window.__forceReanalyze = null;
+          } else {
+            const { data: row } = await window.SB.from('reports').insert({
+              user_id: s.session.user.id, title, data: clean,
+            }).select('id').single();
+            if (row?.id) sessionStorage.setItem('calcarReportId', row.id);
+          }
         }
       }
     } catch (e) { /* збереження не блокує показ результату */ }
