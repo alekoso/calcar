@@ -6,25 +6,39 @@
 <title>CalCar: прорахунок лота</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@800&display=swap&text=CalCar" rel="stylesheet">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   :root{
-    --navy:#17334f;
-    --blue:#2557a7;
-    --blue-soft:#eaf1fb;
-    --green:#149a3f;
-    --green-soft:#e8f6ed;
-    --orange:#ff6d24;
-    --red:#d6382c;
-    --red-soft:#fdecea;
-    --amber:#b97a00;
-    --amber-soft:#fdf4e0;
-    --bg:#f4f5f7;
-    --card:#ffffff;
-    --line:#e6e8ec;
-    --text:#1b2532;
-    --muted:#6b7684;
+    /* Brand */
+    --brand:#B8F23D;
+    --brand-hover:#A7DF31;
+    --brand-active:#96CC27;
+    --brand-soft:#F0FBD9;
+    --brand-ink:#3F5D11;
+    /* Neutrals */
+    --ink:#141619;
+    --ink-2:#30343A;
+    --graphite:#141619;
+    --graphite-2:#202328;
+    --text:#141619;
+    --muted:#697079;
+    --faint:#90969D;
+    --bg:#F7F8F6;
+    --card:#FFFFFF;
+    --surface-2:#F1F3F0;
+    --line:#E2E5E0;
+    --line-strong:#CDD2CB;
+    /* Semantic */
+    --green:#218A4A;
+    --green-soft:#EEF7F0;
+    --amber:#C8790A;
+    --amber-soft:#FFF7E8;
+    --red:#D83A3A;
+    --red-soft:#FDEEEE;
     --radius:12px;
   }
   *{box-sizing:border-box;margin:0;padding:0}
@@ -35,39 +49,43 @@
   }
   .num{font-variant-numeric:tabular-nums}
 
-  header{background:var(--navy);color:#fff;position:sticky;top:0;z-index:50}
+  header{background:rgba(255,255,255,.88);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line);color:var(--text);position:sticky;top:0;z-index:50}
   .header-in{max-width:1160px;margin:0 auto;padding:0 20px;height:56px;display:flex;align-items:center;gap:14px}
-  .logo{display:flex;align-items:center;gap:9px;font-weight:800;font-size:20px;letter-spacing:.2px;color:#fff;text-decoration:none}
-  .logo img{width:26px;height:26px;border-radius:7px}
-  .beta{font-size:11px;background:rgba(255,255,255,.14);padding:2px 8px;border-radius:20px;letter-spacing:.4px}
+  .logo{display:inline-flex;align-items:stretch;border-radius:.46em;overflow:hidden;font-weight:800;font-size:15px;letter-spacing:.01em;line-height:1;text-decoration:none;font-family:'Sora',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+  .logo .l{background:var(--brand);color:var(--ink);padding:.62em 1.05em .62em .72em;clip-path:polygon(0 0,100% 0,calc(100% - .58em) 100%,0 100%)}
+  .logo .r{background:var(--graphite);color:#fff;padding:.62em .72em .62em .98em;margin-left:-.38em;clip-path:polygon(.58em 0,100% 0,100% 100%,0 100%)}
+  .beta{font-size:11px;background:var(--surface-2);color:var(--muted);padding:2px 8px;border-radius:20px;letter-spacing:.4px}
   .header-right{margin-left:auto;display:flex;align-items:center;gap:16px;font-size:13px}
-  .header-right a{color:#cfd9e4;text-decoration:none}
-  .avatar{width:30px;height:30px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
+  .header-right a{color:var(--muted);text-decoration:none}
+  .avatar{width:30px;height:30px;border-radius:50%;background:var(--graphite);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
 
   .wrap{max-width:1160px;margin:0 auto;padding:20px}
 
-  .btn-auth{display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(255,255,255,.35);border-radius:20px;padding:7px 14px;color:#fff!important;font-weight:600;font-size:13px;text-decoration:none;transition:background .15s,border-color .15s}
-  .btn-auth:hover{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.6)}
+  .btn-auth{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line-strong);border-radius:20px;padding:7px 14px;background:var(--card);color:var(--ink)!important;font-weight:600;font-size:13px;text-decoration:none;transition:background .15s,border-color .15s}
+  .btn-auth:hover{background:var(--surface-2)}
   .topbar{display:flex;align-items:center;gap:14px;margin-bottom:20px;flex-wrap:wrap}
   .btn-back{
-    display:inline-flex;align-items:center;background:#fff;color:var(--blue);border:1px solid var(--blue);
+    display:inline-flex;align-items:center;background:#fff;color:var(--ink);border:1px solid var(--line-strong);
     border-radius:var(--radius);height:44px;padding:0 20px;font-size:14px;font-weight:600;cursor:pointer;text-decoration:none;
   }
+  .btn-back:hover{background:var(--surface-2);border-color:var(--brand)}
 
   .btn-primary{
-    background:var(--orange);color:#fff;border:none;border-radius:var(--radius);
-    height:48px;padding:0 24px;font-size:15px;font-weight:700;cursor:pointer;white-space:nowrap;
+    background:var(--brand);color:var(--ink);border:1px solid rgba(20,22,25,.08);border-radius:var(--radius);
+    height:48px;padding:0 24px;font-size:15px;font-weight:800;cursor:pointer;white-space:nowrap;
   }
-  .btn-primary:hover{background:#e85f1a}
+  .btn-primary:hover{background:var(--brand-hover)}
+  .btn-primary:active{background:var(--brand-active)}
   .btn-secondary{
-    background:#fff;color:var(--blue);border:1px solid var(--blue);border-radius:var(--radius);
+    background:#fff;color:var(--ink);border:1px solid var(--line-strong);border-radius:var(--radius);
     height:44px;padding:0 20px;font-size:14px;font-weight:600;cursor:pointer;
   }
+  .btn-secondary:hover{background:var(--surface-2);border-color:var(--brand)}
   .btn-ghost{
-    background:transparent;color:var(--blue);border:1px dashed var(--blue);border-radius:10px;
+    background:transparent;color:var(--ink-2);border:1px dashed var(--line-strong);border-radius:10px;
     height:42px;padding:0 18px;font-size:14px;font-weight:600;cursor:pointer;width:100%;margin-top:12px;
   }
-  .btn-ghost:hover{background:var(--blue-soft)}
+  .btn-ghost:hover{background:var(--surface-2);border-color:var(--brand)}
 
   .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:20px;overflow:hidden}
   .card-head{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -77,11 +95,11 @@
 
   .badge{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:20px;letter-spacing:.2px}
   .badge.green{background:var(--green-soft);color:var(--green)}
-  .badge.blue{background:var(--blue-soft);color:var(--blue)}
+  .badge.blue{background:var(--brand-soft);color:var(--brand-ink)}
   .badge.amber{background:var(--amber-soft);color:var(--amber)}
 
   .photos{display:grid;grid-template-columns:2fr 1fr 1fr;gap:6px;padding:6px}
-  .photos .ph{border-radius:8px;background:linear-gradient(135deg,#2c3e50,#4b6479);position:relative;overflow:hidden;aspect-ratio:4/2.6}
+  .photos .ph{border-radius:8px;background:linear-gradient(135deg,#ECEEE9,#DDE0DA);position:relative;overflow:hidden;aspect-ratio:4/2.6}
   .photos .ph.main{grid-row:span 2;aspect-ratio:auto}
   .photos .ph img{width:100%;height:100%;object-fit:cover;display:block}
   .photos .ph[data-label]::after{
@@ -106,8 +124,8 @@
   .dot.ok{background:var(--green)}
   .dot.bad{background:var(--red)}
   .dot.warn{background:var(--amber)}
-  .dot.unknown{background:#9aa4b0}
-  .dmg-note{background:var(--blue-soft);border-radius:10px;padding:12px 16px;font-size:13.5px;color:#274b7a}
+  .dot.unknown{background:var(--faint)}
+  .dmg-note{background:var(--surface-2);border-radius:10px;padding:12px 16px;font-size:13.5px;color:var(--ink-2)}
 
   .est-head{
     display:grid;grid-template-columns:44px minmax(200px,1.2fr) auto 130px 36px;gap:14px;
@@ -133,15 +151,15 @@
     font-size:12.5px;cursor:pointer;color:var(--muted);font-weight:600;line-height:1.25;text-align:center;
   }
   .seg button b{display:block;font-size:13px;color:var(--text);font-weight:700}
-  .seg button.active{background:var(--blue);color:#fff}
-  .seg button.active b{color:#fff}
+  .seg button.active{background:var(--brand);color:var(--ink)}
+  .seg button.active b{color:var(--ink)}
   .seg button:disabled{opacity:.35;cursor:default}
 
   .toggle{
-    appearance:none;width:40px;height:24px;border-radius:20px;background:#cdd3da;position:relative;
+    appearance:none;width:40px;height:24px;border-radius:20px;background:var(--line-strong);position:relative;
     cursor:pointer;transition:background .15s;flex-shrink:0;
   }
-  .toggle:checked{background:var(--green)}
+  .toggle:checked{background:var(--brand)}
   .toggle::after{
     content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;
     background:#fff;transition:left .15s;box-shadow:0 1px 3px rgba(0,0,0,.25);
@@ -155,7 +173,7 @@
     font-size:14.5px;font-weight:700;text-align:right;color:var(--text);background:#fff;
     font-variant-numeric:tabular-nums;font-family:inherit;
   }
-  .money input:focus{outline:2px solid var(--blue);outline-offset:-1px}
+  .money input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(184,242,61,.18)}
 
   .del{
     width:32px;height:32px;border:none;background:transparent;border-radius:8px;cursor:pointer;
@@ -167,7 +185,7 @@
     width:100%;height:40px;border:1px solid var(--line);border-radius:10px;padding:0 12px;
     font-size:14px;font-weight:600;color:var(--text);font-family:inherit;
   }
-  .name-input:focus{outline:2px solid var(--blue);outline-offset:-1px}
+  .name-input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(184,242,61,.18)}
 
   .subtotal{
     display:flex;justify-content:space-between;align-items:center;
@@ -194,12 +212,12 @@
   .v-cell .money{justify-self:stretch;width:100%}
   .profit{color:var(--green)}
   .loss{color:var(--red)}
-  .calc-controls{display:flex;gap:14px;flex-wrap:wrap;background:#fff6f0;border:1.5px solid #ffcfae;border-radius:12px;padding:14px 16px;margin-bottom:18px}
+  .calc-controls{display:flex;gap:14px;flex-wrap:wrap;background:var(--surface-2);border:1.5px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:18px}
   .cc-item{display:flex;flex-direction:column;gap:6px;min-width:220px;flex:1}
   .cc-item label{font-size:13px;font-weight:800}
   .cc-item input,.cc-item select{height:44px;border:1.5px solid var(--line);border-radius:9px;padding:0 12px;font-size:15px;background:#fff;font-weight:700}
-  .cc-bid input{border-color:var(--orange);border-width:2px}
-  .cc-bid.pulse input{box-shadow:0 0 0 4px rgba(255,109,36,.18)}
+  .cc-bid input{border-color:var(--brand-active);border-width:2px}
+  .cc-bid.pulse input{box-shadow:0 0 0 4px rgba(184,242,61,.28)}
   .cc-sub{font-size:11.5px;color:var(--muted);font-weight:400}
   .calc-controls .state-select{width:100%}
   .risk-badge{margin-left:auto;display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);font-weight:600}
@@ -248,7 +266,7 @@
     .money input,.name-input{border:none;padding:0;height:auto;background:transparent}
     .money::before{position:static;margin-right:2px}
     .print-head{display:flex;justify-content:space-between;align-items:baseline;padding:0 0 14px;font-size:13px;color:#555}
-    .print-head b{font-size:18px;color:#1b2532}
+    .print-head b{font-size:18px;color:#141619}
   }
   .photo-strip{display:flex;gap:6px;overflow-x:auto;padding:10px 10px 4px}
   .photo-strip img{height:86px;border-radius:8px;flex:0 0 auto;cursor:pointer;display:block}
@@ -258,9 +276,9 @@
   .state-select{
     height:40px;border:1px solid var(--line);border-radius:10px;font-size:14px;color:var(--text);font-family:inherit;
     appearance:none;-webkit-appearance:none;padding:0 30px 0 12px;
-    background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7684' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") no-repeat right 10px center;
+    background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23697079' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") no-repeat right 10px center;
   }
-  .state-select:focus{outline:2px solid var(--blue);outline-offset:-1px}
+  .state-select:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(184,242,61,.18)}
   .vin-line{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:13px;letter-spacing:.8px;font-weight:700;color:var(--text)}
 
   /* ---------- чат-агент по авто ---------- */
@@ -268,12 +286,12 @@
   body.chat-docked{padding-right:420px}
   .chat-fab{
     position:fixed;right:20px;bottom:20px;z-index:80;display:flex;align-items:center;gap:9px;
-    background:var(--navy);color:#fff;border:none;border-radius:28px;height:52px;padding:0 20px 0 16px;
+    background:var(--graphite);color:#fff;border:none;border-radius:28px;height:52px;padding:0 20px 0 16px;
     font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;
     box-shadow:0 8px 24px rgba(10,20,35,.35);transition:background .15s,transform .15s;
   }
-  .chat-fab:hover{background:#20456b;transform:translateY(-1px)}
-  .chat-fab .dot-ai{width:8px;height:8px;border-radius:50%;background:var(--orange);flex-shrink:0}
+  .chat-fab:hover{background:var(--graphite-2);transform:translateY(-1px)}
+  .chat-fab .dot-ai{width:8px;height:8px;border-radius:50%;background:var(--brand);flex-shrink:0}
   .chat-overlay{position:fixed;inset:0;background:rgba(15,25,40,.28);z-index:99;opacity:0;pointer-events:none;transition:opacity .22s}
   .chat-overlay.open{opacity:1;pointer-events:auto}
   .chat-panel{
@@ -283,33 +301,33 @@
     transform:translateX(105%);transition:transform .25s ease;
   }
   .chat-panel.open{transform:none}
-  .chat-head{display:flex;align-items:center;gap:11px;padding:13px 18px;background:var(--navy);color:#fff;flex-shrink:0}
+  .chat-head{display:flex;align-items:center;gap:11px;padding:13px 18px;background:var(--graphite);color:#fff;flex-shrink:0}
   .chat-head .ttl b{display:block;font-size:15px;line-height:1.25}
-  .chat-head .ttl span{font-size:12px;color:#c3cedb;display:block;max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .chat-head img{width:30px;height:30px;border-radius:8px}
-  .chat-close{margin-left:auto;background:none;border:none;color:#cfd9e4;font-size:22px;line-height:1;cursor:pointer;padding:4px 8px;border-radius:8px}
+  .chat-head .ttl span{font-size:12px;color:#A9AFB6;display:block;max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chat-head .logo .r{background:#2A2E33}
+  .chat-close{margin-left:auto;background:none;border:none;color:#A9AFB6;font-size:22px;line-height:1;cursor:pointer;padding:4px 8px;border-radius:8px}
   .chat-close:hover{background:rgba(255,255,255,.12);color:#fff}
   .chat-msgs{flex:1;overflow-y:auto;padding:16px 14px;display:flex;flex-direction:column;gap:10px;background:var(--bg)}
   .chat-msg{max-width:88%;padding:10px 13px;border-radius:14px;font-size:14px;line-height:1.5;white-space:pre-wrap;overflow-wrap:break-word}
-  .chat-msg.user{align-self:flex-end;background:var(--navy);color:#fff;border-bottom-right-radius:4px}
+  .chat-msg.user{align-self:flex-end;background:var(--graphite);color:#fff;border-bottom-right-radius:4px}
   .chat-msg.ai{align-self:flex-start;background:#fff;border:1px solid var(--line);border-bottom-left-radius:4px}
   .chat-msg.typing{align-self:flex-start;background:#fff;border:1px solid var(--line);color:var(--muted);border-bottom-left-radius:4px}
   .chat-msg.typing i{display:inline-block;font-style:normal;animation:chatdots 1.2s infinite}
   @keyframes chatdots{0%,100%{opacity:.3}50%{opacity:1}}
   .chat-sugg{display:flex;flex-wrap:wrap;gap:6px;padding:0 14px 10px;background:var(--bg)}
-  .chat-sugg button{border:1px solid var(--line);background:#fff;border-radius:16px;padding:6px 12px;font-size:12.5px;color:var(--blue);cursor:pointer;font-family:inherit}
-  .chat-sugg button:hover{border-color:var(--blue);background:var(--blue-soft)}
+  .chat-sugg button{border:1px solid var(--line);background:#fff;border-radius:16px;padding:6px 12px;font-size:12.5px;color:var(--ink-2);cursor:pointer;font-family:inherit}
+  .chat-sugg button:hover{border-color:var(--brand);background:var(--brand-soft)}
   .chat-input{display:flex;gap:8px;padding:12px 14px;border-top:1px solid var(--line);background:#fff;flex-shrink:0;align-items:flex-end}
   .chat-input textarea{
     flex:1;resize:none;border:1px solid var(--line);border-radius:12px;padding:11px 13px;
     font-size:14px;font-family:inherit;line-height:1.4;min-height:44px;max-height:120px;color:var(--text);
   }
-  .chat-input textarea:focus{outline:2px solid var(--blue);outline-offset:-1px}
+  .chat-input textarea:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(184,242,61,.18)}
   .chat-send{
-    width:44px;height:44px;border:none;border-radius:12px;background:var(--orange);color:#fff;
+    width:44px;height:44px;border:1px solid rgba(20,22,25,.08);border-radius:12px;background:var(--brand);color:var(--ink);
     cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;
   }
-  .chat-send:hover{background:#e85f1a}
+  .chat-send:hover{background:var(--brand-hover)}
   .chat-send:disabled{opacity:.5;cursor:default}
   .chat-note{padding:0 14px 10px;font-size:11.5px;color:var(--muted);background:#fff;flex-shrink:0}
   @media(max-width:560px){
@@ -325,7 +343,7 @@
 
 <header>
   <div class="header-in">
-    <a class="logo" href="/"><img src="/favicon-32.png" alt=""> CalCar</a>
+    <a class="logo" href="/"><span class="l">Cal</span><span class="r">Car</span></a>
     <div class="beta">beta</div>
     <div class="header-right">
       <a class="btn-auth" href="/cabinet.html">
@@ -577,7 +595,7 @@
 <div class="chat-overlay" id="chatOverlay"></div>
 <div class="chat-panel" id="chatPanel">
   <div class="chat-head">
-    <img src="/favicon-32.png" alt="">
+    <span class="logo" style="font-size:11px" aria-hidden="true"><span class="l">Cal</span><span class="r">Car</span></span>
     <div class="ttl">
       <b>Чат по цьому авто</b>
       <span id="chatCarTitle">AI-помічник CalCar</span>
@@ -1174,9 +1192,9 @@ function generatePdf() {
   let y = 16;
 
   const COLORS = {
-    text: [27, 37, 50], muted: [107, 118, 132], line: [230, 232, 236],
-    ok: [20, 154, 63], bad: [214, 56, 44], warn: [185, 122, 0], unknown: [154, 164, 176],
-    navy: [23, 51, 79], orange: [255, 109, 36], soft: [234, 241, 251],
+    text: [20, 22, 25], muted: [105, 112, 121], line: [226, 229, 224],
+    ok: [33, 138, 74], bad: [216, 58, 58], warn: [200, 121, 10], unknown: [144, 150, 157],
+    navy: [20, 22, 25], orange: [184, 242, 61], soft: [241, 243, 240],
   };
   const setC = c => doc.setTextColor(c[0], c[1], c[2]);
 
@@ -1264,13 +1282,23 @@ function generatePdf() {
     y += 11.5;
   }
 
-  /* ---------- шапка ---------- */
-  doc.setFillColor(...COLORS.navy);
-  doc.roundedRect(M, y - 6, 8, 8, 1.6, 1.6, 'F');
-  doc.setFillColor(...COLORS.orange);
-  doc.circle(M + 4, y - 2, 2.2, 'F');
-  doc.setFont('DejaVu', 'bold'); doc.setFontSize(15); setC(COLORS.navy);
-  doc.text('CalCar', M + 11, y);
+  /* ---------- шапка: сплит-лого CalCar ---------- */
+  /* пропорції ~3.2:1, кут ~14°, зазор 0.5мм, текст оптично відсунутий від діагоналі */
+  const LG = { x: M, y: y - 6, h: 8, wl: 13.6, s: 2.0, g: 0.5, wr: 14.2, r: 1.4 };
+  doc.setFillColor(...COLORS.orange); /* lime */
+  doc.roundedRect(LG.x, LG.y, LG.wl, LG.h, LG.r, LG.r, 'F');
+  doc.rect(LG.x + LG.wl - LG.r, LG.y, LG.r, LG.h, 'F');
+  doc.triangle(LG.x + LG.wl, LG.y, LG.x + LG.wl + LG.s, LG.y, LG.x + LG.wl, LG.y + LG.h, 'F');
+  const LGdx = LG.x + LG.wl + LG.s + LG.g;
+  doc.setFillColor(...COLORS.navy); /* graphite */
+  doc.roundedRect(LGdx, LG.y, LG.wr, LG.h, LG.r, LG.r, 'F');
+  doc.rect(LGdx, LG.y, LG.r, LG.h, 'F');
+  doc.triangle(LGdx, LG.y, LGdx, LG.y + LG.h, LGdx - LG.s, LG.y + LG.h, 'F');
+  doc.setFont('DejaVu', 'bold'); doc.setFontSize(12);
+  setC(COLORS.text);
+  doc.text('Cal', LG.x + 2.1, LG.y + 5.75);
+  doc.setTextColor(255, 255, 255);
+  doc.text('Car', LGdx + 2.9, LG.y + 5.75);
   doc.setFont('DejaVu', 'normal'); doc.setFontSize(8); setC(COLORS.muted);
   doc.text(new Date().toLocaleDateString('uk-UA'), PW - M, y, { align: 'right' });
   y += 8;
