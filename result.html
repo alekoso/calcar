@@ -262,6 +262,58 @@
   }
   .state-select:focus{outline:2px solid var(--blue);outline-offset:-1px}
   .vin-line{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:13px;letter-spacing:.8px;font-weight:700;color:var(--text)}
+
+  /* ---------- чат-агент по авто ---------- */
+  .chat-fab{
+    position:fixed;right:20px;bottom:20px;z-index:80;display:flex;align-items:center;gap:9px;
+    background:var(--navy);color:#fff;border:none;border-radius:28px;height:52px;padding:0 20px 0 16px;
+    font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;
+    box-shadow:0 8px 24px rgba(10,20,35,.35);transition:background .15s,transform .15s;
+  }
+  .chat-fab:hover{background:#20456b;transform:translateY(-1px)}
+  .chat-fab .dot-ai{width:8px;height:8px;border-radius:50%;background:var(--orange);flex-shrink:0}
+  .chat-overlay{position:fixed;inset:0;background:rgba(15,25,40,.28);z-index:99;opacity:0;pointer-events:none;transition:opacity .22s}
+  .chat-overlay.open{opacity:1;pointer-events:auto}
+  .chat-panel{
+    position:fixed;top:0;right:0;bottom:0;width:420px;max-width:100vw;background:#fff;z-index:100;
+    display:flex;flex-direction:column;box-shadow:-16px 0 44px rgba(10,20,35,.2);
+    transform:translateX(105%);transition:transform .25s ease;
+  }
+  .chat-panel.open{transform:none}
+  .chat-head{display:flex;align-items:center;gap:11px;padding:13px 18px;background:var(--navy);color:#fff;flex-shrink:0}
+  .chat-head .ttl b{display:block;font-size:15px;line-height:1.25}
+  .chat-head .ttl span{font-size:12px;color:#c3cedb;display:block;max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chat-head img{width:30px;height:30px;border-radius:8px}
+  .chat-close{margin-left:auto;background:none;border:none;color:#cfd9e4;font-size:22px;line-height:1;cursor:pointer;padding:4px 8px;border-radius:8px}
+  .chat-close:hover{background:rgba(255,255,255,.12);color:#fff}
+  .chat-msgs{flex:1;overflow-y:auto;padding:16px 14px;display:flex;flex-direction:column;gap:10px;background:var(--bg)}
+  .chat-msg{max-width:88%;padding:10px 13px;border-radius:14px;font-size:14px;line-height:1.5;white-space:pre-wrap;overflow-wrap:break-word}
+  .chat-msg.user{align-self:flex-end;background:var(--navy);color:#fff;border-bottom-right-radius:4px}
+  .chat-msg.ai{align-self:flex-start;background:#fff;border:1px solid var(--line);border-bottom-left-radius:4px}
+  .chat-msg.typing{align-self:flex-start;background:#fff;border:1px solid var(--line);color:var(--muted);border-bottom-left-radius:4px}
+  .chat-msg.typing i{display:inline-block;font-style:normal;animation:chatdots 1.2s infinite}
+  @keyframes chatdots{0%,100%{opacity:.3}50%{opacity:1}}
+  .chat-sugg{display:flex;flex-wrap:wrap;gap:6px;padding:0 14px 10px;background:var(--bg)}
+  .chat-sugg button{border:1px solid var(--line);background:#fff;border-radius:16px;padding:6px 12px;font-size:12.5px;color:var(--blue);cursor:pointer;font-family:inherit}
+  .chat-sugg button:hover{border-color:var(--blue);background:var(--blue-soft)}
+  .chat-input{display:flex;gap:8px;padding:12px 14px;border-top:1px solid var(--line);background:#fff;flex-shrink:0;align-items:flex-end}
+  .chat-input textarea{
+    flex:1;resize:none;border:1px solid var(--line);border-radius:12px;padding:11px 13px;
+    font-size:14px;font-family:inherit;line-height:1.4;min-height:44px;max-height:120px;color:var(--text);
+  }
+  .chat-input textarea:focus{outline:2px solid var(--blue);outline-offset:-1px}
+  .chat-send{
+    width:44px;height:44px;border:none;border-radius:12px;background:var(--orange);color:#fff;
+    cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+  }
+  .chat-send:hover{background:#e85f1a}
+  .chat-send:disabled{opacity:.5;cursor:default}
+  .chat-note{padding:0 14px 10px;font-size:11.5px;color:var(--muted);background:#fff;flex-shrink:0}
+  @media(max-width:560px){
+    .chat-panel{width:100%}
+    .chat-fab{right:14px;bottom:14px;padding:0 16px 0 14px}
+  }
+  @media print{.chat-fab,.chat-panel,.chat-overlay{display:none!important}}
 </style>
 </head>
 <body>
@@ -512,6 +564,37 @@
     </div>
   </div>
 
+</div>
+
+<!-- чат-агент по цьому авто -->
+<button class="chat-fab" id="chatFab">
+  <span class="dot-ai"></span>
+  Спитати про це авто
+</button>
+<div class="chat-overlay" id="chatOverlay"></div>
+<div class="chat-panel" id="chatPanel">
+  <div class="chat-head">
+    <img src="/favicon-32.png" alt="">
+    <div class="ttl">
+      <b>Чат по цьому авто</b>
+      <span id="chatCarTitle">AI-помічник CalCar</span>
+    </div>
+    <button class="chat-close" id="chatClose" title="Згорнути">✕</button>
+  </div>
+  <div class="chat-msgs" id="chatMsgs"></div>
+  <div class="chat-sugg" id="chatSugg" style="display:none">
+    <button>Чи варто брати це авто?</button>
+    <button>Що найдорожче в ремонті?</button>
+    <button>Яку максимальну ставку давати?</button>
+    <button>Які приховані ризики?</button>
+  </div>
+  <div class="chat-input">
+    <textarea id="chatText" rows="1" placeholder="Питай про пошкодження, ціни, ризики…"></textarea>
+    <button class="chat-send" id="chatSend" title="Надіслати">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+    </button>
+  </div>
+  <div class="chat-note">Помічник бачить дані лота, фото і твій кошторис. Відповіді орієнтовні</div>
 </div>
 
 <script src="/config.js"></script>
@@ -975,20 +1058,32 @@ function recalc() {
   if (window.__ready) scheduleSave();
 }
 
-/* штат і ставка з форми */
+/* штат і ставка з форми. Нулів і порожніх полів не лишаємо:
+   якщо точних даних немає, підставляємо розумний орієнтир */
 (() => {
-  const st = DATA._meta?.state;
-  if (st && STATE_RATES[st]) {
-    document.getElementById('usState').value = st;
-    document.getElementById('usDelivery').value = STATE_RATES[st][0];
-    document.getElementById('freight').value = STATE_RATES[st][1];
+  const meta = DATA._meta || {};
+  const stKnown = meta.state && STATE_RATES[meta.state];
+  const st = stKnown ? meta.state : 'GA';
+  const stSel = document.getElementById('usState');
+  stSel.value = st;
+  document.getElementById('usDelivery').value = STATE_RATES[st][0];
+  document.getElementById('freight').value = STATE_RATES[st][1];
+  if (!stKnown) {
+    stSel.nextElementSibling.textContent = 'Штат невідомий, підставлено типовий. Обери свій, доставка оновиться';
   }
-  if (DATA._meta?.bid > 0) {
-    document.getElementById('bid').value = DATA._meta.bid;
-    document.getElementById('bidSub').textContent = 'Підставлено поточний бід аукціону, зміни на свою ставку';
+
+  const bidEl = document.getElementById('bid');
+  const bidSub = document.getElementById('bidSub');
+  if (meta.bid > 0) {
+    bidEl.value = meta.bid;
+    bidSub.textContent = 'Підставлено поточний бід аукціону, зміни на свою ставку';
   } else {
-    /* майбутній лот без бідів: поле порожнє і підсвічене, щоб точно не пропустили */
-    document.getElementById('bidSub').textContent = 'Торги ще не почались: впиши свою ставку, без неї підсумок неповний';
+    /* торги ще не почались: орієнтир від оцінки авто, ~30% ринкової,
+       округлено до сотень. Поле підсвічене, щоб замінили на свою ставку */
+    const est = Number(meta.est_retail_value) || 0;
+    const guess = est > 0 ? Math.max(500, Math.round(est * 0.3 / 100) * 100) : 3000;
+    bidEl.value = guess;
+    bidSub.textContent = 'Орієнтовна ставка (торги ще не почались). Впиши свою, підсумок перерахується';
     document.querySelector('.cc-bid').classList.add('pulse');
   }
 })();
@@ -1288,6 +1383,169 @@ document.querySelectorAll('button').forEach(b => {
 });
 document.getElementById('printMeta').textContent =
   (DATA.vehicle?.title || '') + ' · ' + new Date().toLocaleDateString('uk-UA') + ' · calcar.io';
+
+/* ================= чат-агент по авто ================= */
+(() => {
+  const fab = document.getElementById('chatFab');
+  const panel = document.getElementById('chatPanel');
+  const overlay = document.getElementById('chatOverlay');
+  const msgsEl = document.getElementById('chatMsgs');
+  const suggEl = document.getElementById('chatSugg');
+  const ta = document.getElementById('chatText');
+  const sendBtn = document.getElementById('chatSend');
+
+  document.getElementById('chatCarTitle').textContent = DATA.vehicle?.title || 'AI-помічник CalCar';
+
+  /* історія живе в sessionStorage, прив'язана до конкретного авто */
+  const CHAT_KEY = 'calcarChat:' + (REPORT_DB_ID || DATA._meta?.lot_number || DATA._meta?.vin || 'local');
+  let history = [];
+  try { history = JSON.parse(sessionStorage.getItem(CHAT_KEY) || '[]'); } catch (e) {}
+  const persist = () => { try { sessionStorage.setItem(CHAT_KEY, JSON.stringify(history.slice(-30))); } catch (e) {} };
+
+  function addMsg(role, text) {
+    const d = document.createElement('div');
+    d.className = 'chat-msg ' + role;
+    d.textContent = text;
+    msgsEl.appendChild(d);
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+    return d;
+  }
+  function addTyping() {
+    const d = document.createElement('div');
+    d.className = 'chat-msg typing';
+    d.innerHTML = 'Дивлюсь звіт<i>…</i>';
+    msgsEl.appendChild(d);
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+    return d;
+  }
+
+  /* привітання локальне, без запиту до API */
+  const GREETING = 'Привіт! Я вивчив цей лот: дані аукціону, фото, розбір пошкоджень і твій кошторис. Питай будь-що: чи варто брати, що з подушками, скільки закласти на ремонт, яку ставку не перевищувати.';
+  function renderHistory() {
+    msgsEl.innerHTML = '';
+    if (!history.length) {
+      addMsg('ai', GREETING);
+      suggEl.style.display = 'flex';
+    } else {
+      history.forEach(m => addMsg(m.role === 'user' ? 'user' : 'ai', m.content));
+      suggEl.style.display = 'none';
+    }
+  }
+
+  function openChat() {
+    renderHistory();
+    panel.classList.add('open');
+    overlay.classList.add('open');
+    fab.style.display = 'none';
+    if (window.innerWidth > 560) ta.focus();
+  }
+  function closeChat() {
+    panel.classList.remove('open');
+    overlay.classList.remove('open');
+    fab.style.display = '';
+  }
+  fab.addEventListener('click', openChat);
+  document.getElementById('chatClose').addEventListener('click', closeChat);
+  overlay.addEventListener('click', closeChat);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && panel.classList.contains('open')) closeChat(); });
+
+  suggEl.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    ta.value = b.textContent;
+    ask();
+  });
+
+  /* контекст: усе, що бачить користувач на сторінці, у компактному вигляді */
+  function chatContext() {
+    const on = list => list.filter(r => r.on).map(r => ({
+      name: r.name, price: r.price, cat: r.cat || undefined, conf: r.conf || undefined,
+    }));
+    const meta = Object.assign({}, DATA._meta || {});
+    delete meta.photos;
+    const log = {};
+    ['bid','auctionFees','usDelivery','freight','port','duty','excise','vat','broker','uaFinal']
+      .forEach(id => { log[id] = val(id); });
+    log.usState = document.getElementById('usState').value || null;
+    const repair = sumRows(partRows) + sumRows(workRows) + sumRows(maintRows);
+    const logistics = Object.keys(log).reduce((t, k) => t + (typeof log[k] === 'number' ? log[k] : 0), 0);
+    return {
+      vehicle: DATA.vehicle || null,
+      meta,
+      flags: DATA.flags || [],
+      zones: DATA.zones || [],
+      damage_note: DATA.damage_note || null,
+      lot_notes: DATA.lot_notes || null,
+      risk_score: (DATA.parts || []).length ? computeRisk().score : null,
+      parts: on(partRows),
+      works: on(workRows),
+      maintenance: on(maintRows),
+      excluded_by_user: [...partRows, ...workRows, ...maintRows].filter(r => !r.on).map(r => r.name),
+      logistics: log,
+      totals: { repair, logistics, under_key_ua: repair + logistics },
+    };
+  }
+
+  /* фото: прямі https-посилання аукціону; для ручного завантаження — стиснуті data:, менше */
+  function photosForChat() {
+    const urls = (DATA._meta?.photos || []).filter(u => typeof u === 'string' && /^https:/.test(u)).slice(0, 6);
+    if (urls.length) return urls;
+    try {
+      return (JSON.parse(sessionStorage.getItem('calcarPhotos') || '[]'))
+        .filter(u => typeof u === 'string' && /^data:image\//.test(u)).slice(0, 3);
+    } catch (e) { return []; }
+  }
+
+  let busy = false;
+  async function ask() {
+    const q = ta.value.trim();
+    if (!q || busy) return;
+    busy = true;
+    sendBtn.disabled = true;
+    suggEl.style.display = 'none';
+    ta.value = '';
+    ta.style.height = '';
+    history.push({ role: 'user', content: q });
+    addMsg('user', q);
+    persist();
+    const typing = addTyping();
+    try {
+      const r = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          messages: history.slice(-12),
+          context: chatContext(),
+          photos: photosForChat(),
+        }),
+      });
+      let d;
+      try { d = await r.json(); }
+      catch (e) { throw new Error(r.status === 504 ? 'Відповідь не встигла за відведений час' : 'Сервер повернув несподівану відповідь'); }
+      typing.remove();
+      if (!r.ok || d.error || !d.reply) throw new Error(d.error || 'Не вдалося отримати відповідь');
+      history.push({ role: 'assistant', content: d.reply });
+      addMsg('ai', d.reply);
+      persist();
+    } catch (e) {
+      typing.remove();
+      addMsg('ai', 'Не вийшло: ' + (e.message || 'помилка') + '. Спробуй ще раз');
+      /* питання лишаємо в історії, щоб повторний Enter його не загубив */
+    } finally {
+      busy = false;
+      sendBtn.disabled = false;
+      if (window.innerWidth > 560) ta.focus();
+    }
+  }
+  sendBtn.addEventListener('click', ask);
+  ta.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(); }
+  });
+  ta.addEventListener('input', () => {
+    ta.style.height = 'auto';
+    ta.style.height = Math.min(120, ta.scrollHeight) + 'px';
+  });
+})();
 </script>
 </body>
 </html>

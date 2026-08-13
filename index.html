@@ -423,22 +423,30 @@ btn.addEventListener('click', async () => {
     if (el) el.textContent = MSGS[msgI];
   }, 7000);
 
-  /* пошук уже готового звіту за цим самим лотом */
+  /* пошук уже готового звіту за цим самим лотом.
+     Головний ключ — НОМЕР ЛОТА, витягнутий із посилання: збережений у звіті
+     lot_url приходить від актора (item_url з довгим slug) і майже ніколи
+     не збігається буквально з тим, що вставив користувач. */
   async function findExistingReport(q) {
     try {
       const { data: s } = await window.SB.auth.getSession();
       if (!s?.session) return null;
       const cleaned = q.replace(/\s/g, '').split('?')[0];
-      let { data: rows } = await window.SB.from('reports')
-        .select('id').eq('data->_meta->>lot_url', cleaned).limit(1);
-      if (rows && rows.length) return rows[0];
+      const m = /copart\.com\/lot\/(\d+)/i.exec(cleaned)
+        || /vehicledetail\/(\d+)/i.exec(cleaned);
       const digits = cleaned.replace(/\D/g, '');
-      if (digits.length >= 7 && digits.length <= 9) {
-        ({ data: rows } = await window.SB.from('reports')
-          .select('id').eq('data->_meta->>lot_number', digits).limit(1));
+      const lotNum = m ? m[1]
+        : ((digits.length >= 7 && digits.length <= 9 && !/^https?:/i.test(cleaned)) ? digits : null);
+      if (lotNum) {
+        const { data: rows } = await window.SB.from('reports')
+          .select('id').eq('data->_meta->>lot_number', lotNum)
+          .order('created_at', { ascending: false }).limit(1);
         if (rows && rows.length) return rows[0];
       }
-      return null;
+      const { data: rows2 } = await window.SB.from('reports')
+        .select('id').eq('data->_meta->>lot_url', cleaned)
+        .order('created_at', { ascending: false }).limit(1);
+      return (rows2 && rows2.length) ? rows2[0] : null;
     } catch (e) { return null; }
   }
 

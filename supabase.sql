@@ -15,6 +15,10 @@ create policy "own reports select" on public.reports
 create policy "own reports insert" on public.reports
   for insert with check (auth.uid() = user_id);
 
+create policy "own reports update" on public.reports
+  for update using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
 create policy "own reports delete" on public.reports
   for delete using (auth.uid() = user_id);
 
