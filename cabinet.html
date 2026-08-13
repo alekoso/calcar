@@ -5,17 +5,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Кабінет — CalCar</title>
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@800&display=swap&text=CalCar" rel="stylesheet">
 <style>
-  :root{--navy:#17334f;--blue:#2557a7;--orange:#ff6d24;--red:#c0392b;--bg:#f4f5f7;--card:#fff;--line:#e6e8ec;--text:#1b2532;--muted:#6b7684}
+  :root{--brand:#B8F23D;--brand-hover:#A7DF31;--brand-active:#96CC27;--brand-soft:#F0FBD9;--brand-ink:#3F5D11;--ink:#141619;--ink-2:#30343A;--graphite:#141619;--text:#141619;--muted:#697079;--faint:#90969D;--bg:#F7F8F6;--card:#FFFFFF;--surface-2:#F1F3F0;--line:#E2E5E0;--line-strong:#CDD2CB;--green:#218A4A;--amber:#C8790A;--red:#D83A3A;--red-soft:#FDEEEE}
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);font-size:15px;line-height:1.5}
-  header{background:var(--navy);color:#fff}
+  header{background:rgba(255,255,255,.88);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line);color:var(--text);position:sticky;top:0;z-index:50}
   .header-in{max-width:960px;margin:0 auto;padding:0 20px;height:56px;display:flex;align-items:center;gap:12px}
-  .logo{display:flex;align-items:center;gap:9px;font-weight:800;font-size:20px;color:#fff;text-decoration:none}
-  .logo img{width:28px;height:28px;border-radius:7px}
+  .logo{display:inline-flex;align-items:stretch;border-radius:.46em;overflow:hidden;font-weight:800;font-size:15px;letter-spacing:.01em;line-height:1;text-decoration:none;font-family:'Sora',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+  .logo .l{background:var(--brand);color:var(--ink);padding:.62em 1.05em .62em .72em;clip-path:polygon(0 0,100% 0,calc(100% - .58em) 100%,0 100%)}
+  .logo .r{background:var(--graphite);color:#fff;padding:.62em .72em .62em .98em;margin-left:-.38em;clip-path:polygon(.58em 0,100% 0,100% 100%,0 100%)}
   .header-right{margin-left:auto}
-  .btn-out{display:none;align-items:center;gap:8px;border:1px solid rgba(255,255,255,.35);border-radius:20px;padding:7px 14px;color:#fff;font-weight:600;font-size:13px;background:none;cursor:pointer}
-  .btn-out:hover{background:rgba(255,255,255,.12)}
+  .btn-out{display:none;align-items:center;gap:8px;border:1px solid var(--line-strong);border-radius:20px;padding:7px 14px;color:var(--ink);font-weight:600;font-size:13px;background:var(--card);cursor:pointer}
+  .btn-out:hover{background:var(--surface-2)}
   .wrap{max-width:960px;margin:0 auto;padding:28px 20px 60px}
   h1{font-size:24px;font-weight:800;letter-spacing:-.3px;margin-bottom:18px}
   .card{background:var(--card);border:1px solid var(--line);border-radius:16px}
@@ -23,7 +27,7 @@
 
   /* ---------- auth ---------- */
   .auth-wrap{max-width:420px;margin:56px auto 0;text-align:center}
-  .auth-logo{width:52px;height:52px;border-radius:14px;margin-bottom:18px}
+  .auth-logo{display:inline-flex;font-size:22px;margin-bottom:18px}
   .auth-wrap h1{margin-bottom:6px}
   .auth-sub{color:var(--muted);font-size:14px;margin-bottom:24px}
   .auth-card{padding:28px;text-align:left}
@@ -32,47 +36,47 @@
   .or{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:12.5px;margin:18px 0}
   .or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
   input[type=email]{height:50px;border:1px solid var(--line);border-radius:10px;padding:0 14px;font-size:15px;width:100%}
-  input[type=email]:focus{outline:2px solid var(--blue);outline-offset:-1px}
-  .btn{width:100%;margin-top:10px;background:var(--orange);color:#fff;border:none;border-radius:10px;height:50px;font-size:15px;font-weight:700;cursor:pointer}
-  .btn:hover{background:#e85f1a}
+  input[type=email]:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(184,242,61,.18)}
+  .btn{width:100%;margin-top:10px;background:var(--brand);color:var(--ink);border:1px solid rgba(20,22,25,.08);border-radius:10px;height:50px;font-size:15px;font-weight:800;cursor:pointer}
+  .btn:hover{background:var(--brand-hover)}
   .btn:disabled{opacity:.6;cursor:default}
   .status{margin-top:12px;font-size:13.5px;text-align:center}
-  .status.ok{color:#149a3f}.status.err{color:var(--red)}
+  .status.ok{color:var(--green)}.status.err{color:var(--red)}
   .auth-legal{margin-top:16px;font-size:12px;color:var(--muted);text-align:center}
 
   /* ---------- reports ---------- */
   #reports{padding:6px 0}
   .report{display:flex;align-items:center;gap:14px;padding:16px 22px;cursor:pointer;position:relative;border-bottom:1px solid var(--line);transition:background .12s}
   .report:last-child{border-bottom:none}
-  .report:hover{background:#f8fafc}
+  .report:hover{background:#F6F8F3}
   .report .t{font-weight:700}
   .report .d{font-size:12.5px;color:var(--muted)}
-  .report .go{margin-left:auto;color:#b9c2cd;font-size:18px}
-  .kebab{background:none;border:none;color:#8a94a3;font-size:19px;cursor:pointer;padding:6px 8px;border-radius:8px;line-height:1}
-  .kebab:hover{background:#eef1f5;color:var(--text)}
+  .report .go{margin-left:auto;color:var(--faint);font-size:18px}
+  .kebab{background:none;border:none;color:var(--faint);font-size:19px;cursor:pointer;padding:6px 8px;border-radius:8px;line-height:1}
+  .kebab:hover{background:var(--surface-2);color:var(--text)}
   .menu{position:absolute;right:16px;top:calc(100% - 10px);background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(15,25,40,.12);z-index:5;display:none;min-width:150px;overflow:hidden}
   .menu.open{display:block}
   .menu button{display:block;width:100%;text-align:left;background:none;border:none;padding:11px 14px;font-size:14px;cursor:pointer;color:var(--red)}
-  .menu button:hover{background:#fdf1ef}
+  .menu button:hover{background:var(--red-soft)}
   .empty{color:var(--muted);padding:18px 22px}
 
   /* ---------- пошук ---------- */
   .search-wrap{position:relative;margin-bottom:14px;display:none}
-  .search-wrap svg{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:#8a94a3;pointer-events:none}
+  .search-wrap svg{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--faint);pointer-events:none}
   .search-wrap input{
     width:100%;height:48px;border:1px solid var(--line);border-radius:12px;background:var(--card);
     padding:0 40px 0 42px;font-size:15px;color:var(--text);font-family:inherit;
   }
-  .search-wrap input:focus{outline:2px solid var(--blue);outline-offset:-1px}
-  .search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:28px;height:28px;border:none;border-radius:50%;background:none;color:#8a94a3;font-size:15px;cursor:pointer;display:none}
-  .search-clear:hover{background:#eef1f5;color:var(--text)}
-  .report .vin-sub{font-size:12px;color:#8a94a3;letter-spacing:.4px}
+  .search-wrap input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(184,242,61,.18)}
+  .search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:28px;height:28px;border:none;border-radius:50%;background:none;color:var(--faint);font-size:15px;cursor:pointer;display:none}
+  .search-clear:hover{background:var(--surface-2);color:var(--text)}
+  .report .vin-sub{font-size:12px;color:var(--faint);letter-spacing:.4px}
 </style>
 </head>
 <body>
 <header>
   <div class="header-in">
-    <a class="logo" href="/"><img src="/favicon-32.png" alt=""> CalCar</a>
+    <a class="logo" href="/"><span class="l">Cal</span><span class="r">Car</span></a>
     <div class="header-right">
       <button class="btn-out" id="signOut">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -91,7 +95,7 @@
 
   <!-- auth -->
   <div class="auth-wrap" id="authBox" style="display:none">
-    <img class="auth-logo" src="/favicon-32.png" alt="CalCar">
+    <span class="logo auth-logo" aria-label="CalCar"><span class="l">Cal</span><span class="r">Car</span></span>
     <h1>Вхід у CalCar</h1>
     <div class="auth-sub">Твої прорахунки збережуться в кабінеті, до них можна буде повернутися будь-коли</div>
     <div class="card auth-card">

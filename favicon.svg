@@ -1,29 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#17334f"/>
-  <!-- car body -->
-  <path d="M10 38 
-           C10 34 12 32 15 31.5
-           L20 30.5
-           C23 26.5 27 24 32.5 24
-           C38 24 42 26.5 45 30.5
-           L50 31.5
-           C53 32 54 34 54 37
-           L54 40
-           C54 41.7 52.7 43 51 43
-           L48.5 43
-           C47.8 46.4 44.8 49 41.2 49
-           C37.6 49 34.6 46.4 33.9 43
-           L29.1 43
-           C28.4 46.4 25.4 49 21.8 49
-           C18.2 49 15.2 46.4 14.5 43
-           L13 43
-           C11.3 43 10 41.7 10 40
-           Z" fill="#ff6d24"/>
-  <!-- windshield notch -->
-  <path d="M23.5 30.2 C26 27.2 29 25.8 32.5 25.8 C36 25.8 39 27.2 41.5 30.2 L38.5 30.9 C36.5 29 34.6 28.2 32.5 28.2 C30.4 28.2 28.5 29 26.5 30.9 Z" fill="#17334f"/>
-  <!-- wheels -->
-  <circle cx="21.8" cy="42.6" r="4.6" fill="#17334f"/>
-  <circle cx="21.8" cy="42.6" r="2" fill="#ffffff"/>
-  <circle cx="41.2" cy="42.6" r="4.6" fill="#17334f"/>
-  <circle cx="41.2" cy="42.6" r="2" fill="#ffffff"/>
+  <defs><clipPath id="rr"><rect width="64" height="64" rx="13"/></clipPath></defs>
+  <g clip-path="url(#rr)">
+    <rect width="64" height="64" fill="#F7F8F6"/>
+    <!-- divider зсунуто на 1.3px вліво (10.4px у 512): відстань C-до-розрізу тепер 7.4px з обох боків -->
+    <polygon points="0,0 32.6,0 26.8,64 0,64" fill="#B8F23D"/>
+    <polygon points="34.6,0 64,0 64,64 28.8,64" fill="#141619"/>
+    <path d="M19.85 26.56 A6.9 6.9 0 1 0 19.85 37.44" fill="none" stroke="#141619" stroke-width="4.9" stroke-linecap="round"/>
+    <path d="M52.65 26.56 A6.9 6.9 0 1 0 52.65 37.44" fill="none" stroke="#ffffff" stroke-width="4.9" stroke-linecap="round"/>
+  </g>
 </svg>
