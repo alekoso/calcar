@@ -1,11 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- розріз 7°: не чіпати. C зсунуті на +1.25px (10px у 512), бо гліф C відкритий
+       праворуч і його bbox важчий вліво: тепер bbox-пара відцентрована відносно розрізу,
+       зовнішні поля рівні (~67px у 512 з обох боків) -->
   <defs><clipPath id="rr"><rect width="64" height="64" rx="13"/></clipPath></defs>
   <g clip-path="url(#rr)">
     <rect width="64" height="64" fill="#F7F8F6"/>
-    <!-- divider зсунуто на 1.3px вліво (10.4px у 512): відстань C-до-розрізу тепер 7.4px з обох боків -->
-    <polygon points="0,0 32.6,0 26.8,64 0,64" fill="#B8F23D"/>
-    <polygon points="34.6,0 64,0 64,64 28.8,64" fill="#141619"/>
-    <path d="M19.85 26.56 A6.9 6.9 0 1 0 19.85 37.44" fill="none" stroke="#141619" stroke-width="4.9" stroke-linecap="round"/>
-    <path d="M52.65 26.56 A6.9 6.9 0 1 0 52.65 37.44" fill="none" stroke="#ffffff" stroke-width="4.9" stroke-linecap="round"/>
+    <polygon points="0,0 35.2,0 27.3,64 0,64" fill="#B8F23D"/>
+    <polygon points="36.7,0 64,0 64,64 28.8,64" fill="#141619"/>
+    <path d="M21.31 26.80 A6.6 6.6 0 1 0 21.31 37.20" fill="none" stroke="#141619" stroke-width="4.7" stroke-linecap="round"/>
+    <path d="M53.31 26.80 A6.6 6.6 0 1 0 53.31 37.20" fill="none" stroke="#ffffff" stroke-width="4.7" stroke-linecap="round"/>
   </g>
 </svg>
