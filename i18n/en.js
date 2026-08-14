@@ -161,7 +161,6 @@ window.CALCAR_DICT = {
     'впиши вручну': 'enter manually',
     'гібрид: фіксований €100': 'hybrid: fixed €100',
     'електро: €1 за кВт·год, впиши точно': 'EV: €1 per kWh, enter the exact value',
-    'Підставлено поточний бід аукціону, зміни на свою ставку': 'Current auction bid prefilled, change it to your own',
     'Штат невідомий, підставлено типовий. Обери свій, доставка оновиться': 'State unknown, a typical one is set. Pick yours and delivery updates',
     'Резерв на приховані пошкодження': 'Hidden damage reserve',
     'Запас під те, що відкриється після розбирання': 'Reserve for what teardown will reveal',
@@ -194,4 +193,6 @@ window.CALCAR_DICT = {
   'Ціна лота не вказана. Впиши очікувану ставку, підсумок перерахується': 'No lot price yet. Enter your expected bid and the total recalculates',
   'без ціни лота: ставку не вказано': 'excludes lot price: no bid entered',
   'Ціна лота не вказана, підсумок порахований без вартості лота': 'Lot price not set; the total excludes the lot itself',
+  'Поточний бід на аукціоні: ': 'Current auction bid: ',
+  'Впиши свою очікувану ставку, підсумок перерахується': 'Enter your expected bid and the total recalculates',
 };
