@@ -18,10 +18,10 @@
     'beta · ціни в прорахунках орієнтовні': 'beta · цены в расчетах ориентировочные',
     /* ---- index ---- */
     'CalCar: скільки коштує пригнати авто зі США': 'CalCar: сколько стоит пригнать авто из США',
-    'Скільки коштує пригнати': 'Сколько стоит пригнать',
-    'це авто зі США?': 'это авто из США?',
-    'Дізнайся за хвилину': 'Узнай за минуту',
-    'Встав посилання на лот Copart чи IAAI, і AI сам підтягне дані та фото, розбере пошкодження, порахує ремонт, розмитнення та повну ціну під ключ в Україні.': 'Вставь ссылку на лот Copart или IAAI, и AI сам подтянет данные и фото, разберет повреждения, посчитает ремонт, растаможку и полную цену под ключ в Украине.',
+    'Дізнайся реальну вартість': 'Узнай реальную стоимость',
+    'битого авто зі США': 'битого авто из США',
+    'до покупки': 'до покупки',
+    'Встав посилання на лот Copart або IAAI, і CalCar проаналізує пошкодження, комплектацію, ремонт, доставку, розмитнення та покаже повну ціну авто під ключ в Україні.': 'Вставь ссылку на лот Copart или IAAI, и CalCar проанализирует повреждения, комплектацию, ремонт, доставку, растаможку и покажет полную цену авто под ключ в Украине.',
     'Встав посилання на лот': 'Вставь ссылку на лот',
     'Посилання на лот Copart або IAAI': 'Ссылка на лот Copart или IAAI',
     'Прорахувати': 'Рассчитать', 'Прорахувати лот': 'Рассчитать лот',
@@ -30,7 +30,7 @@
     '3–12 фото: кузов з усіх боків, зона удару, салон, кермо, стеля': '3–12 фото: кузов со всех сторон, зона удара, салон, руль, потолок',
     'VIN, 17 символів': 'VIN, 17 символов',
     'Штат складу': 'Штат склада',
-    'Перший прорахунок безкоштовний': 'Первый расчет бесплатный',
+    '3 перші прорахунки безкоштовно': '3 первых расчета бесплатно',
     'Без картки': 'Без карты',
     'Результат за ~60 секунд': 'Результат за ~60 секунд',
     'Як це працює': 'Как это работает',
@@ -208,10 +208,10 @@
     'Мої прорахунки': 'My estimates', 'Прорахунок': 'Estimate',
     'beta · ціни в прорахунках орієнтовні': 'beta · estimate prices are approximate',
     'CalCar: скільки коштує пригнати авто зі США': 'CalCar: what it costs to import a car from the US',
-    'Скільки коштує пригнати': 'What it costs to import',
-    'це авто зі США?': 'this car from the US?',
-    'Дізнайся за хвилину': 'Find out in a minute',
-    'Встав посилання на лот Copart чи IAAI, і AI сам підтягне дані та фото, розбере пошкодження, порахує ремонт, розмитнення та повну ціну під ключ в Україні.': 'Paste a Copart or IAAI lot link and AI will pull the data and photos, assess the damage, and calculate repairs, customs, and the full landed cost in Ukraine.',
+    'Дізнайся реальну вартість': 'Know the real cost of a',
+    'битого авто зі США': 'salvage car from the US',
+    'до покупки': 'before you buy',
+    'Встав посилання на лот Copart або IAAI, і CalCar проаналізує пошкодження, комплектацію, ремонт, доставку, розмитнення та покаже повну ціну авто під ключ в Україні.': 'Paste a Copart or IAAI lot link and CalCar will analyze the damage, equipment, repairs, shipping, and customs, and show the full landed cost in Ukraine.',
     'Встав посилання на лот': 'Paste a lot link',
     'Посилання на лот Copart або IAAI': 'Copart or IAAI lot link',
     'Прорахувати': 'Calculate', 'Прорахувати лот': 'Calculate lot',
@@ -220,7 +220,7 @@
     '3–12 фото: кузов з усіх боків, зона удару, салон, кермо, стеля': '3–12 photos: body from all sides, impact area, interior, steering wheel, headliner',
     'VIN, 17 символів': 'VIN, 17 characters',
     'Штат складу': 'Warehouse state',
-    'Перший прорахунок безкоштовний': 'First estimate is free',
+    '3 перші прорахунки безкоштовно': 'First 3 estimates are free',
     'Без картки': 'No card required',
     'Результат за ~60 секунд': 'Result in ~60 seconds',
     'Як це працює': 'How it works',
@@ -402,22 +402,33 @@
     return d[norm(s)] || s;
   };
 
+  /* делегування на document: працює незалежно від того, коли зʼявився хедер
+     і чи встиг markSwitch відпрацювати */
+  document.addEventListener('click', function (e) {
+    var menu = document.getElementById('langMenu');
+    if (!menu) return;
+    var pick = e.target.closest ? e.target.closest('.lang-menu button') : null;
+    if (pick && pick.dataset.lang) {
+      e.preventDefault();
+      try { localStorage.setItem(LS, pick.dataset.lang); } catch (err) {}
+      location.reload();
+      return;
+    }
+    var btn = e.target.closest ? e.target.closest('#langBtn') : null;
+    if (btn) { e.preventDefault(); menu.classList.toggle('open'); return; }
+    menu.classList.remove('open');
+  });
+
   function markSwitch() {
     var l = lang();
     var btn = document.getElementById('langBtn');
     var menu = document.getElementById('langMenu');
     if (!btn || !menu) return;
-    btn.childNodes[0].nodeValue = { ua: 'UA', ru: 'RU', en: 'EN' }[l] + ' ';
+    var code = { ua: 'UA', ru: 'RU', en: 'EN' }[l] + ' ';
+    if (btn.firstChild && btn.firstChild.nodeType === 3) btn.firstChild.nodeValue = code;
     menu.querySelectorAll('button').forEach(function (b) {
       b.classList.toggle('on', b.dataset.lang === l);
-      b.onclick = function (e) {
-        e.stopPropagation();
-        try { localStorage.setItem(LS, b.dataset.lang); } catch (err) {}
-        location.reload();
-      };
     });
-    btn.onclick = function (e) { e.stopPropagation(); menu.classList.toggle('open'); };
-    document.addEventListener('click', function () { menu.classList.remove('open'); });
   }
 
   function apply() {
