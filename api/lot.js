@@ -1,7 +1,42 @@
 export const config = { maxDuration: 300 };
 
-const COPART_ACTOR = 'parseforge~copart-public-search-scraper';
-const IAAI_ACTOR = process.env.IAAI_ACTOR || 'easyapi~iaai-vehicle-detail-scraper';
+/* Ланцюг акторів: пробуємо по черзі, поки хтось не поверне лот із фото.
+   Один зламаний актор більше не кладе весь продукт. Порядок = пріоритет:
+   parseforge дає build sheet (комплектація), решта це резерв.
+   Перевизначається змінними середовища COPART_ACTORS / IAAI_ACTORS через кому. */
+const list = (env, def) => String(process.env[env] || '').split(',').map(s => s.trim()).filter(Boolean).concat(def)
+  .filter((v, i, a) => a.indexOf(v) === i);
+
+/* Порядок: перевірені за документацією актори, які приймають ПОСИЛАННЯ НА ЛОТ
+   і тарифікуються за результат (не потребують місячної оренди).
+   Актори з rental-підпискою сюди не додаються: вони віддадуть 403,
+   поки підписку не оформлено вручну в консолі Apify. */
+/* ПРИНЦИП ВИБОРУ ДЖЕРЕЛА:
+   1) Дефолтні актори (найбільше користувачів, найбагатші дані) стоять першими:
+      Copart = parseforge (єдиний віддає build sheet), IAAI = easyapi.
+   2) Якщо дефолтний не відповів (помилка, пусто, чужий лот, без фото),
+      сервіс мовчки бере наступний за списком, і так до кінця ланцюга.
+   3) Актор, що впав з помилкою, пропускається наступну годину (кеш DOWN),
+      щоб кожен користувач не чекав на мертве джерело. 402/403 = 6 годин.
+   4) Успіх = лот із фотографіями САМЕ нашого номера лота, інакше далі.
+   Порядок можна змінити без деплою: змінні COPART_ACTORS / IAAI_ACTORS на Vercel. */
+const COPART_ACTORS = list('COPART_ACTORS', [
+  'parseforge~copart-public-search-scraper',       /* ДЕФОЛТ: build sheet, 446 користувачів */
+  'shahidirfan~copart-vehicle-auction-scraper',    /* резерв 1: пряме посилання на лот + галерея */
+  'memo23~copart-scraper',                         /* резерв 2: 8 країн, повні фото, найдешевший */
+  'prodiger~copart-public-search-scraper',         /* резерв 3: клон parseforge, pay-per-event */
+]);
+const IAAI_ACTORS = list('IAAI_ACTORS', [
+  process.env.IAAI_ACTOR || 'easyapi~iaai-vehicle-detail-scraper',  /* ДЕФОЛТ: detailUrls, перевірено */
+  'shahidirfan~IAAI-Vehicles-Scraper',             /* резерв: пошуковий URL або keyword */
+]);
+
+/* Актор, який щойно впав, не пробуємо повторно 10 хвилин: інакше кожен
+   користувач чекає на той самий таймаут. Живе в пам'яті інстансу. */
+const DOWN = new Map();
+const DOWN_TTL = 60 * 60 * 1000;   /* година: мертвий актор не має гальмувати кожні 10 хвилин */
+const isDown = a => { const e = DOWN.get(a); if (!e) return false; if (Date.now() - e.at > e.ttl) { DOWN.delete(a); return false; } return true; };
+const markDown = (a, ttl) => DOWN.set(a, { at: Date.now(), ttl: ttl || DOWN_TTL });
 
 /* ---- пріоритет фото за міткою Copart ---- */
 const LABEL_PRIORITY = {
@@ -197,9 +232,9 @@ function normalizeGeneric(item, source) {
   const { images, flat } = deepCollect(item);
   const num = v => { const n = parseFloat(String(v).replace(/[^\d.]/g, '')); return isNaN(n) ? null : n; };
 
-  const year = num(pick(flat, ['year', 'modelYear', 'vehicleYear']));
-  const make = pick(flat, ['make', 'manufacturer', 'brand', 'vehicleMake']);
-  const model = pick(flat, ['model', 'modelName', 'vehicleModel', 'series']);
+  const year = num(pick(flat, ['year', 'modelYear', 'vehicleYear', 'lotYear']));
+  const make = pick(flat, ['make', 'manufacturer', 'brand', 'vehicleMake', 'lotMakeDesc']);
+  const model = pick(flat, ['model', 'modelName', 'vehicleModel', 'series', 'lotModelDesc']);
   const trim = pick(flat, ['trim', 'trimLevel', 'styleName', 'series', 'seriesDetail']);
   const fuelRaw = String(pick(flat, ['fuelType', 'fuel', 'engineFuel', 'fuelTypePrimary']) || '').toLowerCase();
   const fuel = /electric|^ev$/.test(fuelRaw) ? 'electric'
@@ -216,11 +251,11 @@ function normalizeGeneric(item, source) {
     lot_number: String(pick(flat, ['lotNumber', 'stockNumber', 'itemNumber', 'lotId', 'stock']) || ''),
     lot_url: pick(flat, ['itemUrl', 'url', 'lotUrl', 'link', 'vehicleUrl']),
     vin: (() => {
-      const raw = String(pick(flat, ['vin', 'vinNumber', 'vinStatus']) || '');
+      const raw = String(pick(flat, ['vin', 'vinNumber', 'vinStatus', 'fullVin', 'maskedVIN']) || '');
       const m = /[A-HJ-NPR-Z0-9*]{11,17}/i.exec(raw.replace(/\s/g, ''));
       return m ? m[0].toUpperCase() : null;
     })(),
-    vin_masked: /\*/.test(String(pick(flat, ['vin', 'vinNumber', 'vinStatus']) || '')),
+    vin_masked: /\*/.test(String(pick(flat, ['vin', 'vinNumber', 'vinStatus', 'fullVin', 'maskedVIN']) || '')),
     year, make, model, trim,
     title: [year, make, model, trim].filter(Boolean).join(' ') || 'Авто',
     fuel,
@@ -234,7 +269,7 @@ function normalizeGeneric(item, source) {
     odometer_mi: num(pick(flat, ['odometer', 'odometerReading', 'mileage', 'miles'])),
     odometer_status: pick(flat, ['odometerStatus', 'odometerBrand']),
     primary_damage: pick(flat, ['primaryDamage', 'damage', 'lossType', 'primaryDamageType']),
-    secondary_damage: pick(flat, ['secondaryDamage', 'secondaryDamageType']),
+    secondary_damage: pick(flat, ['secondaryDamage', 'secondaryDamageType', 'secDamage']),
     title_code: pick(flat, ['titleCode', 'titleSaleDoc', 'documentType', 'titleType', 'titleDescription', 'saleDocument', 'saleDoc']),
     title_group: pick(flat, ['titleGroup', 'titleGroupDescription', 'saleDocType']),
     title_state: pick(flat, ['titleState', 'documentState']),
@@ -265,7 +300,7 @@ function normalizeGeneric(item, source) {
     sale_location: pick(flat, ['saleLocation', 'branch', 'location', 'branchName']),
     current_bid: num(pick(flat, ['currentBid', 'highBid', 'bidAmount'])),
     buy_it_now: num(pick(flat, ['buyItNowPrice', 'buyNowPrice'])),
-    est_retail_value: num(pick(flat, ['estimatedRetailValue', 'acv', 'actualCashValue', 'retailValue'])),
+    est_retail_value: num(pick(flat, ['estimatedRetailValue', 'estRetailValue', 'acv', 'actualCashValue', 'retailValue'])),
     acv: num(pick(flat, ['acv', 'actualCashValue'])),
     images: imgs.slice(0, 14).map((url, i) => ({
       url,
@@ -303,6 +338,8 @@ async function buildInputFromExample(actor, url, token) {
    поля читаємо з помилки Apify. ---- */
 async function runActor(actor, inputs, token, url, toLot) {
   const attempts = [];
+  /* останній резерв для цього актора: схема входу з його ж прикладу */
+  let exampleTried = false;
   let bestNoPhoto = null;
   let paidRuns = 0;
   const MAX_PAID_RUNS = 2;
@@ -323,6 +360,11 @@ async function runActor(actor, inputs, token, url, toLot) {
       if (!r.ok) {
         const body = (await r.text()).slice(0, 300);
         attempts.push(label(input) + ': HTTP ' + r.status);
+        if (!exampleTried) {
+          exampleTried = true;
+          const ex = await buildInputFromExample(actor, url, token);
+          if (ex) inputs.push(ex);
+        }
         const m = /input\.(\w+)(?:\s+is required|.*?must)/i.exec(body);
         if (m && url && !triedFields.has(m[1])) {
           triedFields.add(m[1]);
@@ -369,7 +411,6 @@ export default async function handler(req, res) {
     else if (digits.length >= 7 && digits.length <= 9) url = 'https://www.copart.com/lot/' + digits;
     else return res.status(400).json({ error: 'Встав посилання на лот Copart чи IAAI' });
 
-    const actor = isIaai ? IAAI_ACTOR : COPART_ACTOR;
     /* Точні поля входу, підтверджені реальними запусками:
        - IAAI (easyapi): робоче поле detailUrls (масив рядків), startUrls актор ігнорує
          і скрапить свій демо-лот із дефолтів схеми. Канонічний формат посилання має суфікс ~US.
@@ -380,30 +421,96 @@ export default async function handler(req, res) {
     if (isIaai) {
       iaaiUrl = url.replace(/\/VehicleDetail\/(\d+)(?![\d~])/i, '/VehicleDetail/$1~US');
     }
-    const inputs = isIaai
-      ? [{ detailUrls: [iaaiUrl], maxItems: 1 }]
-      : [{ startUrl: url, maxItems: 1 }, { searchUrl: url, maxItems: 1 }];
+    const lotNo = (/\/lot\/(\d+)/i.exec(url) || /(?:^|[^\d])(\d{8})(?!\d)/.exec(url) || [])[1] || null;
 
-    /* останній резерв, не перед перевіреним полем */
-    const fromExample = await buildInputFromExample(actor, isIaai ? iaaiUrl : url, process.env.APIFY_TOKEN);
-    if (fromExample) inputs.push(fromExample);
+    /* Кожен актор має свою схему входу. Ключ це ім'я актора, значення це
+       список варіантів у порядку ймовірності. Невідомий актор отримує
+       узагальнений набір полів. */
+    const stockNo = isIaai ? ((/VehicleDetail\/(\d+)/i.exec(url) || [])[1] || null) : null;
+    /* ТАБЛИЦЯ СХЕМ ВХОДУ: у кожного актора свій формат, перевірений за його документацією.
+       Невідомий актор отримує загальні варіанти + схему з його ж прикладу (в runActor). */
+    const inputsFor = (actor, u) => {
+      if (isIaai) {
+        /* easyapi: пряме посилання на картку лота в detailUrls (перевірено реальними запусками) */
+        if (/easyapi/.test(actor)) return [{ detailUrls: [u], maxItems: 1 }];
+        /* shahidirfan IAAI: працює від пошукового URL або keyword, картку лота не приймає */
+        if (/shahidirfan/i.test(actor)) return [
+          stockNo ? { startUrls: [{ url: 'https://www.iaai.com/Search?Keyword=' + stockNo }], results_wanted: 1, max_pages: 1 } : null,
+          stockNo ? { keyword: stockNo, results_wanted: 1, max_pages: 1 } : null,
+        ].filter(Boolean);
+        return [{ detailUrls: [u], maxItems: 1 }, { startUrls: [{ url: u }], maxItems: 1 }];
+      }
+      /* parseforge: startUrl (пряме посилання на лот), searchUrl як запасний.
+         prodiger: клон parseforge (його інші актори заявлені input-сумісними з оригіналами),
+         тому та сама схема. */
+      if (/parseforge|prodiger/.test(actor)) return [
+        { startUrl: u, maxItems: 1 },
+        { searchUrl: u, maxItems: 1 },
+      ];
+      /* shahidirfan Copart: startUrls приймає і пряме посилання на лот, і пошукове.
+         include_gallery_images обов'язково true, інакше віддасть лише мініатюру. */
+      if (/shahidirfan/i.test(actor)) return [
+        { startUrls: [{ url: u }], results_wanted: 1, max_pages: 1, include_gallery_images: true },
+      ];
+      /* memo23: ВИКЛЮЧНО lotSearchResults-посилання (рядками, не об'єктами),
+         пряме посилання на лот відкидає. Шукаємо за номером лота. */
+      if (/memo23/.test(actor)) {
+        return lotNo
+          ? [{ startUrls: ['https://www.copart.com/lotSearchResults/?free=true&query=' + lotNo], maxItems: 1 }]
+          : [];
+      }
+      return [
+        { startUrls: [{ url: u }], maxItems: 1 },
+        { startUrl: u, maxItems: 1 },
+        { queries: [u], maxItems: 1 },
+      ];
+    };
 
     /* захист від підміни: якщо актор повернув інший лот (свій демо-приклад тощо),
        це відмова, а не матеріал для аналізу */
-    const reqId = isIaai ? (/VehicleDetail\/(\d+)/i.exec(url) || [])[1] : null;
+    /* Актори з пошуковим входом при невдалому запиті повертають СВІЙ дефолтний
+       результат (browse-all чи демо-лот). Тому звіряємо номер лота: якщо у відповіді
+       його немає, це чужа машина, а не наш лот. */
+    const reqId = isIaai ? (/VehicleDetail\/(\d+)/i.exec(url) || [])[1] : lotNo;
+    /* Резервні актори повертають іншу структуру, ніж parseforge, тому:
+       спершу профільний парсер, а якщо він не дав фото, узагальнений глибокий скан. */
     const toLot = item => {
       try {
         if (reqId && !JSON.stringify(item).includes(reqId)) return null;
-        return isIaai ? normalizeGeneric(item, 'iaai') : normalize(item);
+        if (isIaai) return normalizeGeneric(item, 'iaai');
+        let l = null;
+        try { l = normalize(item); } catch (e) {}
+        if (l && l.images && l.images.length) return l;
+        const g = normalizeGeneric(item, 'copart');
+        if (g && g.images && g.images.length) return g;
+        return l || g;
       } catch (e) { return null; }
     };
 
-    let lot;
-    try {
-      lot = await runActor(actor, inputs, process.env.APIFY_TOKEN, url, toLot);
-    } catch (e) {
+    const chain = (isIaai ? IAAI_ACTORS : COPART_ACTORS);
+    const targetUrl = isIaai ? iaaiUrl : url;
+    const live = chain.filter(a => !isDown(a));
+    /* якщо всі позначені як мертві, все одно пробуємо: можливо, вже полагодили */
+    const order = live.length ? live : chain;
+
+    let lot = null;
+    const failures = [];
+    for (const act of order) {
+      try {
+        lot = await runActor(act, inputsFor(act, targetUrl), process.env.APIFY_TOKEN, targetUrl, toLot);
+        if (lot) break;
+      } catch (e) {
+        const msg = String(e.message || '');
+        failures.push(act.split('~')[1] + ': ' + msg.slice(0, 80));
+        /* 402/403 = потрібна оренда або немає коштів: марно пробувати найближчим часом */
+        if (/HTTP 40[23]/.test(msg)) markDown(act, 6 * 60 * 60 * 1000);
+        else if (/HTTP (4|5)\d\d/.test(msg)) markDown(act);
+      }
+    }
+    if (!lot) {
       return res.status(404).json({
-        error: 'Фото лота не отримані (' + e.message + '). Завантаж фото вручну',
+        error: 'Фото лота не отримані, жоден із джерел не відповів. Завантаж фото вручну',
+        detail: failures.join(' | ').slice(0, 400),
       });
     }
     lot.lot_url = lot.lot_url || url;
