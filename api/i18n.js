@@ -404,13 +404,20 @@
 
   function markSwitch() {
     var l = lang();
-    document.querySelectorAll('.lang-sw button').forEach(function (b) {
+    var btn = document.getElementById('langBtn');
+    var menu = document.getElementById('langMenu');
+    if (!btn || !menu) return;
+    btn.childNodes[0].nodeValue = { ua: 'UA', ru: 'RU', en: 'EN' }[l] + ' ';
+    menu.querySelectorAll('button').forEach(function (b) {
       b.classList.toggle('on', b.dataset.lang === l);
-      b.onclick = function () {
-        try { localStorage.setItem(LS, b.dataset.lang); } catch (e) {}
+      b.onclick = function (e) {
+        e.stopPropagation();
+        try { localStorage.setItem(LS, b.dataset.lang); } catch (err) {}
         location.reload();
       };
     });
+    btn.onclick = function (e) { e.stopPropagation(); menu.classList.toggle('open'); };
+    document.addEventListener('click', function () { menu.classList.remove('open'); });
   }
 
   function apply() {

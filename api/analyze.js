@@ -1,7 +1,8 @@
 export const config = { maxDuration: 300 };
 
-const PROMPT = (vin, nhtsa, damage, lot) => `Ти — експертна система calcar, яка оцінює пошкоджені авто з американських страхових аукціонів (Copart/IAAI) для пригону в Україну.
+const PROMPT = (vin, nhtsa, damage, lot, langDirective) => `Ти — експертна система calcar, яка оцінює пошкоджені авто з американських страхових аукціонів (Copart/IAAI) для пригону в Україну.
 
+${langDirective}
 VIN від користувача: ${vin || 'не вказано'}
 Заявлений тип пошкодження з аукціону: ${damage || 'не вказано'}
 ${lot ? `
@@ -79,6 +80,9 @@ export default async function handler(req, res) {
 
   try {
     const { vin, images, damage, state, bid, lot } = req.body || {};
+    const lang = ['ua', 'ru', 'en'].includes(req.body?.lang) ? req.body.lang : 'ua';
+    const LANG_NAME = { ua: 'українською', ru: 'російською', en: 'англійською (English)' };
+    const langDirective = 'МОВА ВІДПОВІДІ: усі текстові значення (title, назви деталей і робіт, тексти прапорців, зони, нотатки, damage_note, mileage_note, equipment) пиши ' + LANG_NAME[lang] + '. Ключі JSON та enum-значення (fuel, status, cat, mode) залишай точно за схемою, латиницею.';
     const bidNum = (Number(bid) > 0 && Number(bid) < 1000000) ? Math.round(Number(bid)) : null;
     const damageStr = (typeof damage === 'string' && damage.trim()) ? damage.trim().slice(0, 60) : null;
     const stateStr = (typeof state === 'string' && /^[A-Z]{2}$/.test(state)) ? state : null;
@@ -187,16 +191,24 @@ export default async function handler(req, res) {
           mileage_note: null
         },
         lot_notes: null,
-        flags: [{ status: 'unknown', text: 'Фото не додані, стан авто, подушки та пошкодження не аналізувалися' }],
-        damage_note: 'Це прорахунок лише за VIN: комплектація, розмитнення і логістика. Щоб отримати розбір пошкоджень і кошторис ремонту, зроби новий прорахунок із фото лота.',
+        flags: [{ status: 'unknown', text: ({
+          ua: 'Фото не додані, стан авто, подушки та пошкодження не аналізувалися',
+          ru: 'Фото не добавлены, состояние авто, подушки и повреждения не анализировались',
+          en: 'No photos were added; condition, airbags, and damage were not analyzed',
+        })[lang] }],
+        damage_note: ({
+          ua: 'Це прорахунок лише за VIN: комплектація, розмитнення і логістика. Щоб отримати розбір пошкоджень і кошторис ремонту, зроби новий прорахунок із фото лота.',
+          ru: 'Это расчет только по VIN: комплектация, растаможка и логистика. Чтобы получить разбор повреждений и смету ремонта, сделай новый расчет с фото лота.',
+          en: 'This is a VIN-only estimate: equipment, customs, and logistics. To get a damage breakdown and repair estimate, run a new estimate with lot photos.',
+        })[lang],
         parts: [], works: [], maintenance: [], reserve: 0,
         mode: 'vin_only',
-        _meta: { vin, damage: damageStr, state: stateStr, bid: bidNum, analyzed_at: new Date().toISOString() }
+        _meta: { vin, damage: damageStr, state: stateStr, bid: bidNum, lang, analyzed_at: new Date().toISOString() }
       });
     }
 
     /* --- збираємо контент для vision --- */
-    const promptText = PROMPT(vin, nhtsa, damageStr || lot?.primary_damage || null, lot || null);
+    const promptText = PROMPT(vin, nhtsa, damageStr || lot?.primary_damage || null, lot || null, langDirective);
     const buildContent = sources => {
       const c = [];
       for (const img of sources.slice(0, 12)) {
@@ -294,6 +306,7 @@ export default async function handler(req, res) {
       ? parsed.vin_detected.toUpperCase() : null;
     const lotVin = lot?.vin && !lot.vin_masked ? lot.vin : null;
     parsed._meta = {
+      lang,
       vin: hasVin ? vin : (lotVin || detected || lot?.vin || null),
       vin_source: hasVin ? 'user' : (lotVin ? 'lot' : (detected ? 'photo' : (lot?.vin ? 'lot_masked' : null))),
       damage: damageStr || lot?.primary_damage || null,
