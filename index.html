@@ -645,7 +645,7 @@ btn.addEventListener('click', async () => {
           window.__forceReanalyze = existing.id;
           document.getElementById('analyzeBtn').click();
         };
-        setBusy(false);
+        btn.disabled = false;
         return;
       }
     }
