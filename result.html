@@ -1001,7 +1001,14 @@ function renderHeaderBlocks(){
   if (v.engine) spec.push([v.engine,t('Двигун')]);
   if (v.transmission) spec.push([v.transmission,t('Коробка передач')]);
   if (v.drive) spec.push([v.drive,t('Привід')]);
-  if (v.trim) spec.push([v.trim,t('Рівень комплектації')]);
+  if (v.trim) {
+    let tr = String(v.trim);
+    if (tr.replace(/[^A-Za-zА-Яа-яІіЇїЄє0-9]/g, '').length <= 3) {
+      const mdl = String(v.title || '').split(/\s+/)[1] || '';
+      if (mdl && !new RegExp('^' + mdl, 'i').test(tr)) tr = mdl + ' ' + tr;
+    }
+    spec.push([tr, t('Рівень комплектації')]);
+  }
   if (spec.length) document.getElementById('specGrid').innerHTML =
     spec.map(([b,s]) => `<div><b>${esc(b)}</b><span>${esc(s)}</span></div>`).join('');
   const eq = v.equipment || [];
@@ -1360,21 +1367,17 @@ function recalc() {
 
   const bidEl = document.getElementById('bid');
   const bidSub = document.getElementById('bidSub');
-  if (meta.bid > 0) {
-    bidEl.value = meta.bid;
-    bidSub.textContent = t('Підставлено поточний бід аукціону, зміни на свою ставку');
-  } else {
-    /* торги ще не почались: орієнтир від оцінки авто, ~30% ринкової,
-       округлено до сотень. Поле підсвічене, щоб замінили на свою ставку */
-    /* Торги не почались, реальної ціни нема. Вигадувати суму (напр. 30% від
-       est_retail_value) небезпечно: користувач може не помітити і прийняти
-       фантомні $18k за факт. Поле лишається порожнім, підсумок чесно показує
-       вартість без лота, з поміткою. */
-    bidEl.value = '';
-    bidEl.placeholder = '0';
-    bidSub.textContent = t('Ціна лота не вказана. Впиши очікувану ставку, підсумок перерахується');
-    document.querySelector('.cc-bid').classList.add('pulse');
-  }
+  /* Ставку НІКОЛИ не підставляємо: ні вигадану оцінку, ні поточний бід.
+     Поточний бід ($175 за тиждень до торгів) не має нічого спільного з
+     фінальною ціною і так само вводить в оману, як і фантомні 30% від
+     ринкової. Поле порожнє і підсвічене, поточний бід лише довідково
+     в підказці. */
+  bidEl.value = '';
+  bidEl.placeholder = '0';
+  bidSub.textContent = (meta.bid > 0)
+    ? t('Поточний бід на аукціоні: ') + '$' + Math.round(meta.bid).toLocaleString(calcarLocale()) + '. ' + t('Впиши свою очікувану ставку, підсумок перерахується')
+    : t('Ціна лота не вказана. Впиши очікувану ставку, підсумок перерахується');
+  document.querySelector('.cc-bid').classList.add('pulse');
 })();
 
 autoFill();
@@ -1384,6 +1387,9 @@ if (US && US.log) {
   ['bid','auctionFees','usDelivery','freight','port','duty','excise','vat','broker','uaFinal'].forEach(id => {
     if (typeof US.log[id] === 'number') document.getElementById(id).value = US.log[id];
   });
+  if (Number(document.getElementById('bid').value) > 0) {
+    document.querySelector('.cc-bid').classList.remove('pulse');
+  }
   if (US.log.usState) document.getElementById('usState').value = US.log.usState;
 }
 recalc();
