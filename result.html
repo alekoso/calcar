@@ -357,8 +357,7 @@
   .risk-badge{margin-left:auto;display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);font-weight:600}
   .risk-badge b{color:var(--text);font-size:13.5px}
   .risk-label{font-size:12px;font-weight:600;padding:2px 8px;border-radius:12px;margin-left:4px}
-  .notes-sec{margin-bottom:18px}
-  .notes-sec:last-of-type{margin-bottom:6px}
+  .notes-sub{font-size:12.5px;color:var(--muted);margin-bottom:6px}
   .notes-t{font-size:12px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
   .note-row{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--line)}
   .note-row:first-child{border-top:none}
@@ -596,19 +595,12 @@
   <!-- MODEL NOTES: слабкі місця, вплив комплектації, чек-лист -->
   <div class="card" id="notesCard" style="display:none">
     <div class="card-head">
-      <h2>Що перевірити перед покупкою</h2>
-      <span class="badge blue">AI-довідка по моделі</span>
+      <h2>Що варто знати про цю модель</h2>
+      <span class="hint" style="margin-left:auto">На основі версії авто, двигуна та пробігу</span>
     </div>
     <div class="card-body">
-      <div class="notes-sec" id="issuesSec" style="display:none">
-        <div class="notes-t">Типові слабкі місця цієї моделі</div>
-        <div id="issuesList"></div>
-      </div>
-      <div class="notes-sec" id="checklistSec" style="display:none">
-        <div class="notes-t">Що перевірити саме в цій машині</div>
-        <ul class="chk" id="checklistList"></ul>
-      </div>
-      <div class="notes-foot">Довідка за моделлю і пробігом, не за фото цього авто. Орієнтир для перевірки, не заміна діагностики</div>
+      <div class="notes-sub">Типові слабкі місця саме цієї версії з урахуванням двигуна, року та пробігу</div>
+      <div id="issuesList"></div>
     </div>
   </div>
 
@@ -981,24 +973,14 @@ function renderHeaderBlocks(){
   (function renderNotes() {
     const mn = DATA.model_notes || {};
     const issues = Array.isArray(mn.issues) ? mn.issues : [];
-    const chk = Array.isArray(mn.checklist) ? mn.checklist : [];
-    if (!issues.length && !chk.length) return;
-    const money = n => (typeof n === 'number' && n > 0) ? '$' + Math.round(n).toLocaleString(calcarLocale()) : '';
-    if (issues.length) {
-      document.getElementById('issuesList').innerHTML = issues.map(i => {
-        const sev = ['low','med','high'].includes(i.severity) ? i.severity : 'med';
-        const c = money(i.cost);
-        return `<div class="note-row"><div class="sev ${sev}"></div><div class="nb"><b>${esc(i.title || '')}</b>`
-          + (i.unit ? `<div class="unit">${esc(i.unit)}</div>` : '')
-          + (i.detail ? `<p>${esc(i.detail)}</p>` : '')
-          + `</div>` + (c ? `<div class="cost">${c}</div>` : '') + `</div>`;
-      }).join('');
-      document.getElementById('issuesSec').style.display = '';
-    }
-    if (chk.length) {
-      document.getElementById('checklistList').innerHTML = chk.map(x => `<li>${esc(String(x))}</li>`).join('');
-      document.getElementById('checklistSec').style.display = '';
-    }
+    if (!issues.length) return;
+    document.getElementById('issuesList').innerHTML = issues.map(i => {
+      const sev = ['low','med','high'].includes(i.severity) ? i.severity : 'med';
+      return `<div class="note-row"><div class="sev ${sev}"></div><div class="nb"><b>${esc(i.title || '')}</b>`
+        + (i.unit ? `<div class="unit">${esc(i.unit)}</div>` : '')
+        + (i.detail ? `<p>${esc(i.detail)}</p>` : '')
+        + `</div></div>`;
+    }).join('');
     document.getElementById('notesCard').style.display = '';
   })();
 
@@ -1074,6 +1056,26 @@ function computeRisk() {
   else if (/salv/i.test(title)) s += 0.3;
   const likely = (partRows || []).filter(p => p.conf === 'likely').length;
   if (likely > 2) s += Math.min(0.6, (likely - 2) * 0.1);
+
+  /* пробіг: великий одометр це ризик сам по собі, незалежно від удару */
+  const km = (() => {
+    const mi = meta.lot && typeof meta.lot.odometer_mi === 'number' ? meta.lot.odometer_mi : null;
+    if (mi) return mi * 1.609;
+    const m = /([\d\s.,]{4,})\s*км/i.exec(String((DATA.vehicle || {}).mileage_note || ''));
+    return m ? parseFloat(m[1].replace(/[\s,.]/g, '')) : null;
+  })();
+  if (km) {
+    if (km >= 280000) s += 1.6;
+    else if (km >= 220000) s += 1.2;
+    else if (km >= 160000) s += 0.7;
+    else if (km >= 120000) s += 0.3;
+  }
+
+  /* попередження аукціону чи AI про несправність вузлів: привід, двигун, КПП, батарея */
+  const unitWarn = [...(DATA.flags || []), { text: DATA.lot_notes || '', status: 'warn' }]
+    .some(f => (f.status === 'warn' || f.status === 'bad')
+      && /привод|привід|двигун|двигат|трансміс|трансмис|коробк|кпп|батаре|drivetrain|engine|transmission/i.test(String(f.text || '')));
+  if (unitWarn) s += 0.9;
 
   const score = Math.round(Math.min(9.7, Math.max(0.8, s)) * 10) / 10;
   const cls = score >= 6.5 ? 'bad' : score >= 4 ? 'warn' : 'ok';
@@ -1619,19 +1621,17 @@ function generatePdf() {
   const mnIssues = Array.isArray(MN.issues) ? MN.issues : [];
   const mnImpact = Array.isArray(DATA.equipment_impact) ? DATA.equipment_impact
     : (Array.isArray(MN.equipment_impact) ? MN.equipment_impact : []);
-  const mnChk = Array.isArray(MN.checklist) ? MN.checklist : [];
+
   if (mnImpact.length) {
     h2(t('Дорога комплектація в зоні удару'));
     mnImpact.forEach(i => tableRow(
       String(i.feature || ''), String(i.detail || ''), null,
       (typeof i.cost === 'number' && i.cost > 0) ? money(i.cost) : ''));
   }
-  if (mnIssues.length || mnChk.length) {
-    h2(t('Що перевірити перед покупкою'));
+  if (mnIssues.length) {
+    h2(t('Що варто знати про цю модель'));
     mnIssues.forEach(i => tableRow(
-      String(i.title || ''), [i.unit, i.detail].filter(Boolean).join(' · '), null,
-      (typeof i.cost === 'number' && i.cost > 0) ? money(i.cost) : ''));
-    mnChk.forEach(x => tableRow('•', String(x), null, ''));
+      String(i.title || ''), [i.unit, i.detail].filter(Boolean).join(' · '), null, ''));
   }
 
   const activeParts = partRows.filter(x => x.on);
