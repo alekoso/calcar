@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@800&display=swap&text=CalCar" rel="stylesheet">
+<script src="/i18n.js"></script>
 <style>
   :root{--brand:#B8F23D;--brand-hover:#A7DF31;--brand-active:#96CC27;--brand-soft:#F0FBD9;--brand-ink:#3F5D11;--ink:#141619;--ink-2:#30343A;--graphite:#141619;--text:#141619;--muted:#697079;--faint:#90969D;--bg:#F7F8F6;--card:#FFFFFF;--surface-2:#F1F3F0;--line:#E2E5E0;--line-strong:#CDD2CB;--green:#218A4A;--amber:#C8790A;--red:#D83A3A;--red-soft:#FDEEEE}
   *{box-sizing:border-box;margin:0;padding:0}
@@ -15,8 +16,8 @@
   header{background:rgba(255,255,255,.88);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line);color:var(--text);position:sticky;top:0;z-index:50}
   .header-in{max-width:960px;margin:0 auto;padding:0 20px;height:56px;display:flex;align-items:center;gap:12px}
   .logo{display:inline-flex;align-items:stretch;border-radius:.46em;overflow:hidden;font-weight:800;font-size:15px;letter-spacing:.01em;line-height:1;text-decoration:none;font-family:'Sora',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
-  .logo .l{background:var(--brand);color:var(--ink);padding:.62em 1.05em .62em .72em;clip-path:polygon(0 0,100% 0,calc(100% - .58em) 100%,0 100%)}
-  .logo .r{background:var(--graphite);color:#fff;padding:.62em .72em .62em .98em;margin-left:-.38em;clip-path:polygon(.58em 0,100% 0,100% 100%,0 100%)}
+  .logo .l{background:var(--brand);color:var(--ink);padding:.62em 1.05em .62em .72em;clip-path:polygon(0 0,100% 0,calc(100% - .46em) 100%,0 100%)}
+  .logo .r{background:var(--graphite);color:#fff;padding:.62em .72em .62em .98em;margin-left:-.26em;clip-path:polygon(.46em 0,100% 0,100% 100%,0 100%)}
   .header-right{margin-left:auto}
   .btn-out{display:none;align-items:center;gap:8px;border:1px solid var(--line-strong);border-radius:20px;padding:7px 14px;color:var(--ink);font-weight:600;font-size:13px;background:var(--card);cursor:pointer}
   .btn-out:hover{background:var(--surface-2)}
@@ -71,12 +72,16 @@
   .search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:28px;height:28px;border:none;border-radius:50%;background:none;color:var(--faint);font-size:15px;cursor:pointer;display:none}
   .search-clear:hover{background:var(--surface-2);color:var(--text)}
   .report .vin-sub{font-size:12px;color:var(--faint);letter-spacing:.4px}
+  .lang-sw{display:flex;border:1px solid var(--line-strong);border-radius:16px;overflow:hidden}
+  .lang-sw button{border:none;background:none;padding:5px 9px;font-size:11.5px;font-weight:700;letter-spacing:.4px;color:var(--muted);cursor:pointer;font-family:inherit}
+  .lang-sw button.on{background:var(--surface-2);color:var(--ink)}
 </style>
 </head>
 <body>
 <header>
   <div class="header-in">
     <a class="logo" href="/"><span class="l">Cal</span><span class="r">Car</span></a>
+    <div class="lang-sw" id="langSw"><button data-lang="ua" type="button">UA</button><button data-lang="ru" type="button">RU</button><button data-lang="en" type="button">EN</button></div>
     <div class="header-right">
       <button class="btn-out" id="signOut">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -150,7 +155,7 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
       if (error) {
         const st = document.getElementById('authStatus');
         st.className = 'status err';
-        st.textContent = 'Не вдалося відкрити вхід через Google: ' + error.message;
+        st.textContent = t('Не вдалося відкрити вхід через Google: ') + error.message;
       }
     };
 
@@ -158,12 +163,12 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
     btn.onclick = async () => {
       const email = document.getElementById('email').value.trim();
       const st = document.getElementById('authStatus');
-      if (!/.+@.+\..+/.test(email)) { st.className = 'status err'; st.textContent = 'Схоже, це не пошта'; return; }
+      if (!/.+@.+\..+/.test(email)) { st.className = 'status err'; st.textContent = t('Схоже, це не пошта'); return; }
       btn.disabled = true;
       const { error } = await SB.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + '/cabinet.html' } });
       btn.disabled = false;
-      if (error) { st.className = 'status err'; st.textContent = 'Не вдалося надіслати: ' + error.message; }
-      else { st.className = 'status ok'; st.textContent = 'Лист надіслано. Відкрий його і натисни посилання'; }
+      if (error) { st.className = 'status err'; st.textContent = t('Не вдалося надіслати: ') + error.message; }
+      else { st.className = 'status ok'; st.textContent = t('Лист надіслано. Відкрий його і натисни посилання'); }
     };
   }
 
@@ -178,21 +183,21 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
     const { data: rows, error } = await SB.from('reports')
       .select('id,title,created_at,vin:data->_meta->>vin')
       .order('created_at', { ascending: false }).limit(100);
-    if (error) { box.innerHTML = '<div class="empty">Не вдалося завантажити список</div>'; return; }
+    if (error) { box.innerHTML = '<div class="empty">' + t('Не вдалося завантажити список') + '</div>'; return; }
     if (!rows.length) {
       document.getElementById('searchWrap').style.display = 'none';
-      box.innerHTML = '<div class="empty">Поки що порожньо. Зроби прорахунок на головній, і він збережеться тут автоматично</div>';
+      box.innerHTML = '<div class="empty">' + t('Поки що порожньо. Зроби прорахунок на головній, і він збережеться тут автоматично') + '</div>';
       return;
     }
     box.innerHTML = rows.map(r => `
       <div class="report" data-id="${r.id}">
         <div>
           <div class="t"></div>
-          <div class="d">${new Date(r.created_at).toLocaleString('uk-UA')}</div>
+          <div class="d">${new Date(r.created_at).toLocaleString(calcarLocale())}</div>
         </div>
         <span class="go">→</span>
         <button class="kebab" title="Дії">⋯</button>
-        <div class="menu"><button class="del">Видалити прорахунок</button></div>
+        <div class="menu"><button class="del">${t('Видалити прорахунок')}</button></div>
       </div>`).join('');
 
     /* ---- пошук: назва (марка, модель, лот) + VIN ---- */
@@ -214,7 +219,7 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
         if (!e) {
           e = document.createElement('div');
           e.className = 'empty empty-search';
-          e.textContent = 'Нічого не знайдено';
+          e.textContent = t('Нічого не знайдено');
           box.appendChild(e);
         }
       } else if (e) e.remove();
@@ -223,7 +228,7 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
     sClear.addEventListener('click', () => { sInput.value = ''; applyFilter(); sInput.focus(); });
 
     box.querySelectorAll('.report').forEach((el, idx) => {
-      el.querySelector('.t').textContent = rows[idx].title || 'Прорахунок';
+      el.querySelector('.t').textContent = rows[idx].title || t('Прорахунок');
       const vin = rows[idx].vin || '';
       if (vin) {
         const v = document.createElement('div');
@@ -247,7 +252,7 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
       menu.querySelector('.del').addEventListener('click', async ev => {
         ev.stopPropagation();
         menu.classList.remove('open');
-        if (!confirm('Видалити цей прорахунок? Дію не можна скасувати')) return;
+        if (!confirm(t('Видалити цей прорахунок? Дію не можна скасувати'))) return;
         await SB.from('reports').delete().eq('id', el.dataset.id);
         el.remove();
         if (!box.querySelector('.report')) showList();

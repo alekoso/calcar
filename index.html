@@ -10,6 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@800&display=swap&text=CalCar" rel="stylesheet">
+<script src="/i18n.js"></script>
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <style>
   :root{
@@ -51,8 +52,8 @@
   header{background:rgba(255,255,255,.88);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line);color:var(--text);position:sticky;top:0;z-index:50}
   .header-in{max-width:1160px;margin:0 auto;padding:0 20px;height:56px;display:flex;align-items:center;gap:12px}
   .logo{display:inline-flex;align-items:stretch;border-radius:.46em;overflow:hidden;font-weight:800;font-size:15px;letter-spacing:.01em;line-height:1;text-decoration:none;font-family:'Sora',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
-  .logo .l{background:var(--brand);color:var(--ink);padding:.62em 1.05em .62em .72em;clip-path:polygon(0 0,100% 0,calc(100% - .58em) 100%,0 100%)}
-  .logo .r{background:var(--graphite);color:#fff;padding:.62em .72em .62em .98em;margin-left:-.38em;clip-path:polygon(.58em 0,100% 0,100% 100%,0 100%)}
+  .logo .l{background:var(--brand);color:var(--ink);padding:.62em 1.05em .62em .72em;clip-path:polygon(0 0,100% 0,calc(100% - .46em) 100%,0 100%)}
+  .logo .r{background:var(--graphite);color:#fff;padding:.62em .72em .62em .98em;margin-left:-.26em;clip-path:polygon(.46em 0,100% 0,100% 100%,0 100%)}
   .beta{font-size:11px;background:var(--surface-2);color:var(--muted);padding:2px 8px;border-radius:20px;letter-spacing:.4px}
   .header-right{margin-left:auto;display:flex;align-items:center;gap:16px;font-size:13px}
   .header-right a{color:var(--muted);text-decoration:none}
@@ -184,6 +185,9 @@
   .spinner{width:16px;height:16px;border:2.5px solid var(--surface-2);border-top-color:var(--ink);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
   @keyframes spin{to{transform:rotate(360deg)}}
   .btn-primary:disabled{opacity:.6;cursor:default}
+  .lang-sw{display:flex;border:1px solid var(--line-strong);border-radius:16px;overflow:hidden}
+  .lang-sw button{border:none;background:none;padding:5px 9px;font-size:11.5px;font-weight:700;letter-spacing:.4px;color:var(--muted);cursor:pointer;font-family:inherit}
+  .lang-sw button.on{background:var(--surface-2);color:var(--ink)}
 </style>
 </head>
 <body>
@@ -192,6 +196,7 @@
   <div class="header-in">
     <a class="logo" href="/"><span class="l">Cal</span><span class="r">Car</span></a>
     <div class="beta">beta</div>
+    <div class="lang-sw" id="langSw"><button data-lang="ua" type="button">UA</button><button data-lang="ru" type="button">RU</button><button data-lang="en" type="button">EN</button></div>
     <div class="header-right">
       <a class="btn-auth" href="/cabinet.html" id="authLink">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg>
@@ -375,9 +380,9 @@ function renderPreviews(){
   const dzSub = document.getElementById('uploadSub');
   if (photos.length) {
     dzTitle.textContent = `Фото додано: ${photos.length} з ${MAX_PHOTOS}`;
-    dzSub.textContent = 'Натисни, щоб додати ще';
+    dzSub.textContent = t('Натисни, щоб додати ще');
   } else {
-    dzTitle.innerHTML = 'Додай фото лота <b class="req">*</b>';
+    dzTitle.innerHTML = t('Додай фото лота') + ' <b class="req">*</b>';
     dzSub.textContent = '3–12 фото: кузов з усіх боків, зона удару, салон, кермо, стеля';
   }
 }
@@ -412,8 +417,8 @@ photoInput.addEventListener('change', async () => {
   renderPreviews();
 });
 
-const LOAD_MSGS_FULL = ['Завантажую фото…','Розпізнаю авто…','Читаю VIN…','Шукаю пошкодження…','Перевіряю подушки і структуру…','Складаю кошторис…','Ще трохи…'];
-const LOAD_MSGS_VIN = ['Читаю VIN…','Тягну заводські дані…'];
+const LOAD_MSGS_FULL = [t('Завантажую фото…'),t('Розпізнаю авто…'),t('Читаю VIN…'),t('Шукаю пошкодження…'),t('Перевіряю подушки і структуру…'),t('Складаю кошторис…'),t('Ще трохи…')];
+const LOAD_MSGS_VIN = [t('Читаю VIN…'),t('Тягну заводські дані…')];
 
 btn.addEventListener('click', async () => {
   clearStatus();
@@ -422,15 +427,15 @@ btn.addEventListener('click', async () => {
   const bid = 0; /* ціна лота тепер вводиться всередині прорахунку */
 
   if (!query && photos.length === 0 && vin.length !== 17) {
-    setError('Встав посилання на лот Copart чи IAAI або завантаж фото вручну'); return;
+    setError(t('Встав посилання на лот Copart чи IAAI або завантаж фото вручну')); return;
   }
   if (!query && photos.length > 0 && photos.length < 3) {
-    setError('Для розбору пошкоджень потрібно щонайменше 3 фото'); return;
+    setError(t('Для розбору пошкоджень потрібно щонайменше 3 фото')); return;
   }
 
   btn.disabled = true;
   const MSGS = query
-    ? ['Тягну дані лота…','Завантажую фото з аукціону…','Розпізнаю авто…','Шукаю пошкодження…','Перевіряю подушки і структуру…','Складаю кошторис…','Ще трохи…']
+    ? [t('Тягну дані лота…'),t('Завантажую фото з аукціону…'),t('Розпізнаю авто…'),t('Шукаю пошкодження…'),t('Перевіряю подушки і структуру…'),t('Складаю кошторис…'),t('Ще трохи…')]
     : (photos.length ? LOAD_MSGS_FULL : LOAD_MSGS_VIN);
   let msgI = 0;
   statusEl.className = 'hf-status load';
@@ -474,9 +479,9 @@ btn.addEventListener('click', async () => {
     try { return JSON.parse(txt); }
     catch (e) {
       if (resp.status === 504 || /timeout|timed out/i.test(txt)) {
-        throw new Error('Прорахунок не встиг завершитись за відведений час. Спробуй ще раз');
+        throw new Error(t('Прорахунок не встиг завершитись за відведений час. Спробуй ще раз'));
       }
-      throw new Error('Сервер повернув несподівану відповідь (' + resp.status + '). Спробуй ще раз');
+      throw new Error(t('Сервер повернув несподівану відповідь (') + resp.status + t('). Спробуй ще раз'));
     }
   }
 
@@ -486,8 +491,8 @@ btn.addEventListener('click', async () => {
       const existing = await findExistingReport(query);
       if (existing) {
         statusEl.className = 'hf-status info';
-        statusEl.innerHTML = 'Це авто вже проаналізовано. <a href="/result.html?id=' + existing.id + '">Відкрити звіт</a>'
-          + ' <span class="reanalyze">або <a href="#" id="reanalyzeLink">прорахувати заново</a></span>';
+        statusEl.innerHTML = t('Це авто вже проаналізовано.') + ' <a href="/result.html?id=' + existing.id + '">' + t('Відкрити звіт') + '</a>'
+          + ' <span class="reanalyze">' + t('або') + ' <a href="#" id="reanalyzeLink">' + t('прорахувати заново') + '</a></span>';
         document.getElementById('reanalyzeLink').onclick = ev => {
           ev.preventDefault();
           window.__forceReanalyze = existing.id;
@@ -506,7 +511,7 @@ btn.addEventListener('click', async () => {
         body: JSON.stringify({ query }),
       });
       const ld = await safeJson(lr);
-      if (!lr.ok || ld.error) throw new Error(ld.error || 'Не вдалося отримати лот');
+      if (!lr.ok || ld.error) throw new Error(ld.error || t('Не вдалося отримати лот'));
       lot = ld.lot;
     }
 
@@ -514,13 +519,14 @@ btn.addEventListener('click', async () => {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
+        lang: (window.calcarLang ? calcarLang() : 'ua'),
         vin, bid, lot,
         images: lot ? [] : photos,
         state: document.getElementById('lotState').value,
       }),
     });
     const data = await safeJson(r);
-    if (!r.ok || data.error) throw new Error(data.error || 'Помилка сервера');
+    if (!r.ok || data.error) throw new Error(data.error || t('Помилка сервера'));
 
     sessionStorage.setItem('calcarResult', JSON.stringify(data));
     /* прибираємо id попереднього звіту: якщо збереження нижче не спрацює,
@@ -556,7 +562,7 @@ btn.addEventListener('click', async () => {
     }
     location.href = '/result.html';
   } catch (e) {
-    setError(e.message || 'Щось пішло не так, спробуй ще раз');
+    setError(e.message || t('Щось пішло не так, спробуй ще раз'));
   } finally {
     clearInterval(timer);
     btn.disabled = false;

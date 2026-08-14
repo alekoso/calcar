@@ -9,6 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@800&display=swap&text=CalCar" rel="stylesheet">
+<script src="/i18n.js"></script>
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
@@ -52,8 +53,8 @@
   header{background:rgba(255,255,255,.88);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line);color:var(--text);position:sticky;top:0;z-index:50}
   .header-in{max-width:1160px;margin:0 auto;padding:0 20px;height:56px;display:flex;align-items:center;gap:14px}
   .logo{display:inline-flex;align-items:stretch;border-radius:.46em;overflow:hidden;font-weight:800;font-size:15px;letter-spacing:.01em;line-height:1;text-decoration:none;font-family:'Sora',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
-  .logo .l{background:var(--brand);color:var(--ink);padding:.62em 1.05em .62em .72em;clip-path:polygon(0 0,100% 0,calc(100% - .58em) 100%,0 100%)}
-  .logo .r{background:var(--graphite);color:#fff;padding:.62em .72em .62em .98em;margin-left:-.38em;clip-path:polygon(.58em 0,100% 0,100% 100%,0 100%)}
+  .logo .l{background:var(--brand);color:var(--ink);padding:.62em 1.05em .62em .72em;clip-path:polygon(0 0,100% 0,calc(100% - .46em) 100%,0 100%)}
+  .logo .r{background:var(--graphite);color:#fff;padding:.62em .72em .62em .98em;margin-left:-.26em;clip-path:polygon(.46em 0,100% 0,100% 100%,0 100%)}
   .beta{font-size:11px;background:var(--surface-2);color:var(--muted);padding:2px 8px;border-radius:20px;letter-spacing:.4px}
   .header-right{margin-left:auto;display:flex;align-items:center;gap:16px;font-size:13px}
   .header-right a{color:var(--muted);text-decoration:none}
@@ -151,7 +152,7 @@
     font-size:12.5px;cursor:pointer;color:var(--muted);font-weight:600;line-height:1.25;text-align:center;
   }
   .seg button b{display:block;font-size:13px;color:var(--text);font-weight:700}
-  .seg button.active{background:var(--brand);color:var(--ink)}
+  .seg button.active{background:var(--brand-soft);color:var(--ink);border:1px solid #D5EEA2}
   .seg button.active b{color:var(--ink)}
   .seg button:disabled{opacity:.35;cursor:default}
 
@@ -216,12 +217,14 @@
   .cc-item{display:flex;flex-direction:column;gap:6px;min-width:220px;flex:1}
   .cc-item label{font-size:13px;font-weight:800}
   .cc-item input,.cc-item select{height:44px;border:1.5px solid var(--line);border-radius:9px;padding:0 12px;font-size:15px;background:#fff;font-weight:700}
-  .cc-bid input{border-color:var(--brand-active);border-width:2px}
-  .cc-bid.pulse input{box-shadow:0 0 0 4px rgba(184,242,61,.28)}
+  .cc-bid input{border-color:var(--line-strong);border-width:1.5px}
+  .cc-bid.pulse input{border-color:var(--line-strong);box-shadow:0 0 0 3px rgba(184,242,61,.18)}
+  .cc-bid input:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(184,242,61,.18)}
   .cc-sub{font-size:11.5px;color:var(--muted);font-weight:400}
   .calc-controls .state-select{width:100%}
   .risk-badge{margin-left:auto;display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);font-weight:600}
   .risk-badge b{color:var(--text);font-size:13.5px}
+  .risk-label{font-size:12px;font-weight:600;padding:2px 8px;border-radius:12px;margin-left:4px}
   #saveHint{font-size:12.5px;color:var(--muted);opacity:0;transition:opacity .3s}
   #saveHint.show{opacity:1}
   .risk-line{display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:14px;font-weight:600}
@@ -295,16 +298,15 @@
   .chat-overlay{position:fixed;inset:0;background:rgba(15,25,40,.28);z-index:99;opacity:0;pointer-events:none;transition:opacity .22s}
   .chat-overlay.open{opacity:1;pointer-events:auto}
   .chat-panel{
-    position:fixed;top:0;right:0;bottom:0;width:420px;max-width:100vw;background:#fff;z-index:100;
+    position:fixed;top:56px;right:0;bottom:0;width:420px;max-width:100vw;background:#fff;z-index:100;
     display:flex;flex-direction:column;border-left:1px solid var(--line);
     box-shadow:-16px 0 44px rgba(10,20,35,.14);
     transform:translateX(105%);transition:transform .25s ease;
   }
   .chat-panel.open{transform:none}
-  .chat-head{display:flex;align-items:center;gap:11px;padding:13px 18px;background:var(--graphite);color:#fff;flex-shrink:0}
+  .chat-head{display:flex;align-items:center;gap:11px;padding:11px 16px;background:var(--graphite);color:#fff;flex-shrink:0}
   .chat-head .ttl b{display:block;font-size:15px;line-height:1.25}
-  .chat-head .ttl span{font-size:12px;color:#A9AFB6;display:block;max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .chat-head .logo .r{background:#2A2E33}
+  .chat-head .ttl span{font-size:12px;color:#A9AFB6;display:block;max-width:330px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .chat-close{margin-left:auto;background:none;border:none;color:#A9AFB6;font-size:22px;line-height:1;cursor:pointer;padding:4px 8px;border-radius:8px}
   .chat-close:hover{background:rgba(255,255,255,.12);color:#fff}
   .chat-msgs{flex:1;overflow-y:auto;padding:16px 14px;display:flex;flex-direction:column;gap:10px;background:var(--bg)}
@@ -330,11 +332,21 @@
   .chat-send:hover{background:var(--brand-hover)}
   .chat-send:disabled{opacity:.5;cursor:default}
   .chat-note{padding:0 14px 10px;font-size:11.5px;color:var(--muted);background:#fff;flex-shrink:0}
+  .chat-attach{width:44px;height:44px;border:1px solid var(--line);border-radius:12px;background:#fff;color:var(--ink-2);cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+  .chat-attach:hover{border-color:var(--brand);background:var(--brand-soft)}
+  .chat-files{display:flex;flex-wrap:wrap;gap:6px;padding:8px 14px 0;background:#fff;flex-shrink:0}
+  .chat-file-chip{display:inline-flex;align-items:center;gap:6px;background:var(--surface-2);border:1px solid var(--line);border-radius:14px;padding:4px 10px;font-size:12px;max-width:100%}
+  .chat-file-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px}
+  .chat-file-chip button{border:none;background:none;cursor:pointer;color:var(--faint);font-size:13px;padding:0;line-height:1}
+  .chat-file-chip button:hover{color:var(--red)}
   @media(max-width:560px){
     .chat-panel{width:100%}
     .chat-fab{right:14px;bottom:14px;padding:0 16px 0 14px}
   }
   @media print{.chat-fab,.chat-panel,.chat-overlay{display:none!important}}
+  .lang-sw{display:flex;border:1px solid var(--line-strong);border-radius:16px;overflow:hidden}
+  .lang-sw button{border:none;background:none;padding:5px 9px;font-size:11.5px;font-weight:700;letter-spacing:.4px;color:var(--muted);cursor:pointer;font-family:inherit}
+  .lang-sw button.on{background:var(--surface-2);color:var(--ink)}
 </style>
 </head>
 <body>
@@ -345,6 +357,7 @@
   <div class="header-in">
     <a class="logo" href="/"><span class="l">Cal</span><span class="r">Car</span></a>
     <div class="beta">beta</div>
+    <div class="lang-sw" id="langSw"><button data-lang="ua" type="button">UA</button><button data-lang="ru" type="button">RU</button><button data-lang="en" type="button">EN</button></div>
     <div class="header-right">
       <a class="btn-auth" href="/cabinet.html">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg>
@@ -393,7 +406,7 @@
     <div class="card-head">
       <h2>Розбір пошкоджень</h2>
       <span class="badge blue" id="aiBadge">AI-аналіз фото</span>
-      <span class="risk-badge" id="riskBadge" style="display:none"><span class="dot ok" id="riskDot"></span>Ризик: <b id="riskScore">–</b></span>
+      <span class="risk-badge" id="riskBadge" style="display:none"><span class="dot ok" id="riskDot"></span>Ризик: <b id="riskScore">–</b> <span class="risk-label" id="riskLabel"></span></span>
     </div>
     <div class="card-body">
       <div class="flags" id="flagsEl"></div>
@@ -595,7 +608,6 @@
 <div class="chat-overlay" id="chatOverlay"></div>
 <div class="chat-panel" id="chatPanel">
   <div class="chat-head">
-    <span class="logo" style="font-size:11px" aria-hidden="true"><span class="l">Cal</span><span class="r">Car</span></span>
     <div class="ttl">
       <b>Чат по цьому авто</b>
       <span id="chatCarTitle">AI-помічник CalCar</span>
@@ -609,7 +621,12 @@
     <button>Яку максимальну ставку давати?</button>
     <button>Які приховані ризики?</button>
   </div>
+  <div class="chat-files" id="chatFiles" style="display:none"></div>
   <div class="chat-input">
+    <button class="chat-attach" id="chatAttach" type="button" title="Додати файл: Carfax, фото, інший звіт">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05 12.25 20.24a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+    </button>
+    <input type="file" id="chatFile" accept="application/pdf,image/jpeg,image/png,image/webp" multiple hidden>
     <textarea id="chatText" rows="1" placeholder="Питай про пошкодження, ціни, ризики…"></textarea>
     <button class="chat-send" id="chatSend" title="Надіслати">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
@@ -662,7 +679,7 @@ if (DATA._meta?.lot_url) {
 const LIVE = true;
 
 /* ================= стан рядків ================= */
-const catLabels = {orig:'Нова оригінал', alt:'Нова аналог', used:'Б/в оригінал'};
+const catLabels = {orig:t('Нова оригінал'), alt:t('Нова аналог'), used:t('Б/в оригінал')};
 let rowId = 0;
 const partRows = [];
 const workRows = [];
@@ -689,7 +706,7 @@ if (US) {
 } else {
   (DATA.parts || []).forEach(cfg => {
     const r = makeRow({
-      name: cfg.name || 'Деталь',
+      name: cfg.name || t('Деталь'),
       sub: cfg.sub || '',
       conf: cfg.conf === 'likely' ? 'likely' : 'sure',
       prices: cfg.prices || {},
@@ -702,13 +719,13 @@ if (US) {
   });
 
   (DATA.works || []).forEach(cfg => {
-    workRows.push(makeRow({ name: cfg.name || 'Робота', sub: cfg.sub || '', price: Number(cfg.price) || 0 }));
+    workRows.push(makeRow({ name: cfg.name || t('Робота'), sub: cfg.sub || '', price: Number(cfg.price) || 0 }));
   });
   if (DATA.reserve) {
-    workRows.push(makeRow({ name:'Резерв на приховані пошкодження', sub:'Запас під те, що відкриється після розбирання', price:Number(DATA.reserve)||0 }));
+    workRows.push(makeRow({ name:t('Резерв на приховані пошкодження'), sub:t('Запас під те, що відкриється після розбирання'), price:Number(DATA.reserve)||0 }));
   }
   (DATA.maintenance || []).forEach(cfg => {
-    maintRows.push(makeRow({ name: cfg.name || 'Позиція', sub: cfg.sub || '', price: Number(cfg.price) || 0 }));
+    maintRows.push(makeRow({ name: cfg.name || t('Позиція'), sub: cfg.sub || '', price: Number(cfg.price) || 0 }));
   });
 }
 
@@ -717,14 +734,14 @@ function esc(s){ return String(s ?? '').replace(/\s*—\s*/g, ', ').replace(/[&<
 
 function renderHeaderBlocks(){
   const v = DATA.vehicle || {};
-  document.getElementById('lotTitle').textContent = v.title || 'Авто';
-  document.getElementById('lotBadge').textContent = 'AI-прорахунок';
-  document.getElementById('modeHint').textContent = 'Прорахунок на основі ваших фото. Ціни орієнтовні, уточнюйте перед торгами';
+  document.getElementById('lotTitle').textContent = v.title || t('Авто');
+  document.getElementById('lotBadge').textContent = t('AI-прорахунок');
+  document.getElementById('modeHint').textContent = t('Прорахунок на основі ваших фото. Ціни орієнтовні, уточнюйте перед торгами');
 
   const vinVal = DATA._meta?.vin || DATA.vin || '';
   const vinFromPhoto = DATA._meta?.vin_source === 'photo';
   const meta = [];
-  if (vinVal) meta.push(`<span class="vin-line">VIN ${esc(vinVal)}</span>${vinFromPhoto ? ' <span class="badge blue">зчитано з фото</span>' : ''}`);
+  if (vinVal) meta.push(`<span class="vin-line">VIN ${esc(vinVal)}</span>${vinFromPhoto ? ' <span class="badge blue">' + t('зчитано з фото') + '</span>' : ''}`);
   if (v.mileage_note) meta.push(`Пробіг <b>${esc(v.mileage_note)}</b>`);
   if (DATA._meta?.damage) meta.push(`Пошкодження <b>${esc(DATA._meta.damage)}</b>`);
   if (DATA._meta?.title_code) meta.push(`Тайтл <b>${esc(DATA._meta.title_code)}</b>`);
@@ -767,10 +784,10 @@ function renderHeaderBlocks(){
     document.getElementById('zonesEl').style.display = '';
   }
   const spec = [];
-  if (v.engine) spec.push([v.engine,'Двигун']);
-  if (v.transmission) spec.push([v.transmission,'Коробка передач']);
-  if (v.drive) spec.push([v.drive,'Привід']);
-  if (v.trim) spec.push([v.trim,'Рівень комплектації']);
+  if (v.engine) spec.push([v.engine,t('Двигун')]);
+  if (v.transmission) spec.push([v.transmission,t('Коробка передач')]);
+  if (v.drive) spec.push([v.drive,t('Привід')]);
+  if (v.trim) spec.push([v.trim,t('Рівень комплектації')]);
   if (spec.length) document.getElementById('specGrid').innerHTML =
     spec.map(([b,s]) => `<div><b>${esc(b)}</b><span>${esc(s)}</span></div>`).join('');
   const eq = v.equipment || [];
@@ -786,7 +803,7 @@ function renderHeaderBlocks(){
   const dn = document.getElementById('dmgNote');
   dn.textContent = DATA.damage_note || '';
   dn.style.display = DATA.damage_note ? '' : 'none';
-  document.getElementById('aiBadge').textContent = 'AI-аналіз ваших фото';
+  document.getElementById('aiBadge').textContent = t('AI-аналіз ваших фото');
 
 }
 
@@ -833,6 +850,11 @@ function computeAndRenderRisk() {
   document.getElementById('riskBadge').style.display = '';
   document.getElementById('riskScore').textContent = rk.score.toFixed(1) + ' / 10';
   document.getElementById('riskDot').className = 'dot ' + rk.cls;
+  const rl = document.getElementById('riskLabel');
+  const rkText = rk.score <= 3 ? t('Низький') : rk.score <= 5 ? t('Помірний') : rk.score <= 7 ? t('Підвищений') : t('Високий');
+  rl.textContent = rkText;
+  rl.style.background = rk.cls === 'ok' ? 'var(--green-soft)' : rk.cls === 'warn' ? 'var(--amber-soft)' : 'var(--red-soft)';
+  rl.style.color = rk.cls === 'ok' ? 'var(--green)' : rk.cls === 'warn' ? 'var(--amber)' : 'var(--red)';
 }
 renderHeaderBlocks();
 
@@ -845,8 +867,8 @@ function renderPartRow(r) {
   div.className = 'est-row';
   div.id = r.id;
 
-  const confBadge = r.conf === 'sure' ? '<span class="conf sure">точно</span>'
-    : r.conf === 'likely' ? '<span class="conf likely">ймовірно</span>' : '';
+  const confBadge = r.conf === 'sure' ? '<span class="conf sure">' + t('точно') + '</span>'
+    : r.conf === 'likely' ? '<span class="conf likely">' + t('ймовірно') + '</span>' : '';
 
   const nameCell = r.custom
     ? `<div class="part-cell"><input class="name-input" data-field="name" value="${esc(r.name)}" placeholder="Назва деталі"></div>`
@@ -1015,23 +1037,23 @@ function computeExcise() {
   const age = Math.min(15, Math.max(1, 2026 - year));
   const disp = Number(v.displacement_l) || 0;
   if (v.fuel === 'hybrid') {
-    document.getElementById('exciseNote').innerHTML = '<span style="font-weight:400;color:var(--muted)">гібрид: фіксований €100</span>';
+    document.getElementById('exciseNote').innerHTML = '<span style="font-weight:400;color:var(--muted)">' + t('гібрид: фіксований €100') + '</span>';
     return Math.round(100 * EUR);
   }
   if (v.fuel === 'electric') {
     const kwh = Number(DATA._meta?.battery_kwh) || 0;
     document.getElementById('exciseNote').innerHTML = kwh
       ? `<span style="font-weight:400;color:var(--muted)">електро: €1 за кВт·год · батарея ${kwh} кВт·год</span>`
-      : '<span style="font-weight:400;color:var(--muted)">електро: €1 за кВт·год, впиши точно</span>';
+      : '<span style="font-weight:400;color:var(--muted)">' + t('електро: €1 за кВт·год, впиши точно') + '</span>';
     return Math.round(kwh * EUR);
   }
   if (!disp || !year) {
-    document.getElementById('exciseNote').innerHTML = '<span style="font-weight:400;color:var(--muted)">впиши вручну</span>';
+    document.getElementById('exciseNote').innerHTML = '<span style="font-weight:400;color:var(--muted)">' + t('впиши вручну') + '</span>';
     return 0;
   }
   const rate = v.fuel === 'diesel' ? (disp > 3.5 ? 150 : 75) : (disp > 3.0 ? 100 : 50);
   document.getElementById('exciseNote').innerHTML =
-    `<span style="font-weight:400;color:var(--muted)">${v.fuel === 'diesel' ? 'дизель' : 'бензин'} ${disp} л · вік ${age} р.</span>`;
+    `<span style="font-weight:400;color:var(--muted)">${v.fuel === 'diesel' ? t('дизель') : t('бензин')} ${disp} л · вік ${age} р.</span>`;
   return Math.round(disp * rate * age * EUR);
 }
 const EXCISE = computeExcise();
@@ -1093,21 +1115,21 @@ function recalc() {
   document.getElementById('usDelivery').value = STATE_RATES[st][0];
   document.getElementById('freight').value = STATE_RATES[st][1];
   if (!stKnown) {
-    stSel.nextElementSibling.textContent = 'Штат невідомий, підставлено типовий. Обери свій, доставка оновиться';
+    stSel.nextElementSibling.textContent = t('Штат невідомий, підставлено типовий. Обери свій, доставка оновиться');
   }
 
   const bidEl = document.getElementById('bid');
   const bidSub = document.getElementById('bidSub');
   if (meta.bid > 0) {
     bidEl.value = meta.bid;
-    bidSub.textContent = 'Підставлено поточний бід аукціону, зміни на свою ставку';
+    bidSub.textContent = t('Підставлено поточний бід аукціону, зміни на свою ставку');
   } else {
     /* торги ще не почались: орієнтир від оцінки авто, ~30% ринкової,
        округлено до сотень. Поле підсвічене, щоб замінили на свою ставку */
     const est = Number(meta.est_retail_value) || 0;
     const guess = est > 0 ? Math.max(500, Math.round(est * 0.3 / 100) * 100) : 3000;
     bidEl.value = guess;
-    bidSub.textContent = 'Орієнтовна ставка (торги ще не почались). Впиши свою, підсумок перерахується';
+    bidSub.textContent = t('Орієнтовна ставка (торги ще не почались). Впиши свою, підсумок перерахується');
     document.querySelector('.cc-bid').classList.add('pulse');
   }
 })();
@@ -1144,11 +1166,12 @@ let saveTimer = null;
 function scheduleSave() {
   if (!window.__ready) return;
   const merged = Object.assign({}, DATA, { _user_state: serializeState() });
+  if (Array.isArray(window.__chatHistory) && window.__chatHistory.length) merged._chat = window.__chatHistory.slice(-30);
   try { sessionStorage.setItem('calcarResult', JSON.stringify(merged)); } catch(e){}
   if (!CAN_SAVE) return;
   clearTimeout(saveTimer);
   const hint = document.getElementById('saveHint');
-  hint.textContent = 'Зберігаю…'; hint.classList.add('show');
+  hint.textContent = t('Зберігаю…'); hint.classList.add('show');
   saveTimer = setTimeout(async () => {
     try {
       /* .select('id') повертає оновлені рядки: якщо їх нуль (немає RLS-політики
@@ -1156,11 +1179,11 @@ function scheduleSave() {
       const { data: upd, error } = await SB.from('reports')
         .update({ data: merged }).eq('id', REPORT_DB_ID).select('id');
       if (error || !upd || !upd.length) {
-        hint.textContent = 'Не збереглося';
+        hint.textContent = t('Не збереглося');
         setTimeout(() => hint.classList.remove('show'), 2600);
         return;
       }
-      hint.textContent = 'Збережено ✓';
+      hint.textContent = t('Збережено ✓');
       setTimeout(() => hint.classList.remove('show'), 1600);
     } catch(e) { hint.classList.remove('show'); }
   }, 1200);
@@ -1284,7 +1307,7 @@ function generatePdf() {
 
   /* ---------- шапка: сплит-лого CalCar ---------- */
   /* пропорції ~3.2:1, кут ~14°, зазор 0.5мм, текст оптично відсунутий від діагоналі */
-  const LG = { x: M, y: y - 6, h: 8, wl: 13.6, s: 2.0, g: 0.5, wr: 14.2, r: 1.4 };
+  const LG = { x: M, y: y - 6, h: 8, wl: 13.6, s: 1.65, g: 0.5, wr: 14.2, r: 1.4 };
   doc.setFillColor(...COLORS.orange); /* lime */
   doc.roundedRect(LG.x, LG.y, LG.wl, LG.h, LG.r, LG.r, 'F');
   doc.rect(LG.x + LG.wl - LG.r, LG.y, LG.r, LG.h, 'F');
@@ -1321,13 +1344,13 @@ function generatePdf() {
   /* ---------- авто ---------- */
   const v = DATA.vehicle || {};
   doc.setFont('DejaVu', 'bold'); doc.setFontSize(15); setC(COLORS.text);
-  const tl = doc.splitTextToSize(v.title || 'Авто', W);
+  const tl = doc.splitTextToSize(v.title || t('Авто'), W);
   ensure(tl.length * 6);
   doc.text(tl, M, y);
   y += tl.length * 6 + 1;
   const vinVal = DATA._meta?.vin || DATA.vin || '';
   const sub = [];
-  if (vinVal) sub.push('VIN ' + vinVal + (DATA._meta?.vin_source === 'photo' ? ' (зчитано з фото)' : ''));
+  if (vinVal) sub.push('VIN ' + vinVal + (DATA._meta?.vin_source === 'photo' ? t(' (зчитано з фото)') : ''));
   if (v.mileage_note) sub.push(v.mileage_note);
   para(sub.join('  ·  '), 8.5, COLORS.muted);
   if (DATA.lot_notes) para(DATA.lot_notes, 8.5, COLORS.warn);
@@ -1335,13 +1358,13 @@ function generatePdf() {
   /* ---------- комплектація ---------- */
   const spec = [v.engine, v.transmission, v.drive, v.trim].filter(Boolean).join('  ·  ');
   if (spec) {
-    h2('Комплектація');
+    h2(t('Комплектація'));
     para(spec, 9);
     if ((v.equipment || []).length) para(v.equipment.join(', '), 8, COLORS.muted);
   }
 
   /* ---------- розбір ---------- */
-  h2('Розбір пошкоджень');
+  h2(t('Розбір пошкоджень'));
   (DATA.flags || []).forEach(f => dotLine(f.status, f.text, ''));
   if (DATA.damage_note) { y += 1; para(DATA.damage_note, 8.5, COLORS.muted); }
   const zones = Array.isArray(DATA.zones) ? DATA.zones : [];
@@ -1354,34 +1377,34 @@ function generatePdf() {
   const money = n => '$' + Math.round(n).toLocaleString('uk-UA').replace(/,/g, ' ');
   const activeParts = partRows.filter(x => x.on);
   if (activeParts.length) {
-    h2('Запчастини');
+    h2(t('Запчастини'));
     activeParts.forEach(p => tableRow(p.name, p.sub, p.cat ? (catLabels[p.cat] || '') : '', money(p.price)));
-    totalRow('Запчастини разом', money(sumRows(partRows)));
+    totalRow(t('Запчастини разом'), money(sumRows(partRows)));
   }
   const activeWorks = workRows.filter(x => x.on);
   if (activeWorks.length) {
-    h2('Роботи');
+    h2(t('Роботи'));
     activeWorks.forEach(w => tableRow(w.name, w.sub, null, money(w.price)));
-    totalRow('Роботи разом', money(sumRows(workRows)));
+    totalRow(t('Роботи разом'), money(sumRows(workRows)));
   }
   const activeMaint = maintRows.filter(x => x.on);
   if (activeMaint.length) {
-    h2('Обслуговування за пробігом');
+    h2(t('Обслуговування за пробігом'));
     activeMaint.forEach(m => tableRow(m.name, m.sub, null, money(m.price)));
-    totalRow('Обслуговування разом', money(sumRows(maintRows)));
+    totalRow(t('Обслуговування разом'), money(sumRows(maintRows)));
   }
 
-  h2('Лот, доставка та розмитнення');
+  h2(t('Лот, доставка та розмитнення'));
   const L = [
-    ['Ставка на аукціоні', val('bid')], ['Збори аукціону', val('auctionFees')],
-    ['Доставка по США до порту', val('usDelivery')], ['Морський фрахт до Одеси', val('freight')],
-    ['Порт, експедитор, розвантаження', val('port')], ['Ввізне мито 10%', val('duty')],
-    ['Акциз', val('excise')], ['ПДВ 20%', val('vat')], ['Брокер', val('broker')],
-    ['Сертифікація, облік, доставка по Україні', val('uaFinal')],
+    [t('Ставка на аукціоні'), val('bid')], [t('Збори аукціону'), val('auctionFees')],
+    [t('Доставка по США до порту'), val('usDelivery')], [t('Морський фрахт до Одеси'), val('freight')],
+    [t('Порт, експедитор, розвантаження'), val('port')], [t('Ввізне мито 10%'), val('duty')],
+    [t('Акциз'), val('excise')], [t('ПДВ 20%'), val('vat')], [t('Брокер'), val('broker')],
+    [t('Сертифікація, облік, доставка по Україні'), val('uaFinal')],
   ];
   L.forEach(([n, s]) => tableRow(n, '', null, money(s)));
   const logistics = L.reduce((a, [, s]) => a + s, 0);
-  totalRow('Лот + логістика + розмитнення', money(logistics));
+  totalRow(t('Лот + логістика + розмитнення'), money(logistics));
 
   /* ---------- підсумок ---------- */
   const grand = logistics + sumRows(partRows) + sumRows(workRows) + sumRows(maintRows);
@@ -1390,31 +1413,31 @@ function generatePdf() {
   doc.setFillColor(244, 245, 247);
   doc.roundedRect(M, y - 5, W, 14, 2, 2, 'F');
   doc.setFont('DejaVu', 'bold'); doc.setFontSize(9); setC(COLORS.muted);
-  doc.text('ПІД КЛЮЧ В УКРАЇНІ', M + 5, y + 2.5);
+  doc.text(t('ПІД КЛЮЧ В УКРАЇНІ'), M + 5, y + 2.5);
   doc.setFontSize(15); setC(COLORS.text);
   doc.text(money(grand), PW - M - 5, y + 3, { align: 'right' });
   y += 15;
 
   const rkPdf = computeRisk();
-  dotLine(rkPdf.cls, 'Ризик покупки: ' + rkPdf.score.toFixed(1) + ' / 10', '');
+  dotLine(rkPdf.cls, t('Ризик покупки: ') + rkPdf.score.toFixed(1) + ' / 10', '');
   const safetyOff = partRows.some(x => x.safety && !x.on);
-  if (safetyOff) para('Подушки безпеки виключені з кошторису. Авто без відновлених подушок небезпечне.', 8.5, COLORS.bad);
+  if (safetyOff) para(t('Подушки безпеки виключені з кошторису. Авто без відновлених подушок небезпечне.'), 8.5, COLORS.bad);
 
   ensure(8);
   y += 3;
   doc.setFont('DejaVu', 'normal'); doc.setFontSize(7.5); setC(COLORS.unknown);
-  doc.text('Прорахунок згенеровано на calcar.io · ціни орієнтовні, не є офіційним кошторисом', PW / 2, y, { align: 'center' });
+  doc.text(t('Прорахунок згенеровано на calcar.io · ціни орієнтовні, не є офіційним кошторисом'), PW / 2, y, { align: 'center' });
 
   return doc;
 }
 
 async function downloadPdf(btn) {
   const label = btn.textContent;
-  btn.disabled = true; btn.textContent = 'Готую PDF…';
+  btn.disabled = true; btn.textContent = t('Готую PDF…');
   try {
     generatePdf().save(pdfName());
   } catch (e) {
-    alert('Не вдалося згенерувати PDF: ' + (e && e.message ? e.message : 'невідома помилка'));
+    alert(t('Не вдалося згенерувати PDF: ') + (e && e.message ? e.message : t('невідома помилка')));
   } finally {
     btn.disabled = false; btn.textContent = label;
   }
@@ -1436,13 +1459,29 @@ document.getElementById('printMeta').textContent =
   const ta = document.getElementById('chatText');
   const sendBtn = document.getElementById('chatSend');
 
-  document.getElementById('chatCarTitle').textContent = DATA.vehicle?.title || 'AI-помічник CalCar';
+  document.getElementById('chatCarTitle').textContent = DATA.vehicle?.title || t('AI-помічник CalCar');
 
-  /* історія живе в sessionStorage, прив'язана до конкретного авто */
+  /* Історія чату: живе в localStorage (переживає закриття браузера) і дзеркалиться
+     у звіт в Supabase як data._chat через звичайне автозбереження, тому на іншому
+     пристрої під тим самим акаунтом переписка теж підтягнеться. */
   const CHAT_KEY = 'calcarChat:' + (REPORT_DB_ID || DATA._meta?.lot_number || DATA._meta?.vin || 'local');
   let history = [];
-  try { history = JSON.parse(sessionStorage.getItem(CHAT_KEY) || '[]'); } catch (e) {}
-  const persist = () => { try { sessionStorage.setItem(CHAT_KEY, JSON.stringify(history.slice(-30))); } catch (e) {} };
+  if (Array.isArray(DATA._chat) && DATA._chat.length) {
+    history = DATA._chat;
+  } else {
+    try { history = JSON.parse(localStorage.getItem(CHAT_KEY) || '[]'); } catch (e) {}
+    if (!history.length) {
+      /* міграція зі старого sessionStorage-сховища */
+      try { history = JSON.parse(sessionStorage.getItem(CHAT_KEY) || '[]'); } catch (e) {}
+    }
+  }
+  window.__chatHistory = history;
+  const persist = () => {
+    const keep = history.slice(-30);
+    try { localStorage.setItem(CHAT_KEY, JSON.stringify(keep)); } catch (e) {}
+    window.__chatHistory = keep;
+    if (typeof scheduleSave === 'function') scheduleSave();
+  };
 
   function addMsg(role, text) {
     const d = document.createElement('div');
@@ -1455,14 +1494,14 @@ document.getElementById('printMeta').textContent =
   function addTyping() {
     const d = document.createElement('div');
     d.className = 'chat-msg typing';
-    d.innerHTML = 'Дивлюсь звіт<i>…</i>';
+    d.innerHTML = t('Дивлюсь звіт') + '<i>…</i>';
     msgsEl.appendChild(d);
     msgsEl.scrollTop = msgsEl.scrollHeight;
     return d;
   }
 
   /* привітання локальне, без запиту до API */
-  const GREETING = 'Привіт! Я вивчив цей лот: дані аукціону, фото, розбір пошкоджень і твій кошторис. Питай будь-що: чи варто брати, що з подушками, скільки закласти на ремонт, яку ставку не перевищувати.';
+  const GREETING = t('Привіт! Я вивчив цей лот: дані аукціону, фото, розбір пошкоджень і твій кошторис. Питай будь-що: чи варто брати, що з подушками, скільки закласти на ремонт, яку ставку не перевищувати.');
   function renderHistory() {
     msgsEl.innerHTML = '';
     if (!history.length) {
@@ -1556,39 +1595,110 @@ document.getElementById('printMeta').textContent =
   }
 
   let busy = false;
+  /* --- прикріплення файлів (Carfax PDF, фото) --- */
+  const attachBtn = document.getElementById('chatAttach');
+  const fileInput = document.getElementById('chatFile');
+  const filesRow = document.getElementById('chatFiles');
+  let pendingFiles = [];   /* {name, kind:'image'|'pdf', data:dataURL} */
+  const readAsDataURL = f => new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = () => rej(new Error('read'));
+    r.readAsDataURL(f);
+  });
+  async function shrinkImage(f) {
+    const url = await readAsDataURL(f);
+    if (f.size < 700 * 1024) return url;
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+    const k = Math.min(1, 1600 / Math.max(img.width, img.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', .85);
+  }
+  function renderFiles() {
+    filesRow.innerHTML = '';
+    filesRow.style.display = pendingFiles.length ? 'flex' : 'none';
+    pendingFiles.forEach((p, i) => {
+      const chip = document.createElement('span');
+      chip.className = 'chat-file-chip';
+      const nm = document.createElement('span');
+      nm.textContent = (p.kind === 'pdf' ? 'PDF · ' : '') + p.name;
+      const x = document.createElement('button');
+      x.type = 'button'; x.textContent = '✕';
+      x.onclick = () => { pendingFiles.splice(i, 1); renderFiles(); };
+      chip.append(nm, x);
+      filesRow.appendChild(chip);
+    });
+  }
+  attachBtn.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', async () => {
+    for (const f of Array.from(fileInput.files || [])) {
+      if (pendingFiles.length >= 3) { addMsg('ai', t('Максимум 3 файли на одне повідомлення')); break; }
+      try {
+        if (f.type === 'application/pdf') {
+          if (f.size > 2.5 * 1024 * 1024) { addMsg('ai', t('PDF завеликий, ліміт 2.5 МБ')); continue; }
+          pendingFiles.push({ name: f.name, kind: 'pdf', data: await readAsDataURL(f) });
+        } else if (/^image\//.test(f.type)) {
+          pendingFiles.push({ name: f.name, kind: 'image', data: await shrinkImage(f) });
+        }
+      } catch (e) {}
+    }
+    fileInput.value = '';
+    renderFiles();
+  });
+
   async function ask() {
     const q = ta.value.trim();
-    if (!q || busy) return;
+    if ((!q && !pendingFiles.length) || busy) return;
     busy = true;
     sendBtn.disabled = true;
     suggEl.style.display = 'none';
     ta.value = '';
     ta.style.height = '';
-    history.push({ role: 'user', content: q });
-    addMsg('user', q);
+    const atts = pendingFiles.splice(0);
+    renderFiles();
+    /* в історії тримаємо лише текст із маркером файлів: самі файли великі,
+       вони йдуть тільки з цим повідомленням і не переслідують подальші */
+    const shown = q + (atts.length ? (q ? '\n' : '') + t('Додані файли:') + ' ' + atts.map(a => a.name).join(', ') : '');
+    history.push({ role: 'user', content: shown });
+    addMsg('user', shown);
     persist();
+    const sendMessages = history.slice(-12).map(m => ({ role: m.role, content: m.content }));
+    if (atts.length) {
+      const last = sendMessages[sendMessages.length - 1];
+      sendMessages[sendMessages.length - 1] = {
+        role: 'user',
+        content: [
+          { type: 'text', text: last.content },
+          ...atts.map(a => a.kind === 'image'
+            ? { type: 'image_url', image_url: { url: a.data, detail: 'high' } }
+            : { type: 'file', file: { filename: a.name, file_data: a.data } }),
+        ],
+      };
+    }
     const typing = addTyping();
     try {
       const r = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          messages: history.slice(-12),
+          messages: sendMessages,
           context: chatContext(),
           photos: photosForChat(),
         }),
       });
       let d;
       try { d = await r.json(); }
-      catch (e) { throw new Error(r.status === 504 ? 'Відповідь не встигла за відведений час' : 'Сервер повернув несподівану відповідь'); }
+      catch (e) { throw new Error(r.status === 504 ? t('Відповідь не встигла за відведений час') : t('Сервер повернув несподівану відповідь')); }
       typing.remove();
-      if (!r.ok || d.error || !d.reply) throw new Error(d.error || 'Не вдалося отримати відповідь');
+      if (!r.ok || d.error || !d.reply) throw new Error(d.error || t('Не вдалося отримати відповідь'));
       history.push({ role: 'assistant', content: d.reply });
       addMsg('ai', d.reply);
       persist();
     } catch (e) {
       typing.remove();
-      addMsg('ai', 'Не вийшло: ' + (e.message || 'помилка') + '. Спробуй ще раз');
+      addMsg('ai', t('Не вийшло: ') + (e.message || t('помилка')) + t('. Спробуй ще раз'));
       /* питання лишаємо в історії, щоб повторний Enter його не загубив */
     } finally {
       busy = false;
