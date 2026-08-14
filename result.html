@@ -357,6 +357,30 @@
   .risk-badge{margin-left:auto;display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);font-weight:600}
   .risk-badge b{color:var(--text);font-size:13.5px}
   .risk-label{font-size:12px;font-weight:600;padding:2px 8px;border-radius:12px;margin-left:4px}
+  .notes-sec{margin-bottom:18px}
+  .notes-sec:last-of-type{margin-bottom:6px}
+  .notes-t{font-size:12px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+  .note-row{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--line)}
+  .note-row:first-child{border-top:none}
+  .note-row .sev{width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-top:7px}
+  .sev.high{background:var(--red)} .sev.med{background:var(--amber)} .sev.low{background:var(--green)}
+  .note-row .nb{flex:1;min-width:0}
+  .note-row b{display:block;font-size:14px;line-height:1.35}
+  .note-row .unit{font-size:12px;color:var(--muted)}
+  .note-row p{margin:3px 0 0;font-size:13px;color:var(--ink-2);line-height:1.45}
+  .note-row .cost{font-size:13px;font-weight:700;white-space:nowrap;color:var(--ink);margin-top:1px}
+  ul.chk{margin:0;padding:0;list-style:none}
+  ul.chk li{position:relative;padding:7px 0 7px 24px;font-size:13.5px;line-height:1.45;color:var(--ink-2)}
+  ul.chk li::before{content:"";position:absolute;left:6px;top:14px;width:6px;height:6px;border-radius:50%;background:var(--brand-active)}
+  .notes-foot{font-size:11.5px;color:var(--faint);border-top:1px solid var(--line);padding-top:10px}
+  .chip.gold{background:#FFF7E8;border-color:#E9C98B;color:#8A5A13;font-weight:600}
+  .chip.gold::before{content:"◆ ";font-size:9px;vertical-align:1px}
+  .eq-impact{margin:12px 0 2px;padding:10px 14px;background:#FFF7E8;border:1px solid #E9C98B;border-radius:12px}
+  .eq-impact .notes-t{color:#8A5A13;margin-bottom:4px}
+  .eq-impact .notes-t::before{content:"◆ ";font-size:10px}
+  .eq-impact .note-row{border-top-color:#F3E4C2}
+  .eq-impact .cost{color:#8A5A13}
+  .prem-badge{display:inline-block;margin-left:7px;padding:1px 7px;border-radius:9px;font-size:10.5px;font-weight:600;background:#FFF7E8;border:1px solid #E9C98B;color:#8A5A13;vertical-align:1px;white-space:nowrap}
   #saveHint{font-size:12.5px;color:var(--muted);opacity:0;transition:opacity .3s}
   #saveHint.show{opacity:1}
   .risk-line{display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:14px;font-weight:600}
@@ -558,10 +582,33 @@
     <div class="card-body">
       <div class="flags" id="flagsEl"></div>
       <div class="dmg-note" id="dmgNote"></div>
+      <div class="eq-impact" id="eqImpact" style="display:none">
+        <div class="notes-t">Дорога комплектація в зоні удару</div>
+        <div id="eqImpactList"></div>
+      </div>
       <details class="zones" id="zonesEl" style="display:none">
         <summary>Детальний огляд зон</summary>
         <div id="zonesList"></div>
       </details>
+    </div>
+  </div>
+
+  <!-- MODEL NOTES: слабкі місця, вплив комплектації, чек-лист -->
+  <div class="card" id="notesCard" style="display:none">
+    <div class="card-head">
+      <h2>Що перевірити перед покупкою</h2>
+      <span class="badge blue">AI-довідка по моделі</span>
+    </div>
+    <div class="card-body">
+      <div class="notes-sec" id="issuesSec" style="display:none">
+        <div class="notes-t">Типові слабкі місця цієї моделі</div>
+        <div id="issuesList"></div>
+      </div>
+      <div class="notes-sec" id="checklistSec" style="display:none">
+        <div class="notes-t">Що перевірити саме в цій машині</div>
+        <ul class="chk" id="checklistList"></ul>
+      </div>
+      <div class="notes-foot">Довідка за моделлю і пробігом, не за фото цього авто. Орієнтир для перевірки, не заміна діагностики</div>
     </div>
   </div>
 
@@ -930,6 +977,47 @@ function renderHeaderBlocks(){
     }).join('');
     document.getElementById('zonesEl').style.display = '';
   }
+  /* слабкі місця моделі, вплив комплектації, чек-лист */
+  (function renderNotes() {
+    const mn = DATA.model_notes || {};
+    const issues = Array.isArray(mn.issues) ? mn.issues : [];
+    const chk = Array.isArray(mn.checklist) ? mn.checklist : [];
+    if (!issues.length && !chk.length) return;
+    const money = n => (typeof n === 'number' && n > 0) ? '$' + Math.round(n).toLocaleString(calcarLocale()) : '';
+    if (issues.length) {
+      document.getElementById('issuesList').innerHTML = issues.map(i => {
+        const sev = ['low','med','high'].includes(i.severity) ? i.severity : 'med';
+        const c = money(i.cost);
+        return `<div class="note-row"><div class="sev ${sev}"></div><div class="nb"><b>${esc(i.title || '')}</b>`
+          + (i.unit ? `<div class="unit">${esc(i.unit)}</div>` : '')
+          + (i.detail ? `<p>${esc(i.detail)}</p>` : '')
+          + `</div>` + (c ? `<div class="cost">${c}</div>` : '') + `</div>`;
+      }).join('');
+      document.getElementById('issuesSec').style.display = '';
+    }
+    if (chk.length) {
+      document.getElementById('checklistList').innerHTML = chk.map(x => `<li>${esc(String(x))}</li>`).join('');
+      document.getElementById('checklistSec').style.display = '';
+    }
+    document.getElementById('notesCard').style.display = '';
+  })();
+
+  /* дорога комплектація, зачеплена цим ударом: у картці розбору пошкоджень.
+     Фолбек на старе розташування в model_notes для звітів, згенерованих сьогодні вдень */
+  (function renderEqImpact() {
+    const impact = Array.isArray(DATA.equipment_impact) ? DATA.equipment_impact
+      : (Array.isArray(DATA.model_notes?.equipment_impact) ? DATA.model_notes.equipment_impact : []);
+    if (!impact.length) return;
+    const money = n => (typeof n === 'number' && n > 0) ? '$' + Math.round(n).toLocaleString(calcarLocale()) : '';
+    document.getElementById('eqImpactList').innerHTML = impact.map(i => {
+      const c = money(i.cost);
+      return `<div class="note-row gold-row"><div class="nb"><b>${esc(i.feature || '')}</b>`
+        + (i.detail ? `<p>${esc(i.detail)}</p>` : '')
+        + `</div>` + (c ? `<div class="cost">${c}</div>` : '') + `</div>`;
+    }).join('');
+    document.getElementById('eqImpact').style.display = '';
+  })();
+
   const spec = [];
   if (v.engine) spec.push([v.engine,t('Двигун')]);
   if (v.transmission) spec.push([v.transmission,t('Коробка передач')]);
@@ -938,7 +1026,10 @@ function renderHeaderBlocks(){
   if (spec.length) document.getElementById('specGrid').innerHTML =
     spec.map(([b,s]) => `<div><b>${esc(b)}</b><span>${esc(s)}</span></div>`).join('');
   const eq = v.equipment || [];
-  document.getElementById('chipsEl').innerHTML = eq.map(e => `<div class="chip">${esc(e)}</div>`).join('');
+  const premium = new Set((v.premium_options || []).map(String));
+  document.getElementById('chipsEl').innerHTML = eq.map(e => premium.has(String(e))
+    ? `<div class="chip gold" title="${esc(t('Дорога опція, може суттєво впливати на вартість ремонту'))}">${esc(e)}</div>`
+    : `<div class="chip">${esc(e)}</div>`).join('');
 
   const FLAG_ORDER = {bad:0, warn:1, ok:2, unknown:3};
   const flags = (DATA.flags || []).slice().sort((a,b) =>
@@ -1017,9 +1108,10 @@ function renderPartRow(r) {
   const confBadge = r.conf === 'sure' ? '<span class="conf sure">' + t('точно') + '</span>'
     : r.conf === 'likely' ? '<span class="conf likely">' + t('ймовірно') + '</span>' : '';
 
+  const premBadge = r.premium ? `<span class="prem-badge">◆ ${esc(t('дорога опція'))}</span>` : '';
   const nameCell = r.custom
     ? `<div class="part-cell"><input class="name-input" data-field="name" value="${esc(r.name)}" placeholder="Назва деталі"></div>`
-    : `<div class="part-cell"><div class="part-name">${esc(r.name)}${confBadge}</div>
+    : `<div class="part-cell"><div class="part-name">${esc(r.name)}${confBadge}${premBadge}</div>
        ${r.sub ? `<div class="part-sub">${esc(r.sub)}</div>` : ''}</div>`;
 
   let seg = '<div class="seg">';
@@ -1300,7 +1392,7 @@ if (SB && REPORT_DB_ID) SB.auth.getSession().then(({ data }) => { CAN_SAVE = !!d
 
 function serializeState() {
   const strip = r => ({ name:r.name, sub:r.sub, conf:r.conf, prices:r.prices, cat:r.cat,
-    price:r.price, on:r.on, custom:r.custom, safety:r.safety });
+    price:r.price, on:r.on, custom:r.custom, safety:r.safety, premium:r.premium });
   const log = {};
   ['bid','auctionFees','usDelivery','freight','port','duty','excise','vat','broker','uaFinal']
     .forEach(id => { log[id] = Number(document.getElementById(id).value) || 0; });
@@ -1522,10 +1614,30 @@ function generatePdf() {
 
   /* ---------- таблиці ---------- */
   const money = n => '$' + Math.round(n).toLocaleString('uk-UA').replace(/,/g, ' ');
+  /* довідка по моделі: болячки, вплив комплектації, чек-лист */
+  const MN = DATA.model_notes || {};
+  const mnIssues = Array.isArray(MN.issues) ? MN.issues : [];
+  const mnImpact = Array.isArray(DATA.equipment_impact) ? DATA.equipment_impact
+    : (Array.isArray(MN.equipment_impact) ? MN.equipment_impact : []);
+  const mnChk = Array.isArray(MN.checklist) ? MN.checklist : [];
+  if (mnImpact.length) {
+    h2(t('Дорога комплектація в зоні удару'));
+    mnImpact.forEach(i => tableRow(
+      String(i.feature || ''), String(i.detail || ''), null,
+      (typeof i.cost === 'number' && i.cost > 0) ? money(i.cost) : ''));
+  }
+  if (mnIssues.length || mnChk.length) {
+    h2(t('Що перевірити перед покупкою'));
+    mnIssues.forEach(i => tableRow(
+      String(i.title || ''), [i.unit, i.detail].filter(Boolean).join(' · '), null,
+      (typeof i.cost === 'number' && i.cost > 0) ? money(i.cost) : ''));
+    mnChk.forEach(x => tableRow('•', String(x), null, ''));
+  }
+
   const activeParts = partRows.filter(x => x.on);
   if (activeParts.length) {
     h2(t('Запчастини'));
-    activeParts.forEach(p => tableRow(p.name, p.sub, p.cat ? (catLabels[p.cat] || '') : '', money(p.price)));
+    activeParts.forEach(p => tableRow(p.name, [p.sub, p.premium ? '◆ ' + t('дорога опція') : null].filter(Boolean).join(' · '), p.cat ? (catLabels[p.cat] || '') : '', money(p.price)));
     totalRow(t('Запчастини разом'), money(sumRows(partRows)));
   }
   const activeWorks = workRows.filter(x => x.on);
@@ -1721,6 +1833,9 @@ document.getElementById('printMeta').textContent =
       zones: DATA.zones || [],
       damage_note: DATA.damage_note || null,
       lot_notes: DATA.lot_notes || null,
+      model_notes: DATA.model_notes || null,
+      equipment_impact: DATA.equipment_impact || null,
+      premium_options: (DATA.vehicle && DATA.vehicle.premium_options) || null,
       risk_score: (DATA.parts || []).length ? computeRisk().score : null,
       parts: on(partRows),
       works: on(workRows),
