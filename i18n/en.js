@@ -187,4 +187,12 @@ window.CALCAR_DICT = {
     'Оклахома (OK)': 'Oklahoma (OK)', 'Орегон (OR)': 'Oregon (OR)', 'Пд. Кароліна (SC)': 'South Carolina (SC)',
     'Пн. Кароліна (NC)': 'North Carolina (NC)', 'Пенсильванія (PA)': 'Pennsylvania (PA)',
     'Теннессі (TN)': 'Tennessee (TN)', 'Техас (TX)': 'Texas (TX)', 'Флорида (FL)': 'Florida (FL)', 'Юта (UT)': 'Utah (UT)',
-  };
+  'AI-довідка по моделі': 'AI model reference',
+  'Довідка за моделлю і пробігом, не за фото цього авто. Орієнтир для перевірки, не заміна діагностики': 'Based on the model and mileage, not on this car’s photos. A guide for inspection, not a substitute for diagnostics',
+  'Що перевірити перед покупкою': 'What to check before buying',
+  'Типові слабкі місця цієї моделі': 'Common weak points of this model',
+  'Що перевірити саме в цій машині': 'What to check on this specific car',
+  'Дорога комплектація в зоні удару': 'Premium equipment in the impact zone',
+  'Дорога опція, може суттєво впливати на вартість ремонту': 'Premium option, can significantly affect repair cost',
+  'дорога опція': 'premium option',
+};
