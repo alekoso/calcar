@@ -358,6 +358,7 @@
   .risk-badge b{color:var(--text);font-size:13.5px}
   .risk-label{font-size:12px;font-weight:600;padding:2px 8px;border-radius:12px;margin-left:4px}
   .notes-sub{font-size:12.5px;color:var(--muted);margin-bottom:6px}
+  .no-bid-note{font-size:11.5px;font-weight:600;color:var(--amber);margin-top:4px}
   .notes-t{font-size:12px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
   .note-row{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--line)}
   .note-row:first-child{border-top:none}
@@ -595,11 +596,10 @@
   <!-- MODEL NOTES: слабкі місця, вплив комплектації, чек-лист -->
   <div class="card" id="notesCard" style="display:none">
     <div class="card-head">
-      <h2>Що варто знати про цю модель</h2>
+      <h2>Типові слабкі місця цієї моделі</h2>
       <span class="hint" style="margin-left:auto">На основі версії авто, двигуна та пробігу</span>
     </div>
     <div class="card-body">
-      <div class="notes-sub">Типові слабкі місця саме цієї версії з урахуванням двигуна, року та пробігу</div>
       <div id="issuesList"></div>
     </div>
   </div>
@@ -775,6 +775,7 @@
         <div class="v-cell">
           <div class="lbl">Під ключ в Україні</div>
           <div class="val num" id="grandTotal">$0</div>
+          <div class="no-bid-note" id="noBidNote" style="display:none">без ціни лота: ставку не вказано</div>
         </div>
       </div>
       <div class="safety-strike" id="safetyStrike">⚠ Подушки безпеки виключені з кошторису. Авто без відновлених подушок небезпечне, це позначення залишиться у вердикті та PDF.</div>
@@ -990,13 +991,9 @@ function renderHeaderBlocks(){
     const impact = Array.isArray(DATA.equipment_impact) ? DATA.equipment_impact
       : (Array.isArray(DATA.model_notes?.equipment_impact) ? DATA.model_notes.equipment_impact : []);
     if (!impact.length) return;
-    const money = n => (typeof n === 'number' && n > 0) ? '$' + Math.round(n).toLocaleString(calcarLocale()) : '';
-    document.getElementById('eqImpactList').innerHTML = impact.map(i => {
-      const c = money(i.cost);
-      return `<div class="note-row gold-row"><div class="nb"><b>${esc(i.feature || '')}</b>`
-        + (i.detail ? `<p>${esc(i.detail)}</p>` : '')
-        + `</div>` + (c ? `<div class="cost">${c}</div>` : '') + `</div>`;
-    }).join('');
+    document.getElementById('eqImpactList').innerHTML = impact.map(i =>
+      `<div class="note-row gold-row"><div class="nb"><b>${esc(i.feature || '')}</b>`
+        + (i.detail ? `<p>${esc(i.detail)}</p>` : '') + `</div></div>`).join('');
     document.getElementById('eqImpact').style.display = '';
   })();
 
@@ -1341,6 +1338,8 @@ function recalc() {
 
   const grand = logistics + repair;
   document.getElementById('grandTotal').textContent = fmt(grand);
+  const nb = document.getElementById('noBidNote');
+  if (nb) nb.style.display = (Number(document.getElementById('bid').value) > 0) ? 'none' : '';
 
   if (window.__ready) scheduleSave();
 }
@@ -1367,10 +1366,13 @@ function recalc() {
   } else {
     /* торги ще не почались: орієнтир від оцінки авто, ~30% ринкової,
        округлено до сотень. Поле підсвічене, щоб замінили на свою ставку */
-    const est = Number(meta.est_retail_value) || 0;
-    const guess = est > 0 ? Math.max(500, Math.round(est * 0.3 / 100) * 100) : 3000;
-    bidEl.value = guess;
-    bidSub.textContent = t('Орієнтовна ставка (торги ще не почались). Впиши свою, підсумок перерахується');
+    /* Торги не почались, реальної ціни нема. Вигадувати суму (напр. 30% від
+       est_retail_value) небезпечно: користувач може не помітити і прийняти
+       фантомні $18k за факт. Поле лишається порожнім, підсумок чесно показує
+       вартість без лота, з поміткою. */
+    bidEl.value = '';
+    bidEl.placeholder = '0';
+    bidSub.textContent = t('Ціна лота не вказана. Впиши очікувану ставку, підсумок перерахується');
     document.querySelector('.cc-bid').classList.add('pulse');
   }
 })();
@@ -1624,12 +1626,10 @@ function generatePdf() {
 
   if (mnImpact.length) {
     h2(t('Дорога комплектація в зоні удару'));
-    mnImpact.forEach(i => tableRow(
-      String(i.feature || ''), String(i.detail || ''), null,
-      (typeof i.cost === 'number' && i.cost > 0) ? money(i.cost) : ''));
+    mnImpact.forEach(i => tableRow(String(i.feature || ''), String(i.detail || ''), null, ''));
   }
   if (mnIssues.length) {
-    h2(t('Що варто знати про цю модель'));
+    h2(t('Типові слабкі місця цієї моделі'));
     mnIssues.forEach(i => tableRow(
       String(i.title || ''), [i.unit, i.detail].filter(Boolean).join(' · '), null, ''));
   }
@@ -1676,6 +1676,11 @@ function generatePdf() {
   doc.setFontSize(15); setC(COLORS.text);
   doc.text(money(grand), PW - M - 5, y + 3, { align: 'right' });
   y += 15;
+  if (!(Number(document.getElementById('bid').value) > 0)) {
+    doc.setFont('DejaVu', 'normal'); doc.setFontSize(8); setC(COLORS.muted);
+    doc.text(t('Ціна лота не вказана, підсумок порахований без вартості лота'), M, y);
+    y += 6;
+  }
 
   const rkPdf = computeRisk();
   dotLine(rkPdf.cls, t('Ризик покупки: ') + rkPdf.score.toFixed(1) + ' / 10', '');
