@@ -218,14 +218,25 @@ function extractImageObjects(item) {
 }
 
 function dedupeImages(urls) {
-  const seen = new Set();
-  return urls.filter(u => {
-    const m = /imageKeys=([^&]+)/i.exec(u);
-    const key = m ? m[1] : u;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
+  /* Той самий кадр приходить у кількох розмірах: ..._thb.jpg (мініатюра),
+     ..._ful.jpg, ..._hrs.jpg. Ключ = імʼя файлу без суфікса розміру, і з
+     дублікатів лишається найбільша версія, мініатюра ніколи не витісняє повну. */
+  const RANK = { thb: 0, thumb: 0, sml: 1, med: 2, ful: 3, full: 3, hrs: 4, hd: 4 };
+  const parse = u => {
+    const mk = /imageKeys=([^&]+)/i.exec(u);
+    const mf = /\/([^\/?#]+?)(?:_(thb|thumb|sml|med|ful|full|hrs|hd))?\.(?:jpe?g|png|webp)/i.exec(u);
+    return {
+      key: mk ? mk[1] : (mf ? mf[1] : u),
+      rank: mf && mf[2] ? (RANK[mf[2].toLowerCase()] ?? 2) : 2,
+    };
+  };
+  const best = new Map();   /* key -> {u, rank, order} */
+  urls.forEach((u, i) => {
+    const { key, rank } = parse(u);
+    const cur = best.get(key);
+    if (!cur || rank > cur.rank) best.set(key, { u, rank, order: cur ? cur.order : i });
   });
+  return [...best.values()].sort((a, b) => a.order - b.order).map(x => x.u);
 }
 
 function normalizeGeneric(item, source) {
@@ -302,7 +313,7 @@ function normalizeGeneric(item, source) {
     buy_it_now: num(pick(flat, ['buyItNowPrice', 'buyNowPrice'])),
     est_retail_value: num(pick(flat, ['estimatedRetailValue', 'estRetailValue', 'acv', 'actualCashValue', 'retailValue'])),
     acv: num(pick(flat, ['acv', 'actualCashValue'])),
-    images: imgs.slice(0, 14).map((url, i) => ({
+    images: imgs.slice(0, 16).map((url, i) => ({
       url,
       med: String(url)
         .replace(/([?&](?:width|w))=(\d+)/gi, '$1=1600')
