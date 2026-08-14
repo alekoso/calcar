@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@800&display=swap&text=CalCar" rel="stylesheet">
-<script src="/i18n.js"></script>
+<script src="/i18n.js?v=2"></script>
 <script>window.t=window.t||function(s){return s};window.calcarLang=window.calcarLang||function(){return"ua"};window.calcarLocale=window.calcarLocale||function(){return"uk-UA"};</script>
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -51,7 +51,7 @@
   }
   .num{font-variant-numeric:tabular-nums}
 
-  header{background:rgba(255,255,255,.88);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line);color:var(--text);position:sticky;top:0;z-index:50}
+  header{background:rgba(255,255,255,.88);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line);color:var(--text);position:sticky;top:0;z-index:120}
   .header-in{max-width:1160px;margin:0 auto;padding:0 20px;height:56px;display:flex;align-items:center;gap:14px}
   .logo{display:inline-flex;align-items:stretch;border-radius:.46em;overflow:hidden;font-weight:800;font-size:15px;letter-spacing:.01em;line-height:1;text-decoration:none;font-family:'Sora',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
   .logo .l{background:var(--brand);color:var(--ink);padding:.62em 1.05em .62em .72em;clip-path:polygon(0 0,100% 0,calc(100% - .46em) 100%,0 100%)}
@@ -296,10 +296,10 @@
   }
   .chat-fab:hover{background:var(--graphite-2);transform:translateY(-1px)}
   .chat-fab .dot-ai{width:8px;height:8px;border-radius:50%;background:var(--brand);flex-shrink:0}
-  .chat-overlay{position:fixed;inset:0;background:rgba(15,25,40,.28);z-index:99;opacity:0;pointer-events:none;transition:opacity .22s}
+  .chat-overlay{position:fixed;top:var(--hdr-h,56px);left:0;right:0;bottom:0;background:rgba(15,25,40,.28);z-index:99;opacity:0;pointer-events:none;transition:opacity .22s}
   .chat-overlay.open{opacity:1;pointer-events:auto}
   .chat-panel{
-    position:fixed;top:56px;right:0;bottom:0;width:420px;max-width:100vw;background:#fff;z-index:100;
+    position:fixed;top:var(--hdr-h,56px);right:0;bottom:0;width:420px;max-width:100vw;background:#fff;z-index:100;
     display:flex;flex-direction:column;border-left:1px solid var(--line);
     box-shadow:-16px 0 44px rgba(10,20,35,.14);
     transform:translateX(105%);transition:transform .25s ease;
@@ -1473,6 +1473,13 @@ document.getElementById('printMeta').textContent =
   const msgsEl = document.getElementById('chatMsgs');
   const suggEl = document.getElementById('chatSugg');
   const ta = document.getElementById('chatText');
+  /* висота хедера вимірюється фактично: на мобілці і при переносі рядків вона інша */
+  const syncHeaderH = () => {
+    const h = document.querySelector('header')?.getBoundingClientRect().height;
+    if (h) document.documentElement.style.setProperty('--hdr-h', Math.round(h) + 'px');
+  };
+  syncHeaderH();
+  window.addEventListener('resize', syncHeaderH);
   const sendBtn = document.getElementById('chatSend');
 
   document.getElementById('chatCarTitle').textContent = DATA.vehicle?.title || t('AI-помічник CalCar');
