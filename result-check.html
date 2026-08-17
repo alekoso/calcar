@@ -255,16 +255,18 @@
   .vin-line{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:13px;letter-spacing:.8px;font-weight:700;color:var(--text)}
 
   /* ---- вердикт ---- */
-  .verdict{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap}
-  .v-grade{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-width:132px;padding:16px 18px;border-radius:var(--radius);text-align:center}
-  .v-grade b{font-size:30px;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums}
-  .v-grade b em{font-style:normal;font-size:14px;font-weight:700;opacity:.6}
-  .v-grade span{font-size:11.5px;letter-spacing:.4px;text-transform:uppercase;opacity:.75}
-  .g-buy{background:var(--green-soft);color:var(--green)}
-  .g-inspect{background:var(--brand-soft);color:var(--brand-ink)}
-  .g-caution{background:var(--amber-soft);color:var(--amber)}
-  .g-avoid{background:var(--red-soft);color:var(--red)}
-  .v-text{flex:1;min-width:260px;font-size:14.5px;line-height:1.55;color:var(--ink-2)}
+  /* оцінка: той самий бейдж, що ризик-скор в Import */
+  .risk-badge{margin-left:auto;display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);font-weight:600}
+  .risk-badge b{color:var(--text);font-size:13.5px}
+  .risk-label{font-size:12px;font-weight:600;padding:2px 8px;border-radius:12px;margin-left:4px}
+  .v-text{font-size:14.5px;line-height:1.55;color:var(--ink-2)}
+
+  @media print{
+    header,.chat-fab,.chat-panel,.chat-overlay,.topbar,.trbar,.final-actions{display:none!important}
+    body{background:#fff}
+    .card{box-shadow:none;break-inside:avoid}
+    .photo-strip{overflow:visible;flex-wrap:wrap}
+  }
 
   .flags{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
   .flag{display:flex;align-items:center;gap:10px;background:var(--bg);border-radius:10px;padding:10px 14px;font-size:13.5px;font-weight:600}
@@ -436,13 +438,11 @@
   <div class="card" id="verdictCard" style="display:none">
     <div class="card-head">
       <h2>Чи варто брати</h2>
-      <span class="hint" style="margin-left:auto">Рішення завжди за вами</span>
+      <span class="risk-badge" id="scoreBadge" style="display:none"><span class="dot ok" id="scoreDot"></span>Оцінка: <b id="scoreVal">–</b> <span class="risk-label" id="scoreLabel"></span></span>
     </div>
     <div class="card-body">
-      <div class="verdict">
-        <div class="v-grade" id="vGrade"><b id="vGradeT"></b><span id="vGradeS"></span></div>
-        <div class="v-text" id="vText"></div>
-      </div>
+      <div class="v-text" id="vText"></div>
+      <div class="hint" style="margin-top:10px">Оцінка враховує історію авто, потенційну вартість помилки та невизначеність доступних даних. Рішення завжди за вами</div>
     </div>
   </div>
 
@@ -529,8 +529,8 @@
     <div class="card-body">
       <div id="chkList"></div>
       <div class="final-actions">
-        <button class="btn-back" id="copyChk" type="button">Скопіювати список для СТО</button>
-        <button class="btn-primary" id="askAi" type="button" style="height:44px">Запитати CalCar про це авто</button>
+        <button class="btn-primary" id="pdfBtn" type="button" style="height:44px">Завантажити PDF</button>
+        <button class="btn-back" id="askAi" type="button">Запитати CalCar про це авто</button>
       </div>
     </div>
   </div>
@@ -575,7 +575,7 @@ const SB = (typeof supabase !== 'undefined' && window.CALCAR_SUPABASE?.url)
   : null;
 
 const OPEN_ID = new URLSearchParams(location.search).get('id');
-let DATA = null, M = {}, chatHist = [], CHK = [];
+let DATA = null, M = {}, chatHist = [];
 
 /* довге тире вичищаємо всюди: правило продукту */
 function esc(s){ return String(s ?? '').replace(/\s*\u2014\s*/g, ', ').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
@@ -694,26 +694,24 @@ function boot2(D){
     + (M.plate ? '<span>' + t('Номер') + ': <b>' + esc(M.plate) + '</b></span>' : '');
   if (M.url) { const l = $('srcLink'); l.href = M.url; l.style.display = ''; }
 
-  /* ---- вердикт: оцінка числом, як в Import ---- */
+  /* ---- вердикт: бейдж оцінки в шапці картки, як ризик-скор в Import ---- */
   const vd = D.verdict;
   if (vd && vd.summary) {
     $('verdictCard').style.display = '';
-    const sc = typeof vd.score === 'number' ? Math.max(0, Math.min(10, vd.score)) : null;
-    if (sc !== null) {
-      const cls = sc >= 8 ? 'g-buy' : sc >= 6 ? 'g-inspect' : sc >= 4 ? 'g-caution' : 'g-avoid';
-      const lbl = sc >= 8 ? t('варто розглядати') : sc >= 6 ? t('після перевірок') : sc >= 4 ? t('підвищений ризик') : t('високий ризик');
-      $('vGrade').className = 'v-grade ' + cls;
-      $('vGradeT').innerHTML = esc(sc.toFixed(1)) + '<em>/10</em>';
-      $('vGradeS').textContent = lbl;
-    } else {
-      /* старі звіти без score */
-      const GRADE = { buy:['g-buy',t('Варто брати')], inspect:['g-inspect',t('Брати після перевірки')], caution:['g-caution',t('Обережно')], avoid:['g-avoid',t('Краще відмовитись')] };
-      const g = GRADE[vd.grade] || GRADE.inspect;
-      $('vGrade').className = 'v-grade ' + g[0];
-      $('vGradeT').textContent = g[1];
-      $('vGradeS').textContent = '';
-    }
     $('vText').textContent = clean(vd.summary);
+    const sc = typeof vd.score === 'number' ? Math.round(Math.max(0, Math.min(10, vd.score)) * 10) / 10 : null;
+    if (sc !== null) {
+      /* оцінка авто: вище = краще */
+      const cls = sc >= 7.5 ? 'ok' : sc >= 5 ? 'warn' : 'bad';
+      const lbl = sc >= 8 ? t('варто розглядати') : sc >= 6 ? t('після перевірок') : sc >= 4 ? t('підвищений ризик') : t('високий ризик');
+      $('scoreBadge').style.display = '';
+      $('scoreDot').className = 'dot ' + cls;
+      $('scoreVal').textContent = sc.toFixed(1) + ' / 10';
+      const sl = $('scoreLabel');
+      sl.textContent = lbl;
+      sl.style.background = cls === 'ok' ? 'var(--green-soft)' : cls === 'warn' ? 'var(--amber-soft)' : 'var(--red-soft)';
+      sl.style.color = cls === 'ok' ? 'var(--green)' : cls === 'warn' ? 'var(--amber)' : 'var(--red)';
+    }
   }
 
   /* ---- ключові ризики ---- */
@@ -804,7 +802,6 @@ function boot2(D){
     + '<p>' + esc(i.detail) + '</p></div>');
 
   fill('chkCard', 'chkList', D.checklist, c => '<div class="chk"><i></i><span>' + esc(c) + '</span></div>');
-  CHK = Array.isArray(D.checklist) ? D.checklist.map(clean) : [];
 }
 
 /* короткий публічний id: 6 символів, без схожих O/0, I/1 */
@@ -818,12 +815,12 @@ function makePid(){
 }
 
 /* ---------- фінальні дії ---------- */
-document.getElementById('copyChk').addEventListener('click', async function(){
-  try {
-    await navigator.clipboard.writeText(CHK.map((c, i) => (i + 1) + '. ' + c).join('\n'));
-    this.textContent = t('Скопійовано ✓');
-    setTimeout(() => { this.textContent = t('Скопіювати список для СТО'); }, 1800);
-  } catch (e) {}
+document.getElementById('pdfBtn').addEventListener('click', () => {
+  /* друк у PDF засобами браузера: назва файлу = назва авто */
+  const old = document.title;
+  document.title = 'CalCar Check ' + (DATA?.vehicle?.title || '');
+  window.print();
+  document.title = old;
 });
 document.getElementById('askAi').addEventListener('click', () => {
   document.getElementById('chatFab').click();
