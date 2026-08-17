@@ -10,269 +10,270 @@
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@800&display=swap&text=CalCar" rel="stylesheet">
 <script>
 /* CalCar i18n, ядро. Вбудовується у сторінку (маленьке, не росте з кількістю мов).
-   Словники лежать окремо: /i18n/<code>.js, вантажиться РІВНО ОДИН, обраний.
-   Українська це базова мова: для неї не вантажиться нічого.
-   Якщо файл словника недоступний, сторінка просто лишається українською. */
+ Словники лежать окремо: /i18n/<code>.js, вантажиться РІВНО ОДИН, обраний.
+ Українська це базова мова: для неї не вантажиться нічого.
+ Якщо файл словника недоступний, сторінка просто лишається українською. */
 (function () {
-  var LS = 'calcar_lang';
-  var LANGS = [
-    { code: 'ua', label: 'Українська', short: 'UA', locale: 'uk-UA', html: 'uk' },
-    { code: 'ru', label: 'Русский',    short: 'RU', locale: 'ru-RU', html: 'ru' },
-    { code: 'en', label: 'English',    short: 'EN', locale: 'en-US', html: 'en' },
-  ];
-  var DICT_V = '3';           /* міняти при зміні словників, щоб скинути кеш */
+ var LS = 'calcar_lang';
+ var LANGS = [
+ { code: 'ua', label: 'Українська', short: 'UA', locale: 'uk-UA', html: 'uk' },
+ { code: 'ru', label: 'Русский', short: 'RU', locale: 'ru-RU', html: 'ru' },
+ { code: 'en', label: 'English', short: 'EN', locale: 'en-US', html: 'en' },
+ ];
+ var DICT_V = '3';  /* міняти при зміні словників, щоб скинути кеш */
 
-  function meta(c) {
-    for (var i = 0; i < LANGS.length; i++) if (LANGS[i].code === c) return LANGS[i];
-    return LANGS[0];
-  }
-  /* Мова браузера, якщо користувач ще нічого не обирав:
-     uk → українська, ru → російська, будь-що інше → англійська.
-     Тобто відвідувач з Іспанії одразу бачить англійську, а не українську. */
-  function detect() {
-    var list = [];
-    try {
-      list = (navigator.languages && navigator.languages.length)
-        ? navigator.languages : [navigator.language || ''];
-    } catch (e) { list = ['']; }
-    for (var i = 0; i < list.length; i++) {
-      var n = String(list[i]).toLowerCase();
-      if (n.indexOf('uk') === 0) return 'ua';
-      if (n.indexOf('ru') === 0) return 'ru';
-      if (n.indexOf('en') === 0) return 'en';
-    }
-    return 'en';
-  }
-  function known(c) {
-    for (var i = 0; i < LANGS.length; i++) if (LANGS[i].code === c) return true;
-    return false;
-  }
-  function lang() {
-    var v = null;
-    try { v = localStorage.getItem(LS); } catch (e) {}
-    return known(v) ? v : detect();
-  }
-  window.CALCAR_LANGS = LANGS;
-  window.calcarLang = lang;
-  window.calcarLocale = function () { return meta(lang()).locale; };
+ function meta(c) {
+ for (var i = 0; i < LANGS.length; i++) if (LANGS[i].code === c) return LANGS[i];
+ return LANGS[0];
+ }
+ /* Мова браузера, якщо користувач ще нічого не обирав:
+ uk → українська, ru → російська, будь-що інше → англійська.
+ Тобто відвідувач з Іспанії одразу бачить англійську, а не українську. */
+ function detect() {
+ var list = [];
+ try {
+ list = (navigator.languages && navigator.languages.length)
+ ? navigator.languages : [navigator.language || ''];
+ } catch (e) { list = ['']; }
+ for (var i = 0; i < list.length; i++) {
+ var n = String(list[i]).toLowerCase();
+ if (n.indexOf('uk') === 0) return 'ua';
+ if (n.indexOf('ru') === 0) return 'ru';
+ if (n.indexOf('en') === 0) return 'en';
+ }
+ return 'en';
+ }
+ function known(c) {
+ for (var i = 0; i < LANGS.length; i++) if (LANGS[i].code === c) return true;
+ return false;
+ }
+ function lang() {
+ var v = null;
+ try { v = localStorage.getItem(LS); } catch (e) {}
+ return known(v) ? v : detect();
+ }
+ window.CALCAR_LANGS = LANGS;
+ window.calcarLang = lang;
+ window.calcarLocale = function () { return meta(lang()).locale; };
 
-  /* Синхронне довантаження словника: тег пишеться під час парсингу head,
-     тому переклад готовий ще до першого рендера, без миготіння. */
-  var cur = lang();
-  if (cur !== 'ua') {
-    document.write('<scr' + 'ipt src="/i18n/' + cur + '.js?v=' + DICT_V + '"></scr' + 'ipt>');
-  }
+ /* Синхронне довантаження словника: тег пишеться під час парсингу head,
+ тому переклад готовий ще до першого рендера, без миготіння. */
+ var cur = lang();
+ if (cur !== 'ua') {
+ document.write('<scr' + 'ipt src="/i18n/' + cur + '.js?v=' + DICT_V + '"></scr' + 'ipt>');
+ }
 
-  function norm(s) { return String(s).replace(/\s+/g, ' ').trim(); }
+ function norm(s) { return String(s).replace(/\s+/g, ' ').trim(); }
 
-  /* Ключі словника нормалізуються один раз: у розмітці той самий рядок може мати
-     пробіли по краях або перенос рядка. Пробіли навколо збігу зберігаються. */
-  var _idx = null;
-  function dict() {
-    var raw = window.CALCAR_DICT;
-    if (!raw) return null;
-    if (_idx && _idx.__src === raw) return _idx;
-    var out = { __src: raw };
-    for (var k in raw) if (Object.prototype.hasOwnProperty.call(raw, k)) out[norm(k)] = raw[k];
-    _idx = out;
-    return out;
-  }
-  function lookup(s) {
-    var d = dict();
-    if (!d) return null;
-    var v = d[norm(s)];
-    if (v === undefined || v === null) return null;
-    return (s.match(/^\s*/) || [''])[0] + v + (s.match(/\s*$/) || [''])[0];
-  }
-  window.t = function (s, l) {
-    l = l || lang();
-    if (l === 'ua') return s;
-    return lookup(s) || s;
-  };
+ /* Ключі словника нормалізуються один раз: у розмітці той самий рядок може мати
+ пробіли по краях або перенос рядка. Пробіли навколо збігу зберігаються. */
+ var _idx = null;
+ function dict() {
+ var raw = window.CALCAR_DICT;
+ if (!raw) return null;
+ if (_idx && _idx.__src === raw) return _idx;
+ var out = { __src: raw };
+ for (var k in raw) if (Object.prototype.hasOwnProperty.call(raw, k)) out[norm(k)] = raw[k];
+ _idx = out;
+ return out;
+ }
+ function lookup(s) {
+ var d = dict();
+ if (!d) return null;
+ var v = d[norm(s)];
+ if (v === undefined || v === null) return null;
+ return (s.match(/^\s*/) || [''])[0] + v + (s.match(/\s*$/) || [''])[0];
+ }
+ window.t = function (s, l) {
+ l = l || lang();
+ if (l === 'ua') return s;
+ return lookup(s) || s;
+ };
 
-  /* перемикач: делегування на document, працює незалежно від моменту рендера */
-  document.addEventListener('click', function (e) {
-    var menu = document.getElementById('langMenu');
-    if (!menu || !e.target.closest) return;
-    var pick = e.target.closest('.lang-menu button');
-    if (pick && pick.dataset.lang) {
-      e.preventDefault();
-      try { localStorage.setItem(LS, pick.dataset.lang); } catch (err) {}
-      location.reload();
-      return;
-    }
-    if (e.target.closest('#langBtn')) { e.preventDefault(); menu.classList.toggle('open'); return; }
-    menu.classList.remove('open');
-  });
+ /* перемикач: делегування на document, працює незалежно від моменту рендера */
+ document.addEventListener('click', function (e) {
+ var menu = document.getElementById('langMenu');
+ if (!menu || !e.target.closest) return;
+ var pick = e.target.closest('.lang-menu button');
+ if (pick && pick.dataset.lang) {
+ e.preventDefault();
+ try { localStorage.setItem(LS, pick.dataset.lang); } catch (err) {}
+ location.reload();
+ return;
+ }
+ if (e.target.closest('#langBtn')) { e.preventDefault(); menu.classList.toggle('open'); return; }
+ menu.classList.remove('open');
+ });
 
-  function markSwitch() {
-    var l = lang(), btn = document.getElementById('langBtn'), menu = document.getElementById('langMenu');
-    if (!btn || !menu) return;
-    if (btn.firstChild && btn.firstChild.nodeType === 3) btn.firstChild.nodeValue = meta(l).short + ' ';
-    menu.querySelectorAll('button').forEach(function (b) {
-      b.classList.toggle('on', b.dataset.lang === l);
-    });
-  }
+ function markSwitch() {
+ var l = lang(), btn = document.getElementById('langBtn'), menu = document.getElementById('langMenu');
+ if (!btn || !menu) return;
+ if (btn.firstChild && btn.firstChild.nodeType === 3) btn.firstChild.nodeValue = meta(l).short + ' ';
+ menu.querySelectorAll('button').forEach(function (b) {
+ b.classList.toggle('on', b.dataset.lang === l);
+ });
+ }
 
-  function apply() {
-    var l = lang(), d = window.CALCAR_DICT;
-    document.documentElement.lang = meta(l).html;
-    if (l !== 'ua' && d) {
-      var w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null), nodes = [], n;
-      while ((n = w.nextNode())) nodes.push(n);
-      nodes.forEach(function (nd) {
-        if (!norm(nd.nodeValue || '')) return;
-        var v = lookup(nd.nodeValue);
-        if (v) nd.nodeValue = v;
-      });
-      ['placeholder', 'title', 'aria-label', 'alt'].forEach(function (a) {
-        document.querySelectorAll('[' + a + ']').forEach(function (el) {
-          var v = lookup(el.getAttribute(a) || '');
-          if (v) el.setAttribute(a, v.trim());
-        });
-      });
-      var dt = lookup(document.title);
-      if (dt) document.title = dt.trim();
-    }
-    markSwitch();
-  }
+ function apply() {
+ var l = lang(), d = window.CALCAR_DICT;
+ document.documentElement.lang = meta(l).html;
+ if (l !== 'ua' && d) {
+ var w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null), nodes = [], n;
+ while ((n = w.nextNode())) nodes.push(n);
+ nodes.forEach(function (nd) {
+ if (!norm(nd.nodeValue || '')) return;
+ var v = lookup(nd.nodeValue);
+ if (v) nd.nodeValue = v;
+ });
+ ['placeholder', 'title', 'aria-label', 'alt'].forEach(function (a) {
+ document.querySelectorAll('[' + a + ']').forEach(function (el) {
+ var v = lookup(el.getAttribute(a) || '');
+ if (v) el.setAttribute(a, v.trim());
+ });
+ });
+ var dt = lookup(document.title);
+ if (dt) document.title = dt.trim();
+ }
+ markSwitch();
+ }
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply);
-  else apply();
+ if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply);
+ else apply();
 })();
 </script>
 <style>
-  :root{--brand:#B8F23D;--brand-hover:#A7DF31;--brand-active:#96CC27;--brand-soft:#F0FBD9;--brand-ink:#3F5D11;--ink:#141619;--ink-2:#30343A;--graphite:#141619;--text:#141619;--muted:#697079;--faint:#90969D;--bg:#F7F8F6;--card:#FFFFFF;--surface-2:#F1F3F0;--line:#E2E5E0;--line-strong:#CDD2CB;--green:#218A4A;--amber:#C8790A;--red:#D83A3A;--red-soft:#FDEEEE}
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);font-size:15px;line-height:1.5}
-  header{background:rgba(255,255,255,.88);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line);color:var(--text);position:sticky;top:0;z-index:50}
-  .header-in{max-width:960px;margin:0 auto;padding:0 20px;height:56px;display:flex;align-items:center;gap:12px}
-  .logo{display:inline-flex;align-items:stretch;border-radius:.46em;overflow:hidden;font-weight:800;font-size:15px;letter-spacing:.01em;line-height:1;text-decoration:none;font-family:'Sora',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
-  .logo .l{background:var(--brand);color:var(--ink);padding:.62em 1.05em .62em .72em;clip-path:polygon(0 0,100% 0,calc(100% - .46em) 100%,0 100%)}
-  .logo .r{background:var(--graphite);color:#fff;padding:.62em .72em .62em .98em;margin-left:-.26em;clip-path:polygon(.46em 0,100% 0,100% 100%,0 100%)}
-  .header-right{margin-left:auto;display:flex;align-items:center;gap:14px}
-  .btn-out{display:none;align-items:center;gap:8px;border:1px solid var(--line-strong);border-radius:20px;padding:7px 14px;color:var(--ink);font-weight:600;font-size:13px;background:var(--card);cursor:pointer}
-  .btn-out:hover{background:var(--surface-2)}
-  .wrap{max-width:960px;margin:0 auto;padding:28px 20px 60px}
-  h1{font-size:24px;font-weight:800;letter-spacing:-.3px;margin-bottom:18px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:16px}
-  .muted{color:var(--muted)}
+ :root{--brand:#B8F23D;--brand-hover:#A7DF31;--brand-active:#96CC27;--brand-soft:#F0FBD9;--brand-ink:#3F5D11;--ink:#141619;--ink-2:#30343A;--graphite:#141619;--text:#141619;--muted:#697079;--faint:#90969D;--bg:#F7F8F6;--card:#FFFFFF;--surface-2:#F1F3F0;--line:#E2E5E0;--line-strong:#CDD2CB;--green:#218A4A;--amber:#C8790A;--red:#D83A3A;--red-soft:#FDEEEE}
+ *{box-sizing:border-box;margin:0;padding:0}
+ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);font-size:15px;line-height:1.5}
+ header{background:rgba(255,255,255,.88);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line);color:var(--text);position:sticky;top:0;z-index:50}
+ .header-in{max-width:960px;margin:0 auto;padding:0 20px;height:56px;display:flex;align-items:center;gap:12px}
+ .logo{display:inline-flex;align-items:stretch;border-radius:.46em;overflow:hidden;font-weight:800;font-size:15px;letter-spacing:.01em;line-height:1;text-decoration:none;font-family:'Sora',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+ .logo .l{background:var(--brand);color:var(--ink);padding:.62em 1.05em .62em .72em;clip-path:polygon(0 0,100% 0,calc(100% - .46em) 100%,0 100%)}
+ .logo .r{background:var(--graphite);color:#fff;padding:.62em .72em .62em .98em;margin-left:-.26em;clip-path:polygon(.46em 0,100% 0,100% 100%,0 100%)}
+ .header-right{margin-left:auto;display:flex;align-items:center;gap:14px}
+ .btn-out{display:none;align-items:center;gap:8px;border:1px solid var(--line-strong);border-radius:20px;padding:7px 14px;color:var(--ink);font-weight:600;font-size:13px;background:var(--card);cursor:pointer}
+ .btn-out:hover{background:var(--surface-2)}
+ .wrap{max-width:960px;margin:0 auto;padding:28px 20px 60px}
+ h1{font-size:24px;font-weight:800;letter-spacing:-.3px;margin-bottom:18px}
+ .card{background:var(--card);border:1px solid var(--line);border-radius:16px}
+ .muted{color:var(--muted)}
 
-  /* ---------- auth ---------- */
-  .auth-wrap{max-width:420px;margin:56px auto 0;text-align:center}
-  .auth-logo{display:inline-flex;font-size:22px;margin-bottom:18px}
-  .auth-wrap h1{margin-bottom:6px}
-  .auth-sub{color:var(--muted);font-size:14px;margin-bottom:24px}
-  .auth-card{padding:28px;text-align:left}
-  .btn-google{display:flex;width:100%;align-items:center;justify-content:center;gap:10px;background:#fff;color:#3c4043;border:1px solid #dadce0;border-radius:10px;height:50px;font-size:15px;font-weight:600;cursor:pointer}
-  .btn-google:hover{background:#f7f8fa}
-  .or{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:12.5px;margin:18px 0}
-  .or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
-  input[type=email]{height:50px;border:1px solid var(--line);border-radius:10px;padding:0 14px;font-size:15px;width:100%}
-  input[type=email]:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(184,242,61,.18)}
-  .btn{width:100%;margin-top:10px;background:var(--brand);color:var(--ink);border:1px solid rgba(20,22,25,.08);border-radius:10px;height:50px;font-size:15px;font-weight:800;cursor:pointer}
-  .btn:hover{background:var(--brand-hover)}
-  .btn:disabled{opacity:.6;cursor:default}
-  .status{margin-top:12px;font-size:13.5px;text-align:center}
-  .status.ok{color:var(--green)}.status.err{color:var(--red)}
-  .auth-legal{margin-top:16px;font-size:12px;color:var(--muted);text-align:center}
+ /* ---------- auth ---------- */
+ .auth-wrap{max-width:420px;margin:56px auto 0;text-align:center}
+ .auth-logo{display:inline-flex;font-size:22px;margin-bottom:18px}
+ .auth-wrap h1{margin-bottom:6px}
+ .auth-sub{color:var(--muted);font-size:14px;margin-bottom:24px}
+ .auth-card{padding:28px;text-align:left}
+ .btn-google{display:flex;width:100%;align-items:center;justify-content:center;gap:10px;background:#fff;color:#3c4043;border:1px solid #dadce0;border-radius:10px;height:50px;font-size:15px;font-weight:600;cursor:pointer}
+ .btn-google:hover{background:#f7f8fa}
+ .or{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:12.5px;margin:18px 0}
+ .or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
+ input[type=email]{height:50px;border:1px solid var(--line);border-radius:10px;padding:0 14px;font-size:15px;width:100%}
+ input[type=email]:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(184,242,61,.18)}
+ .btn{width:100%;margin-top:10px;background:var(--brand);color:var(--ink);border:1px solid rgba(20,22,25,.08);border-radius:10px;height:50px;font-size:15px;font-weight:800;cursor:pointer}
+ .btn:hover{background:var(--brand-hover)}
+ .btn:disabled{opacity:.6;cursor:default}
+ .status{margin-top:12px;font-size:13.5px;text-align:center}
+ .status.ok{color:var(--green)}.status.err{color:var(--red)}
+ .auth-legal{margin-top:16px;font-size:12px;color:var(--muted);text-align:center}
 
-  /* ---------- reports ---------- */
-  #reports{padding:6px 0}
-  .report{display:flex;align-items:center;gap:14px;padding:16px 22px;cursor:pointer;position:relative;border-bottom:1px solid var(--line);transition:background .12s}
-  .report:last-child{border-bottom:none}
-  .report:hover{background:#F6F8F3}
-  .report .t{font-weight:700}
-  .report .d{font-size:12.5px;color:var(--muted)}
-  .report .go{margin-left:auto;color:var(--faint);font-size:18px}
-  .kebab{background:none;border:none;color:var(--faint);font-size:19px;cursor:pointer;padding:6px 8px;border-radius:8px;line-height:1}
-  .kebab:hover{background:var(--surface-2);color:var(--text)}
-  .menu{position:absolute;right:16px;top:calc(100% - 10px);background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(15,25,40,.12);z-index:5;display:none;min-width:150px;overflow:hidden}
-  .menu.open{display:block}
-  .menu button{display:block;width:100%;text-align:left;background:none;border:none;padding:11px 14px;font-size:14px;cursor:pointer;color:var(--red)}
-  .menu button:hover{background:var(--red-soft)}
-  .empty{color:var(--muted);padding:18px 22px}
+ /* ---------- reports ---------- */
+ #reports{padding:6px 0}
+ .kind-badge{font-size:10.5px;font-weight:700;letter-spacing:.3px;background:var(--brand-soft);color:var(--brand-ink);border-radius:12px;padding:1px 7px;vertical-align:1px}
+ .report{display:flex;align-items:center;gap:14px;padding:16px 22px;cursor:pointer;position:relative;border-bottom:1px solid var(--line);transition:background .12s}
+ .report:last-child{border-bottom:none}
+ .report:hover{background:#F6F8F3}
+ .report .t{font-weight:700}
+ .report .d{font-size:12.5px;color:var(--muted)}
+ .report .go{margin-left:auto;color:var(--faint);font-size:18px}
+ .kebab{background:none;border:none;color:var(--faint);font-size:19px;cursor:pointer;padding:6px 8px;border-radius:8px;line-height:1}
+ .kebab:hover{background:var(--surface-2);color:var(--text)}
+ .menu{position:absolute;right:16px;top:calc(100% - 10px);background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(15,25,40,.12);z-index:5;display:none;min-width:150px;overflow:hidden}
+ .menu.open{display:block}
+ .menu button{display:block;width:100%;text-align:left;background:none;border:none;padding:11px 14px;font-size:14px;cursor:pointer;color:var(--red)}
+ .menu button:hover{background:var(--red-soft)}
+ .empty{color:var(--muted);padding:18px 22px}
 
-  /* ---------- пошук ---------- */
-  .search-wrap{position:relative;margin-bottom:14px;display:none}
-  .search-wrap svg{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--faint);pointer-events:none}
-  .search-wrap input{
-    width:100%;height:48px;border:1px solid var(--line);border-radius:12px;background:var(--card);
-    padding:0 40px 0 42px;font-size:15px;color:var(--text);font-family:inherit;
-  }
-  .search-wrap input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(184,242,61,.18)}
-  .search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:28px;height:28px;border:none;border-radius:50%;background:none;color:var(--faint);font-size:15px;cursor:pointer;display:none}
-  .search-clear:hover{background:var(--surface-2);color:var(--text)}
-  .report .vin-sub{font-size:12px;color:var(--faint);letter-spacing:.4px}
-  .lang-dd{position:relative}
-  .lang-btn{display:inline-flex;align-items:center;gap:4px;border:none;background:transparent;padding:6px 8px;border-radius:8px;font-size:13px;font-weight:600;color:var(--ink);cursor:pointer;font-family:inherit;line-height:1}
-  .lang-btn:hover{background:var(--surface-2)}
-  .lang-btn svg{color:var(--muted)}
-  .lang-menu{position:absolute;right:0;top:calc(100% + 6px);background:#fff;border:1px solid var(--line);border-radius:11px;box-shadow:0 8px 24px rgba(15,25,40,.10);min-width:150px;padding:4px;display:none;z-index:60}
-  .lang-menu.open{display:block}
-  .lang-menu button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:none;background:none;padding:9px 10px;border-radius:8px;font-size:13.5px;color:var(--ink);cursor:pointer;font-family:inherit}
-  .lang-menu button:hover{background:var(--surface-2)}
-  .lang-menu button i{width:6px;height:6px;border-radius:50%;background:transparent;flex-shrink:0}
-  .lang-menu button.on i{background:var(--brand)}
+ /* ---------- пошук ---------- */
+ .search-wrap{position:relative;margin-bottom:14px;display:none}
+ .search-wrap svg{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--faint);pointer-events:none}
+ .search-wrap input{
+ width:100%;height:48px;border:1px solid var(--line);border-radius:12px;background:var(--card);
+ padding:0 40px 0 42px;font-size:15px;color:var(--text);font-family:inherit;
+ }
+ .search-wrap input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(184,242,61,.18)}
+ .search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:28px;height:28px;border:none;border-radius:50%;background:none;color:var(--faint);font-size:15px;cursor:pointer;display:none}
+ .search-clear:hover{background:var(--surface-2);color:var(--text)}
+ .report .vin-sub{font-size:12px;color:var(--faint);letter-spacing:.4px}
+ .lang-dd{position:relative}
+ .lang-btn{display:inline-flex;align-items:center;gap:4px;border:none;background:transparent;padding:6px 8px;border-radius:8px;font-size:13px;font-weight:600;color:var(--ink);cursor:pointer;font-family:inherit;line-height:1}
+ .lang-btn:hover{background:var(--surface-2)}
+ .lang-btn svg{color:var(--muted)}
+ .lang-menu{position:absolute;right:0;top:calc(100% + 6px);background:#fff;border:1px solid var(--line);border-radius:11px;box-shadow:0 8px 24px rgba(15,25,40,.10);min-width:150px;padding:4px;display:none;z-index:60}
+ .lang-menu.open{display:block}
+ .lang-menu button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:none;background:none;padding:9px 10px;border-radius:8px;font-size:13.5px;color:var(--ink);cursor:pointer;font-family:inherit}
+ .lang-menu button:hover{background:var(--surface-2)}
+ .lang-menu button i{width:6px;height:6px;border-radius:50%;background:transparent;flex-shrink:0}
+ .lang-menu button.on i{background:var(--brand)}
 </style>
 </head>
 <body>
 <header>
-  <div class="header-in">
-    <a class="logo" href="/"><span class="l">Cal</span><span class="r">Car</span></a>
-    <div class="header-right">
-      <div class="lang-dd" id="langDd">
-        <button class="lang-btn" type="button" id="langBtn">UA <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
-        <div class="lang-menu" id="langMenu">
-          <button data-lang="ua" type="button"><i></i>Українська</button>
-          <button data-lang="ru" type="button"><i></i>Русский</button>
-          <button data-lang="en" type="button"><i></i>English</button>
-        </div>
-      </div>
-      
-      <button class="btn-out" id="signOut">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-        Вийти
-      </button>
-    </div>
-  </div>
+ <div class="header-in">
+ <a class="logo" href="/"><span class="l">Cal</span><span class="r">Car</span></a>
+ <div class="header-right">
+ <div class="lang-dd" id="langDd">
+ <button class="lang-btn" type="button" id="langBtn">UA <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+ <div class="lang-menu" id="langMenu">
+ <button data-lang="ua" type="button"><i></i>Українська</button>
+ <button data-lang="ru" type="button"><i></i>Русский</button>
+ <button data-lang="en" type="button"><i></i>English</button>
+ </div>
+ </div>
+ 
+ <button class="btn-out" id="signOut">
+ <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+ Вийти
+ </button>
+ </div>
+ </div>
 </header>
 
 <div class="wrap">
-  <!-- not configured -->
-  <div class="card" id="noCfg" style="display:none;padding:22px">
-    <b>Кабінет ще не підключено</b>
-    <p class="muted" style="margin-top:6px">Потрібно вписати ключі Supabase у файл config.js. Розрахунки працюють і без цього.</p>
-  </div>
+ <!-- not configured -->
+ <div class="card" id="noCfg" style="display:none;padding:22px">
+ <b>Кабінет ще не підключено</b>
+ <p class="muted" style="margin-top:6px">Потрібно вписати ключі Supabase у файл config.js. Розрахунки працюють і без цього.</p>
+ </div>
 
-  <!-- auth -->
-  <div class="auth-wrap" id="authBox" style="display:none">
-    <span class="logo auth-logo" aria-label="CalCar"><span class="l">Cal</span><span class="r">Car</span></span>
-    <h1>Вхід у CalCar</h1>
-    <div class="auth-sub">Твої прорахунки збережуться в кабінеті, до них можна буде повернутися будь-коли</div>
-    <div class="card auth-card">
-      <button class="btn-google" id="googleBtn">
-        <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.71-1.57 2.68-3.89 2.68-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.47.9 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/></svg>
-        Продовжити з Google
-      </button>
-      <div class="or"><span>або поштою</span></div>
-      <input type="email" id="email" placeholder="you@example.com" autocomplete="email">
-      <button class="btn" id="sendLink">Надіслати посилання для входу</button>
-      <div class="status" id="authStatus"></div>
-    </div>
-    <div class="auth-legal">Без паролів. Один прорахунок — безкоштовно.</div>
-  </div>
+ <!-- auth -->
+ <div class="auth-wrap" id="authBox" style="display:none">
+ <span class="logo auth-logo" aria-label="CalCar"><span class="l">Cal</span><span class="r">Car</span></span>
+ <h1>Вхід у CalCar</h1>
+ <div class="auth-sub">Твої прорахунки збережуться в кабінеті, до них можна буде повернутися будь-коли</div>
+ <div class="card auth-card">
+ <button class="btn-google" id="googleBtn">
+ <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.71-1.57 2.68-3.89 2.68-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.47.9 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/></svg>
+ Продовжити з Google
+ </button>
+ <div class="or"><span>або поштою</span></div>
+ <input type="email" id="email" placeholder="you@example.com" autocomplete="email">
+ <button class="btn" id="sendLink">Надіслати посилання для входу</button>
+ <div class="status" id="authStatus"></div>
+ </div>
+ <div class="auth-legal">Без паролів. Один прорахунок — безкоштовно.</div>
+ </div>
 
-  <!-- reports -->
-  <div id="listBox" style="display:none">
-    <h1>Мої прорахунки</h1>
-    <div class="search-wrap" id="searchWrap">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
-      <input type="text" id="searchInput" placeholder="Пошук: VIN, марка, модель або номер лота" spellcheck="false" autocomplete="off">
-      <button class="search-clear" id="searchClear" title="Очистити">✕</button>
-    </div>
-    <div class="card" id="reports"><div class="empty">Завантаження…</div></div>
-  </div>
+ <!-- reports -->
+ <div id="listBox" style="display:none">
+ <h1>Мої прорахунки</h1>
+ <div class="search-wrap" id="searchWrap">
+ <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+ <input type="text" id="searchInput" placeholder="Пошук: VIN, марка, модель або номер лота" spellcheck="false" autocomplete="off">
+ <button class="search-clear" id="searchClear" title="Очистити">✕</button>
+ </div>
+ <div class="card" id="reports"><div class="empty">Завантаження…</div></div>
+ </div>
 </div>
 
 <script src="/config.js"></script>
@@ -280,136 +281,138 @@
 <script>
 const cfg = window.CALCAR_SUPABASE || {};
 if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
-  document.getElementById('noCfg').style.display = '';
+ document.getElementById('noCfg').style.display = '';
 } else {
-  const SB = supabase.createClient(cfg.url, cfg.anon);
+ const SB = supabase.createClient(cfg.url, cfg.anon);
 
-  async function boot() {
-    const { data } = await SB.auth.getSession();
-    if (data?.session) showList(); else showAuth();
-  }
+ async function boot() {
+ const { data } = await SB.auth.getSession();
+ if (data?.session) showList(); else showAuth();
+ }
 
-  function showAuth() {
-    document.getElementById('authBox').style.display = '';
-    document.getElementById('listBox').style.display = 'none';
-    document.getElementById('signOut').style.display = 'none';
+ function showAuth() {
+ document.getElementById('authBox').style.display = '';
+ document.getElementById('listBox').style.display = 'none';
+ document.getElementById('signOut').style.display = 'none';
 
-    document.getElementById('googleBtn').onclick = async () => {
-      const { error } = await SB.auth.signInWithOAuth({
-        provider: 'google',
-        options: { redirectTo: location.origin + '/cabinet.html' },
-      });
-      if (error) {
-        const st = document.getElementById('authStatus');
-        st.className = 'status err';
-        st.textContent = t('Не вдалося відкрити вхід через Google: ') + error.message;
-      }
-    };
+ document.getElementById('googleBtn').onclick = async () => {
+ const { error } = await SB.auth.signInWithOAuth({
+ provider: 'google',
+ options: { redirectTo: location.origin + '/cabinet.html' },
+ });
+ if (error) {
+ const st = document.getElementById('authStatus');
+ st.className = 'status err';
+ st.textContent = t('Не вдалося відкрити вхід через Google: ') + error.message;
+ }
+ };
 
-    const btn = document.getElementById('sendLink');
-    btn.onclick = async () => {
-      const email = document.getElementById('email').value.trim();
-      const st = document.getElementById('authStatus');
-      if (!/.+@.+\..+/.test(email)) { st.className = 'status err'; st.textContent = t('Схоже, це не пошта'); return; }
-      btn.disabled = true;
-      const { error } = await SB.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + '/cabinet.html' } });
-      btn.disabled = false;
-      if (error) { st.className = 'status err'; st.textContent = t('Не вдалося надіслати: ') + error.message; }
-      else { st.className = 'status ok'; st.textContent = t('Лист надіслано. Відкрий його і натисни посилання'); }
-    };
-  }
+ const btn = document.getElementById('sendLink');
+ btn.onclick = async () => {
+ const email = document.getElementById('email').value.trim();
+ const st = document.getElementById('authStatus');
+ if (!/.+@.+\..+/.test(email)) { st.className = 'status err'; st.textContent = t('Схоже, це не пошта'); return; }
+ btn.disabled = true;
+ const { error } = await SB.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + '/cabinet.html' } });
+ btn.disabled = false;
+ if (error) { st.className = 'status err'; st.textContent = t('Не вдалося надіслати: ') + error.message; }
+ else { st.className = 'status ok'; st.textContent = t('Лист надіслано. Відкрий його і натисни посилання'); }
+ };
+ }
 
-  async function showList() {
-    document.getElementById('authBox').style.display = 'none';
-    document.getElementById('listBox').style.display = '';
-    const so = document.getElementById('signOut');
-    so.style.display = 'inline-flex';
-    so.onclick = async () => { await SB.auth.signOut(); location.reload(); };
+ async function showList() {
+ document.getElementById('authBox').style.display = 'none';
+ document.getElementById('listBox').style.display = '';
+ const so = document.getElementById('signOut');
+ so.style.display = 'inline-flex';
+ so.onclick = async () => { await SB.auth.signOut(); location.reload(); };
 
-    const box = document.getElementById('reports');
-    const { data: rows, error } = await SB.from('reports')
-      .select('id,title,created_at,vin:data->_meta->>vin')
-      .order('created_at', { ascending: false }).limit(100);
-    if (error) { box.innerHTML = '<div class="empty">' + t('Не вдалося завантажити список') + '</div>'; return; }
-    if (!rows.length) {
-      document.getElementById('searchWrap').style.display = 'none';
-      box.innerHTML = '<div class="empty">' + t('Поки що порожньо. Зроби прорахунок на головній, і він збережеться тут автоматично') + '</div>';
-      return;
-    }
-    box.innerHTML = rows.map(r => `
-      <div class="report" data-id="${r.id}">
-        <div>
-          <div class="t"></div>
-          <div class="d">${new Date(r.created_at).toLocaleString(calcarLocale())}</div>
-        </div>
-        <span class="go">→</span>
-        <button class="kebab" title="Дії">⋯</button>
-        <div class="menu"><button class="del">${t('Видалити прорахунок')}</button></div>
-      </div>`).join('');
+ const box = document.getElementById('reports');
+ const { data: rows, error } = await SB.from('reports')
+ .select('id,title,created_at,kind,vin:data->_meta->>vin')
+ .order('created_at', { ascending: false }).limit(100);
+ if (error) { box.innerHTML = '<div class="empty">' + t('Не вдалося завантажити список') + '</div>'; return; }
+ if (!rows.length) {
+ document.getElementById('searchWrap').style.display = 'none';
+ box.innerHTML = '<div class="empty">' + t('Поки що порожньо. Зроби прорахунок на головній, і він збережеться тут автоматично') + '</div>';
+ return;
+ }
+ box.innerHTML = rows.map(r => `
+ <div class="report" data-id="${r.id}">
+ <div>
+ <div class="t"></div>
+ <div class="d">${r.kind === 'check' ? '<span class="kind-badge">' + t('Перевірка') + '</span> · ' : ''}${new Date(r.created_at).toLocaleString(calcarLocale())}</div>
+ </div>
+ <span class="go">→</span>
+ <button class="kebab" title="Дії">⋯</button>
+ <div class="menu"><button class="del">${t('Видалити прорахунок')}</button></div>
+ </div>`).join('');
 
-    /* ---- пошук: назва (марка, модель, лот) + VIN ---- */
-    const sWrap = document.getElementById('searchWrap');
-    const sInput = document.getElementById('searchInput');
-    const sClear = document.getElementById('searchClear');
-    if (rows.length > 1) sWrap.style.display = 'block';
-    const applyFilter = () => {
-      const q = sInput.value.trim().toLowerCase();
-      sClear.style.display = q ? 'block' : 'none';
-      let visible = 0;
-      box.querySelectorAll('.report').forEach(el => {
-        const hit = !q || (el.dataset.search || '').includes(q);
-        el.style.display = hit ? '' : 'none';
-        if (hit) visible++;
-      });
-      let e = box.querySelector('.empty-search');
-      if (!visible && q) {
-        if (!e) {
-          e = document.createElement('div');
-          e.className = 'empty empty-search';
-          e.textContent = t('Нічого не знайдено');
-          box.appendChild(e);
-        }
-      } else if (e) e.remove();
-    };
-    sInput.addEventListener('input', applyFilter);
-    sClear.addEventListener('click', () => { sInput.value = ''; applyFilter(); sInput.focus(); });
+ /* ---- пошук: назва (марка, модель, лот) + VIN ---- */
+ const sWrap = document.getElementById('searchWrap');
+ const sInput = document.getElementById('searchInput');
+ const sClear = document.getElementById('searchClear');
+ if (rows.length > 1) sWrap.style.display = 'block';
+ const applyFilter = () => {
+ const q = sInput.value.trim().toLowerCase();
+ sClear.style.display = q ? 'block' : 'none';
+ let visible = 0;
+ box.querySelectorAll('.report').forEach(el => {
+ const hit = !q || (el.dataset.search || '').includes(q);
+ el.style.display = hit ? '' : 'none';
+ if (hit) visible++;
+ });
+ let e = box.querySelector('.empty-search');
+ if (!visible && q) {
+ if (!e) {
+ e = document.createElement('div');
+ e.className = 'empty empty-search';
+ e.textContent = t('Нічого не знайдено');
+ box.appendChild(e);
+ }
+ } else if (e) e.remove();
+ };
+ sInput.addEventListener('input', applyFilter);
+ sClear.addEventListener('click', () => { sInput.value = ''; applyFilter(); sInput.focus(); });
 
-    box.querySelectorAll('.report').forEach((el, idx) => {
-      el.querySelector('.t').textContent = rows[idx].title || t('Прорахунок');
-      const vin = rows[idx].vin || '';
-      if (vin) {
-        const v = document.createElement('div');
-        v.className = 'vin-sub';
-        v.textContent = 'VIN ' + vin;
-        el.querySelector('.d').before(v);
-      }
-      el.dataset.search = ((rows[idx].title || '') + ' ' + vin).toLowerCase();
+ box.querySelectorAll('.report').forEach((el, idx) => {
+ el.querySelector('.t').textContent = rows[idx].title || t('Прорахунок');
+ const vin = rows[idx].vin || '';
+ if (vin) {
+ const v = document.createElement('div');
+ v.className = 'vin-sub';
+ v.textContent = 'VIN ' + vin;
+ el.querySelector('.d').before(v);
+ }
+ el.dataset.search = ((rows[idx].title || '') + ' ' + vin).toLowerCase();
 
-      /* відкриття: клік будь-де по рядку */
-      el.addEventListener('click', () => { location.href = '/result.html?id=' + el.dataset.id; });
+ /* відкриття: клік будь-де по рядку */
+ /* перевірка (Check) і прорахунок (Import) живуть на різних сторінках */
+ const page = rows[idx].kind === 'check' ? '/result-check.html?id=' : '/result.html?id=';
+ el.addEventListener('click', () => { location.href = page + el.dataset.id; });
 
-      /* меню з трьома крапками */
-      const kebab = el.querySelector('.kebab');
-      const menu = el.querySelector('.menu');
-      kebab.addEventListener('click', ev => {
-        ev.stopPropagation();
-        document.querySelectorAll('.menu.open').forEach(m => { if (m !== menu) m.classList.remove('open'); });
-        menu.classList.toggle('open');
-      });
-      menu.querySelector('.del').addEventListener('click', async ev => {
-        ev.stopPropagation();
-        menu.classList.remove('open');
-        if (!confirm(t('Видалити цей прорахунок? Дію не можна скасувати'))) return;
-        await SB.from('reports').delete().eq('id', el.dataset.id);
-        el.remove();
-        if (!box.querySelector('.report')) showList();
-      });
-    });
-    document.addEventListener('click', () => document.querySelectorAll('.menu.open').forEach(m => m.classList.remove('open')));
-  }
+ /* меню з трьома крапками */
+ const kebab = el.querySelector('.kebab');
+ const menu = el.querySelector('.menu');
+ kebab.addEventListener('click', ev => {
+ ev.stopPropagation();
+ document.querySelectorAll('.menu.open').forEach(m => { if (m !== menu) m.classList.remove('open'); });
+ menu.classList.toggle('open');
+ });
+ menu.querySelector('.del').addEventListener('click', async ev => {
+ ev.stopPropagation();
+ menu.classList.remove('open');
+ if (!confirm(t('Видалити цей прорахунок? Дію не можна скасувати'))) return;
+ await SB.from('reports').delete().eq('id', el.dataset.id);
+ el.remove();
+ if (!box.querySelector('.report')) showList();
+ });
+ });
+ document.addEventListener('click', () => document.querySelectorAll('.menu.open').forEach(m => m.classList.remove('open')));
+ }
 
-  SB.auth.onAuthStateChange((_e, session) => { if (session) showList(); });
-  boot();
+ SB.auth.onAuthStateChange((_e, session) => { if (session) showList(); });
+ boot();
 }
 </script>
 </body>

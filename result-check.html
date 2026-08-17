@@ -245,7 +245,7 @@
   /* ---- шапка авто ---- */
   .photos{display:grid;grid-template-columns:2fr 1fr 1fr;gap:6px;padding:6px}
   .photos .ph{border-radius:8px;background:linear-gradient(135deg,#ECEEE9,#DDE0DA);position:relative;overflow:hidden;aspect-ratio:4/2.6;cursor:zoom-in}
-  .photos .ph.main{grid-row:span 2;aspect-ratio:auto}
+  .photos .ph.main{grid-row:span 2;aspect-ratio:4/2.63}
   .photos .ph img{width:100%;height:100%;object-fit:cover;display:block}
   .lot-title{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:16px 20px 4px}
   .lot-title h1{font-size:22px;font-weight:800}
@@ -269,6 +269,8 @@
 
   .flags{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
   .flag{display:flex;align-items:center;gap:10px;background:var(--bg);border-radius:10px;padding:10px 14px;font-size:13.5px;font-weight:600}
+  #flagsEl .flag{cursor:pointer;transition:background .15s}
+  #flagsEl .flag:hover{background:var(--surface-2)}
 
   /* ---- розбіжності: ядро продукту, найважчий візуальний акцент ---- */
   .disc{border:1px solid var(--line);border-left:3px solid var(--line-strong);border-radius:0 10px 10px 0;padding:12px 16px;margin-bottom:10px;background:var(--bg)}
@@ -295,7 +297,7 @@
   .tl-item{position:relative;padding:7px 0;font-size:14px;line-height:1.45}
   .tl-item::before{content:'';position:absolute;left:-26px;top:13px;width:12px;height:12px;border-radius:50%;background:#fff;border:2px solid var(--line-strong)}
   .tl-item.first::before{border-color:var(--brand-active);background:var(--brand)}
-  .tl-item .d{display:inline-block;min-width:66px;font-weight:700;font-variant-numeric:tabular-nums}
+  .tl-item .d{display:inline-block;min-width:66px;margin-right:12px;font-weight:700;font-variant-numeric:tabular-nums}
 
   /* ---- чек-лист огляду ---- */
   .chk{display:flex;gap:11px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--line);font-size:14.5px;line-height:1.45}
@@ -372,6 +374,7 @@
       <span class="badge blue">AI-перевірка оголошення</span>
     </div>
     <div class="lot-meta" id="carMeta"></div>
+    <div class="photo-strip" id="photoStrip" style="display:none"></div>
   </div>
 
   <!-- вердикт -->
@@ -449,12 +452,7 @@
     <div class="card-body"><div id="chkList"></div></div>
   </div>
 
-  <!-- галерея і джерело -->
-  <div class="card" id="galleryCard" style="display:none">
-    <div class="card-head"><h2>Фото з оголошення</h2></div>
-    <div class="photo-strip" id="gallery"></div>
-  </div>
-
+  <!-- джерело -->
   <div class="card" id="notesCard" style="display:none">
     <div class="card-body">
       <div class="dmg-note" id="dataNotes" style="display:none"></div>
@@ -577,6 +575,12 @@ fill('discCard', 'discList', discs, d =>
 if (discs.length) $('discCount').textContent = discs.length;
 else $('discCount').style.display = 'none';
 
+/* прапорці це TL;DR: клік веде до розгорнутого розбору нижче */
+if (discs.length) {
+  document.querySelectorAll('#flagsEl .flag').forEach(f =>
+    f.addEventListener('click', () => $('discCard').scrollIntoView({ behavior: 'smooth', block: 'start' })));
+}
+
 const CV = { confirmed: t('підтверджено'), contradicted: t('спростовано'), unverifiable: t('не перевірити') };
 fill('claimsCard', 'claimsList', DATA.seller_claims, c => {
   const v = ['confirmed','contradicted','unverifiable'].includes(c.verdict) ? c.verdict : 'unverifiable';
@@ -590,23 +594,20 @@ fill('histCard', 'histList', DATA.history, (h, i) =>
 fill('photoCard', 'photoFindings', DATA.photo_findings, f =>
   '<div class="flag"><span class="dot ' + st(f.status) + '"></span><span>' + esc(f.text) + '</span></div>');
 
-fill('issuesCard', 'issuesList', DATA.model_notes?.issues, i => {
-  const sev = ['low','med','high'].includes(i.severity) ? i.severity : 'low';
-  const SW = { high: t('високий'), med: t('середній'), low: t('низький') };
-  return '<div class="issue"><div class="issue-t"><b>' + esc(i.title) + '</b>'
-    + (i.unit ? '<span class="u">' + esc(i.unit) + '</span>' : '')
-    + '<span class="sev sev-' + sev + '">' + esc(SW[sev]) + '</span></div>'
-    + '<p>' + esc(i.detail) + '</p></div>';
-});
+/* без бейджа ризику: це типові точки перевірки моделі, а не оцінка саме цього авто */
+fill('issuesCard', 'issuesList', DATA.model_notes?.issues, i =>
+  '<div class="issue"><div class="issue-t"><b>' + esc(i.title) + '</b>'
+  + (i.unit ? '<span class="u">' + esc(i.unit) + '</span>' : '') + '</div>'
+  + '<p>' + esc(i.detail) + '</p></div>');
 
 fill('chkCard', 'chkList', DATA.checklist, c => '<div class="chk"><i></i><span>' + esc(c) + '</span></div>');
 
-/* галерея: решта фото стрічкою */
-(function gallery(){
+/* решта фото стрічкою в тій самій картці авто, без дубля внизу */
+(function strip(){
   const ph = (M.photos || []).filter(u => typeof u === 'string' && /^https:/.test(u));
   if (ph.length <= 5) return;
-  $('galleryCard').style.display = '';
-  $('gallery').innerHTML = ph.slice(5).map(u => '<img loading="lazy" src="' + esc(u) + '" alt="">').join('');
+  $('photoStrip').style.display = '';
+  $('photoStrip').innerHTML = ph.slice(5).map(u => '<img loading="lazy" src="' + esc(u) + '" alt="">').join('');
 })();
 
 /* примітки і джерело */
