@@ -312,4 +312,7 @@ window.CALCAR_DICT = {
   'Перекладаю…': 'Translating…',
   'Не вдалося перекласти, спробуй ще раз': 'Translation failed, try again',
   'Фото з архіву не вдалося завантажити автоматично, відкрий архів за посиланням.': 'Archive photos could not be loaded automatically, open the archive via the link.',
+  /* ---- CalCar Check (en, iteration 6) ---- */
+  'Оцінка:': 'Score:',
+  'Оцінка враховує історію авто, потенційну вартість помилки та невизначеність доступних даних. Рішення завжди за вами': 'The score reflects the car history, the potential cost of a mistake and data uncertainty. The decision is always yours',
 };
