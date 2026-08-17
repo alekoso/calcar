@@ -385,6 +385,16 @@ function setStatus(text, isErr) {
 }
 function esc(s){ return String(s ?? '').replace(/\s*\u2014\s*/g, ', ').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
+/* короткий публічний id звіту: 6 символів, без схожих O/0, I/1 */
+function makePid(){
+  const A = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  let out = '';
+  const buf = new Uint32Array(6);
+  crypto.getRandomValues(buf);
+  for (let i = 0; i < 6; i++) out += A[buf[i] % A.length];
+  return out;
+}
+
 async function safeJson(r) {
   try { return await r.json(); } catch (e) { return { error: t('Сервер повернув неочікувану відповідь') }; }
 }
@@ -418,21 +428,30 @@ async function run() {
 
     /* якщо користувач увійшов, звіт зберігається в кабінет і одразу
        отримує власну постійну адресу */
-    let savedId = null;
+    let dest = '/result-check.html';
     try {
       if (SB) {
         const { data: s } = await SB.auth.getSession();
         if (s?.session) {
           const title = data.vehicle?.title || t('Перевірка');
-          const { data: row } = await SB.from('reports').insert({
+          const pid = makePid();
+          let ins = await SB.from('reports').insert({
+            user_id: s.session.user.id, kind: 'check', public_id: pid, title, data,
+          }).select('id,public_id').single();
+          /* міграція public_id ще не виконана: зберігаємо без нього */
+          if (ins.error) ins = await SB.from('reports').insert({
             user_id: s.session.user.id, kind: 'check', title, data,
           }).select('id').single();
-          if (row?.id) { savedId = row.id; sessionStorage.setItem('calcarCheckId', row.id); }
+          const row = ins.data;
+          if (row?.id) {
+            sessionStorage.setItem('calcarCheckId', row.id);
+            dest = row.public_id ? '/check/' + row.public_id : '/result-check.html?id=' + row.id;
+          }
         }
       }
     } catch (e) { /* збереження не блокує показ результату */ }
 
-    location.href = savedId ? '/result-check.html?id=' + savedId : '/result-check.html';
+    location.href = dest;
   } catch (e) {
     setStatus(e.message || t('Щось пішло не так, спробуй ще раз'), true);
   } finally {

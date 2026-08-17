@@ -256,8 +256,9 @@
 
   /* ---- вердикт ---- */
   .verdict{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap}
-  .v-grade{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-width:132px;padding:16px 18px;border-radius:var(--radius);text-align:center}
-  .v-grade b{font-size:15px;font-weight:800;line-height:1.2}
+  .v-grade{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-width:132px;padding:16px 18px;border-radius:var(--radius);text-align:center}
+  .v-grade b{font-size:30px;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums}
+  .v-grade b em{font-style:normal;font-size:14px;font-weight:700;opacity:.6}
   .v-grade span{font-size:11.5px;letter-spacing:.4px;text-transform:uppercase;opacity:.75}
   .g-buy{background:var(--green-soft);color:var(--green)}
   .g-inspect{background:var(--brand-soft);color:var(--brand-ink)}
@@ -267,8 +268,27 @@
 
   .flags{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
   .flag{display:flex;align-items:center;gap:10px;background:var(--bg);border-radius:10px;padding:10px 14px;font-size:13.5px;font-weight:600}
-  #flagsEl .flag{cursor:pointer;transition:background .15s}
-  #flagsEl .flag:hover{background:var(--surface-2)}
+
+  /* ключові ризики */
+  .risk{padding:13px 0;border-top:1px solid var(--line)}
+  .risk:first-child{border-top:none;padding-top:0}
+  .risk-t{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .risk-t b{font-size:14.5px;font-weight:700}
+  .risk p{font-size:13.5px;color:var(--ink-2);margin-top:4px;line-height:1.5}
+  .risk .act{margin-top:6px;font-size:13.5px;font-weight:600;display:flex;gap:7px;align-items:flex-start}
+  .risk .act::before{content:'→';color:var(--brand-ink);font-weight:800}
+
+  /* комплектація з джерелами */
+  .eq-group{padding:11px 0;border-top:1px solid var(--line)}
+  .eq-group:first-child{border-top:none;padding-top:0}
+  .eq-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .eq-chips{display:flex;flex-wrap:wrap;gap:6px}
+  .eq-chips span{font-size:12.5px;background:var(--bg);border:1px solid var(--line);border-radius:16px;padding:4px 11px}
+
+  /* переклад звіту */
+  .trbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--brand-soft);border:1px solid #DDF0B8;border-radius:var(--radius);padding:10px 16px;margin-bottom:20px;font-size:13.5px;color:var(--brand-ink)}
+  .trbar button{margin-left:auto;background:var(--brand);border:1px solid rgba(20,22,25,.08);border-radius:10px;height:34px;padding:0 14px;font-size:13px;font-weight:700;color:var(--ink);cursor:pointer;font-family:inherit}
+  .trbar button:disabled{opacity:.6;cursor:default}
 
   /* ---- США: до ремонту і зараз ---- */
   .ba-label{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);padding:12px 10px 0}
@@ -289,19 +309,15 @@
   .sev-med{background:var(--amber-soft);color:var(--amber)}
   .sev-low{background:var(--surface-2);color:var(--muted)}
 
-  /* ---- твердження продавця ---- */
-  .claim{display:flex;gap:12px;align-items:flex-start;padding:11px 0;border-top:1px solid var(--line);font-size:14px;line-height:1.45}
-  .claim:first-child{border-top:none;padding-top:0}
-  .cv{flex:0 0 auto;font-size:11px;font-weight:800;letter-spacing:.3px;padding:3px 9px;border-radius:20px;margin-top:1px;white-space:nowrap}
-  .cv-confirmed{background:var(--green-soft);color:var(--green)}
-  .cv-contradicted{background:var(--red-soft);color:var(--red)}
-  .cv-unverifiable{background:var(--surface-2);color:var(--muted)}
-  .claim .ev{color:var(--muted);font-size:13px;margin-top:3px}
-
   /* ---- історія: чисті рядки, без кругів ---- */
-  .hrow{display:flex;gap:14px;padding:9px 0;border-top:1px solid var(--line);font-size:14px;line-height:1.5}
-  .hrow:first-child{border-top:none;padding-top:0}
+  .hrow{display:flex;gap:14px;padding:9px 0;font-size:14px;line-height:1.5}
   .hrow .hd{flex:0 0 92px;font-weight:700;font-variant-numeric:tabular-nums}
+  .hgap{display:flex;align-items:center;gap:10px;padding:2px 0 2px 24px;color:var(--faint);font-size:12px}
+  .hgap::before{content:'';width:2px;height:16px;background:var(--line-strong);border-radius:2px;margin-right:2px}
+  .hnote{margin-top:12px}
+
+  /* фінальні дії */
+  .final-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
 
   /* ---- чек-лист і болячки ---- */
   .chk{display:flex;gap:11px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--line);font-size:14.5px;line-height:1.45}
@@ -394,6 +410,11 @@
 
 <div class="wrap">
 
+  <div class="trbar" id="trBar" style="display:none">
+    <span>Звіт створено іншою мовою</span>
+    <button id="trBtn" type="button">Перекласти</button>
+  </div>
+
   <div class="topbar">
     <a class="btn-back" href="/">← Нова перевірка</a>
     <span id="saveHint" style="margin-left:auto"></span>
@@ -425,10 +446,13 @@
     </div>
   </div>
 
-  <!-- прапорці -->
-  <div class="card" id="flagsCard" style="display:none">
-    <div class="card-head"><h2>Головне по цьому авто</h2></div>
-    <div class="card-body"><div class="flags" id="flagsEl"></div></div>
+  <!-- ключові ризики -->
+  <div class="card" id="risksCard" style="display:none">
+    <div class="card-head">
+      <h2>Ключові ризики</h2>
+      <span class="hint" style="margin-left:auto">Що може коштувати найбільше</span>
+    </div>
+    <div class="card-body"><div id="risksList"></div></div>
   </div>
 
   <!-- США: до ремонту і зараз -->
@@ -452,10 +476,19 @@
   <!-- фото зараз -->
   <div class="card" id="photoCard" style="display:none">
     <div class="card-head">
-      <h2>Що видно по фото</h2>
+      <h2>Поточний стан за фото оголошення</h2>
       <span class="badge blue">AI-аналіз фото</span>
     </div>
     <div class="card-body"><div class="flags" id="photoFindings"></div></div>
+  </div>
+
+  <!-- комплектація -->
+  <div class="card" id="eqCard" style="display:none">
+    <div class="card-head">
+      <h2>Комплектація</h2>
+      <span class="hint" style="margin-left:auto">З зазначенням джерела</span>
+    </div>
+    <div class="card-body"><div id="eqList"></div></div>
   </div>
 
   <!-- розбіжності -->
@@ -468,14 +501,6 @@
     <div class="card-body"><div id="discList"></div></div>
   </div>
 
-  <!-- твердження продавця -->
-  <div class="card" id="claimsCard" style="display:none">
-    <div class="card-head">
-      <h2>Твердження продавця</h2>
-      <span class="hint" style="margin-left:auto">Що вдалося підтвердити, а що ні</span>
-    </div>
-    <div class="card-body"><div id="claimsList"></div></div>
-  </div>
 
   <!-- історія -->
   <div class="card" id="histCard" style="display:none">
@@ -495,19 +520,18 @@
     <div class="card-body"><div id="issuesList"></div></div>
   </div>
 
-  <!-- чек-лист -->
+  <!-- фінал: що зробити перед купівлею -->
   <div class="card" id="chkCard" style="display:none">
     <div class="card-head">
-      <h2>Перевір при огляді</h2>
+      <h2>Що зробити перед купівлею</h2>
       <span class="hint" style="margin-left:auto">Конкретно для цього авто</span>
     </div>
-    <div class="card-body"><div id="chkList"></div></div>
-  </div>
-
-  <div class="card" id="notesCard" style="display:none">
     <div class="card-body">
-      <div class="dmg-note" id="dataNotes" style="display:none"></div>
-      <div class="srcline" id="srcLine" style="margin-top:12px"></div>
+      <div id="chkList"></div>
+      <div class="final-actions">
+        <button class="btn-back" id="copyChk" type="button">Скопіювати список для СТО</button>
+        <button class="btn-primary" id="askAi" type="button" style="height:44px">Запитати CalCar про це авто</button>
+      </div>
     </div>
   </div>
 
@@ -551,7 +575,7 @@ const SB = (typeof supabase !== 'undefined' && window.CALCAR_SUPABASE?.url)
   : null;
 
 const OPEN_ID = new URLSearchParams(location.search).get('id');
-let DATA = null, M = {}, chatHist = [];
+let DATA = null, M = {}, chatHist = [], CHK = [];
 
 /* довге тире вичищаємо всюди: правило продукту */
 function esc(s){ return String(s ?? '').replace(/\s*\u2014\s*/g, ', ').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
@@ -562,16 +586,23 @@ const st = s => ['ok','warn','bad','unknown'].includes(s) ? s : 'unknown';
 const httpsOnly = a => (a || []).filter(u => typeof u === 'string' && /^https:/.test(u));
 
 /* ---------- завантаження: ?id лишається в адресі, це і є посилання на звіт ---------- */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+let ROW_ID = null; /* uuid рядка в reports: для збереження перекладів */
+
 (async function init(){
   if (OPEN_ID) {
     if (!SB) { location.replace('/'); return; }
-    const { data: row, error } = await SB.from('reports').select('data').eq('id', OPEN_ID).single();
+    const q = SB.from('reports').select('id,public_id,data');
+    const { data: row, error } = await (UUID_RE.test(OPEN_ID)
+      ? q.eq('id', OPEN_ID) : q.eq('public_id', OPEN_ID)).single();
     if (error || !row?.data?.vehicle) { location.replace('/cabinet.html'); return; }
-    DATA = row.data;
+    DATA = row.data; ROW_ID = row.id;
     try {
       sessionStorage.setItem('calcarCheck', JSON.stringify(DATA));
-      sessionStorage.setItem('calcarCheckId', OPEN_ID);
+      sessionStorage.setItem('calcarCheckId', row.id);
     } catch (e) {}
+    /* канонічна коротка адреса */
+    if (row.public_id) history.replaceState(null, '', '/check/' + row.public_id);
     boot();
     return;
   }
@@ -580,12 +611,51 @@ const httpsOnly = a => (a || []).filter(u => typeof u === 'string' && /^https:/.
     if (raw) DATA = JSON.parse(raw);
   } catch (e) {}
   if (!DATA || !DATA.vehicle) { location.replace('/'); return; }
-  /* звіт уже збережений: даємо йому постійну адресу без перезавантаження */
-  const savedId = sessionStorage.getItem('calcarCheckId');
-  if (savedId) history.replaceState(null, '', '/result-check.html?id=' + savedId);
+  ROW_ID = sessionStorage.getItem('calcarCheckId') || null;
+  if (ROW_ID) history.replaceState(null, '', '/result-check.html?id=' + ROW_ID);
   boot();
   saveIfNeeded();
 })();
+
+/* ---------- переклад звіту на мову інтерфейсу ---------- */
+function trSetup(){
+  const ui = window.calcarLang();
+  if (!M.lang || M.lang === ui) return;
+  const cached = DATA.translations?.[ui];
+  if (cached) { applyTranslation(cached); return; }
+  $('trBar').style.display = '';
+  $('trBtn').addEventListener('click', translateNow, { once: true });
+}
+function applyTranslation(tr){
+  const merged = Object.assign({}, DATA, tr);
+  merged._meta = DATA._meta;
+  merged.translations = DATA.translations;
+  boot2(merged);
+}
+async function translateNow(){
+  const ui = window.calcarLang();
+  const btn = $('trBtn');
+  btn.disabled = true; btn.textContent = t('Перекладаю…');
+  try {
+    const { _meta, translations, ...body } = DATA;
+    const r = await fetch('/api/check-translate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ report: body, lang: ui }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.report) throw new Error(data.error || t('Не вдалося перекласти, спробуй ще раз'));
+    DATA.translations = Object.assign({}, DATA.translations, { [ui]: data.report });
+    try { sessionStorage.setItem('calcarCheck', JSON.stringify(DATA)); } catch (e) {}
+    /* кеш перекладу в збережений звіт: наступного разу миттєво */
+    if (SB && ROW_ID) { try { await SB.from('reports').update({ data: DATA }).eq('id', ROW_ID); } catch (e) {} }
+    $('trBar').style.display = 'none';
+    applyTranslation(data.report);
+  } catch (e) {
+    btn.disabled = false; btn.textContent = t('Перекласти');
+    alert(e.message);
+  }
+}
 
 function fill(cardId, listId, arr, tpl) {
   if (!Array.isArray(arr) || !arr.length) return;
@@ -595,9 +665,15 @@ function fill(cardId, listId, arr, tpl) {
 
 function boot(){
   M = DATA._meta || {};
+  boot2(DATA);
+  trSetup();
+  chatInit();
+}
+
+function boot2(D){
 
   /* ---- авто: стрічка фото + факти, як в Import ---- */
-  const v = DATA.vehicle || {};
+  const v = D.vehicle || {};
   $('carTitle').textContent = v.title || t('Авто');
   const ph = httpsOnly(M.photos);
   if (ph.length) {
@@ -618,29 +694,41 @@ function boot(){
     + (M.plate ? '<span>' + t('Номер') + ': <b>' + esc(M.plate) + '</b></span>' : '');
   if (M.url) { const l = $('srcLink'); l.href = M.url; l.style.display = ''; }
 
-  /* ---- вердикт ---- */
-  const vd = DATA.verdict;
+  /* ---- вердикт: оцінка числом, як в Import ---- */
+  const vd = D.verdict;
   if (vd && vd.summary) {
-    const GRADE = {
-      buy:     ['g-buy',     t('Варто брати'),           t('ризиків не знайдено')],
-      inspect: ['g-inspect', t('Брати після перевірки'), t('потрібен огляд')],
-      caution: ['g-caution', t('Обережно'),              t('є розбіжності')],
-      avoid:   ['g-avoid',   t('Краще відмовитись'),     t('високий ризик')],
-    };
-    const g = GRADE[vd.grade] || GRADE.inspect;
     $('verdictCard').style.display = '';
-    $('vGrade').className = 'v-grade ' + g[0];
-    $('vGradeT').textContent = g[1];
-    $('vGradeS').textContent = g[2];
+    const sc = typeof vd.score === 'number' ? Math.max(0, Math.min(10, vd.score)) : null;
+    if (sc !== null) {
+      const cls = sc >= 8 ? 'g-buy' : sc >= 6 ? 'g-inspect' : sc >= 4 ? 'g-caution' : 'g-avoid';
+      const lbl = sc >= 8 ? t('варто розглядати') : sc >= 6 ? t('після перевірок') : sc >= 4 ? t('підвищений ризик') : t('високий ризик');
+      $('vGrade').className = 'v-grade ' + cls;
+      $('vGradeT').innerHTML = esc(sc.toFixed(1)) + '<em>/10</em>';
+      $('vGradeS').textContent = lbl;
+    } else {
+      /* старі звіти без score */
+      const GRADE = { buy:['g-buy',t('Варто брати')], inspect:['g-inspect',t('Брати після перевірки')], caution:['g-caution',t('Обережно')], avoid:['g-avoid',t('Краще відмовитись')] };
+      const g = GRADE[vd.grade] || GRADE.inspect;
+      $('vGrade').className = 'v-grade ' + g[0];
+      $('vGradeT').textContent = g[1];
+      $('vGradeS').textContent = '';
+    }
     $('vText').textContent = clean(vd.summary);
   }
 
-  /* ---- прапорці: TL;DR, клік веде до розбору ---- */
-  fill('flagsCard', 'flagsEl', DATA.flags, f =>
-    '<div class="flag"><span class="dot ' + st(f.status) + '"></span><span>' + esc(f.text) + '</span></div>');
+  /* ---- ключові ризики ---- */
+  const LVL = { high: ['red', t('висока ціна помилки')], med: ['amber', t('варто уваги')], low: ['blue', t('фонове')] };
+  fill('risksCard', 'risksList', D.risks, r => {
+    const lv = LVL[r.level] || LVL.med;
+    return '<div class="risk"><div class="risk-t"><b>' + esc(r.title) + '</b>'
+      + '<span class="badge ' + lv[0] + '">' + esc(lv[1]) + '</span></div>'
+      + (r.note ? '<p>' + esc(r.note) + '</p>' : '')
+      + (r.action ? '<div class="act"><span>' + esc(r.action) + '</span></div>' : '')
+      + '</div>';
+  });
 
   /* ---- США: до ремонту і зараз ---- */
-  const au = DATA.auction || {};
+  const au = D.auction || {};
   const auPh = httpsOnly(M.auction_photos);
   if (au.summary || auPh.length || (Array.isArray(au.findings) && au.findings.length)) {
     $('usCard').style.display = '';
@@ -660,17 +748,18 @@ function boot(){
         '<div class="flag"><span class="dot ' + st(f.status) + '"></span><span>' + esc(f.text) + '</span></div>').join('');
     }
     if (M.auction_url) {
-      $('usSrc').innerHTML = t('Архів аукціону') + ': <a href="' + esc(M.auction_url) + '" target="_blank" rel="noopener">' + esc(M.auction_url) + '</a>';
+      const noPh = !auPh.length ? t('Фото з архіву не вдалося завантажити автоматично, відкрий архів за посиланням.') + ' ' : '';
+      $('usSrc').innerHTML = noPh + t('Архів аукціону') + ': <a href="' + esc(M.auction_url) + '" target="_blank" rel="noopener">' + esc(M.auction_url) + '</a>';
     }
   }
 
   /* ---- фото зараз ---- */
-  fill('photoCard', 'photoFindings', DATA.photo_findings, f =>
+  fill('photoCard', 'photoFindings', D.photo_findings, f =>
     '<div class="flag"><span class="dot ' + st(f.status) + '"></span><span>' + esc(f.text) + '</span></div>');
 
   /* ---- розбіжності: спершу серйозні ---- */
   const RANK = { high: 0, med: 1, low: 2 };
-  const discs = (DATA.discrepancies || []).slice()
+  const discs = (D.discrepancies || []).slice()
     .sort((a, b) => (RANK[a.severity] ?? 3) - (RANK[b.severity] ?? 3));
   const SEVW = { high: t('серйозно'), med: t('варто уваги'), low: t('дрібниця') };
   fill('discCard', 'discList', discs, d =>
@@ -681,45 +770,64 @@ function boot(){
     + (Array.isArray(d.sources) && d.sources.length
         ? '<div class="src">' + d.sources.map(s => '<span>' + esc(s) + '</span>').join('') + '</div>' : '')
     + '</div>');
-  if (discs.length) {
-    $('discCount').textContent = discs.length;
-    document.querySelectorAll('#flagsEl .flag').forEach(f =>
-      f.addEventListener('click', () => $('discCard').scrollIntoView({ behavior: 'smooth', block: 'start' })));
-  } else $('discCount').style.display = 'none';
+  if (discs.length) $('discCount').textContent = discs.length;
+  else $('discCount').style.display = 'none';
 
-  /* ---- твердження ---- */
-  const CV = { confirmed: t('підтверджено'), contradicted: t('спростовано'), unverifiable: t('не перевірити') };
-  fill('claimsCard', 'claimsList', DATA.seller_claims, c => {
-    const cv = ['confirmed','contradicted','unverifiable'].includes(c.verdict) ? c.verdict : 'unverifiable';
-    return '<div class="claim"><span class="cv cv-' + cv + '">' + esc(CV[cv]) + '</span>'
-      + '<span>' + esc(c.claim) + (c.evidence ? '<div class="ev">' + esc(c.evidence) + '</div>' : '') + '</span></div>';
-  });
+  /* ---- комплектація з джерелами ---- */
+  const eq = D.equipment || {};
+  const EQ_GROUPS = [
+    ['vin',    'green', t('Підтверджено за VIN')],
+    ['photo',  'blue',  t('Видно на фото')],
+    ['seller', 'amber', t('Зі слів продавця')],
+  ];
+  const eqHtml = EQ_GROUPS
+    .filter(g => Array.isArray(eq[g[0]]) && eq[g[0]].length)
+    .map(g => '<div class="eq-group"><div class="eq-head"><span class="badge ' + g[1] + '">' + esc(g[2]) + '</span></div>'
+      + '<div class="eq-chips">' + eq[g[0]].map(o => '<span>' + esc(o) + '</span>').join('') + '</div></div>')
+    .join('');
+  if (eqHtml) { $('eqCard').style.display = ''; $('eqList').innerHTML = eqHtml; }
 
-  /* ---- історія: чисті рядки ---- */
-  fill('histCard', 'histList', DATA.history, h =>
-    '<div class="hrow"><span class="hd">' + esc(h.date) + '</span><span>' + esc(h.event) + '</span></div>');
+  /* ---- історія: рядки з паузами володіння ---- */
+  if (Array.isArray(D.history) && D.history.length) {
+    $('histCard').style.display = '';
+    $('histList').innerHTML = D.history.map((h, i) =>
+      (i > 0 && h.gap ? '<div class="hgap">' + esc(h.gap) + '</div>' : '')
+      + '<div class="hrow"><span class="hd">' + esc(h.date) + '</span><span>' + esc(h.event) + '</span></div>'
+    ).join('')
+    + (D.history_note ? '<div class="dmg-note hnote">' + esc(D.history_note) + '</div>' : '');
+  }
 
   /* ---- болячки: без бейджа ризику, це довідка про модель ---- */
-  fill('issuesCard', 'issuesList', DATA.model_notes?.issues, i =>
+  fill('issuesCard', 'issuesList', D.model_notes?.issues, i =>
     '<div class="issue"><div class="issue-t"><b>' + esc(i.title) + '</b>'
     + (i.unit ? '<span class="u">' + esc(i.unit) + '</span>' : '') + '</div>'
     + '<p>' + esc(i.detail) + '</p></div>');
 
-  fill('chkCard', 'chkList', DATA.checklist, c => '<div class="chk"><i></i><span>' + esc(c) + '</span></div>');
-
-  /* ---- примітки і джерело ---- */
-  if (DATA.data_notes || M.url) {
-    $('notesCard').style.display = '';
-    if (DATA.data_notes) { $('dataNotes').style.display = ''; $('dataNotes').textContent = clean(DATA.data_notes); }
-    if (M.url) {
-      $('srcLine').innerHTML = t('Джерело') + ': <a href="' + esc(M.url) + '" target="_blank" rel="noopener">'
-        + esc(M.url) + '</a>' + (M.analyzed_at ? ' · ' + t('перевірено') + ' '
-        + esc(new Date(M.analyzed_at).toLocaleString(window.calcarLocale())) : '');
-    }
-  }
-
-  chatInit();
+  fill('chkCard', 'chkList', D.checklist, c => '<div class="chk"><i></i><span>' + esc(c) + '</span></div>');
+  CHK = Array.isArray(D.checklist) ? D.checklist.map(clean) : [];
 }
+
+/* короткий публічний id: 6 символів, без схожих O/0, I/1 */
+function makePid(){
+  const A = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  let out = '';
+  const buf = new Uint32Array(6);
+  crypto.getRandomValues(buf);
+  for (let i = 0; i < 6; i++) out += A[buf[i] % A.length];
+  return out;
+}
+
+/* ---------- фінальні дії ---------- */
+document.getElementById('copyChk').addEventListener('click', async function(){
+  try {
+    await navigator.clipboard.writeText(CHK.map((c, i) => (i + 1) + '. ' + c).join('\n'));
+    this.textContent = t('Скопійовано ✓');
+    setTimeout(() => { this.textContent = t('Скопіювати список для СТО'); }, 1800);
+  } catch (e) {}
+});
+document.getElementById('askAi').addEventListener('click', () => {
+  document.getElementById('chatFab').click();
+});
 
 /* ---------- лайтбокс ---------- */
 document.addEventListener('click', e => {
@@ -738,17 +846,24 @@ async function saveIfNeeded(){
     if (!s?.session) return;
     const hint = $('saveHint');
     hint.textContent = t('Зберігаю…'); hint.classList.add('show');
-    const { data: row, error } = await SB.from('reports').insert({
+    let ins = await SB.from('reports').insert({
+      user_id: s.session.user.id, kind: 'check', public_id: makePid(),
+      title: DATA.vehicle?.title || t('Перевірка'), data: DATA,
+    }).select('id,public_id').single();
+    /* міграція public_id ще не виконана: зберігаємо без нього */
+    if (ins.error) ins = await SB.from('reports').insert({
       user_id: s.session.user.id, kind: 'check',
       title: DATA.vehicle?.title || t('Перевірка'), data: DATA,
     }).select('id').single();
-    if (error || !row?.id) {
+    const row = ins.data;
+    if (ins.error || !row?.id) {
       hint.textContent = t('Не збереглося');
       setTimeout(() => hint.classList.remove('show'), 2600);
       return;
     }
     sessionStorage.setItem('calcarCheckId', row.id);
-    history.replaceState(null, '', '/result-check.html?id=' + row.id);
+    ROW_ID = row.id;
+    history.replaceState(null, '', row.public_id ? '/check/' + row.public_id : '/result-check.html?id=' + row.id);
     hint.textContent = t('Збережено ✓');
     setTimeout(() => hint.classList.remove('show'), 1600);
   } catch (e) {}
@@ -758,9 +873,9 @@ async function saveIfNeeded(){
 function chatCtx(){
   const d = DATA || {};
   return {
-    vehicle: d.vehicle, verdict: d.verdict, flags: d.flags,
-    discrepancies: d.discrepancies, seller_claims: d.seller_claims,
-    history: d.history, photo_findings: d.photo_findings, auction: d.auction,
+    vehicle: d.vehicle, verdict: d.verdict, risks: d.risks, equipment: d.equipment,
+    discrepancies: d.discrepancies, history: d.history, history_note: d.history_note,
+    photo_findings: d.photo_findings, auction: d.auction,
     model_notes: d.model_notes, checklist: d.checklist, data_notes: d.data_notes,
     _meta: { url: M.url, vin: M.vin, plate: M.plate, price: M.price, currency: M.currency, odometer_km: M.odometer_km },
   };

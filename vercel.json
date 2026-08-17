@@ -1,0 +1,6 @@
+{
+  "rewrites": [
+    { "source": "/check/:id", "destination": "/result-check.html?id=:id" },
+    { "source": "/check", "destination": "/check.html" }
+  ]
+}

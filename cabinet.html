@@ -328,9 +328,13 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  so.onclick = async () => { await SB.auth.signOut(); location.reload(); };
 
  const box = document.getElementById('reports');
- const { data: rows, error } = await SB.from('reports')
- .select('id,title,created_at,kind,vin:data->_meta->>vin')
+ let { data: rows, error } = await SB.from('reports')
+ .select('id,title,created_at,kind,public_id,vin:data->_meta->>vin')
  .order('created_at', { ascending: false }).limit(100);
+ /* міграція public_id ще не виконана: працюємо без короткої адреси */
+ if (error) ({ data: rows, error } = await SB.from('reports')
+ .select('id,title,created_at,kind,vin:data->_meta->>vin')
+ .order('created_at', { ascending: false }).limit(100));
  if (error) { box.innerHTML = '<div class="empty">' + t('Не вдалося завантажити список') + '</div>'; return; }
  if (!rows.length) {
  document.getElementById('searchWrap').style.display = 'none';
@@ -388,8 +392,11 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
 
  /* відкриття: клік будь-де по рядку */
  /* перевірка (Check) і прорахунок (Import) живуть на різних сторінках */
- const page = rows[idx].kind === 'check' ? '/result-check.html?id=' : '/result.html?id=';
- el.addEventListener('click', () => { location.href = page + el.dataset.id; });
+ const r = rows[idx];
+ const href = r.kind === 'check'
+   ? (r.public_id ? '/check/' + r.public_id : '/result-check.html?id=' + r.id)
+   : '/result.html?id=' + r.id;
+ el.addEventListener('click', () => { location.href = href; });
 
  /* меню з трьома крапками */
  const kebab = el.querySelector('.kebab');
