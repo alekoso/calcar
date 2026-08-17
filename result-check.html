@@ -242,23 +242,21 @@
   #saveHint{font-size:12.5px;color:var(--muted);opacity:0;transition:opacity .2s}
   #saveHint.show{opacity:1}
 
-  /* ---- шапка авто ---- */
-  .photos{display:grid;grid-template-columns:2fr 1fr 1fr;gap:6px;padding:6px}
-  .photos .ph{border-radius:8px;background:linear-gradient(135deg,#ECEEE9,#DDE0DA);position:relative;overflow:hidden;aspect-ratio:4/2.6;cursor:zoom-in}
-  .photos .ph.main{grid-row:span 2;aspect-ratio:4/2.63}
-  .photos .ph img{width:100%;height:100%;object-fit:cover;display:block}
-  .lot-title{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:16px 20px 4px}
+  /* ---- авто: компактно, як в Import ---- */
+  .photo-strip{display:flex;gap:6px;overflow-x:auto;padding:10px 10px 4px}
+  .photo-strip img{height:86px;border-radius:8px;flex:0 0 auto;cursor:zoom-in;display:block}
+  .lot-title{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 20px 4px}
   .lot-title h1{font-size:22px;font-weight:800}
-  .lot-meta{padding:0 20px 16px;display:flex;gap:20px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+  .spec-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;padding:12px 20px 4px}
+  .spec-grid div b{display:block;font-size:14px;font-weight:700}
+  .spec-grid div span{font-size:12px;color:var(--muted)}
+  .lot-meta{padding:8px 20px 16px;display:flex;gap:20px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
   .lot-meta b{color:var(--text);font-weight:600}
   .vin-line{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:13px;letter-spacing:.8px;font-weight:700;color:var(--text)}
 
   /* ---- вердикт ---- */
   .verdict{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap}
-  .v-grade{
-    flex:0 0 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
-    min-width:132px;padding:16px 18px;border-radius:var(--radius);text-align:center;
-  }
+  .v-grade{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-width:132px;padding:16px 18px;border-radius:var(--radius);text-align:center}
   .v-grade b{font-size:15px;font-weight:800;line-height:1.2}
   .v-grade span{font-size:11.5px;letter-spacing:.4px;text-transform:uppercase;opacity:.75}
   .g-buy{background:var(--green-soft);color:var(--green)}
@@ -272,7 +270,12 @@
   #flagsEl .flag{cursor:pointer;transition:background .15s}
   #flagsEl .flag:hover{background:var(--surface-2)}
 
-  /* ---- розбіжності: ядро продукту, найважчий візуальний акцент ---- */
+  /* ---- США: до ремонту і зараз ---- */
+  .ba-label{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);padding:12px 10px 0}
+  .ba-label .dot{width:8px;height:8px}
+  .dmg-note{background:var(--surface-2);border-radius:10px;padding:12px 16px;font-size:13.5px;color:var(--ink-2);line-height:1.55}
+
+  /* ---- розбіжності ---- */
   .disc{border:1px solid var(--line);border-left:3px solid var(--line-strong);border-radius:0 10px 10px 0;padding:12px 16px;margin-bottom:10px;background:var(--bg)}
   .disc:last-child{margin-bottom:0}
   .disc.high{border-left-color:var(--red);background:var(--red-soft);border-color:#F6DADA}
@@ -281,6 +284,10 @@
   .disc p{font-size:13.5px;color:var(--ink-2);line-height:1.5}
   .disc .src{margin-top:7px;display:flex;gap:6px;flex-wrap:wrap}
   .disc .src span{font-size:11.5px;background:#fff;border:1px solid var(--line);border-radius:20px;padding:2px 9px;color:var(--muted)}
+  .sev{font-size:11px;font-weight:800;padding:2px 8px;border-radius:20px;margin-left:auto}
+  .sev-high{background:var(--red-soft);color:var(--red)}
+  .sev-med{background:var(--amber-soft);color:var(--amber)}
+  .sev-low{background:var(--surface-2);color:var(--muted)}
 
   /* ---- твердження продавця ---- */
   .claim{display:flex;gap:12px;align-items:flex-start;padding:11px 0;border-top:1px solid var(--line);font-size:14px;line-height:1.45}
@@ -291,44 +298,71 @@
   .cv-unverifiable{background:var(--surface-2);color:var(--muted)}
   .claim .ev{color:var(--muted);font-size:13px;margin-top:3px}
 
-  /* ---- історія: вертикальний таймлайн ---- */
-  .tl{position:relative;padding-left:26px}
-  .tl::before{content:'';position:absolute;left:5px;top:8px;bottom:8px;width:2px;background:var(--line-strong)}
-  .tl-item{position:relative;padding:7px 0;font-size:14px;line-height:1.45}
-  .tl-item::before{content:'';position:absolute;left:-26px;top:13px;width:12px;height:12px;border-radius:50%;background:#fff;border:2px solid var(--line-strong)}
-  .tl-item.first::before{border-color:var(--brand-active);background:var(--brand)}
-  .tl-item .d{display:inline-block;min-width:66px;margin-right:12px;font-weight:700;font-variant-numeric:tabular-nums}
+  /* ---- історія: чисті рядки, без кругів ---- */
+  .hrow{display:flex;gap:14px;padding:9px 0;border-top:1px solid var(--line);font-size:14px;line-height:1.5}
+  .hrow:first-child{border-top:none;padding-top:0}
+  .hrow .hd{flex:0 0 92px;font-weight:700;font-variant-numeric:tabular-nums}
 
-  /* ---- чек-лист огляду ---- */
+  /* ---- чек-лист і болячки ---- */
   .chk{display:flex;gap:11px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--line);font-size:14.5px;line-height:1.45}
   .chk:first-child{border-top:none;padding-top:0}
   .chk i{flex:0 0 16px;width:16px;height:16px;border:2px solid var(--brand-active);border-radius:4px;margin-top:3px}
-
-  /* ---- слабкі місця моделі ---- */
   .issue{padding:12px 0;border-top:1px solid var(--line)}
   .issue:first-child{border-top:none;padding-top:0}
   .issue-t{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
   .issue-t b{font-size:14.5px;font-weight:700}
   .issue-t .u{font-size:12px;color:var(--muted)}
   .issue p{font-size:13.5px;color:var(--ink-2);margin-top:4px;line-height:1.5}
-  .sev{font-size:11px;font-weight:800;padding:2px 8px;border-radius:20px;margin-left:auto}
-  .sev-high{background:var(--red-soft);color:var(--red)}
-  .sev-med{background:var(--amber-soft);color:var(--amber)}
-  .sev-low{background:var(--surface-2);color:var(--muted)}
 
-  .dmg-note{background:var(--surface-2);border-radius:10px;padding:12px 16px;font-size:13.5px;color:var(--ink-2)}
-  .photo-strip{display:flex;gap:6px;overflow-x:auto;padding:10px 10px 4px}
-  .photo-strip img{height:86px;border-radius:8px;flex:0 0 auto;cursor:zoom-in;display:block}
+  .srcline{font-size:12.5px;color:var(--muted);word-break:break-all}
+  .srcline a{color:var(--brand-ink)}
   .lightbox{position:fixed;inset:0;background:rgba(10,18,28,.88);z-index:200;display:none;align-items:center;justify-content:center;cursor:zoom-out}
   .lightbox.open{display:flex}
   .lightbox img{max-width:94vw;max-height:92vh;border-radius:10px}
-  .srcline{font-size:12.5px;color:var(--muted);word-break:break-all}
-  .srcline a{color:var(--brand-ink)}
 
-  @media(max-width:720px){
-    .photos{grid-template-columns:1fr 1fr}
-    .photos .ph.main{grid-column:span 2;aspect-ratio:4/2.6}
-    .v-grade{width:100%}
+  /* ---------- чат по цьому авто (як в Import) ---------- */
+  .chat-fab{
+    position:fixed;right:20px;bottom:20px;z-index:80;display:flex;align-items:center;gap:9px;
+    background:var(--graphite);color:#fff;border:none;border-radius:28px;height:52px;padding:0 20px 0 16px;
+    font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;
+    box-shadow:0 8px 24px rgba(10,20,35,.35);transition:background .15s,transform .15s;
+  }
+  .chat-fab:hover{background:var(--graphite-2);transform:translateY(-1px)}
+  .chat-fab .dot-ai{width:8px;height:8px;border-radius:50%;background:var(--brand);flex-shrink:0}
+  .chat-overlay{position:fixed;inset:0;background:rgba(15,25,40,.28);z-index:125;opacity:0;pointer-events:none;transition:opacity .22s}
+  .chat-overlay.open{opacity:1;pointer-events:auto}
+  .chat-panel{
+    position:fixed;top:0;right:0;bottom:0;width:420px;max-width:100vw;background:#fff;z-index:130;
+    display:flex;flex-direction:column;border-left:1px solid var(--line);
+    box-shadow:-16px 0 44px rgba(10,20,35,.14);
+    transform:translateX(105%);transition:transform .25s ease;
+  }
+  .chat-panel.open{transform:none}
+  .chat-head{display:flex;align-items:center;gap:11px;height:var(--hdr-h);padding:0 16px;background:var(--graphite);color:#fff;flex-shrink:0}
+  .chat-head .ttl b{display:block;font-size:15px;line-height:1.2}
+  .chat-head .ttl span{font-size:12px;line-height:1.25;color:#A9AFB6;display:block;max-width:330px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chat-close{margin-left:auto;background:none;border:none;color:#A9AFB6;font-size:22px;line-height:1;cursor:pointer;padding:4px 8px;border-radius:8px}
+  .chat-close:hover{background:rgba(255,255,255,.12);color:#fff}
+  .chat-msgs{flex:1;overflow-y:auto;padding:16px 14px;display:flex;flex-direction:column;gap:10px;background:var(--bg)}
+  .chat-msg{max-width:88%;padding:10px 13px;border-radius:14px;font-size:14px;line-height:1.5;white-space:pre-wrap;overflow-wrap:break-word}
+  .chat-msg.user{align-self:flex-end;background:var(--graphite);color:#fff;border-bottom-right-radius:4px}
+  .chat-msg.ai{align-self:flex-start;background:#fff;border:1px solid var(--line);border-bottom-left-radius:4px}
+  .chat-msg.typing{align-self:flex-start;background:#fff;border:1px solid var(--line);color:var(--muted);border-bottom-left-radius:4px}
+  .chat-msg.typing i{display:inline-block;font-style:normal;animation:chatdots 1.2s infinite}
+  @keyframes chatdots{0%,100%{opacity:.3}50%{opacity:1}}
+  .chat-sugg{display:flex;flex-wrap:wrap;gap:6px;padding:0 14px 10px;background:var(--bg)}
+  .chat-sugg button{border:1px solid var(--line);background:#fff;border-radius:16px;padding:6px 12px;font-size:12.5px;color:var(--ink-2);cursor:pointer;font-family:inherit}
+  .chat-sugg button:hover{border-color:var(--brand);background:var(--brand-soft)}
+  .chat-input{display:flex;gap:8px;padding:12px 14px;border-top:1px solid var(--line);background:#fff;flex-shrink:0;align-items:flex-end}
+  .chat-input textarea{flex:1;resize:none;border:1px solid var(--line);border-radius:12px;padding:11px 13px;font-size:14px;font-family:inherit;line-height:1.4;min-height:44px;max-height:120px;color:var(--text)}
+  .chat-input textarea:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(184,242,61,.18)}
+  .chat-send{width:44px;height:44px;border:1px solid rgba(20,22,25,.08);border-radius:12px;background:var(--brand);color:var(--ink);cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+  .chat-send:hover{background:var(--brand-hover)}
+  .chat-send:disabled{opacity:.5;cursor:default}
+  .chat-note{padding:0 14px 10px;font-size:11.5px;color:var(--muted);background:#fff;flex-shrink:0}
+  @media(max-width:560px){
+    .chat-panel{width:100%}
+    .chat-fab{right:14px;bottom:14px;padding:0 16px 0 14px}
   }
 </style>
 </head>
@@ -368,13 +402,13 @@
 
   <!-- авто -->
   <div class="card">
-    <div class="photos" id="photosGrid" style="display:none"></div>
+    <div class="photo-strip" id="photoStrip" style="display:none"></div>
     <div class="lot-title">
       <h1 id="carTitle"></h1>
       <span class="badge blue">AI-перевірка оголошення</span>
     </div>
+    <div class="spec-grid" id="specGrid"></div>
     <div class="lot-meta" id="carMeta"></div>
-    <div class="photo-strip" id="photoStrip" style="display:none"></div>
   </div>
 
   <!-- вердикт -->
@@ -395,6 +429,33 @@
   <div class="card" id="flagsCard" style="display:none">
     <div class="card-head"><h2>Головне по цьому авто</h2></div>
     <div class="card-body"><div class="flags" id="flagsEl"></div></div>
+  </div>
+
+  <!-- США: до ремонту і зараз -->
+  <div class="card" id="usCard" style="display:none">
+    <div class="card-head">
+      <h2>Авто в США: до ремонту і зараз</h2>
+      <span class="badge blue">AI-аналіз фото</span>
+      <span class="hint" style="margin-left:auto">Фото з аукціону проти нинішніх</span>
+    </div>
+    <div class="ba-label" id="baBefore" style="display:none"><span class="dot bad"></span>До ремонту (аукціон США)</div>
+    <div class="photo-strip" id="auctionStrip" style="display:none"></div>
+    <div class="ba-label" id="baNow" style="display:none"><span class="dot ok"></span>Зараз (з оголошення)</div>
+    <div class="photo-strip" id="nowStrip" style="display:none"></div>
+    <div class="card-body">
+      <div class="dmg-note" id="usSummary" style="display:none"></div>
+      <div class="flags" id="usFindings" style="margin-top:12px"></div>
+      <div class="srcline" id="usSrc" style="margin-top:12px"></div>
+    </div>
+  </div>
+
+  <!-- фото зараз -->
+  <div class="card" id="photoCard" style="display:none">
+    <div class="card-head">
+      <h2>Що видно по фото</h2>
+      <span class="badge blue">AI-аналіз фото</span>
+    </div>
+    <div class="card-body"><div class="flags" id="photoFindings"></div></div>
   </div>
 
   <!-- розбіжності -->
@@ -422,19 +483,10 @@
       <h2>Історія авто</h2>
       <span class="hint" style="margin-left:auto">За відкритими даними площадки і реєстрів</span>
     </div>
-    <div class="card-body"><div class="tl" id="histList"></div></div>
+    <div class="card-body"><div id="histList"></div></div>
   </div>
 
-  <!-- фото -->
-  <div class="card" id="photoCard" style="display:none">
-    <div class="card-head">
-      <h2>Що видно по фото</h2>
-      <span class="badge blue">AI-аналіз фото</span>
-    </div>
-    <div class="card-body"><div class="flags" id="photoFindings"></div></div>
-  </div>
-
-  <!-- слабкі місця моделі -->
+  <!-- слабкі місця -->
   <div class="card" id="issuesCard" style="display:none">
     <div class="card-head">
       <h2>Типові слабкі місця цієї версії</h2>
@@ -452,7 +504,6 @@
     <div class="card-body"><div id="chkList"></div></div>
   </div>
 
-  <!-- джерело -->
   <div class="card" id="notesCard" style="display:none">
     <div class="card-body">
       <div class="dmg-note" id="dataNotes" style="display:none"></div>
@@ -462,6 +513,36 @@
 
 </div>
 
+<!-- чат по цьому авто -->
+<button class="chat-fab" id="chatFab" style="display:none">
+  <span class="dot-ai"></span>
+  Спитати про це авто
+</button>
+<div class="chat-overlay" id="chatOverlay"></div>
+<div class="chat-panel" id="chatPanel">
+  <div class="chat-head">
+    <div class="ttl">
+      <b>Чат по цьому авто</b>
+      <span id="chatCarTitle">AI-помічник CalCar</span>
+    </div>
+    <button class="chat-close" id="chatClose" title="Згорнути">✕</button>
+  </div>
+  <div class="chat-msgs" id="chatMsgs"></div>
+  <div class="chat-sugg" id="chatSugg">
+    <button>Чи варто торгуватися?</button>
+    <button>Що спитати продавця?</button>
+    <button>Які головні ризики?</button>
+    <button>Що перевірити на тест-драйві?</button>
+  </div>
+  <div class="chat-input">
+    <textarea id="chatText" rows="1" placeholder="Питай про це авто"></textarea>
+    <button class="chat-send" id="chatSend" title="Надіслати">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+    </button>
+  </div>
+  <div class="chat-note">Помічник бачить звіт і дані оголошення. Відповіді орієнтовні</div>
+</div>
+
 <script src="/config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
@@ -469,177 +550,187 @@ const SB = (typeof supabase !== 'undefined' && window.CALCAR_SUPABASE?.url)
   ? supabase.createClient(window.CALCAR_SUPABASE.url, window.CALCAR_SUPABASE.anon)
   : null;
 
-/* відкриття збереженої перевірки з кабінету: кладемо в sessionStorage
-   і заходимо звичайним маршрутом */
 const OPEN_ID = new URLSearchParams(location.search).get('id');
-if (OPEN_ID) {
-  if (!SB) { location.replace('/'); }
-  else {
-    SB.from('reports').select('data').eq('id', OPEN_ID).single().then(({ data: row, error }) => {
-      if (error || !row?.data?.vehicle) { location.replace('/cabinet.html'); return; }
-      try {
-        sessionStorage.setItem('calcarCheck', JSON.stringify(row.data));
-        sessionStorage.setItem('calcarCheckId', OPEN_ID);
-      } catch (e) {}
-      location.replace('/result-check.html');
-    });
-  }
-  throw '';
-}
+let DATA = null, M = {}, chatHist = [];
 
-let DATA = null;
-try {
-  const raw = sessionStorage.getItem('calcarCheck');
-  if (raw) DATA = JSON.parse(raw);
-} catch (e) {}
-if (!DATA || !DATA.vehicle) { location.replace('/'); throw new Error('no result'); }
-
-const M = DATA._meta || {};
 /* довге тире вичищаємо всюди: правило продукту */
 function esc(s){ return String(s ?? '').replace(/\s*\u2014\s*/g, ', ').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function clean(s){ return String(s ?? '').replace(/\u2014/g, ','); }
 const $ = id => document.getElementById(id);
 const nf = n => Number(n).toLocaleString(window.calcarLocale());
+const st = s => ['ok','warn','bad','unknown'].includes(s) ? s : 'unknown';
+const httpsOnly = a => (a || []).filter(u => typeof u === 'string' && /^https:/.test(u));
 
-/* ---------- шапка ---------- */
-(function head(){
-  const v = DATA.vehicle || {};
-  $('carTitle').textContent = v.title || t('Авто');
-
-  const meta = [];
-  if (M.price) meta.push([t('Ціна в оголошенні'), nf(M.price) + ' ' + (M.currency || '')]);
-  if (v.mileage_note) meta.push([t('Пробіг'), v.mileage_note]);
-  else if (M.odometer_km) meta.push([t('Пробіг'), nf(M.odometer_km) + ' ' + t('км')]);
-  if (v.engine) meta.push([t('Двигун'), v.engine]);
-  if (v.transmission) meta.push([t('Коробка'), v.transmission]);
-  if (v.drive) meta.push([t('Привід'), v.drive]);
-  if (v.trim) meta.push([t('Версія'), v.trim]);
-  $('carMeta').innerHTML = meta.map(r => '<span>' + esc(r[0]) + ': <b>' + esc(r[1]) + '</b></span>').join('')
-    + (M.vin ? '<span>VIN: <b class="vin-line">' + esc(M.vin) + '</b></span>' : '')
-    + (M.plate ? '<span>' + t('Номер') + ': <b>' + esc(M.plate) + '</b></span>' : '');
-
-  /* колаж: перше фото велике, далі чотири менших */
-  const ph = (M.photos || []).filter(u => typeof u === 'string' && /^https:/.test(u));
-  if (ph.length) {
-    $('photosGrid').style.display = '';
-    $('photosGrid').innerHTML = ph.slice(0, 5).map((u, i) =>
-      '<div class="ph' + (i === 0 ? ' main' : '') + '"><img loading="lazy" src="' + esc(u) + '" alt=""></div>').join('');
+/* ---------- завантаження: ?id лишається в адресі, це і є посилання на звіт ---------- */
+(async function init(){
+  if (OPEN_ID) {
+    if (!SB) { location.replace('/'); return; }
+    const { data: row, error } = await SB.from('reports').select('data').eq('id', OPEN_ID).single();
+    if (error || !row?.data?.vehicle) { location.replace('/cabinet.html'); return; }
+    DATA = row.data;
+    try {
+      sessionStorage.setItem('calcarCheck', JSON.stringify(DATA));
+      sessionStorage.setItem('calcarCheckId', OPEN_ID);
+    } catch (e) {}
+    boot();
+    return;
   }
-  if (M.url) {
-    const l = $('srcLink');
-    l.href = M.url; l.style.display = '';
-  }
+  try {
+    const raw = sessionStorage.getItem('calcarCheck');
+    if (raw) DATA = JSON.parse(raw);
+  } catch (e) {}
+  if (!DATA || !DATA.vehicle) { location.replace('/'); return; }
+  /* звіт уже збережений: даємо йому постійну адресу без перезавантаження */
+  const savedId = sessionStorage.getItem('calcarCheckId');
+  if (savedId) history.replaceState(null, '', '/result-check.html?id=' + savedId);
+  boot();
+  saveIfNeeded();
 })();
 
-/* ---------- вердикт ---------- */
-(function verdict(){
-  const v = DATA.verdict;
-  if (!v || !v.summary) return;
-  const GRADE = {
-    buy:     ['g-buy',     t('Варто брати'),          t('ризиків не знайдено')],
-    inspect: ['g-inspect', t('Брати після перевірки'), t('потрібен огляд')],
-    caution: ['g-caution', t('Обережно'),              t('є розбіжності')],
-    avoid:   ['g-avoid',   t('Краще відмовитись'),     t('високий ризик')],
-  };
-  const g = GRADE[v.grade] || GRADE.inspect;
-  $('verdictCard').style.display = '';
-  $('vGrade').className = 'v-grade ' + g[0];
-  $('vGradeT').textContent = g[1];
-  $('vGradeS').textContent = g[2];
-  $('vText').textContent = String(v.summary).replace(/\u2014/g, ',');
-})();
-
-/* ---------- списки ---------- */
 function fill(cardId, listId, arr, tpl) {
   if (!Array.isArray(arr) || !arr.length) return;
   $(cardId).style.display = '';
   $(listId).innerHTML = arr.map(tpl).join('');
 }
-const st = s => ['ok','warn','bad','unknown'].includes(s) ? s : 'unknown';
 
-fill('flagsCard', 'flagsEl', DATA.flags, f =>
-  '<div class="flag"><span class="dot ' + st(f.status) + '"></span><span>' + esc(f.text) + '</span></div>');
+function boot(){
+  M = DATA._meta || {};
 
-/* розбіжності сортуємо: спершу високі */
-const RANK = { high: 0, med: 1, low: 2 };
-const discs = (DATA.discrepancies || []).slice()
-  .sort((a, b) => (RANK[a.severity] ?? 3) - (RANK[b.severity] ?? 3));
-const SEVW = { high: t('серйозно'), med: t('варто уваги'), low: t('дрібниця') };
-fill('discCard', 'discList', discs, d =>
-  '<div class="disc ' + esc(d.severity || 'low') + '">'
-  + '<div class="disc-t"><span class="dot ' + (d.severity === 'high' ? 'bad' : d.severity === 'med' ? 'warn' : 'unknown') + '"></span>'
-  + esc(d.title) + '<span class="sev sev-' + esc(d.severity || 'low') + '">' + esc(SEVW[d.severity] || SEVW.low) + '</span></div>'
-  + '<p>' + esc(d.detail) + '</p>'
-  + (Array.isArray(d.sources) && d.sources.length
-      ? '<div class="src">' + d.sources.map(s => '<span>' + esc(s) + '</span>').join('') + '</div>' : '')
-  + '</div>');
-if (discs.length) $('discCount').textContent = discs.length;
-else $('discCount').style.display = 'none';
+  /* ---- авто: стрічка фото + факти, як в Import ---- */
+  const v = DATA.vehicle || {};
+  $('carTitle').textContent = v.title || t('Авто');
+  const ph = httpsOnly(M.photos);
+  if (ph.length) {
+    $('photoStrip').style.display = '';
+    $('photoStrip').innerHTML = ph.map(u => '<img loading="lazy" src="' + esc(u) + '" alt="">').join('');
+  }
+  const spec = [];
+  if (M.price) spec.push([nf(M.price) + ' ' + (M.currency || ''), t('Ціна')]);
+  if (v.mileage_note) spec.push([clean(v.mileage_note), t('Пробіг')]);
+  else if (M.odometer_km) spec.push([nf(M.odometer_km) + ' ' + t('км'), t('Пробіг')]);
+  if (v.engine) spec.push([clean(v.engine), t('Двигун')]);
+  if (v.transmission) spec.push([clean(v.transmission), t('Коробка')]);
+  if (v.drive) spec.push([clean(v.drive), t('Привід')]);
+  if (v.trim) spec.push([clean(v.trim), t('Версія')]);
+  $('specGrid').innerHTML = spec.map(r => '<div><b>' + esc(r[0]) + '</b><span>' + esc(r[1]) + '</span></div>').join('');
+  $('carMeta').innerHTML =
+    (M.vin ? '<span>VIN: <b class="vin-line">' + esc(M.vin) + '</b></span>' : '')
+    + (M.plate ? '<span>' + t('Номер') + ': <b>' + esc(M.plate) + '</b></span>' : '');
+  if (M.url) { const l = $('srcLink'); l.href = M.url; l.style.display = ''; }
 
-/* прапорці це TL;DR: клік веде до розгорнутого розбору нижче */
-if (discs.length) {
-  document.querySelectorAll('#flagsEl .flag').forEach(f =>
-    f.addEventListener('click', () => $('discCard').scrollIntoView({ behavior: 'smooth', block: 'start' })));
+  /* ---- вердикт ---- */
+  const vd = DATA.verdict;
+  if (vd && vd.summary) {
+    const GRADE = {
+      buy:     ['g-buy',     t('Варто брати'),           t('ризиків не знайдено')],
+      inspect: ['g-inspect', t('Брати після перевірки'), t('потрібен огляд')],
+      caution: ['g-caution', t('Обережно'),              t('є розбіжності')],
+      avoid:   ['g-avoid',   t('Краще відмовитись'),     t('високий ризик')],
+    };
+    const g = GRADE[vd.grade] || GRADE.inspect;
+    $('verdictCard').style.display = '';
+    $('vGrade').className = 'v-grade ' + g[0];
+    $('vGradeT').textContent = g[1];
+    $('vGradeS').textContent = g[2];
+    $('vText').textContent = clean(vd.summary);
+  }
+
+  /* ---- прапорці: TL;DR, клік веде до розбору ---- */
+  fill('flagsCard', 'flagsEl', DATA.flags, f =>
+    '<div class="flag"><span class="dot ' + st(f.status) + '"></span><span>' + esc(f.text) + '</span></div>');
+
+  /* ---- США: до ремонту і зараз ---- */
+  const au = DATA.auction || {};
+  const auPh = httpsOnly(M.auction_photos);
+  if (au.summary || auPh.length || (Array.isArray(au.findings) && au.findings.length)) {
+    $('usCard').style.display = '';
+    if (auPh.length) {
+      $('baBefore').style.display = '';
+      $('auctionStrip').style.display = '';
+      $('auctionStrip').innerHTML = auPh.map(u => '<img loading="lazy" src="' + esc(u) + '" alt="">').join('');
+      if (ph.length) {
+        $('baNow').style.display = '';
+        $('nowStrip').style.display = '';
+        $('nowStrip').innerHTML = ph.slice(0, 8).map(u => '<img loading="lazy" src="' + esc(u) + '" alt="">').join('');
+      }
+    }
+    if (au.summary) { $('usSummary').style.display = ''; $('usSummary').textContent = clean(au.summary); }
+    if (Array.isArray(au.findings) && au.findings.length) {
+      $('usFindings').innerHTML = au.findings.map(f =>
+        '<div class="flag"><span class="dot ' + st(f.status) + '"></span><span>' + esc(f.text) + '</span></div>').join('');
+    }
+    if (M.auction_url) {
+      $('usSrc').innerHTML = t('Архів аукціону') + ': <a href="' + esc(M.auction_url) + '" target="_blank" rel="noopener">' + esc(M.auction_url) + '</a>';
+    }
+  }
+
+  /* ---- фото зараз ---- */
+  fill('photoCard', 'photoFindings', DATA.photo_findings, f =>
+    '<div class="flag"><span class="dot ' + st(f.status) + '"></span><span>' + esc(f.text) + '</span></div>');
+
+  /* ---- розбіжності: спершу серйозні ---- */
+  const RANK = { high: 0, med: 1, low: 2 };
+  const discs = (DATA.discrepancies || []).slice()
+    .sort((a, b) => (RANK[a.severity] ?? 3) - (RANK[b.severity] ?? 3));
+  const SEVW = { high: t('серйозно'), med: t('варто уваги'), low: t('дрібниця') };
+  fill('discCard', 'discList', discs, d =>
+    '<div class="disc ' + esc(d.severity || 'low') + '">'
+    + '<div class="disc-t"><span class="dot ' + (d.severity === 'high' ? 'bad' : d.severity === 'med' ? 'warn' : 'unknown') + '"></span>'
+    + esc(d.title) + '<span class="sev sev-' + esc(d.severity || 'low') + '">' + esc(SEVW[d.severity] || SEVW.low) + '</span></div>'
+    + '<p>' + esc(d.detail) + '</p>'
+    + (Array.isArray(d.sources) && d.sources.length
+        ? '<div class="src">' + d.sources.map(s => '<span>' + esc(s) + '</span>').join('') + '</div>' : '')
+    + '</div>');
+  if (discs.length) {
+    $('discCount').textContent = discs.length;
+    document.querySelectorAll('#flagsEl .flag').forEach(f =>
+      f.addEventListener('click', () => $('discCard').scrollIntoView({ behavior: 'smooth', block: 'start' })));
+  } else $('discCount').style.display = 'none';
+
+  /* ---- твердження ---- */
+  const CV = { confirmed: t('підтверджено'), contradicted: t('спростовано'), unverifiable: t('не перевірити') };
+  fill('claimsCard', 'claimsList', DATA.seller_claims, c => {
+    const cv = ['confirmed','contradicted','unverifiable'].includes(c.verdict) ? c.verdict : 'unverifiable';
+    return '<div class="claim"><span class="cv cv-' + cv + '">' + esc(CV[cv]) + '</span>'
+      + '<span>' + esc(c.claim) + (c.evidence ? '<div class="ev">' + esc(c.evidence) + '</div>' : '') + '</span></div>';
+  });
+
+  /* ---- історія: чисті рядки ---- */
+  fill('histCard', 'histList', DATA.history, h =>
+    '<div class="hrow"><span class="hd">' + esc(h.date) + '</span><span>' + esc(h.event) + '</span></div>');
+
+  /* ---- болячки: без бейджа ризику, це довідка про модель ---- */
+  fill('issuesCard', 'issuesList', DATA.model_notes?.issues, i =>
+    '<div class="issue"><div class="issue-t"><b>' + esc(i.title) + '</b>'
+    + (i.unit ? '<span class="u">' + esc(i.unit) + '</span>' : '') + '</div>'
+    + '<p>' + esc(i.detail) + '</p></div>');
+
+  fill('chkCard', 'chkList', DATA.checklist, c => '<div class="chk"><i></i><span>' + esc(c) + '</span></div>');
+
+  /* ---- примітки і джерело ---- */
+  if (DATA.data_notes || M.url) {
+    $('notesCard').style.display = '';
+    if (DATA.data_notes) { $('dataNotes').style.display = ''; $('dataNotes').textContent = clean(DATA.data_notes); }
+    if (M.url) {
+      $('srcLine').innerHTML = t('Джерело') + ': <a href="' + esc(M.url) + '" target="_blank" rel="noopener">'
+        + esc(M.url) + '</a>' + (M.analyzed_at ? ' · ' + t('перевірено') + ' '
+        + esc(new Date(M.analyzed_at).toLocaleString(window.calcarLocale())) : '');
+    }
+  }
+
+  chatInit();
 }
 
-const CV = { confirmed: t('підтверджено'), contradicted: t('спростовано'), unverifiable: t('не перевірити') };
-fill('claimsCard', 'claimsList', DATA.seller_claims, c => {
-  const v = ['confirmed','contradicted','unverifiable'].includes(c.verdict) ? c.verdict : 'unverifiable';
-  return '<div class="claim"><span class="cv cv-' + v + '">' + esc(CV[v]) + '</span>'
-    + '<span>' + esc(c.claim) + (c.evidence ? '<div class="ev">' + esc(c.evidence) + '</div>' : '') + '</span></div>';
-});
-
-fill('histCard', 'histList', DATA.history, (h, i) =>
-  '<div class="tl-item' + (i === 0 ? ' first' : '') + '"><span class="d">' + esc(h.date) + '</span>' + esc(h.event) + '</div>');
-
-fill('photoCard', 'photoFindings', DATA.photo_findings, f =>
-  '<div class="flag"><span class="dot ' + st(f.status) + '"></span><span>' + esc(f.text) + '</span></div>');
-
-/* без бейджа ризику: це типові точки перевірки моделі, а не оцінка саме цього авто */
-fill('issuesCard', 'issuesList', DATA.model_notes?.issues, i =>
-  '<div class="issue"><div class="issue-t"><b>' + esc(i.title) + '</b>'
-  + (i.unit ? '<span class="u">' + esc(i.unit) + '</span>' : '') + '</div>'
-  + '<p>' + esc(i.detail) + '</p></div>');
-
-fill('chkCard', 'chkList', DATA.checklist, c => '<div class="chk"><i></i><span>' + esc(c) + '</span></div>');
-
-/* решта фото стрічкою в тій самій картці авто, без дубля внизу */
-(function strip(){
-  const ph = (M.photos || []).filter(u => typeof u === 'string' && /^https:/.test(u));
-  if (ph.length <= 5) return;
-  $('photoStrip').style.display = '';
-  $('photoStrip').innerHTML = ph.slice(5).map(u => '<img loading="lazy" src="' + esc(u) + '" alt="">').join('');
-})();
-
-/* примітки і джерело */
-(function notes(){
-  const hasNotes = !!DATA.data_notes;
-  if (!hasNotes && !M.url) return;
-  $('notesCard').style.display = '';
-  if (hasNotes) {
-    $('dataNotes').style.display = '';
-    $('dataNotes').textContent = String(DATA.data_notes).replace(/\u2014/g, ',');
-  }
-  if (M.url) {
-    $('srcLine').innerHTML = t('Джерело') + ': <a href="' + esc(M.url) + '" target="_blank" rel="noopener">'
-      + esc(M.url) + '</a>' + (M.analyzed_at ? ' · ' + t('перевірено') + ' '
-      + esc(new Date(M.analyzed_at).toLocaleString(window.calcarLocale())) : '');
-  }
-})();
-
-/* лайтбокс на всі фото сторінки */
+/* ---------- лайтбокс ---------- */
 document.addEventListener('click', e => {
-  const img = e.target.closest('.photos img, .photo-strip img');
-  if (img) {
-    $('lightboxImg').src = img.src;
-    $('lightbox').classList.add('open');
-    return;
-  }
+  const img = e.target.closest('.photo-strip img');
+  if (img) { $('lightboxImg').src = img.src; $('lightbox').classList.add('open'); return; }
   if (e.target.closest('#lightbox')) $('lightbox').classList.remove('open');
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') $('lightbox').classList.remove('open'); });
 
-/* якщо звіт відкритий увійшовшим користувачем і ще не збережений, зберігаємо */
-(async function save(){
+/* ---------- збереження свіжого звіту, якщо ще не збережений ---------- */
+async function saveIfNeeded(){
   if (!SB) return;
   if (sessionStorage.getItem('calcarCheckId')) return;
   try {
@@ -657,10 +748,82 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') $('lightbox'
       return;
     }
     sessionStorage.setItem('calcarCheckId', row.id);
+    history.replaceState(null, '', '/result-check.html?id=' + row.id);
     hint.textContent = t('Збережено ✓');
     setTimeout(() => hint.classList.remove('show'), 1600);
   } catch (e) {}
-})();
+}
+
+/* ---------- чат по цьому авто ---------- */
+function chatCtx(){
+  const d = DATA || {};
+  return {
+    vehicle: d.vehicle, verdict: d.verdict, flags: d.flags,
+    discrepancies: d.discrepancies, seller_claims: d.seller_claims,
+    history: d.history, photo_findings: d.photo_findings, auction: d.auction,
+    model_notes: d.model_notes, checklist: d.checklist, data_notes: d.data_notes,
+    _meta: { url: M.url, vin: M.vin, plate: M.plate, price: M.price, currency: M.currency, odometer_km: M.odometer_km },
+  };
+}
+function chatMsgEl(role, text){
+  const el = document.createElement('div');
+  el.className = 'chat-msg ' + role;
+  el.textContent = text;
+  $('chatMsgs').appendChild(el);
+  $('chatMsgs').scrollTop = $('chatMsgs').scrollHeight;
+  return el;
+}
+function chatInit(){
+  $('chatFab').style.display = '';
+  $('chatCarTitle').textContent = DATA.vehicle?.title || t('AI-помічник CalCar');
+  try { chatHist = JSON.parse(sessionStorage.getItem('calcarCheckChat') || '[]'); } catch (e) { chatHist = []; }
+  chatHist.forEach(m => chatMsgEl(m.role === 'assistant' ? 'ai' : 'user', m.content));
+  if (chatHist.length) $('chatSugg').style.display = 'none';
+
+  const open = () => { $('chatPanel').classList.add('open'); $('chatOverlay').classList.add('open'); $('chatText').focus(); };
+  const close = () => { $('chatPanel').classList.remove('open'); $('chatOverlay').classList.remove('open'); };
+  $('chatFab').addEventListener('click', open);
+  $('chatClose').addEventListener('click', close);
+  $('chatOverlay').addEventListener('click', close);
+
+  $('chatSugg').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (b) sendChat(b.textContent.trim());
+  });
+  $('chatSend').addEventListener('click', () => sendChat($('chatText').value));
+  $('chatText').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat($('chatText').value); }
+  });
+}
+async function sendChat(text){
+  text = String(text || '').trim();
+  if (!text) return;
+  $('chatText').value = '';
+  $('chatSugg').style.display = 'none';
+  $('chatSend').disabled = true;
+  chatHist.push({ role: 'user', content: text });
+  chatMsgEl('user', text);
+  const typing = chatMsgEl('typing', '');
+  typing.innerHTML = '<i>●</i> <i style="animation-delay:.2s">●</i> <i style="animation-delay:.4s">●</i>';
+  try {
+    const r = await fetch('/api/check-chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ messages: chatHist.slice(-12), report: chatCtx(), lang: window.calcarLang() }),
+    });
+    const data = await r.json().catch(() => ({}));
+    typing.remove();
+    if (!r.ok || !data.reply) throw new Error(data.error || t('Не вдалося відповісти, спробуй ще раз'));
+    chatHist.push({ role: 'assistant', content: data.reply });
+    chatMsgEl('ai', clean(data.reply));
+    try { sessionStorage.setItem('calcarCheckChat', JSON.stringify(chatHist.slice(-30))); } catch (e) {}
+  } catch (e) {
+    typing.remove();
+    chatMsgEl('ai', e.message || t('Не вдалося відповісти, спробуй ще раз'));
+  } finally {
+    $('chatSend').disabled = false;
+  }
+}
 </script>
 </body>
 </html>

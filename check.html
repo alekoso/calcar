@@ -416,7 +416,9 @@ async function run() {
     /* прибираємо id попереднього звіту: інакше автозбереження перезапише чужий рядок */
     sessionStorage.removeItem('calcarCheckId');
 
-    /* якщо користувач увійшов, звіт зберігається в кабінет */
+    /* якщо користувач увійшов, звіт зберігається в кабінет і одразу
+       отримує власну постійну адресу */
+    let savedId = null;
     try {
       if (SB) {
         const { data: s } = await SB.auth.getSession();
@@ -425,12 +427,12 @@ async function run() {
           const { data: row } = await SB.from('reports').insert({
             user_id: s.session.user.id, kind: 'check', title, data,
           }).select('id').single();
-          if (row?.id) sessionStorage.setItem('calcarCheckId', row.id);
+          if (row?.id) { savedId = row.id; sessionStorage.setItem('calcarCheckId', row.id); }
         }
       }
     } catch (e) { /* збереження не блокує показ результату */ }
 
-    location.href = '/result-check.html';
+    location.href = savedId ? '/result-check.html?id=' + savedId : '/result-check.html';
   } catch (e) {
     setStatus(e.message || t('Щось пішло не так, спробуй ще раз'), true);
   } finally {
