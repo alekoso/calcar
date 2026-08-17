@@ -3,127 +3,276 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CalCar Check: точно чи варто брати саме цю машину?</title>
+<title>CalCar Check: чи варто брати саме це авто</title>
+<meta name="description" content="Встав посилання на оголошення про продаж авто. CalCar звіряє слова продавця з історією авто, даними VIN і фото, показує розбіжності і каже, чи варто брати.">
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@800&display=swap&text=CalCarheck" rel="stylesheet">
+<script>
+/* CalCar i18n, ядро. Вбудовується у сторінку (маленьке, не росте з кількістю мов).
+   Словники лежать окремо: /i18n/<code>.js, вантажиться РІВНО ОДИН, обраний.
+   Українська це базова мова: для неї не вантажиться нічого.
+   Якщо файл словника недоступний, сторінка просто лишається українською. */
+(function () {
+  var LS = 'calcar_lang';
+  var LANGS = [
+    { code: 'ua', label: 'Українська', short: 'UA', locale: 'uk-UA', html: 'uk' },
+    { code: 'ru', label: 'Русский',    short: 'RU', locale: 'ru-RU', html: 'ru' },
+    { code: 'en', label: 'English',    short: 'EN', locale: 'en-US', html: 'en' },
+  ];
+  var DICT_V = '3';           /* міняти при зміні словників, щоб скинути кеш */
+
+  function meta(c) {
+    for (var i = 0; i < LANGS.length; i++) if (LANGS[i].code === c) return LANGS[i];
+    return LANGS[0];
+  }
+  /* Мова браузера, якщо користувач ще нічого не обирав:
+     uk → українська, ru → російська, будь-що інше → англійська.
+     Тобто відвідувач з Іспанії одразу бачить англійську, а не українську. */
+  function detect() {
+    var list = [];
+    try {
+      list = (navigator.languages && navigator.languages.length)
+        ? navigator.languages : [navigator.language || ''];
+    } catch (e) { list = ['']; }
+    for (var i = 0; i < list.length; i++) {
+      var n = String(list[i]).toLowerCase();
+      if (n.indexOf('uk') === 0) return 'ua';
+      if (n.indexOf('ru') === 0) return 'ru';
+      if (n.indexOf('en') === 0) return 'en';
+    }
+    return 'en';
+  }
+  function known(c) {
+    for (var i = 0; i < LANGS.length; i++) if (LANGS[i].code === c) return true;
+    return false;
+  }
+  function lang() {
+    var v = null;
+    try { v = localStorage.getItem(LS); } catch (e) {}
+    return known(v) ? v : detect();
+  }
+  window.CALCAR_LANGS = LANGS;
+  window.calcarLang = lang;
+  window.calcarLocale = function () { return meta(lang()).locale; };
+
+  /* Синхронне довантаження словника: тег пишеться під час парсингу head,
+     тому переклад готовий ще до першого рендера, без миготіння. */
+  var cur = lang();
+  if (cur !== 'ua') {
+    document.write('<scr' + 'ipt src="/i18n/' + cur + '.js?v=' + DICT_V + '"></scr' + 'ipt>');
+  }
+
+  function norm(s) { return String(s).replace(/\s+/g, ' ').trim(); }
+
+  /* Ключі словника нормалізуються один раз: у розмітці той самий рядок може мати
+     пробіли по краях або перенос рядка. Пробіли навколо збігу зберігаються. */
+  var _idx = null;
+  function dict() {
+    var raw = window.CALCAR_DICT;
+    if (!raw) return null;
+    if (_idx && _idx.__src === raw) return _idx;
+    var out = { __src: raw };
+    for (var k in raw) if (Object.prototype.hasOwnProperty.call(raw, k)) out[norm(k)] = raw[k];
+    _idx = out;
+    return out;
+  }
+  function lookup(s) {
+    var d = dict();
+    if (!d) return null;
+    var v = d[norm(s)];
+    if (v === undefined || v === null) return null;
+    return (s.match(/^\s*/) || [''])[0] + v + (s.match(/\s*$/) || [''])[0];
+  }
+  window.t = function (s, l) {
+    l = l || lang();
+    if (l === 'ua') return s;
+    return lookup(s) || s;
+  };
+
+  /* перемикач: делегування на document, працює незалежно від моменту рендера */
+  document.addEventListener('click', function (e) {
+    var menu = document.getElementById('langMenu');
+    if (!menu || !e.target.closest) return;
+    var pick = e.target.closest('.lang-menu button');
+    if (pick && pick.dataset.lang) {
+      e.preventDefault();
+      try { localStorage.setItem(LS, pick.dataset.lang); } catch (err) {}
+      location.reload();
+      return;
+    }
+    if (e.target.closest('#langBtn')) { e.preventDefault(); menu.classList.toggle('open'); return; }
+    menu.classList.remove('open');
+  });
+
+  function markSwitch() {
+    var l = lang(), btn = document.getElementById('langBtn'), menu = document.getElementById('langMenu');
+    if (!btn || !menu) return;
+    if (btn.firstChild && btn.firstChild.nodeType === 3) btn.firstChild.nodeValue = meta(l).short + ' ';
+    menu.querySelectorAll('button').forEach(function (b) {
+      b.classList.toggle('on', b.dataset.lang === l);
+    });
+  }
+
+  function apply() {
+    var l = lang(), d = window.CALCAR_DICT;
+    document.documentElement.lang = meta(l).html;
+    if (l !== 'ua' && d) {
+      var w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null), nodes = [], n;
+      while ((n = w.nextNode())) nodes.push(n);
+      nodes.forEach(function (nd) {
+        if (!norm(nd.nodeValue || '')) return;
+        var v = lookup(nd.nodeValue);
+        if (v) nd.nodeValue = v;
+      });
+      ['placeholder', 'title', 'aria-label', 'alt'].forEach(function (a) {
+        document.querySelectorAll('[' + a + ']').forEach(function (el) {
+          var v = lookup(el.getAttribute(a) || '');
+          if (v) el.setAttribute(a, v.trim());
+        });
+      });
+      var dt = lookup(document.title);
+      if (dt) document.title = dt.trim();
+    }
+    markSwitch();
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply);
+  else apply();
+})();
+</script>
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <style>
-  /* Токени = index.html, змінювати ЛИШЕ там і синхронно тут */
   :root{
-    --brand:#B8F23D; --brand-hover:#A7DF31; --brand-active:#96CC27;
-    --brand-soft:#F0FBD9; --brand-ink:#3F5D11;
-    --ink:#141619; --ink-2:#30343A; --graphite:#141619; --graphite-2:#202328;
-    --text:#141619; --muted:#697079; --faint:#90969D;
-    --bg:#F7F8F6; --card:#FFFFFF; --surface-2:#F1F3F0;
-    --line:#E2E5E0; --line-strong:#CDD2CB;
-    --green:#218A4A; --green-soft:#EEF7F0;
-    --amber:#C8790A; --amber-soft:#FFF7E8;
-    --red:#D83A3A; --red-soft:#FDEEEE;
+    /* Brand */
+    --brand:#B8F23D;
+    --brand-hover:#A7DF31;
+    --brand-active:#96CC27;
+    --brand-soft:#F0FBD9;
+    --brand-ink:#3F5D11;
+    /* Neutrals */
+    --ink:#141619;
+    --ink-2:#30343A;
+    --graphite:#141619;
+    --graphite-2:#202328;
+    --text:#141619;
+    --muted:#697079;
+    --faint:#90969D;
+    --bg:#F7F8F6;
+    --card:#FFFFFF;
+    --surface-2:#F1F3F0;
+    --line:#E2E5E0;
+    --line-strong:#CDD2CB;
+    /* Semantic */
+    --green:#218A4A;
+    --green-soft:#EEF7F0;
+    --amber:#C8790A;
+    --amber-soft:#FFF7E8;
+    --red:#D83A3A;
+    --red-soft:#FDEEEE;
     --radius:12px;
+    --hdr-h:56px;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
-    background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;
+    background:var(--bg);color:var(--text);font-size:15px;line-height:1.45;
   }
-  header{background:var(--bg);border-bottom:1px solid var(--line)}
-  .header-in{max-width:980px;margin:0 auto;padding:14px 20px;display:flex;align-items:center;gap:12px}
+  .num{font-variant-numeric:tabular-nums}
+
   .logo{display:inline-flex;align-items:stretch;border-radius:.46em;overflow:hidden;font-weight:800;font-size:15px;letter-spacing:.01em;line-height:1;text-decoration:none;font-family:'Sora',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
   .logo .l{background:var(--brand);color:var(--ink);padding:.62em 1.05em .62em .72em;clip-path:polygon(0 0,100% 0,calc(100% - .46em) 100%,0 100%)}
   .logo .r{background:var(--graphite);color:#fff;padding:.62em .72em .62em .98em;margin-left:-.26em;clip-path:polygon(.46em 0,100% 0,100% 100%,0 100%)}
-  .prod{font-family:'Sora',sans-serif;font-weight:800;font-size:15px;color:var(--ink);letter-spacing:.01em}
+  /* Check як другий напрямок: підпис поруч із логотипом, тим самим шрифтом */
+  .prod{font-family:'Sora',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;font-weight:800;font-size:15px;color:var(--ink);letter-spacing:.01em}
   .beta{font-size:11px;background:var(--surface-2);color:var(--muted);padding:2px 8px;border-radius:20px;letter-spacing:.4px}
   .header-right{margin-left:auto;display:flex;align-items:center;gap:16px;font-size:13px}
-  .header-right a{color:var(--muted);text-decoration:none;font-weight:600}
+  .header-right a{color:var(--muted);text-decoration:none}
   .header-right a:hover{color:var(--ink)}
+  .btn-auth{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line-strong);border-radius:20px;padding:7px 14px;background:var(--card);color:var(--ink)!important;font-weight:600;font-size:13px;text-decoration:none;transition:background .15s,border-color .15s}
+  .btn-auth:hover{background:var(--surface-2)}
 
-  .hero{padding:56px 20px 40px;text-align:center}
-  .hero-in{max-width:760px;margin:0 auto}
-  .hero h1{font-size:clamp(26px,5vw,42px);font-weight:800;letter-spacing:-.8px;line-height:1.16}
-  .hero h1 em{font-style:normal;background:linear-gradient(transparent 68%,var(--brand) 68%);padding:0 2px}
-  .hero p{margin-top:14px;color:var(--muted);font-size:16px;line-height:1.5}
+  .btn-primary{
+    background:var(--brand);color:var(--ink);border:1px solid rgba(20,22,25,.08);border-radius:var(--radius);
+    height:52px;padding:0 26px;font-size:15px;font-weight:800;cursor:pointer;white-space:nowrap;font-family:inherit;
+  }
+  .btn-primary:hover{background:var(--brand-hover)}
+  .btn-primary:active{background:var(--brand-active)}
+  .btn-primary:disabled{opacity:.55;cursor:default}
+  .btn-back{
+    display:inline-flex;align-items:center;background:#fff;color:var(--ink);border:1px solid var(--line-strong);
+    border-radius:var(--radius);height:44px;padding:0 20px;font-size:14px;font-weight:600;cursor:pointer;text-decoration:none;
+  }
+  .btn-back:hover{background:var(--surface-2);border-color:var(--brand)}
 
-  .ask{max-width:640px;margin:28px auto 0;display:flex;gap:10px}
-  .ask input{
-    flex:1;height:52px;border:1.5px solid var(--line-strong);border-radius:var(--radius);
-    padding:0 16px;font-size:15px;font-family:inherit;background:var(--card);color:var(--text);outline:none;
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:20px;overflow:hidden}
+  .card-head{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .card-head h2{font-size:16px;font-weight:700}
+  .card-body{padding:20px}
+  .hint{font-size:12.5px;color:var(--muted)}
+
+  .badge{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:20px;letter-spacing:.2px}
+  .badge.green{background:var(--green-soft);color:var(--green)}
+  .badge.blue{background:var(--brand-soft);color:var(--brand-ink)}
+  .badge.amber{background:var(--amber-soft);color:var(--amber)}
+  .badge.red{background:var(--red-soft);color:var(--red)}
+
+  .dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+  .dot.ok{background:var(--green)}
+  .dot.bad{background:var(--red)}
+  .dot.warn{background:var(--amber)}
+  .dot.unknown{background:var(--faint)}
+
+  .lang-dd{position:relative}
+  .lang-btn{display:inline-flex;align-items:center;gap:4px;border:none;background:transparent;padding:6px 8px;border-radius:8px;font-size:13px;font-weight:600;color:var(--ink);cursor:pointer;font-family:inherit;line-height:1}
+  .lang-btn:hover{background:var(--surface-2)}
+  .lang-btn svg{color:var(--muted)}
+  .lang-menu{position:absolute;right:0;top:calc(100% + 6px);background:#fff;border:1px solid var(--line);border-radius:11px;box-shadow:0 8px 24px rgba(15,25,40,.10);min-width:150px;padding:4px;display:none;z-index:60}
+  .lang-menu.open{display:block}
+  .lang-menu button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:none;background:none;padding:9px 10px;border-radius:8px;font-size:13.5px;color:var(--ink);cursor:pointer;font-family:inherit}
+  .lang-menu button:hover{background:var(--surface-2)}
+  .lang-menu button i{width:6px;height:6px;border-radius:50%;background:transparent;flex-shrink:0}
+  .lang-menu button.on i{background:var(--brand)}
+  body{padding-bottom:40px}
+  header{background:var(--bg);border-bottom:1px solid var(--line)}
+  .header-in{max-width:1160px;margin:0 auto;padding:0 20px;height:var(--hdr-h);display:flex;align-items:center;gap:14px}
+
+  .hero{padding:60px 20px 20px;text-align:center}
+  .hero-in{max-width:860px;margin:0 auto}
+  .hero h1{font-size:clamp(28px,5vw,44px);font-weight:800;letter-spacing:-.8px;line-height:1.15}
+  .hero h1 em{font-style:normal;color:inherit;background:linear-gradient(transparent 68%,var(--brand) 68%);padding:0 2px}
+  .hero p.sub{margin:16px auto 0;max-width:620px;font-size:16.5px;color:var(--muted)}
+
+  .hero-form{
+    background:#fff;border-radius:16px;padding:20px;margin:32px auto 0;max-width:720px;
+    border:1px solid var(--line);box-shadow:0 1px 2px rgba(20,22,25,.04),0 10px 28px rgba(20,22,25,.06);text-align:left;
   }
-  .ask input:focus{border-color:var(--ink)}
-  .ask button{
-    height:52px;padding:0 26px;border:none;border-radius:var(--radius);cursor:pointer;
-    background:var(--brand);color:var(--ink);font-size:15px;font-weight:700;font-family:inherit;
-    transition:background .15s;white-space:nowrap;
+  .hf-row{display:flex;gap:10px;flex-wrap:wrap}
+  .hf-row input[type=text]{
+    flex:1;min-width:240px;height:52px;border:1px solid var(--line);border-radius:12px;
+    padding:0 16px;font-size:15px;color:var(--text);font-family:inherit;
   }
-  .ask button:hover{background:var(--brand-hover)}
-  .ask button:disabled{opacity:.55;cursor:default}
-  .hint{margin-top:10px;font-size:13px;color:var(--faint)}
-  .status{max-width:640px;margin:18px auto 0;font-size:14px;color:var(--muted);display:none}
-  .status.err{color:var(--red)}
-  .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--line-strong);border-top-color:var(--ink);border-radius:50%;vertical-align:-2px;margin-right:8px;animation:sp 1s linear infinite}
+  .hf-row input[type=text]:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(184,242,61,.18)}
+  .hf-note{display:flex;gap:18px;flex-wrap:wrap;margin-top:14px;font-size:12.5px;color:var(--muted)}
+  .hf-note b{color:var(--text)}
+  .hf-status{margin-top:12px;font-size:13.5px;color:var(--muted);min-height:19px}
+  .hf-status.err{color:var(--red)}
+  .spin{display:inline-block;width:13px;height:13px;border:2px solid var(--line-strong);border-top-color:var(--ink);border-radius:50%;vertical-align:-2px;margin-right:8px;animation:sp 1s linear infinite}
   @keyframes sp{to{transform:rotate(360deg)}}
 
-  main{max-width:860px;margin:0 auto;padding:0 20px 80px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:22px;margin-top:18px}
-  .card h2{font-size:16px;font-weight:800;letter-spacing:-.2px;margin-bottom:14px}
-  .sub{font-size:13px;color:var(--muted);margin-top:-10px;margin-bottom:14px}
+  /* що саме перевіряємо: коротко, без маркетингу */
+  .steps{max-width:900px;margin:52px auto 0;padding:0 20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+  .step{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:18px}
+  .step h3{font-size:14.5px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:8px}
+  .step p{font-size:13.5px;color:var(--muted);line-height:1.5}
 
-  .verdict{display:none;margin-top:26px;border-radius:var(--radius);padding:22px;border:1px solid var(--line)}
-  .verdict .grade{display:inline-block;font-weight:800;font-size:13px;letter-spacing:.6px;text-transform:uppercase;padding:5px 12px;border-radius:20px;margin-bottom:12px}
-  .verdict p{font-size:15px;line-height:1.55}
-  .g-buy{background:var(--green-soft)} .g-buy .grade{background:var(--green);color:#fff}
-  .g-inspect{background:var(--brand-soft)} .g-inspect .grade{background:var(--brand);color:var(--ink)}
-  .g-caution{background:var(--amber-soft)} .g-caution .grade{background:var(--amber);color:#fff}
-  .g-avoid{background:var(--red-soft)} .g-avoid .grade{background:var(--red);color:#fff}
-
-  .vrow{display:flex;justify-content:space-between;gap:14px;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px}
-  .vrow:last-child{border-bottom:none}
-  .vrow .k{color:var(--muted)} .vrow .v{text-align:right;font-weight:600}
-
-  .flag{display:flex;gap:10px;align-items:flex-start;padding:8px 0;font-size:14.5px;line-height:1.45}
-  .dot{flex:0 0 10px;width:10px;height:10px;border-radius:50%;margin-top:5px}
-  .s-ok{background:var(--green)} .s-warn{background:var(--amber)} .s-bad{background:var(--red)} .s-unknown{background:var(--faint)}
-
-  .disc{border-left:3px solid var(--line-strong);padding:10px 14px;margin:10px 0;border-radius:0 8px 8px 0;background:var(--surface-2)}
-  .disc.high{border-color:var(--red);background:var(--red-soft)}
-  .disc.med{border-color:var(--amber);background:var(--amber-soft)}
-  .disc b{display:block;font-size:14.5px;margin-bottom:4px}
-  .disc p{font-size:13.5px;color:var(--ink-2);line-height:1.5}
-  .disc .src{margin-top:6px;font-size:12px;color:var(--muted)}
-
-  .claim{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px;line-height:1.45;align-items:flex-start}
-  .claim:last-child{border-bottom:none}
-  .cv{flex:0 0 auto;font-size:11px;font-weight:800;letter-spacing:.4px;padding:3px 8px;border-radius:12px;margin-top:1px}
-  .cv-confirmed{background:var(--green-soft);color:var(--green)}
-  .cv-contradicted{background:var(--red-soft);color:var(--red)}
-  .cv-unverifiable{background:var(--surface-2);color:var(--muted)}
-  .claim .ev{color:var(--muted);font-size:13px;margin-top:2px}
-
-  .tl{position:relative;padding-left:22px}
-  .tl::before{content:'';position:absolute;left:6px;top:6px;bottom:6px;width:2px;background:var(--line-strong)}
-  .tl-item{position:relative;padding:6px 0;font-size:14px;line-height:1.45}
-  .tl-item::before{content:'';position:absolute;left:-20px;top:12px;width:10px;height:10px;border-radius:50%;background:var(--card);border:2px solid var(--ink)}
-  .tl-item .d{font-weight:700;margin-right:8px}
-
-  .check-item{display:flex;gap:10px;padding:7px 0;font-size:14.5px;line-height:1.45}
-  .check-item::before{content:'';flex:0 0 8px;width:8px;height:8px;border:2px solid var(--brand-active);border-radius:3px;margin-top:6px}
-
-  .issue{padding:10px 0;border-bottom:1px solid var(--line)}
-  .issue:last-child{border-bottom:none}
-  .issue b{font-size:14.5px}
-  .issue .u{font-size:12px;color:var(--muted);margin-left:8px}
-  .issue p{font-size:13.5px;color:var(--ink-2);margin-top:3px;line-height:1.5}
-  .sev{float:right;font-size:11px;font-weight:800;padding:2px 8px;border-radius:12px}
-  .sev-high{background:var(--red-soft);color:var(--red)}
-  .sev-med{background:var(--amber-soft);color:var(--amber)}
-  .sev-low{background:var(--surface-2);color:var(--muted)}
-
-  .photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
-  .photos img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
-  .note{font-size:13px;color:var(--muted);line-height:1.5}
-  .src-link{font-size:13px;color:var(--muted);word-break:break-all}
-  .src-link a{color:var(--brand-ink)}
-  @media (max-width:560px){ .ask{flex-direction:column} .ask button{height:48px} }
+  .sample{max-width:720px;margin:44px auto 0;padding:0 20px}
+  .sample .card-body{padding:16px 20px}
+  .sline{display:flex;gap:10px;align-items:flex-start;padding:7px 0;font-size:14px}
+  .sline .dot{margin-top:5px}
+  .sline b{font-weight:600}
+  footer{max-width:1160px;margin:48px auto 0;padding:0 20px;font-size:12.5px;color:var(--faint);text-align:center}
 </style>
 </head>
 <body>
@@ -134,114 +283,111 @@
     <span class="prod">Check</span>
     <div class="beta">beta</div>
     <div class="header-right">
-      <a href="/index.html">Пригін зі США</a>
-      <a href="/cabinet.html">Кабінет</a>
+      <a href="/import">Пригін зі США</a>
+      <div class="lang-dd" id="langDd">
+        <button class="lang-btn" type="button" id="langBtn">UA <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+        <div class="lang-menu" id="langMenu">
+          <button data-lang="ua" type="button"><i></i>Українська</button>
+          <button data-lang="ru" type="button"><i></i>Русский</button>
+          <button data-lang="en" type="button"><i></i>English</button>
+        </div>
+      </div>
+      <a class="btn-auth" href="/cabinet.html" id="authLink">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg>
+        <span id="authLabel">Увійти</span>
+      </a>
     </div>
   </div>
 </header>
 
 <div class="hero">
   <div class="hero-in">
-    <h1>Точно чи варто брати <em>саме цю</em> машину?</h1>
-    <p>Встав посилання на оголошення. CalCar звірить слова продавця з історією авто, VIN-даними і фото, знайде розбіжності та скаже чесно, що з цим авто.</p>
-    <div class="ask">
-      <input id="urlInput" type="url" placeholder="Посилання на оголошення, напр. auto.ria.com/..." autocomplete="off">
-      <button id="goBtn" type="button">Перевірити</button>
+    <h1>Точно чи варто брати<br><em>саме цю машину?</em></h1>
+    <p class="sub">Встав посилання на оголошення. CalCar звіряє слова продавця з історією авто, заводськими даними за VIN і фото, показує розбіжності і дає підсумок.</p>
+
+    <div class="hero-form">
+      <div class="hf-row">
+        <input type="text" id="urlInput" placeholder="Посилання на оголошення, напр. auto.ria.com/..." spellcheck="false">
+        <button class="btn-primary" id="goBtn" type="button">Перевірити</button>
+      </div>
+      <div class="hf-status" id="status"></div>
+      <div class="hf-note">
+        <span><b>Зараз працює AUTO.RIA</b></span>
+        <span>Інші сайти в тестовому режимі</span>
+        <span>Результат за 1–2 хвилини</span>
+      </div>
     </div>
-    <div class="hint">Зараз працюємо з AUTO.RIA, інші сайти пробуємо в тестовому режимі. Перевірка займає до 2 хвилин.</div>
-    <div class="status" id="status"></div>
   </div>
 </div>
 
-<main id="report" style="display:none">
-  <div class="verdict" id="verdictBox">
-    <span class="grade" id="gradeLabel"></span>
-    <p id="verdictText"></p>
+<div class="steps">
+  <div class="step">
+    <h3><span class="dot bad"></span>Розбіжності</h3>
+    <p>Продавець пише «без ДТП», а офіційні дані показують аварію. Ми ставимо ці факти поруч.</p>
   </div>
-
-  <div class="card" id="vehicleCard" style="display:none">
-    <h2 id="vTitle"></h2>
-    <div id="vRows"></div>
+  <div class="step">
+    <h3><span class="dot warn"></span>Історія пробігу і власників</h3>
+    <p>Що показували в попередніх оголошеннях, скільки було власників, чи логічна хронологія.</p>
   </div>
-
-  <div class="card" id="flagsCard" style="display:none">
-    <h2>Головне по цьому авто</h2>
-    <div id="flagsList"></div>
+  <div class="step">
+    <h3><span class="dot ok"></span>Фото і болячки моделі</h3>
+    <p>Сліди ремонту на фото, знос проти заявленого пробігу, слабкі місця саме цієї версії та двигуна.</p>
   </div>
+</div>
 
-  <div class="card" id="discCard" style="display:none">
-    <h2>Розбіжності</h2>
-    <div class="sub">Де слова продавця не сходяться з даними чи фото</div>
-    <div id="discList"></div>
+<div class="sample">
+  <div class="card">
+    <div class="card-head">
+      <h2>Як виглядає результат</h2>
+      <span class="hint" style="margin-left:auto">Приклад</span>
+    </div>
+    <div class="card-body">
+      <div class="sline"><span class="dot bad"></span><span><b>Продавець: «без ДТП».</b> Офіційна перевірка показує страховий випадок у США та запис аукціону.</span></div>
+      <div class="sline"><span class="dot warn"></span><span><b>4 власники за 5 років,</b> остання покупка 5 місяців тому: схоже на перепродаж.</span></div>
+      <div class="sline"><span class="dot warn"></span><span><b>Пробіг 129 тис. км</b> проти 109 тис. в оголошенні 2024 року: хронологія збігається.</span></div>
+      <div class="sline"><span class="dot ok"></span><span><b>Комплектація підтверджена</b> заводськими даними за VIN.</span></div>
+    </div>
   </div>
+</div>
 
-  <div class="card" id="claimsCard" style="display:none">
-    <h2>Твердження продавця</h2>
-    <div id="claimsList"></div>
-  </div>
+<footer>CalCar Check · beta · звіт складається з відкритих даних і AI-аналізу, остаточне рішення завжди за вами</footer>
 
-  <div class="card" id="histCard" style="display:none">
-    <h2>Історія авто</h2>
-    <div class="tl" id="histList"></div>
-  </div>
-
-  <div class="card" id="photoCard" style="display:none">
-    <h2>Що видно по фото</h2>
-    <div id="photoFindings"></div>
-  </div>
-
-  <div class="card" id="issuesCard" style="display:none">
-    <h2>Типові слабкі місця цієї версії</h2>
-    <div id="issuesList"></div>
-  </div>
-
-  <div class="card" id="checkCard" style="display:none">
-    <h2>Перевір при огляді</h2>
-    <div id="checkList"></div>
-  </div>
-
-  <div class="card" id="galleryCard" style="display:none">
-    <h2>Фото з оголошення</h2>
-    <div class="photos" id="gallery"></div>
-  </div>
-
-  <div class="card" id="metaCard" style="display:none">
-    <div class="note" id="dataNotes"></div>
-    <div class="src-link" id="srcLink" style="margin-top:8px"></div>
-  </div>
-</main>
-
+<script src="/config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-/* довге тире вичищаємо всюди, правило продукту */
-function esc(s){ return String(s ?? '').replace(/\s*\u2014\s*/g, ', ').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-const $ = id => document.getElementById(id);
+const SB = (typeof supabase !== 'undefined' && window.CALCAR_SUPABASE?.url)
+  ? supabase.createClient(window.CALCAR_SUPABASE.url, window.CALCAR_SUPABASE.anon)
+  : null;
+if (SB) {
+  SB.auth.getSession().then(({ data }) => {
+    if (data?.session) document.getElementById('authLabel').textContent = t('Кабінет');
+  });
+}
 
-const input = $('urlInput'), btn = $('goBtn'), status = $('status');
+const input = document.getElementById('urlInput');
+const btn = document.getElementById('goBtn');
+const statusEl = document.getElementById('status');
 
-/* повідомлення під час очікування, щоб 2 хвилини не виглядали як зависання */
+/* перевірка триває до 2 хвилин: показуємо, що саме відбувається, інакше
+   виглядає як зависання */
 const STEPS = [
-  'Читаю сторінку оголошення...',
-  'Витягую VIN, ціну, пробіг і фото...',
-  'Декодую VIN і збираю історію...',
-  'AI звіряє слова продавця з даними та фото...',
-  'Складаю звіт...',
+  'Читаю сторінку оголошення…',
+  'Витягую VIN, ціну, пробіг і фото…',
+  'Декодую VIN і збираю історію авто…',
+  'Звіряю слова продавця з даними та фото…',
+  'Складаю звіт…',
 ];
-let stepTimer = null;
+let timer = null;
 
-function setStatus(html, isErr) {
-  status.style.display = 'block';
-  status.className = 'status' + (isErr ? ' err' : '');
-  status.innerHTML = html;
+function setStatus(text, isErr) {
+  statusEl.className = 'hf-status' + (isErr ? ' err' : '');
+  statusEl.innerHTML = isErr ? esc(text) : '<span class="spin"></span>' + esc(text);
 }
-function startSteps() {
-  let i = 0;
-  setStatus('<span class="spin"></span>' + esc(STEPS[0]));
-  stepTimer = setInterval(() => {
-    i = Math.min(i + 1, STEPS.length - 1);
-    setStatus('<span class="spin"></span>' + esc(STEPS[i]));
-  }, 18000);
+function esc(s){ return String(s ?? '').replace(/\s*\u2014\s*/g, ', ').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+async function safeJson(r) {
+  try { return await r.json(); } catch (e) { return { error: t('Сервер повернув неочікувану відповідь') }; }
 }
-function stopSteps() { clearInterval(stepTimer); stepTimer = null; }
 
 btn.addEventListener('click', run);
 input.addEventListener('keydown', e => { if (e.key === 'Enter') run(); });
@@ -249,124 +395,48 @@ input.addEventListener('keydown', e => { if (e.key === 'Enter') run(); });
 async function run() {
   const url = input.value.trim();
   if (!/^https?:\/\/.+\..+/.test(url)) {
-    setStatus('Встав повне посилання на оголошення, з https://', true);
+    setStatus(t('Встав повне посилання на оголошення, разом із https://'), true);
     return;
   }
   btn.disabled = true;
-  $('report').style.display = 'none';
-  startSteps();
+  let i = 0;
+  setStatus(t(STEPS[0]));
+  timer = setInterval(() => { i = Math.min(i + 1, STEPS.length - 1); setStatus(t(STEPS[i])); }, 18000);
+
   try {
     const r = await fetch('/api/check', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ url, lang: 'ua' }),
+      body: JSON.stringify({ url, lang: window.calcarLang() }),
     });
-    const data = await r.json();
-    stopSteps();
-    if (!r.ok || data.error) {
-      setStatus(esc(data.error || 'Помилка ' + r.status), true);
-      return;
-    }
-    status.style.display = 'none';
-    render(data);
+    const data = await safeJson(r);
+    if (!r.ok || data.error) throw new Error(data.error || t('Помилка сервера'));
+
+    sessionStorage.setItem('calcarCheck', JSON.stringify(data));
+    /* прибираємо id попереднього звіту: інакше автозбереження перезапише чужий рядок */
+    sessionStorage.removeItem('calcarCheckId');
+
+    /* якщо користувач увійшов, звіт зберігається в кабінет */
+    try {
+      if (SB) {
+        const { data: s } = await SB.auth.getSession();
+        if (s?.session) {
+          const title = data.vehicle?.title || t('Перевірка');
+          const { data: row } = await SB.from('reports').insert({
+            user_id: s.session.user.id, kind: 'check', title, data,
+          }).select('id').single();
+          if (row?.id) sessionStorage.setItem('calcarCheckId', row.id);
+        }
+      }
+    } catch (e) { /* збереження не блокує показ результату */ }
+
+    location.href = '/result-check.html';
   } catch (e) {
-    stopSteps();
-    setStatus('Не вдалося отримати відповідь: ' + esc(e.message), true);
+    setStatus(e.message || t('Щось пішло не так, спробуй ще раз'), true);
   } finally {
+    clearInterval(timer);
     btn.disabled = false;
   }
-}
-
-function render(d) {
-  $('report').style.display = 'block';
-
-  /* вердикт */
-  const GRADE = {
-    buy: ['g-buy', 'Варто брати'],
-    inspect: ['g-inspect', 'Брати після перевірки'],
-    caution: ['g-caution', 'Обережно'],
-    avoid: ['g-avoid', 'Краще відмовитись'],
-  };
-  const g = GRADE[d.verdict?.grade] || GRADE.inspect;
-  const vb = $('verdictBox');
-  vb.style.display = 'block';
-  vb.className = 'verdict ' + g[0];
-  $('gradeLabel').textContent = g[1];
-  $('verdictText').textContent = String(d.verdict?.summary || '').replace(/\u2014/g, ',');
-
-  /* авто */
-  const v = d.vehicle || {};
-  if (v.title) {
-    $('vehicleCard').style.display = 'block';
-    $('vTitle').textContent = v.title;
-    const m = d._meta || {};
-    const rows = [
-      ['Ціна в оголошенні', m.price ? m.price.toLocaleString('uk-UA') + ' ' + (m.currency || '') : null],
-      ['Пробіг', v.mileage_note || (m.odometer_km ? m.odometer_km.toLocaleString('uk-UA') + ' км' : null)],
-      ['Двигун', v.engine], ['Коробка', v.transmission], ['Привід', v.drive],
-      ['Комплектація', v.trim], ['VIN', m.vin], ['Держномер', m.plate],
-    ].filter(r => r[1]);
-    $('vRows').innerHTML = rows.map(r =>
-      '<div class="vrow"><span class="k">' + esc(r[0]) + '</span><span class="v">' + esc(r[1]) + '</span></div>'
-    ).join('');
-  }
-
-  /* прапорці */
-  fill('flagsCard', 'flagsList', d.flags, f =>
-    '<div class="flag"><span class="dot s-' + esc(f.status || 'unknown') + '"></span><span>' + esc(f.text) + '</span></div>');
-
-  /* розбіжності */
-  fill('discCard', 'discList', d.discrepancies, x =>
-    '<div class="disc ' + esc(x.severity || 'low') + '"><b>' + esc(x.title) + '</b><p>' + esc(x.detail) + '</p>'
-    + (Array.isArray(x.sources) && x.sources.length ? '<div class="src">Джерела: ' + esc(x.sources.join(', ')) + '</div>' : '')
-    + '</div>');
-
-  /* твердження продавця */
-  const CV = { confirmed: 'підтверджено', contradicted: 'спростовано', unverifiable: 'не перевірити' };
-  fill('claimsCard', 'claimsList', d.seller_claims, c =>
-    '<div class="claim"><span class="cv cv-' + esc(c.verdict || 'unverifiable') + '">' + esc(CV[c.verdict] || CV.unverifiable) + '</span>'
-    + '<span>' + esc(c.claim) + (c.evidence ? '<div class="ev">' + esc(c.evidence) + '</div>' : '') + '</span></div>');
-
-  /* історія */
-  fill('histCard', 'histList', d.history, h =>
-    '<div class="tl-item"><span class="d">' + esc(h.date) + '</span>' + esc(h.event) + '</div>');
-
-  /* фото-знахідки */
-  fill('photoCard', 'photoFindings', d.photo_findings, f =>
-    '<div class="flag"><span class="dot s-' + esc(f.status || 'unknown') + '"></span><span>' + esc(f.text) + '</span></div>');
-
-  /* болячки моделі */
-  fill('issuesCard', 'issuesList', d.model_notes?.issues, i =>
-    '<div class="issue"><span class="sev sev-' + esc(i.severity || 'low') + '">' + esc(i.severity || 'low') + '</span>'
-    + '<b>' + esc(i.title) + '</b>' + (i.unit ? '<span class="u">' + esc(i.unit) + '</span>' : '')
-    + '<p>' + esc(i.detail) + '</p></div>');
-
-  /* чек-лист огляду */
-  fill('checkCard', 'checkList', d.checklist, c => '<div class="check-item">' + esc(c) + '</div>');
-
-  /* галерея */
-  const ph = (d._meta?.photos || []).slice(0, 12);
-  if (ph.length) {
-    $('galleryCard').style.display = 'block';
-    $('gallery').innerHTML = ph.map(u => '<img loading="lazy" src="' + esc(u) + '" alt="">').join('');
-  }
-
-  /* примітки і джерело */
-  if (d.data_notes || d._meta?.url) {
-    $('metaCard').style.display = 'block';
-    $('dataNotes').textContent = d.data_notes ? String(d.data_notes).replace(/\u2014/g, ',') : '';
-    $('srcLink').innerHTML = d._meta?.url
-      ? 'Джерело: <a href="' + esc(d._meta.url) + '" target="_blank" rel="noopener">' + esc(d._meta.url) + '</a>'
-      : '';
-  }
-
-  vb.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-function fill(cardId, listId, arr, tpl) {
-  if (!Array.isArray(arr) || !arr.length) { $(cardId).style.display = 'none'; return; }
-  $(cardId).style.display = 'block';
-  $(listId).innerHTML = arr.map(tpl).join('');
 }
 </script>
 </body>
