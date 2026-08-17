@@ -276,4 +276,18 @@ window.CALCAR_DICT = {
   'не перевірити': 'unverifiable',
   'Джерело': 'Source',
   'перевірено': 'checked',
+  /* ---- CalCar Check (en, iteration 4) ---- */
+  'Авто в США: до ремонту і зараз': 'The car in the US: before repair and now',
+  'Фото з аукціону проти нинішніх': 'Auction photos vs current ones',
+  'До ремонту (аукціон США)': 'Before repair (US auction)',
+  'Зараз (з оголошення)': 'Now (from the listing)',
+  'Архів аукціону': 'Auction archive',
+  'Помічник бачить звіт і дані оголошення. Відповіді орієнтовні': 'The assistant sees the report and listing data. Answers are indicative',
+  'Чи варто торгуватися?': 'Should I negotiate?',
+  'Що спитати продавця?': 'What should I ask the seller?',
+  'Які головні ризики?': 'What are the main risks?',
+  'Що перевірити на тест-драйві?': 'What to check on a test drive?',
+  'Надіслати': 'Send',
+  'Ціна': 'Price',
+  'Не вдалося відповісти, спробуй ще раз': 'Could not answer, try again',
 };
