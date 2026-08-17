@@ -1,0 +1,420 @@
+export const config = { maxDuration: 300 };
+
+/* ============================================================
+   CalCar Check, рушій v1: посилання на оголошення -> звіт.
+   Потік: fetch сторінки -> витяг фактів (детермінований) ->
+   NHTSA decode -> знімок у vehicle_snapshots (рів даних) ->
+   AI-розбір розбіжностей -> JSON звіту.
+   v1 заточений під auto.ria.com, generic-шлях працює для інших,
+   але без гарантій. Нові площадки додаються адаптерами.
+   ============================================================ */
+
+/* ---------- 1. Завантаження сторінки ---------- */
+async function fetchPage(url) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), 30000);
+  try {
+    const r = await fetch(url, {
+      signal: ctl.signal,
+      redirect: 'follow',
+      headers: {
+        /* представляємось звичайним браузером: без цього частина сайтів
+           віддає заглушку або 403 */
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
+        'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'accept-language': 'uk,ru;q=0.9,en;q=0.8',
+      },
+    });
+    const html = await r.text();
+    if (!r.ok) {
+      const e = new Error('Сайт відповів помилкою HTTP ' + r.status);
+      e.blocked = r.status === 403 || r.status === 429 || r.status === 503;
+      throw e;
+    }
+    if (/cf-browser-verification|__cf_chl|captcha|access denied|Just a moment/i.test(html.slice(0, 4000))) {
+      const e = new Error('Сайт закрив сторінку перевіркою на робота');
+      e.blocked = true;
+      throw e;
+    }
+    if (html.length < 3000) {
+      throw new Error('Сайт віддав порожню сторінку');
+    }
+    return html;
+  } finally { clearTimeout(t); }
+}
+
+/* ---------- 2. Утиліти витягу ---------- */
+const dec = s => String(s)
+  .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '"')
+  .replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+
+function metaTag(html, name) {
+  const re = new RegExp('<meta[^>]+(?:property|name)=["\']' + name.replace(/[:]/g, '\\$&') + '["\'][^>]+content=["\']([^"\']*)["\']', 'i');
+  const m = re.exec(html);
+  return m ? dec(m[1]) : null;
+}
+
+/* усі JSON-блоки сторінки: ld+json та вбудований стан фреймворків */
+function pageJsonBlobs(html) {
+  const out = [];
+  const ld = html.matchAll(/<script[^>]*application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi);
+  for (const m of ld) { try { out.push(JSON.parse(m[1].trim())); } catch (e) {} }
+  for (const re of [/window\.__INITIAL_STATE__\s*=\s*(\{[\s\S]*?\});?\s*<\/script>/, /__NEXT_DATA__[^>]*>([\s\S]*?)<\/script>/]) {
+    const m = re.exec(html);
+    if (m) { try { out.push(JSON.parse(m[1])); } catch (e) {} }
+  }
+  return out;
+}
+
+/* глибокий збір "ключ -> перше значення" по JSON, як у lot.js */
+function deepCollect(obj, flat = {}) {
+  if (obj === null || obj === undefined || typeof obj !== 'object') return flat;
+  if (Array.isArray(obj)) { obj.forEach(v => deepCollect(v, flat)); return flat; }
+  for (const [k, v] of Object.entries(obj)) {
+    const key = k.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (v !== null && (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean')) {
+      if (!(key in flat)) flat[key] = v;
+    }
+    deepCollect(v, flat);
+  }
+  return flat;
+}
+function pick(flat, aliases) {
+  for (const a of aliases) {
+    const k = a.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (flat[k] !== undefined && flat[k] !== '' && flat[k] !== null) return flat[k];
+  }
+  return null;
+}
+
+/* HTML -> читабельний текст для AI: без скриптів, стилів і тегів */
+function htmlToText(html) {
+  return dec(
+    html
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+  ).replace(/\s+/g, ' ').trim();
+}
+
+/* вирізаємо з довгого тексту лише змістовні секції, щоб не годувати AI
+   меню, відгуками і новинами площадки */
+function relevantText(text, markers, budget = 14000) {
+  const chunks = [];
+  for (const { from, to, cap } of markers) {
+    const i = text.indexOf(from);
+    if (i === -1) continue;
+    let end = text.length;
+    for (const stop of to) {
+      const j = text.indexOf(stop, i + from.length);
+      if (j !== -1 && j < end) end = j;
+    }
+    chunks.push(text.slice(i, Math.min(end, i + cap)));
+  }
+  const joined = chunks.join('\n\n');
+  return (joined.length > 500 ? joined : text.slice(0, budget)).slice(0, budget);
+}
+
+/* ---------- 3. Витяг фактів оголошення ---------- */
+const VIN_RE = /\b([A-HJ-NPR-Z0-9]{17})\b/g;
+
+function extractListing(html, url) {
+  const domain = (/^https?:\/\/(?:www\.)?([^\/]+)/i.exec(url) || [])[1] || '';
+  const isRia = /auto\.ria\.com$/i.test(domain);
+  const text = htmlToText(html);
+  const flat = deepCollect(pageJsonBlobs(html));
+
+  const title = metaTag(html, 'og:title') || pick(flat, ['name', 'title']) || '';
+
+  /* VIN: перший рядок правильної форми зі сторінки; відсіюємо випадкові
+     збіги вимогою мати і літери, і цифри */
+  let vin = null;
+  for (const m of (title + ' ' + text.slice(0, 60000)).matchAll(VIN_RE)) {
+    const v = m[1].toUpperCase();
+    if (/[A-Z]/.test(v) && /\d/.test(v)) { vin = v; break; }
+  }
+
+  /* держномер України: другий ключ звʼязування, коли VIN приховано */
+  const plateM = /\b([АВЕІКМНОРСТХA-Z]{2})\s?(\d{4})\s?([АВЕІКМНОРСТХA-Z]{2})\b/u.exec(text.slice(0, 30000));
+  const plate = plateM ? (plateM[1] + plateM[2] + plateM[3]).toUpperCase() : null;
+
+  /* ціна: RIA пише її в og:title ("ціна 30500 $"), generic бере з JSON */
+  let price = null, currency = null;
+  const priceM = /ціна\s+([\d\s]+)\s*(\$|€|грн)/i.exec(title) || /([\d\s]{4,})\s*(\$|€|грн)\b/.exec(text.slice(0, 20000));
+  if (priceM) {
+    price = parseInt(priceM[1].replace(/\s/g, ''), 10) || null;
+    currency = { '$': 'USD', '€': 'EUR', 'грн': 'UAH' }[priceM[2]] || null;
+  }
+  if (!price) {
+    price = parseFloat(pick(flat, ['price', 'priceUSD', 'priceValue'])) || null;
+    currency = currency || pick(flat, ['priceCurrency', 'currency']) || null;
+  }
+
+  /* пробіг: "пробіг 129 тис. км" або поля JSON */
+  let odometerKm = null;
+  const odoM = /пробіг[^\d]{0,10}(\d{1,3})\s*тис/i.exec(text) || /(\d{1,3})\s*тис\.?\s*км/i.exec(text.slice(0, 20000));
+  if (odoM) odometerKm = parseInt(odoM[1], 10) * 1000;
+  if (!odometerKm) {
+    const raw = parseFloat(pick(flat, ['mileage', 'race', 'odometer', 'mileageInKm']));
+    if (raw) odometerKm = raw < 1000 ? raw * 1000 : raw;
+  }
+
+  const yearM = /\b(19[89]\d|20[0-4]\d)\b/.exec(title);
+  const year = yearM ? parseInt(yearM[1], 10) : (parseInt(pick(flat, ['year', 'productionYear', 'vehicleModelDate']), 10) || null);
+
+  /* фото: RIA кладе кадри на cdn.riastatic.com у кількох розмірах,
+     лишаємо по одному найбільшому на кадр (hd > fx > bx) */
+  let photos = [];
+  if (isRia) {
+    const RANK = { hd: 3, fx: 2, bx: 1 };
+    const best = new Map();
+    for (const m of html.matchAll(/https:\/\/cdn\d*\.riastatic\.com\/photosnew\/auto\/photo\/[a-z0-9_\-]*?(\d+)(hd|fx|bx)\.(?:webp|jpe?g)/gi)) {
+      const id = m[1], rank = RANK[m[2].toLowerCase()] || 0;
+      const cur = best.get(id);
+      if (!cur || rank > cur.rank) best.set(id, { url: m[0], rank });
+    }
+    photos = [...best.values()].map(x => x.url);
+  } else {
+    const seen = new Set();
+    for (const m of html.matchAll(/https?:\/\/[^\s"'<>]+\.(?:jpe?g|webp|png)(?:\?[^\s"'<>]*)?/gi)) {
+      const u = m[0];
+      if (/logo|icon|sprite|avatar|banner|placeholder|\.svg/i.test(u)) continue;
+      if (!seen.has(u)) { seen.add(u); }
+    }
+    photos = [...seen];
+  }
+  photos = photos.slice(0, 40);
+
+  /* марка і модель: із title виду "BMW 5 Series 2018" це робить AI краще,
+     тут лише груба спроба з URL-слага RIA */
+  let make = null, model = null;
+  const slug = /auto_([a-z\-]+?)_([a-z0-9\-]+?)_\d+\.html/i.exec(url);
+  if (slug) { make = slug[1].replace(/-/g, ' '); model = slug[2].replace(/-/g, ' '); }
+
+  /* текст для AI: опис продавця + офіційний блок перевірки + історія.
+     Маркери підібрані під RIA, generic отримує початок сторінки */
+  const aiText = relevantText(text, [
+    { from: 'Опис від продавця', to: ['Дізнайтесь більше', 'Оголошення створене'], cap: 5000 },
+    { from: 'Перевірено AUTO.RIA', to: ['Дізнайтесь більше про авто'], cap: 4000 },
+    { from: 'Історія авто за VIN', to: ['Дізнайтесь більше', 'Виїзна перевірка'], cap: 4000 },
+    { from: title.slice(0, 40), to: ['Опис від продавця'], cap: 3000 },
+  ]);
+
+  return {
+    domain, country: isRia ? 'UA' : null,
+    title: title.slice(0, 200), vin, plate,
+    price, currency, odometer_km: odometerKm, year, make, model,
+    photos, text: aiText,
+  };
+}
+
+/* ---------- 4. Знімок у рів даних ---------- */
+async function saveSnapshot(l, url) {
+  const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!base || !key) return 'env_missing';
+  try {
+    const r = await fetch(base.replace(/\/$/, '') + '/rest/v1/vehicle_snapshots', {
+      method: 'POST',
+      headers: {
+        apikey: key, authorization: 'Bearer ' + key,
+        'content-type': 'application/json', prefer: 'return=minimal',
+      },
+      body: JSON.stringify({
+        vin: l.vin, plate: l.plate,
+        source_url: url, source_domain: l.domain, country: l.country,
+        price_amount: l.price, price_currency: l.currency,
+        odometer_km: l.odometer_km, year: l.year, make: l.make, model: l.model,
+        listing: { title: l.title, text: l.text },
+        photos: l.photos.slice(0, 20),
+      }),
+    });
+    return r.ok ? 'saved' : 'error_' + r.status;
+  } catch (e) { return 'error'; }
+}
+
+/* ---------- 5. AI-розбір ---------- */
+const PROMPT = (l, nhtsa, langDirective) => `Ти експертна система CalCar Check: незалежний розбір оголошення про продаж вживаного авто. Твоя робота: звірити те, що СТВЕРДЖУЄ продавець, із тим, що КАЖУТЬ дані і фото, і чесно відповісти, чи варто брати саме це авто.
+
+${langDirective}
+
+ФАКТИ, ВИТЯГНУТІ ЗІ СТОРІНКИ ОГОЛОШЕННЯ (детермінований парс):
+${JSON.stringify({ title: l.title, vin: l.vin, plate: l.plate, price: l.price, currency: l.currency, odometer_km: l.odometer_km, year: l.year })}
+
+ТЕКСТ СТОРІНКИ ОГОЛОШЕННЯ (опис продавця + офіційні блоки перевірки площадки, якщо є):
+${l.text}
+
+Декодування VIN від NHTSA: ${nhtsa ? JSON.stringify(nhtsa) : 'недоступне'}
+
+ГОЛОВНА МЕХАНІКА: розбіжності між джерелами. Порівнюй:
+- твердження продавця в описі ПРОТИ офіційного блоку перевірки площадки (власники, ДТП, страхові випадки, історія пробігу, аукціонні записи США)
+- заявлений пробіг ПРОТИ хронології пробігів у історії і ПРОТИ зносу на фото (кермо, сидіння, педалі, кнопки)
+- заявлену комплектацію ПРОТИ даних VIN
+- поведінку продавця: короткий цикл володіння, перепродаж, "професійний продавець" із свіжою покупкою це патерн перекупа, назви його прямо якщо видно з історії
+
+ПРАВИЛА ЧЕСНОСТІ (найважливіше):
+- НІКОЛИ не пиши статус "ok", якщо це не підтверджено даними чи чітко видимим доказом на фото. Не видно або нечітко: статус "unknown" з конкретною дією для перевірки.
+- Кожна розбіжність МУСИТЬ спиратися на конкретні рядки джерел, не вигадуй фактів. Якщо чогось у даних немає, прямо кажи, що цього немає.
+- По фото шукай сліди ремонтів по всьому авто: різниця відтінку фарби, шагрень, нерівні зазори, свіжий герметик, нештатні деталі, сліди демонтажу. Салон: знос проти заявленого пробігу.
+- Дані довідника площадки можуть містити сміття (неправильна потужність, обʼєм). Технічні характеристики бери з VIN-декодування, розбіжність довідника НЕ вважай проблемою авто, але згадай у data_notes.
+- НІКОЛИ не використовуй символ довгого тире у жодному тексті. Пиши кому, двокрапку або крапку.
+- Не заповнюй блоки заради кількості. Краще 2 влучні розбіжності, ніж 6 порожніх.
+- Пробіг "1 тис. км" у записі аукціону США може означати милі або фіксацію на момент продажу: не роби з одиниць виміру катастрофу, але звір хронологію на логічність.
+
+"model_notes.issues": типові слабкі місця САМЕ ЦІЄЇ версії (марка + модель + рік + двигун + фактичний пробіг). 0-4 пункти. Кожен пункт мусить бути задокументованою особливістю саме цієї моделі і покоління; якщо речення без змін пасує іншому авто, викинь його. Тільки проблеми, актуальні при ЦЬОМУ пробігу. Якщо певного нічого немає, порожній масив. Без цін.
+
+"verdict.grade": buy (брати, істотних проблем не знайдено), inspect (можна брати після конкретних перевірок), caution (є серйозні розбіжності, торг або обережність), avoid (знайдені факти прямо суперечать оголошенню або ризик надто високий). Оцінюй відносно ринку вживаних авто: сліди експлуатації це норма, а не привід для avoid. Але приховування фактів продавцем (знайдене ДТП при "без ДТП") завжди мінімум caution.
+
+Відповідай ЛИШЕ валідним JSON без markdown, точно за схемою:
+{
+ "vehicle": {"title":"Марка Модель Рік","year":2018,"fuel":"petrol|diesel|hybrid|electric","engine":"довідково з VIN: обʼєм, тип, потужність","transmission":"...","drive":"...","trim":"версія/комплектація або null","mileage_note":"пробіг одним рядком: заявлений і що каже історія"},
+ "seller_claims":[{"claim":"коротке твердження продавця з опису","verdict":"confirmed|contradicted|unverifiable","evidence":"1 речення: чим підтверджено чи спростовано, або чого бракує"}],
+ "discrepancies":[{"severity":"high|med|low","title":"коротка назва розбіжності","detail":"2-3 речення: що стверджується, що знайдено, звідки","sources":["опис продавця","перевірка площадки","фото","VIN"]}],
+ "history":[{"date":"MM.YYYY або YYYY","event":"1 рядок: подія з історії авто"}],
+ "photo_findings":[{"status":"ok|warn|bad|unknown","text":"знахідка по фото, 1 речення"}],
+ "flags":[{"status":"ok|warn|bad|unknown","text":"підсумковий прапорець, до 10 слів"}],
+ "data_notes":"сміття чи суперечності в даних площадки, 1-2 речення, або null",
+ "model_notes":{"issues":[{"unit":"вузол/двигун","title":"назва проблеми","detail":"1-2 речення","severity":"low|med|high"}]},
+ "checklist":["конкретна перевірка при огляді, 1 рядок", "..."],
+ "verdict":{"grade":"buy|inspect|caution|avoid","summary":"3-5 речень: що це за авто і за пропозиція, головні знахідки, чи варто брати і за яких умов"}
+}
+"flags": рівно 4. "checklist": 3-7 пунктів, лише конкретика під ЦЕ авто, без загальних порад "перевірте на СТО".`;
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (!process.env.OPENAI_API_KEY) {
+    return res.status(500).json({ error: 'OPENAI_API_KEY не налаштований у Vercel' });
+  }
+
+  try {
+    const rawUrl = String((req.body || {}).url || '').trim();
+    const lang = ['ua', 'ru', 'en'].includes(req.body?.lang) ? req.body.lang : 'ua';
+    if (!/^https?:\/\/.+\..+/.test(rawUrl)) {
+      return res.status(400).json({ error: 'Встав повне посилання на оголошення, з https://' });
+    }
+    const url = rawUrl.split('#')[0];
+
+    /* --- сторінка --- */
+    let html;
+    try {
+      html = await fetchPage(url);
+    } catch (e) {
+      return res.status(e.blocked ? 502 : 502).json({
+        error: e.blocked
+          ? 'Сайт оголошення не пустив нас на сторінку. Спробуй ще раз за хвилину, це буває тимчасово'
+          : 'Не вдалося завантажити сторінку оголошення: ' + e.message,
+      });
+    }
+
+    const listing = extractListing(html, url);
+    if (!listing.photos.length && !listing.vin && !listing.text) {
+      return res.status(422).json({ error: 'Зі сторінки не вдалося витягнути дані оголошення. Надішли інше посилання' });
+    }
+
+    /* --- NHTSA decode: той самий безкоштовний шлях, що в Import --- */
+    let nhtsa = null;
+    if (listing.vin) {
+      try {
+        const r = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/${encodeURIComponent(listing.vin)}?format=json`);
+        const row = (await r.json())?.Results?.[0];
+        if (row) {
+          nhtsa = {};
+          for (const k of ['Make','Model','ModelYear','Trim','Series','FuelTypePrimary','ElectrificationLevel','DisplacementL','EngineHP','TransmissionStyle','DriveType','BodyClass','PlantCountry']) {
+            if (row[k]) nhtsa[k] = row[k];
+          }
+        }
+      } catch (e) { /* без NHTSA працюємо далі */ }
+    }
+
+    /* --- знімок у рів: ДО аналізу, щоб історія копилась навіть коли AI впав --- */
+    const snapshot = await saveSnapshot(listing, url);
+
+    /* --- AI --- */
+    const LANG_NAME = { ua: 'українською', ru: 'російською', en: 'англійською (English)' };
+    const langDirective = 'МОВА ВІДПОВІДІ: усі текстові значення пиши ' + LANG_NAME[lang] + '. Ключі JSON та enum-значення (status, severity, verdict, grade, fuel) залишай латиницею точно за схемою.';
+
+    const photoUrls = listing.photos.slice(0, 12);
+    const content = [
+      ...photoUrls.map(u => ({ type: 'image_url', image_url: { url: u, detail: 'high' } })),
+      { type: 'text', text: PROMPT(listing, nhtsa, langDirective) },
+    ];
+
+    const EFFORT = process.env.REASONING_EFFORT || 'high';
+    const modelBody = (c, withEffort = true) => {
+      const b = {
+        model: process.env.OPENAI_MODEL || 'gpt-5.6-terra',
+        max_completion_tokens: 16000,
+        response_format: { type: 'json_object' },
+        messages: [{ role: 'user', content: c }],
+      };
+      if (withEffort && EFFORT !== 'off') b.reasoning_effort = EFFORT;
+      return b;
+    };
+    const callModel = async (body, ms) => {
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), ms);
+      try {
+        const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+          signal: ctl.signal,
+          method: 'POST',
+          headers: { 'content-type': 'application/json', authorization: 'Bearer ' + process.env.OPENAI_API_KEY },
+          body: JSON.stringify(body),
+        });
+        return await resp.json();
+      } finally { clearTimeout(t); }
+    };
+
+    const t0 = Date.now();
+    let data = await callModel(modelBody(content), 240000);
+
+    if (data?.error && /reasoning_effort|unknown|unsupported|unrecognized/i.test(String(data.error.message || ''))) {
+      data = await callModel(modelBody(content, false), Math.max(60000, 250000 - (Date.now() - t0)));
+    }
+
+    /* модель не змогла забрати фото за посиланням: повторюємо без фото,
+       звіт по тексту кращий за відсутність звіту */
+    if (data?.error && /image|url|download|fetch/i.test(String(data.error.message || ''))) {
+      console.log('[check] photo urls failed, retrying text-only:', data.error.message);
+      data = await callModel(modelBody([content[content.length - 1]]), Math.max(60000, 250000 - (Date.now() - t0)));
+    }
+
+    console.log('[check]', listing.domain,
+      '| vin', listing.vin ? 'yes' : 'no',
+      '| photos', photoUrls.length,
+      '| snapshot', snapshot,
+      '| ai', Date.now() - t0, 'ms',
+      '| tokens', JSON.stringify(data?.usage || {}));
+
+    if (data.error) {
+      return res.status(502).json({ error: 'AI: ' + (data.error.message || 'помилка запиту') });
+    }
+    let parsed;
+    try {
+      parsed = JSON.parse((data.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim());
+    } catch (e) {
+      return res.status(502).json({ error: 'AI повернув невалідну відповідь, спробуй ще раз' });
+    }
+
+    parsed._meta = {
+      kind: 'check',
+      lang,
+      url,
+      domain: listing.domain,
+      country: listing.country,
+      vin: listing.vin,
+      plate: listing.plate,
+      price: listing.price,
+      currency: listing.currency,
+      odometer_km: listing.odometer_km,
+      photos: photoUrls,
+      snapshot,
+      analyzed_at: new Date().toISOString(),
+    };
+    return res.status(200).json(parsed);
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      return res.status(504).json({ error: 'Аналіз не встиг завершитись. Спробуй ще раз, зазвичай з другої спроби швидше' });
+    }
+    return res.status(500).json({ error: 'Внутрішня помилка: ' + e.message });
+  }
+}
