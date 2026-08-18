@@ -221,6 +221,18 @@ function extractListing(html, url) {
   }
   photos = photos.slice(0, 40);
 
+  /* фото аукціону США: RIA зберігає їх у себе, окремою гілкою /photos/auto/usa/.
+     Це наше основне джерело кадрів "до ремонту": сам bidfax закритий від
+     автоматичних запитів і віддає 403 */
+  const usaPhotos = [];
+  if (isRia) {
+    const seenUsa = new Set();
+    for (const m of html.matchAll(/https:\/\/cdn\d*\.riastatic\.com\/photos\/auto\/usa\/[^\s"'<>\\]+?\.(?:jpe?g|webp|png)/gi)) {
+      const u = m[0];
+      if (!seenUsa.has(u)) { seenUsa.add(u); usaPhotos.push(u); }
+    }
+  }
+
   /* марка і модель: із title виду "BMW 5 Series 2018" це робить AI краще,
      тут лише груба спроба з URL-слага RIA */
   let make = null, model = null;
@@ -241,8 +253,10 @@ function extractListing(html, url) {
     title: title.slice(0, 200), vin, plate,
     price, currency, odometer_km: odometerKm, year, make, model,
     photos, text: aiText,
-    /* архів аукціону США: RIA на перевірених оголошеннях дає пряме посилання */
-    auction_url: (/https?:\/\/bidfax\.info\/[^\s"'<>]+/i.exec(html) || [null])[0],
+    /* кадри "до ремонту" з аукціону США, збережені самою RIA */
+    usa_photos: usaPhotos.slice(0, 12),
+    /* посилання на зовнішній архів: лишається як довідка для користувача */
+    auction_url: (/https?:\/\/bidfax\.info\/[^\s"'<>\\]+/i.exec(html) || [null])[0],
   };
 }
 
@@ -332,9 +346,8 @@ ${l.text}
 
 Декодування VIN від NHTSA: ${nhtsa ? JSON.stringify(nhtsa) : 'недоступне'}
 ${auction && auction.photos.length ? `
-АРХІВ АУКЦІОНУ США ЗНАЙДЕНО (${auction.url}). Тобі передані фото ДО РЕМОНТУ з аукціону і текст архіву:
-${auction.text.slice(0, 2500)}
-ЦЕ НАЙЦІННІШЕ ДЖЕРЕЛО ЗВІТУ. Обовʼязково:
+ФОТО З АУКЦІОНУ США ДОСТУПНІ (${auction.photos.length} кадрів, зроблені ДО ремонту, коли авто продавали пошкодженим).${auction.text ? '\nТекст архіву аукціону:\n' + auction.text.slice(0, 2500) : ''}
+ЦЕ НАЙЦІННІШЕ ДЖЕРЕЛО ЗВІТУ, і воно у тебе Є: писати "аукціонні фото недоступні" тепер прямо заборонено. Обовʼязково:
 - по аукціонних фото визнач РЕАЛЬНИЙ обсяг пошкоджень: які деталі биті, чи зачеплені подушки, лонжерони, підвіска
 - звір це з тим, як продавець описує пошкодження і ремонт: занижує, чесний чи перебільшує
 - порівняй зону удару "до" з нинішніми фото "після": збіг відтінку, зазори, якість відновлення
@@ -451,8 +464,14 @@ export default async function handler(req, res) {
     /* --- знімок у рів: ДО аналізу, щоб історія копилась навіть коли AI впав --- */
     const snapshot = await saveSnapshot(listing, url);
 
-    /* --- архів аукціону США: фото "до ремонту" --- */
-    const auction = await fetchAuction(listing.auction_url);
+    /* --- фото "до ремонту": спершу кадри, збережені самою RIA --- */
+    let auction = null;
+    if (listing.usa_photos.length) {
+      auction = { url: listing.auction_url, photos: listing.usa_photos, text: '', from_ria: true };
+    } else if (listing.auction_url) {
+      /* запасний шлях: зовнішній архів, якщо він раптом пустить */
+      auction = await fetchAuction(listing.auction_url);
+    }
 
     /* --- AI --- */
     const LANG_NAME = { ua: 'українською', ru: 'російською', en: 'англійською (English)' };
@@ -460,7 +479,7 @@ export default async function handler(req, res) {
 
     /* ВСІ фото оголошення: салон і деталі критичні для оцінки, обрізати не можна */
     const photoUrls = listing.photos.slice(0, 30);
-    const auctionPhotos = (auction?.photos || []).slice(0, 6);
+    const auctionPhotos = (auction?.photos || []).slice(0, 10);
     const img = u => ({ type: 'image_url', image_url: { url: u, detail: 'high' } });
     const content = [
       { type: 'text', text: 'ФОТО З ОГОЛОШЕННЯ (стан зараз). Це ПОВНИЙ набір фото цього авто, включно з салоном і деталями: не пиши, що фото салону немає, якщо воно серед переданих. Якщо якийсь кадр очевидно належить ІНШОМУ авто (інша модель, інший колір, інший кузов), просто проігноруй його і не згадуй у звіті:' },
