@@ -10,20 +10,24 @@ export const config = { maxDuration: 300 };
    ============================================================ */
 
 /* ---------- 1. Завантаження сторінки ---------- */
-async function fetchPage(url) {
+async function fetchPage(url, opts = {}) {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), 30000);
   try {
     const r = await fetch(url, {
       signal: ctl.signal,
       redirect: 'follow',
-      headers: {
+      headers: Object.assign({
         /* представляємось звичайним браузером: без цього частина сайтів
            віддає заглушку або 403 */
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
         'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'accept-language': 'uk,ru;q=0.9,en;q=0.8',
-      },
+        'upgrade-insecure-requests': '1',
+        'sec-fetch-dest': 'document',
+        'sec-fetch-mode': 'navigate',
+        'sec-fetch-site': opts.referer ? 'cross-site' : 'none',
+      }, opts.referer ? { referer: opts.referer } : {}),
     });
     const html = await r.text();
     if (!r.ok) {
@@ -167,12 +171,43 @@ function extractListing(html, url) {
      лишаємо по одному найбільшому на кадр (hd > fx > bx) */
   let photos = [];
   if (isRia) {
+    /* нижче галереї йдуть блоки "інші авто продавця" і "схожі оголошення":
+       їхні прев'ю не мають потрапити в аналіз. Ріжемо сторінку по маркеру,
+       але лише там, де до нього вже набралась повноцінна галерея: слова на
+       кшталт "Схожі" трапляються і в меню на початку сторінки */
+    const PHOTO_RE = /https:\/\/cdn\d*\.riastatic\.com\/photosnew\/auto\/photo\/([a-z0-9_\-]*?)(\d+)(hd|fx|bx)\.(?:webp|jpe?g)/gi;
+    const MARKERS = /(Інші авто|Другие авто|Схожі|Похожие|Ще від|Еще от|Всі авто продавця|Все авто продавца|similar-adverts|other-adverts|proposition_other)/gi;
+    const photoPositions = [...html.matchAll(PHOTO_RE)].map(m => m.index);
+    let zone = html;
+    for (const mk of html.matchAll(MARKERS)) {
+      const before = photoPositions.filter(p => p < mk.index).length;
+      if (before >= 5) { zone = html.slice(0, mk.index); break; }
+    }
+
     const RANK = { hd: 3, fx: 2, bx: 1 };
+    const RE = /https:\/\/cdn\d*\.riastatic\.com\/photosnew\/auto\/photo\/([a-z0-9_\-]*?)(\d+)(hd|fx|bx)\.(?:webp|jpe?g)/gi;
+    const found = [];
+    for (const m of zone.matchAll(RE)) {
+      found.push({ prefix: (m[1] || '').toLowerCase(), id: m[2], rank: RANK[m[3].toLowerCase()] || 0, url: m[0] });
+    }
+    /* кожне чуже оголошення дає рівно одне прев'ю, наше авто дає багато кадрів:
+       лишаємо найбільшу групу з однаковим префіксом шляху */
+    const byPrefix = new Map();
+    for (const f of found) {
+      if (!byPrefix.has(f.prefix)) byPrefix.set(f.prefix, new Map());
+      const ids = byPrefix.get(f.prefix);
+      const cur = ids.get(f.id);
+      if (!cur || f.rank > cur.rank) ids.set(f.id, f);
+    }
+    let winner = null;
+    for (const [, ids] of byPrefix) if (!winner || ids.size > winner.size) winner = ids;
+    /* якщо групування нічого не дало (один кадр на префікс), беремо все зі зрізаної зони */
+    const useAll = !winner || winner.size < 3;
+    const pool = useAll ? found : [...winner.values()];
     const best = new Map();
-    for (const m of html.matchAll(/https:\/\/cdn\d*\.riastatic\.com\/photosnew\/auto\/photo\/[a-z0-9_\-]*?(\d+)(hd|fx|bx)\.(?:webp|jpe?g)/gi)) {
-      const id = m[1], rank = RANK[m[2].toLowerCase()] || 0;
-      const cur = best.get(id);
-      if (!cur || rank > cur.rank) best.set(id, { url: m[0], rank });
+    for (const f of pool) {
+      const cur = best.get(f.id);
+      if (!cur || f.rank > cur.rank) best.set(f.id, f);
     }
     photos = [...best.values()].map(x => x.url);
   } else {
@@ -212,23 +247,52 @@ function extractListing(html, url) {
 }
 
 /* ---------- 3б. Архів аукціону США: фото "до ремонту" ---------- */
+
+/* bidfax закривається від ботів, тому пробуємо кілька дзеркал і йдемо з реферером,
+   ніби перейшли з RIA. Перше, що віддає фото, виграє. */
+function auctionMirrors(url) {
+  const out = [url];
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, '');
+    if (host === 'bidfax.info') out.push(url.replace('//bidfax.info', '//en.bidfax.info'));
+    if (host === 'en.bidfax.info') out.push(url.replace('//en.bidfax.info', '//bidfax.info'));
+  } catch (e) {}
+  return out;
+}
+
+/* фото лота: різні дзеркала кладуть їх у /uploads/, /photos/ чи /img/,
+   плюс частина картинок віддається ліниво через data-src */
+function extractAuctionPhotos(html) {
+  const seen = new Set();
+  const patterns = [
+    /https?:\/\/[^\s"'<>]*\/(?:uploads|photos|img|images)\/[^\s"'<>]+?\.(?:jpe?g|webp|png)/gi,
+    /(?:data-src|data-original|data-lazy|src)=["'](https?:\/\/[^"']+?\.(?:jpe?g|webp|png))["']/gi,
+  ];
+  for (const re of patterns) {
+    for (const m of html.matchAll(re)) {
+      let u = (m[1] || m[0]).replace('/thumbs/', '/').replace(/\/thumb_/, '/');
+      /* службові картинки інтерфейсу нам не потрібні */
+      if (/logo|sprite|icon|banner|avatar|placeholder|flag|noimage/i.test(u)) continue;
+      seen.add(u);
+    }
+  }
+  return [...seen];
+}
+
 async function fetchAuction(url) {
   if (!url) return null;
-  try {
-    const html = await fetchPage(url);
-    const seen = new Set();
-    for (const m of html.matchAll(/https?:\/\/[^\s"'<>]*bidfax\.info\/uploads\/[^\s"'<>]+?\.(?:jpe?g|webp|png)/gi)) {
-      /* мініатюри ведуть на повні кадри тим самим шляхом без /thumbs/ */
-      seen.add(m[0].replace('/thumbs/', '/'));
-    }
-    const photos = [...seen].slice(0, 8);
-    const text = htmlToText(html).slice(0, 4000);
-    if (!photos.length && text.length < 300) return null;
-    return { url, photos, text };
-  } catch (e) {
-    /* архів закритий чи впав: працюємо без нього, це не помилка */
-    return { url, photos: [], text: '', blocked: true };
+  let lastErr = null;
+  for (const m of auctionMirrors(url)) {
+    try {
+      const html = await fetchPage(m, { referer: 'https://auto.ria.com/' });
+      const photos = extractAuctionPhotos(html).slice(0, 8);
+      const text = htmlToText(html).slice(0, 4000);
+      if (photos.length || text.length > 300) return { url: m, photos, text };
+    } catch (e) { lastErr = e; }
   }
+  /* архів існує, але закритий від автоматичних запитів */
+  return { url, photos: [], text: '', blocked: true, error: lastErr ? String(lastErr.message || lastErr) : null };
 }
 
 /* ---------- 4. Знімок у рів даних ---------- */
@@ -275,7 +339,8 @@ ${auction.text.slice(0, 2500)}
 - звір це з тим, як продавець описує пошкодження і ремонт: занижує, чесний чи перебільшує
 - порівняй зону удару "до" з нинішніми фото "після": збіг відтінку, зазори, якість відновлення
 - verdict тверджень продавця про пошкодження і ремонт тепер спирається на аукціонні фото, а не на "недоступно"
-` : auction && auction.blocked ? 'Архів аукціону США існує, але сторінка архіву недоступна: прямо зазнач це в auction.summary одним реченням, без вигадок.' : 'Архіву аукціону США у сторінці немає.'}
+` : auction && auction.blocked ? 'Архів аукціону США існує (посилання на сторінці), але його сервер не пустив нас автоматично.
+ЖОРСТКЕ ПРАВИЛО: згадай цю обставину РІВНО ОДИН РАЗ, в auction.summary, одним реченням. У verdict, risks, discrepancies, photo_findings, checklist і будь-де ще ЗАБОРОНЕНО писати "без доступних аукціонних фото", "фото аукціону недоступні" і подібні звороти. Роби висновки з того, що маєш: запис про ДТП у США сам по собі є фактом, і оцінювати треба ризик неякісного відновлення, а не відсутність фото.' : 'Архіву аукціону США у сторінці немає.'}
 
 РОЗБІЖНІСТЬ ІСНУЄ ЛИШЕ КОЛИ: джерело А стверджує X, а джерело Б стверджує несумісне з X значення Y, і ти називаєш обидва джерела та обидва значення. Відсутність інформації, "не розкрито", "не вдалося перевірити" РОЗБІЖНІСТЮ НЕ Є і в discrepancies не потрапляє ніколи. Якщо справжніх суперечностей немає, повертай порожній масив: блок просто не покажеться, і це правильно.
 
@@ -308,6 +373,8 @@ ${auction.text.slice(0, 2500)}
 "equipment": комплектація з зазначенням джерела кожної групи. "vin": лише те, що РЕАЛЬНО назване в декодуванні VIN. "photo": опції, які ВИДНО на фото оголошення (Burmester чи інша акустика по решітках, панорамний дах, вентиляція за перфорацією сидінь, камери 360, HUD, моніторами позаду, підсвітка тощо): пиши тільки впевнено видиме. "seller": важливі опції зі слів продавця, яких нема ні у VIN, ні на фото. Порожні масиви дозволені, вигадувати заборонено.
 
 "verdict.score": чесна оцінка пропозиції від 0 до 10 з одним знаком після коми. Якорі: 8.5+ чисте авто без питань за адекватною ціною; 7.0-8.4 добре, лишились дрібні перевірки; 5.5-6.9 брати можна лише після серйозних перевірок і торгу; 4.0-5.4 серйозні ризики чи ознаки обману; нижче 4 краще відмовитись. Не завищуй: знайдена брехня продавця чи приховане серйозне ДТП тягне оцінку вниз сильніше за все.
+
+ЗАБОРОНА ПОВТОРІВ ПРО БРАК ДАНИХ: будь-яке обмеження джерел (немає фото аукціону, немає заказ-нарядів, немає build sheet) згадується у звіті МАКСИМУМ ОДИН РАЗ, у найдоречнішому місці. Повторювати ту саму думку в кількох розділах заборонено: це найгірший дефект звіту.
 
 "data_notes": пиши мовою користувача продукту, без згадок про внутрішні механізми ("парс", "детермінований", "заголовок сторінки"). Просто: які дані площадки виглядають помилковими і чому ми їм не віримо.
 
@@ -396,7 +463,7 @@ export default async function handler(req, res) {
     const auctionPhotos = (auction?.photos || []).slice(0, 6);
     const img = u => ({ type: 'image_url', image_url: { url: u, detail: 'high' } });
     const content = [
-      { type: 'text', text: 'ФОТО З ОГОЛОШЕННЯ (стан зараз). Це ПОВНИЙ набір фото, включно з салоном і деталями: не пиши, що фото салону немає, якщо воно серед переданих:' },
+      { type: 'text', text: 'ФОТО З ОГОЛОШЕННЯ (стан зараз). Це ПОВНИЙ набір фото цього авто, включно з салоном і деталями: не пиши, що фото салону немає, якщо воно серед переданих. Якщо якийсь кадр очевидно належить ІНШОМУ авто (інша модель, інший колір, інший кузов), просто проігноруй його і не згадуй у звіті:' },
       ...photoUrls.map(img),
       ...(auctionPhotos.length
         ? [{ type: 'text', text: 'ФОТО З АУКЦІОНУ США (до ремонту, архів):' }, ...auctionPhotos.map(img)]
