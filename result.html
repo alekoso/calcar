@@ -936,6 +936,24 @@ function renderHeaderBlocks(){
   if (DATA._meta?.keys === 'NO') meta.push(`<b style="color:var(--amber)">Без ключів</b>`);
   if (/deploy/i.test(String(DATA._meta?.airbags || ''))) meta.push(`<b style="color:var(--red)">Подушки спрацювали (дані аукціону)</b>`);
   if (DATA._meta?.lot_number) meta.push(`Лот <b>${esc(DATA._meta.lot_number)}</b>`);
+  /* статус торгів: збережений звіт живе довше за лот, людина мусить бачити, на коли дані */
+  (() => {
+    const sd = DATA._meta?.sale_date ? new Date(DATA._meta.sale_date) : null;
+    const st = String(DATA._meta?.sale_status || '');
+    if (sd && !isNaN(sd.getTime())) {
+      const past = sd.getTime() < Date.now();
+      const dstr = sd.toLocaleDateString(calcarLocale(), { day: 'numeric', month: 'long' });
+      meta.push(past
+        ? `<b style="color:var(--amber)">${t('Торги були')} ${dstr}</b>`
+        : `${t('Торги')} <b>${dstr}</b>`);
+    } else if (/sold|closed|завершен/i.test(st)) {
+      meta.push(`<b style="color:var(--amber)">${t('Торги завершено')}</b>`);
+    }
+    const an = DATA._meta?.analyzed_at ? new Date(DATA._meta.analyzed_at) : null;
+    if (an && !isNaN(an.getTime())) {
+      meta.push(`<span style="color:var(--faint)">${t('Дані аукціону станом на')} ${an.toLocaleDateString(calcarLocale(), { day: 'numeric', month: 'long' })}, ${an.toLocaleTimeString(calcarLocale(), { hour: '2-digit', minute: '2-digit' })}</span>`);
+    }
+  })();
   if (DATA.lot_notes) meta.push(`<b style="color:var(--amber)">${esc(DATA.lot_notes)}</b>`);
   document.getElementById('lotMeta').innerHTML = meta.map(m => `<div>${m}</div>`).join('');
 
@@ -1345,6 +1363,7 @@ function recalc() {
 
   const grand = logistics + repair;
   document.getElementById('grandTotal').textContent = fmt(grand);
+  window.__lastGrand = grand;
   const nb = document.getElementById('noBidNote');
   if (nb) nb.style.display = (Number(document.getElementById('bid').value) > 0) ? 'none' : '';
 
@@ -1416,6 +1435,13 @@ function scheduleSave() {
   if (!window.__ready) return;
   const merged = Object.assign({}, DATA, { _user_state: serializeState() });
   if (Array.isArray(window.__chatHistory) && window.__chatHistory.length) merged._chat = window.__chatHistory.slice(-30);
+  /* компактний знімок для крос-порівнянь у чаті інших звітів */
+  merged._snapshot = {
+    grand: typeof window.__lastGrand === 'number' ? Math.round(window.__lastGrand) : null,
+    bid: Number(document.getElementById('bid')?.value) || 0,
+    risk: (() => { try { return computeRisk().score; } catch (e) { return null; } })(),
+    at: new Date().toISOString(),
+  };
   try { sessionStorage.setItem('calcarResult', JSON.stringify(merged)); } catch(e){}
   if (!CAN_SAVE) return;
   clearTimeout(saveTimer);
@@ -1845,6 +1871,7 @@ document.getElementById('printMeta').textContent =
       damage_note: DATA.damage_note || null,
       lot_notes: DATA.lot_notes || null,
       model_notes: DATA.model_notes || null,
+      other_reports_of_this_user: Array.isArray(window.__otherReports) && window.__otherReports.length ? window.__otherReports : null,
       equipment_impact: DATA.equipment_impact || null,
       premium_options: (DATA.vehicle && DATA.vehicle.premium_options) || null,
       risk_score: (DATA.parts || []).length ? computeRisk().score : null,
@@ -1920,6 +1947,50 @@ document.getElementById('printMeta').textContent =
     fileInput.value = '';
     renderFiles();
   });
+
+  /* Інші прорахунки цього акаунта: чат бачить, що людина вже дивилась,
+     із датами, підсумками і хвостами переписок. Тягнеться один раз за
+     відкриття сторінки, тільки для залогінених, точковими jsonb-полями
+     (без фото і повних даних, щоб не тягти мегабайти). */
+  let otherReportsLoaded = false;
+  async function loadOtherReports() {
+    if (otherReportsLoaded || !window.SB) return;
+    otherReportsLoaded = true;
+    try {
+      const { data: session } = await SB.auth.getSession();
+      if (!session?.session) return;
+      let q = SB.from('reports')
+        .select('id, created_at, title:data->vehicle->>title, lot:data->_meta->>lot_number, vin:data->_meta->>vin, dmg:data->_meta->>damage, mil:data->vehicle->>mileage_note, eng:data->vehicle->>engine, trn:data->vehicle->>transmission, drv:data->vehicle->>drive, eq:data->vehicle->equipment, note:data->>damage_note, flags:data->flags, snap:data->_snapshot, chat:data->_chat')
+        .order('created_at', { ascending: false })
+        .limit(16);
+      const { data: rows, error } = await q;
+      if (error || !Array.isArray(rows)) return;
+      const now = Date.now();
+      window.__otherReports = rows
+        .filter(r => r.id !== REPORT_DB_ID)
+        .slice(0, 12)
+        .map(r => {
+          const days = Math.round((now - new Date(r.created_at).getTime()) / 86400000);
+          const chatTail = (Array.isArray(r.chat) ? r.chat : []).slice(-4)
+            .map(m => (m.role === 'user' ? 'Користувач: ' : 'Помічник: ') + String(m.content || '').slice(0, 200));
+          return {
+            title: r.title || null, lot: r.lot || null, vin: r.vin || null,
+            damage: r.dmg || null, mileage: r.mil || null,
+            engine: r.eng || null, transmission: r.trn || null, drive: r.drv || null,
+            equipment_top: Array.isArray(r.eq) ? r.eq.slice(0, 8) : null,
+            damage_note: r.note ? String(r.note).slice(0, 240) : null,
+            problem_flags: (Array.isArray(r.flags) ? r.flags : [])
+              .filter(f => f && (f.status === 'warn' || f.status === 'bad'))
+              .slice(0, 6)
+              .map(f => String(f.text || '').slice(0, 140)),
+            analyzed_at: r.created_at, days_ago: days,
+            totals: r.snap || null,
+            chat_tail: chatTail.length ? chatTail : null,
+          };
+        });
+    } catch (e) {}
+  }
+  loadOtherReports();
 
   async function ask() {
     const q = ta.value.trim();
