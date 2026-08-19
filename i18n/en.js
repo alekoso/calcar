@@ -327,4 +327,8 @@ window.CALCAR_DICT = {
   'Перевірка авто': 'Car check',
   'Безкоштовно, поки триває бета': 'Free while in beta',
   'VIN і історію знаходимо автоматично': 'We find the VIN and history automatically',
+  /* ---- CalCar Check (en, iteration 10) ---- */
+  'beta · AI-аналіз, остаточне рішення завжди за вами': 'beta · AI analysis, the final decision is always yours',
+  /* ---- CalCar Check (en, iteration 11) ---- */
+  'Немає посилання? Перевірка за VIN зʼявиться незабаром': 'No link? VIN-only check is coming soon',
 };
