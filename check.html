@@ -151,8 +151,9 @@
       if (dt) document.title = dt.trim();
     }
     markSwitch();
-    /* переклад застосовано: показуємо сторінку (див. заглушку спалаху в head) */
-    document.documentElement.classList.remove('i18n-wait');
+    /* показуємо сторінку лише коли переклад реально застосовано:
+       перший виклик apply() може статися ще до завантаження словника */
+    if (lang() === 'ua' || window.CALCAR_DICT) document.documentElement.classList.remove('i18n-wait');
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply);

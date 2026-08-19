@@ -152,7 +152,7 @@
       if (dt) document.title = dt.trim();
     }
     markSwitch();
-    document.documentElement.classList.remove('i18n-wait');
+    if (lang() === 'ua' || window.CALCAR_DICT) document.documentElement.classList.remove('i18n-wait');
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply);

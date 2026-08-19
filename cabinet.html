@@ -8,6 +8,18 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@800&display=swap&text=CalCar" rel="stylesheet">
+<style>html.i18n-wait body{visibility:hidden}</style>
+<script>
+/* Спалах мови: ховаємо вміст, поки словник не застосовано */
+(function(){
+  try {
+    var l = localStorage.getItem('calcar_lang') || 'ua';
+    if (l === 'ua') return;
+    document.documentElement.className += ' i18n-wait';
+    setTimeout(function(){ document.documentElement.classList.remove('i18n-wait'); }, 400);
+  } catch (e) {}
+})();
+</script>
 <script>
 /* CalCar i18n, ядро. Вбудовується у сторінку (маленьке, не росте з кількістю мов).
  Словники лежать окремо: /i18n/<code>.js, вантажиться РІВНО ОДИН, обраний.
@@ -135,6 +147,7 @@
  if (dt) document.title = dt.trim();
  }
  markSwitch();
+ if (lang() === 'ua' || window.CALCAR_DICT) document.documentElement.classList.remove('i18n-wait');
  }
 
  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply);
@@ -215,6 +228,12 @@
  .lang-menu button:hover{background:var(--surface-2)}
  .lang-menu button i{width:6px;height:6px;border-radius:50%;background:transparent;flex-shrink:0}
  .lang-menu button.on i{background:var(--brand)}
+  /* безшовний перехід між сторінками: браузер плавно перемальовує лише те,
+     що змінилось, а шапка і футер візуально лишаються на місці */
+  html{scrollbar-gutter:stable}
+  @view-transition{navigation:auto}
+  header{view-transition-name:site-header}
+  footer{view-transition-name:site-footer}
 </style>
 </head>
 <body>

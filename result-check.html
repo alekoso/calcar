@@ -151,8 +151,9 @@
       if (dt) document.title = dt.trim();
     }
     markSwitch();
-    /* переклад застосовано: показуємо сторінку (див. заглушку спалаху в head) */
-    document.documentElement.classList.remove('i18n-wait');
+    /* показуємо сторінку лише коли переклад реально застосовано:
+       перший виклик apply() може статися ще до завантаження словника */
+    if (lang() === 'ua' || window.CALCAR_DICT) document.documentElement.classList.remove('i18n-wait');
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply);
@@ -278,6 +279,21 @@
   .lang-menu button i{width:6px;height:6px;border-radius:50%;background:transparent;flex-shrink:0}
   .lang-menu button.on i{background:var(--brand)}
   .wrap{max-width:1160px;margin:0 auto;padding:20px}
+  .switch{display:flex;gap:2px;background:var(--surface-2);border-radius:22px;padding:3px}
+  .switch a{
+    display:block;padding:8px 16px;border-radius:19px;font-size:13px;font-weight:600;
+    color:var(--muted);text-decoration:none;white-space:nowrap;transition:background .15s,color .15s;
+  }
+  .switch a:hover{color:var(--ink)}
+  .switch a.on{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgba(20,22,25,.08)}
+  @media(max-width:860px){.switch a{padding:8px 12px;font-size:12.5px}}
+  @media(max-width:620px){
+    header .header-in{display:flex;flex-wrap:wrap;height:auto;padding:10px 16px;gap:10px}
+    .switch{order:3;width:100%;margin-top:4px}
+    .switch a{flex:1;text-align:center}
+    .header-right{margin-left:auto}
+  }
+
   .topbar{display:flex;align-items:center;gap:14px;margin-bottom:20px;flex-wrap:wrap}
   #saveHint{font-size:12.5px;color:var(--muted);opacity:0;transition:opacity .2s}
   #saveHint.show{opacity:1}
@@ -437,9 +453,14 @@
 
 <header>
   <div class="header-in">
-    <a class="logo" href="/"><span class="l">Cal</span><span class="r">Car</span></a>
-    <span class="prod">Check</span>
-    <div class="beta">beta</div>
+    <div class="hleft">
+      <a class="logo" href="/"><span class="l">Cal</span><span class="r">Car</span></a>
+      <div class="beta">beta</div>
+    </div>
+    <nav class="switch">
+      <a class="on" href="/check">Перевірка авто</a>
+      <a href="/import">Пригін зі США</a>
+    </nav>
     <div class="header-right">
       <div class="lang-dd" id="langDd">
         <button class="lang-btn" type="button" id="langBtn">UA <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
@@ -630,7 +651,9 @@ const SB = (typeof supabase !== 'undefined' && window.CALCAR_SUPABASE?.url)
   ? supabase.createClient(window.CALCAR_SUPABASE.url, window.CALCAR_SUPABASE.anon)
   : null;
 
-const OPEN_ID = new URLSearchParams(location.search).get('id');
+const OPEN_ID = new URLSearchParams(location.search).get('id')
+  || (location.pathname.match(/^\/check\/([A-Za-z0-9-]{4,40})$/) || [])[1]
+  || null;
 let DATA = null, M = {}, chatHist = [];
 
 /* довге тире вичищаємо всюди: правило продукту */
