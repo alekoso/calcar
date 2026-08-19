@@ -340,4 +340,13 @@ window.CALCAR_DICT = {
   'Що перевіряє CalCar': 'What CalCar checks',
   'Збираємо дані з різних джерел, зіставляємо їх з оголошенням і показуємо те, на що варто звернути увагу.': 'We gather data from multiple sources, cross-check it against the listing and highlight what deserves attention.',
   'Кольори тут мають значення: червоне це знайдена проблема, жовте варте уваги, зелене підтверджено.': 'Colors matter here: red is a found problem, amber deserves attention, green is confirmed.',
+  /* ---- CalCar Check (en, iteration 14) ---- */
+  'Пробіг і власники': 'Mileage & owners',
+  'Фото і слабкі місця': 'Photos & weak points',
+  'Звіряємо слова продавця з історією авто і показуємо невідповідності.': 'We cross-check the seller\'s claims against the car\'s history and show mismatches.',
+  'Зіставляємо минулі пробіги, продажі та зміни власників.': 'We match past mileages, sales and ownership changes.',
+  'Шукаємо ознаки ремонту на фото і ризики саме цієї версії авто.': 'We look for repair signs in photos and risks of this exact version.',
+  'VIN знайдемо самі': 'We\'ll find the VIN',
+  'Історія + фото': 'History + photos',
+  '~1–2 хвилини': '~1–2 minutes',
 };
