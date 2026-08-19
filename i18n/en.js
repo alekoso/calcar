@@ -319,4 +319,12 @@ window.CALCAR_DICT = {
   'Торги': 'Auction',
   'Торги завершено': 'Auction closed',
   'Дані аукціону станом на': 'Auction data as of',
+  /* ---- CalCar Check (злиття словників, серпень 2026) ---- */
+  'Порівняй з іншим авто з кабінету': 'Compare with another car from my account',
+  'Перевірка оголошення': 'Listing check',
+  'beta · звіт складається з відкритих даних і AI-аналізу': 'beta · the report is built from open data and AI analysis',
+  '© 2026 CalCar · calcar.io': '© 2026 CalCar · calcar.io',
+  'Перевірка авто': 'Car check',
+  'Безкоштовно, поки триває бета': 'Free while in beta',
+  'VIN і історію знаходимо автоматично': 'We find the VIN and history automatically',
 };
