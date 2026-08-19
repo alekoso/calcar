@@ -239,22 +239,24 @@
   header{background:var(--bg);border-bottom:1px solid var(--line)}
   .header-in{max-width:1160px;margin:0 auto;padding:0 20px;height:var(--hdr-h);display:flex;align-items:center;gap:14px}
 
-  /* перемикач продуктів: два інструменти одного CalCar */
+  /* перемикач продуктів: центр шапки, два режими одного CalCar */
+  .header-in{display:grid;grid-template-columns:1fr auto 1fr;align-items:center}
+  .hleft{display:flex;align-items:center;gap:14px;justify-self:start}
+  .header-right{justify-self:end}
   .switch{display:flex;gap:2px;background:var(--surface-2);border-radius:22px;padding:3px}
   .switch a{
-    display:block;padding:7px 15px;border-radius:19px;font-size:13px;font-weight:600;
+    display:block;padding:8px 16px;border-radius:19px;font-size:13px;font-weight:600;
     color:var(--muted);text-decoration:none;white-space:nowrap;transition:background .15s,color .15s;
   }
   .switch a:hover{color:var(--ink)}
   .switch a.on{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgba(20,22,25,.08)}
 
   @media(max-width:860px){
-    .switch a{padding:7px 11px;font-size:12.5px}
-    .header-in{gap:10px}
+    .switch a{padding:8px 12px;font-size:12.5px}
   }
   @media(max-width:620px){
     /* на вузькому екрані перемикач переїжджає під шапку і займає всю ширину */
-    header .header-in{flex-wrap:wrap;height:auto;padding:10px 16px}
+    header .header-in{display:flex;flex-wrap:wrap;height:auto;padding:10px 16px;gap:10px}
     .switch{order:3;width:100%;margin-top:4px}
     .switch a{flex:1;text-align:center}
     .header-right{margin-left:auto}
@@ -285,12 +287,15 @@
   /* статус зʼявляється лише під час роботи, тому не тримаємо під нього місце */
   .hf-status{font-size:13.5px;color:var(--muted);margin-top:10px;display:none}
   .hf-status.on{display:block}
+  .hf-note{display:flex;gap:18px;flex-wrap:wrap;margin-top:12px;font-size:12.5px;color:var(--muted)}
+  .hf-note b{color:var(--text)}
   .hf-status.err{color:var(--red)}
   .spin{display:inline-block;width:13px;height:13px;border:2px solid var(--line-strong);border-top-color:var(--ink);border-radius:50%;vertical-align:-2px;margin-right:8px;animation:sp 1s linear infinite}
   @keyframes sp{to{transform:rotate(360deg)}}
 
   /* що саме перевіряємо: коротко, без маркетингу */
-  .steps{max-width:900px;margin:52px auto 0;padding:0 20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+  .steps{max-width:960px;margin:52px auto 0;padding:0 20px;display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  @media(max-width:760px){.steps{grid-template-columns:1fr}}
   .step{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:18px}
   .step h3{font-size:14.5px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:8px}
   .step p{font-size:13.5px;color:var(--muted);line-height:1.5}
@@ -307,10 +312,12 @@
 
 <header>
   <div class="header-in">
-    <a class="logo" href="/"><span class="l">Cal</span><span class="r">Car</span></a>
-    <div class="beta">beta</div>
+    <div class="hleft">
+      <a class="logo" href="/"><span class="l">Cal</span><span class="r">Car</span></a>
+      <div class="beta">beta</div>
+    </div>
     <nav class="switch">
-      <a class="on" href="/check">Перевірка оголошення</a>
+      <a class="on" href="/check">Перевірка авто</a>
       <a href="/import">Пригін зі США</a>
     </nav>
     <div class="header-right">
@@ -341,6 +348,11 @@
         <button class="btn-primary" id="goBtn" type="button">Перевірити</button>
       </div>
       <div class="hf-status" id="status"></div>
+      <div class="hf-note">
+        <span><b>Безкоштовно, поки триває бета</b></span>
+        <span>VIN і історію знаходимо автоматично</span>
+        <span>Результат за 1–2 хвилини</span>
+      </div>
     </div>
   </div>
 </div>
