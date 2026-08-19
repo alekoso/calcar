@@ -557,6 +557,7 @@
     <button>Що спитати продавця?</button>
     <button>Які головні ризики?</button>
     <button>Що перевірити на тест-драйві?</button>
+    <button>Порівняй з іншим авто з кабінету</button>
   </div>
   <div class="chat-input">
     <textarea id="chatText" rows="1" placeholder="Питай про це авто"></textarea>
@@ -866,6 +867,50 @@ async function saveIfNeeded(){
   } catch (e) {}
 }
 
+/* ---------- інші звіти кабінету: чат бачить, що людина вже дивилась ----------
+   Тягнемо один раз, лише для залогінених, точковими полями (без фото і повних
+   даних). Беремо ОБИДВА типи: перевірки оголошень і прорахунки пригону, щоб
+   можна було просити порівняння між ними. */
+let OTHER_REPORTS = null;
+async function loadOtherReports(){
+  if (!SB) return;
+  try {
+    const { data: s } = await SB.auth.getSession();
+    if (!s?.session) return;
+    const { data: rows, error } = await SB.from('reports')
+      .select('id, created_at, kind, title:data->vehicle->>title, vin:data->_meta->>vin, url:data->_meta->>url, price:data->_meta->>price, lot:data->_meta->>lot_number, dmg:data->_meta->>damage, mil:data->vehicle->>mileage_note, eng:data->vehicle->>engine, drv:data->vehicle->>drive, score:data->verdict->>score, sum:data->verdict->>summary, risks:data->risks, flags:data->flags, snap:data->_snapshot')
+      .order('created_at', { ascending: false })
+      .limit(16);
+    if (error || !Array.isArray(rows)) return;
+    const now = Date.now();
+    OTHER_REPORTS = rows
+      .filter(r => r.id !== ROW_ID)
+      .slice(0, 12)
+      .map(r => ({
+        kind: r.kind === 'check' ? 'перевірка оголошення' : 'прорахунок пригону зі США',
+        title: r.title || null,
+        vin: r.vin || null,
+        listing_url: r.url || null,
+        price: r.price || null,
+        lot: r.lot || null,
+        damage: r.dmg || null,
+        mileage: r.mil || null,
+        engine: r.eng || null,
+        drive: r.drv || null,
+        score: r.score || null,
+        verdict: r.sum ? String(r.sum).slice(0, 300) : null,
+        key_risks: (Array.isArray(r.risks) ? r.risks : []).slice(0, 4)
+          .map(x => String(x?.title || '').slice(0, 120)).filter(Boolean),
+        problem_flags: (Array.isArray(r.flags) ? r.flags : [])
+          .filter(f => f && (f.status === 'warn' || f.status === 'bad'))
+          .slice(0, 5).map(f => String(f.text || '').slice(0, 140)),
+        totals: r.snap || null,
+        analyzed_at: r.created_at,
+        days_ago: Math.round((now - new Date(r.created_at).getTime()) / 86400000),
+      }));
+  } catch (e) {}
+}
+
 /* ---------- чат по цьому авто ---------- */
 function chatCtx(){
   const d = DATA || {};
@@ -887,6 +932,7 @@ function chatMsgEl(role, text){
 }
 function chatInit(){
   $('chatFab').style.display = '';
+  loadOtherReports();
   $('chatCarTitle').textContent = DATA.vehicle?.title || t('AI-помічник CalCar');
   try { chatHist = JSON.parse(sessionStorage.getItem('calcarCheckChat') || '[]'); } catch (e) { chatHist = []; }
   chatHist.forEach(m => chatMsgEl(m.role === 'assistant' ? 'ai' : 'user', m.content));
@@ -918,10 +964,18 @@ async function sendChat(text){
   const typing = chatMsgEl('typing', '');
   typing.innerHTML = '<i>●</i> <i style="animation-delay:.2s">●</i> <i style="animation-delay:.4s">●</i>';
   try {
-    const r = await fetch('/api/check-chat', {
+    const r = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ messages: chatHist.slice(-12), report: chatCtx(), lang: window.calcarLang() }),
+      body: JSON.stringify({
+        product: 'check',
+        messages: chatHist.slice(-12),
+        context: chatCtx(),
+        others: OTHER_REPORTS,
+        /* фото оголошення і кадри з аукціону США: помічник бачить те саме, що звіт */
+        photos: [...(M.photos || []).slice(0, 6), ...(M.auction_photos || []).slice(0, 4)],
+        lang: window.calcarLang(),
+      }),
     });
     const data = await r.json().catch(() => ({}));
     typing.remove();
