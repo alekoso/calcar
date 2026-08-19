@@ -10,6 +10,20 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@800&display=swap&text=CalCarheck" rel="stylesheet">
+<style>html.i18n-wait body{visibility:hidden}</style>
+<script>
+/* Спалах мови: сторінка написана українською, а словник застосовується вже
+   після розбору DOM. Ховаємо вміст на ці мілісекунди, щоб людина не бачила
+   підміну тексту. Страховка: якщо щось піде не так, показуємо через 400 мс. */
+(function(){
+  try {
+    var l = localStorage.getItem('calcar_lang') || 'ua';
+    if (l === 'ua') return;                    // українська і так у розмітці
+    document.documentElement.className += ' i18n-wait';
+    setTimeout(function(){ document.documentElement.classList.remove('i18n-wait'); }, 400);
+  } catch (e) {}
+})();
+</script>
 <script>
 /* CalCar i18n, ядро. Вбудовується у сторінку (маленьке, не росте з кількістю мов).
    Словники лежать окремо: /i18n/<code>.js, вантажиться РІВНО ОДИН, обраний.
@@ -137,6 +151,8 @@
       if (dt) document.title = dt.trim();
     }
     markSwitch();
+    /* переклад застосовано: показуємо сторінку (див. заглушку спалаху в head) */
+    document.documentElement.classList.remove('i18n-wait');
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply);
@@ -182,17 +198,40 @@
   }
   .num{font-variant-numeric:tabular-nums}
 
+  /* шапка і футер спільні для всього CalCar: однакові в обох режимах */
+  header{background:rgba(255,255,255,.88);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line);color:var(--text);position:sticky;top:0;z-index:50}
+  .header-in{max-width:1160px;margin:0 auto;padding:0 20px;height:56px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center}
+  .hleft{display:flex;align-items:center;gap:14px;justify-self:start}
+  .header-right{margin-left:0;justify-self:end;display:flex;align-items:center;gap:16px;font-size:13px}
+  footer{border-top:1px solid var(--line);background:var(--card)}
+  .footer-in{max-width:1160px;margin:0 auto;padding:24px 20px;display:flex;gap:16px;flex-wrap:wrap;align-items:center;font-size:12.5px;color:var(--muted)}
+  .footer-in .logo{font-size:12px}
+  .footer-in .right{margin-left:auto}
+
   .logo{display:inline-flex;align-items:stretch;border-radius:.46em;overflow:hidden;font-weight:800;font-size:15px;letter-spacing:.01em;line-height:1;text-decoration:none;font-family:'Sora',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
   .logo .l{background:var(--brand);color:var(--ink);padding:.62em 1.05em .62em .72em;clip-path:polygon(0 0,100% 0,calc(100% - .46em) 100%,0 100%)}
   .logo .r{background:var(--graphite);color:#fff;padding:.62em .72em .62em .98em;margin-left:-.26em;clip-path:polygon(.46em 0,100% 0,100% 100%,0 100%)}
   /* Check як другий напрямок: підпис поруч із логотипом, тим самим шрифтом */
   .prod{font-family:'Sora',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;font-weight:800;font-size:15px;color:var(--ink);letter-spacing:.01em}
   .beta{font-size:11px;background:var(--surface-2);color:var(--muted);padding:2px 8px;border-radius:20px;letter-spacing:.4px}
-  .header-right{margin-left:auto;display:flex;align-items:center;gap:16px;font-size:13px}
   .header-right a{color:var(--muted);text-decoration:none}
   .header-right a:hover{color:var(--ink)}
   .btn-auth{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line-strong);border-radius:20px;padding:7px 14px;background:var(--card);color:var(--ink)!important;font-weight:600;font-size:13px;text-decoration:none;transition:background .15s,border-color .15s}
   .btn-auth:hover{background:var(--surface-2)}
+
+  /* ---- спільний компонент інформаційних секцій (еталон: Import) ---- */
+  .wrap-sec{max-width:1160px;margin:0 auto;padding:0 20px}
+  section{padding:56px 0}
+  h2.sec{font-size:26px;font-weight:800;letter-spacing:-.4px;text-align:center}
+  .sec-sub{text-align:center;color:var(--muted);margin-top:8px;max-width:560px;margin-left:auto;margin-right:auto}
+  .feats{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-top:36px}
+  .feat{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:22px;display:flex;gap:14px}
+  .feat b{display:block;font-size:15px;margin-bottom:4px}
+  .feat p{font-size:13.5px;color:var(--muted)}
+  .ico{
+    width:42px;height:42px;border-radius:10px;background:var(--surface-2);color:var(--ink-2);
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:19px;
+  }
 
   .btn-primary{
     background:var(--brand);color:var(--ink);border:1px solid rgba(20,22,25,.08);border-radius:var(--radius);
@@ -236,13 +275,8 @@
   .lang-menu button i{width:6px;height:6px;border-radius:50%;background:transparent;flex-shrink:0}
   .lang-menu button.on i{background:var(--brand)}
   body{padding-bottom:40px}
-  header{background:var(--bg);border-bottom:1px solid var(--line)}
-  .header-in{max-width:1160px;margin:0 auto;padding:0 20px;height:var(--hdr-h);display:flex;align-items:center;gap:14px}
 
   /* перемикач продуктів: центр шапки, два режими одного CalCar */
-  .header-in{display:grid;grid-template-columns:1fr auto 1fr;align-items:center}
-  .hleft{display:flex;align-items:center;gap:14px;justify-self:start}
-  .header-right{justify-self:end}
   .switch{display:flex;gap:2px;background:var(--surface-2);border-radius:22px;padding:3px}
   .switch a{
     display:block;padding:8px 16px;border-radius:19px;font-size:13px;font-weight:600;
@@ -263,10 +297,6 @@
     .hero{padding:40px 16px 4px}
   }
 
-  footer{border-top:1px solid var(--line);background:var(--card);margin-top:56px}
-  .footer-in{max-width:1160px;margin:0 auto;padding:24px 20px;display:flex;gap:16px;flex-wrap:wrap;align-items:center;font-size:12.5px;color:var(--muted)}
-  .footer-in .logo{font-size:12px}
-  .footer-in .right{margin-left:auto}
 
   .hero{background:var(--bg);padding:60px 20px 8px;text-align:center}
   .hero-in{max-width:860px;margin:0 auto}
@@ -289,30 +319,31 @@
   .hf-status.on{display:block}
   .hero-form .btn-primary{height:52px;padding:0 26px;font-size:15px;font-weight:800;border-radius:12px;min-width:158px}
   .hf-note{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-top:12px;font-size:12.5px;color:var(--muted)}
-  /* місце під майбутню перевірку за VIN: тримає висоту картки такою самою,
-     як у прорахунку пригону, де тут живе розкривний блок */
-  .soon{
-    margin-top:14px;border-top:1px solid var(--line);padding-top:12px;
-    font-size:13.5px;font-weight:600;color:var(--faint);cursor:default;user-select:none;
-  }
+  /* той самий блок, що "Завантаж фото вручну" в прорахунку пригону:
+     ті самі метрики і той самий плюс, але поки неактивний */
+  .manual{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+  .manual .summary{font-size:13.5px;color:var(--ink);font-weight:600}
+  .manual .summary::before{content:"+ ";font-weight:700;color:var(--brand-active)}
+  .soon .summary{color:var(--faint);cursor:default;user-select:none}
+  .soon .summary::before{color:var(--line-strong)}
   .hf-note b{color:var(--text)}
   .hf-status.err{color:var(--red)}
   .spin{display:inline-block;width:13px;height:13px;border:2px solid var(--line-strong);border-top-color:var(--ink);border-radius:50%;vertical-align:-2px;margin-right:8px;animation:sp 1s linear infinite}
   @keyframes sp{to{transform:rotate(360deg)}}
 
   /* що саме перевіряємо: коротко, без маркетингу */
-  .steps{max-width:960px;margin:52px auto 0;padding:0 20px;display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
-  @media(max-width:760px){.steps{grid-template-columns:1fr}}
-  .step{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:18px}
-  .step h3{font-size:14.5px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:8px}
-  .step p{font-size:13.5px;color:var(--muted);line-height:1.5}
+  /* нижній заклик: той самий блок, що в прорахунку пригону */
+  .cta{background:var(--graphite);border-radius:20px;padding:48px 32px;text-align:center;color:#fff;margin:20px 0 64px}
+  .cta h3{font-size:24px;font-weight:800;letter-spacing:-.3px}
+  .cta p{color:#B4B9BF;margin:10px 0 24px}
+  .cta-wrap{max-width:1160px;margin:56px auto 0;padding:0 20px}
 
-  .sample{max-width:720px;margin:44px auto 0;padding:0 20px}
-  .sample .card-body{padding:16px 20px}
+  .sample{margin-top:36px}
+  .sample .card{margin-bottom:0}
+  .sample .card-body{padding:16px 22px}
   .sline{display:flex;gap:10px;align-items:flex-start;padding:7px 0;font-size:14px}
   .sline .dot{margin-top:5px}
   .sline b{font-weight:600}
-  footer{max-width:1160px;margin:48px auto 0;padding:0 20px;font-size:12.5px;color:var(--faint);text-align:center}
   /* безшовний перехід між сторінками: браузер плавно перемальовує лише те,
      що змінилось, а шапка і футер візуально лишаються на місці */
   html{scrollbar-gutter:stable}
@@ -362,42 +393,61 @@
       </div>
       <div class="hf-status" id="status"></div>
       <div class="hf-note">
-        <span><b>Безкоштовно, поки триває бета</b></span>
-        <span>VIN і історію знаходимо автоматично</span>
+        <span><b>VIN і історію знаходимо автоматично</b></span>
+        <span>Фото звіряємо з даними</span>
         <span>Результат за 1–2 хвилини</span>
       </div>
-      <div class="soon">Немає посилання? Перевірка за VIN зʼявиться незабаром</div>
+      <div class="manual soon"><span class="summary">Немає посилання? Перевірка за VIN зʼявиться незабаром</span></div>
     </div>
   </div>
 </div>
 
-<div class="steps">
-  <div class="step">
-    <h3><span class="dot bad"></span>Розбіжності</h3>
-    <p>Продавець пише «без ДТП», а офіційні дані показують аварію. Ми ставимо ці факти поруч.</p>
-  </div>
-  <div class="step">
-    <h3><span class="dot warn"></span>Історія пробігу і власників</h3>
-    <p>Що показували в попередніх оголошеннях, скільки було власників, чи логічна хронологія.</p>
-  </div>
-  <div class="step">
-    <h3><span class="dot ok"></span>Фото і болячки моделі</h3>
-    <p>Сліди ремонту на фото, знос проти заявленого пробігу, слабкі місця саме цієї версії та двигуна.</p>
-  </div>
+<div class="wrap-sec">
+  <section style="padding-bottom:0">
+    <h2 class="sec">Що перевіряє CalCar</h2>
+    <p class="sec-sub">Збираємо дані з різних джерел, зіставляємо їх з оголошенням і показуємо те, на що варто звернути увагу.</p>
+    <div class="feats">
+      <div class="feat">
+        <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M11 8v3l2 2"/></svg></div>
+        <div><b>Розбіжності</b>
+        <p>Продавець пише «без ДТП», а офіційні дані показують аварію. Ми ставимо ці факти поруч.</p></div>
+      </div>
+      <div class="feat">
+        <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg></div>
+        <div><b>Історія пробігу і власників</b>
+        <p>Що показували в попередніх оголошеннях, скільки було власників, чи логічна хронологія.</p></div>
+      </div>
+      <div class="feat">
+        <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="m21 15-4-4-6 6"/></svg></div>
+        <div><b>Фото і болячки моделі</b>
+        <p>Сліди ремонту на фото, знос проти заявленого пробігу, слабкі місця саме цієї версії та двигуна.</p></div>
+      </div>
+    </div>
+  </section>
 </div>
 
-<div class="sample">
-  <div class="card">
-    <div class="card-head">
-      <h2>Як виглядає результат</h2>
-      <span class="hint" style="margin-left:auto">Приклад</span>
-    </div>
-    <div class="card-body">
+<div class="wrap-sec">
+  <section style="padding-top:40px">
+    <h2 class="sec">Як виглядає результат</h2>
+    <p class="sec-sub">Кольори тут мають значення: червоне це знайдена проблема, жовте варте уваги, зелене підтверджено.</p>
+    <div class="sample">
+      <div class="card">
+        <div class="card-body">
       <div class="sline"><span class="dot bad"></span><span><b>Продавець: «без ДТП».</b> Офіційна перевірка показує страховий випадок у США та запис аукціону.</span></div>
       <div class="sline"><span class="dot warn"></span><span><b>4 власники за 5 років,</b> остання покупка 5 місяців тому: схоже на перепродаж.</span></div>
       <div class="sline"><span class="dot warn"></span><span><b>Пробіг 129 тис. км</b> проти 109 тис. в оголошенні 2024 року: хронологія збігається.</span></div>
       <div class="sline"><span class="dot ok"></span><span><b>Комплектація підтверджена</b> заводськими даними за VIN.</span></div>
+        </div>
+      </div>
     </div>
+  </section>
+</div>
+
+<div class="cta-wrap">
+  <div class="cta">
+    <h3>Перевір оголошення перед тим, як їхати дивитись</h3>
+    <p>Одна хвилина, і ти знаєш, що продавець не договорює.</p>
+    <button class="btn-primary" id="ctaBtn">Перевірити авто</button>
   </div>
 </div>
 
@@ -468,6 +518,12 @@ function makePid(){
 async function safeJson(r) {
   try { return await r.json(); } catch (e) { return { error: t('Сервер повернув неочікувану відповідь') }; }
 }
+
+/* нижня кнопка не дублює логіку, а веде до тієї самої форми */
+document.getElementById('ctaBtn').addEventListener('click', () => {
+  input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  setTimeout(() => input.focus({ preventScroll: true }), 400);
+});
 
 btn.addEventListener('click', run);
 input.addEventListener('keydown', e => { if (e.key === 'Enter') run(); });
