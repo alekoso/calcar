@@ -331,4 +331,13 @@ window.CALCAR_DICT = {
   'beta · AI-аналіз, остаточне рішення завжди за вами': 'beta · AI analysis, the final decision is always yours',
   /* ---- CalCar Check (en, iteration 11) ---- */
   'Немає посилання? Перевірка за VIN зʼявиться незабаром': 'No link? VIN-only check is coming soon',
+  /* ---- CalCar Check (en, iteration 12) ---- */
+  'Перевір оголошення перед тим, як їхати дивитись': 'Check the listing before you go see the car',
+  'Одна хвилина, і ти знаєш, що продавець не договорює.': 'One minute, and you know what the seller left out.',
+  'Перевірити авто': 'Check the car',
+  'Фото звіряємо з даними': 'We cross-check photos against the data',
+  /* ---- CalCar Check (en, iteration 13) ---- */
+  'Що перевіряє CalCar': 'What CalCar checks',
+  'Збираємо дані з різних джерел, зіставляємо їх з оголошенням і показуємо те, на що варто звернути увагу.': 'We gather data from multiple sources, cross-check it against the listing and highlight what deserves attention.',
+  'Кольори тут мають значення: червоне це знайдена проблема, жовте варте уваги, зелене підтверджено.': 'Colors matter here: red is a found problem, amber deserves attention, green is confirmed.',
 };
