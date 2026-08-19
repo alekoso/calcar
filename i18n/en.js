@@ -349,4 +349,8 @@ window.CALCAR_DICT = {
   'VIN знайдемо самі': 'We\'ll find the VIN',
   'Історія + фото': 'History + photos',
   '~1–2 хвилини': '~1–2 minutes',
+  /* ---- CalCar Check (en, iteration 15) ---- */
+  'Безкоштовна перевірка': 'Free check',
+  'Результат за ~1–2 хв': 'Result in ~1–2 min',
+  'Перевірка лише за VIN зʼявиться скоро': 'VIN-only check is coming soon',
 };
