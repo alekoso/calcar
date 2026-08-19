@@ -260,7 +260,7 @@
     .switch{order:3;width:100%;margin-top:4px}
     .switch a{flex:1;text-align:center}
     .header-right{margin-left:auto}
-    .hero{padding:36px 16px 4px}
+    .hero{padding:40px 16px 4px}
   }
 
   footer{border-top:1px solid var(--line);background:var(--card);margin-top:56px}
@@ -268,7 +268,7 @@
   .footer-in .logo{font-size:12px}
   .footer-in .right{margin-left:auto}
 
-  .hero{padding:56px 20px 8px;text-align:center}
+  .hero{background:var(--bg);padding:60px 20px 8px;text-align:center}
   .hero-in{max-width:860px;margin:0 auto}
   .hero h1{font-size:clamp(28px,5vw,44px);font-weight:800;letter-spacing:-.8px;line-height:1.15}
   .hero h1 em{font-style:normal;color:inherit;background:linear-gradient(transparent 68%,var(--brand) 68%);padding:0 2px}
@@ -287,7 +287,14 @@
   /* статус зʼявляється лише під час роботи, тому не тримаємо під нього місце */
   .hf-status{font-size:13.5px;color:var(--muted);margin-top:10px;display:none}
   .hf-status.on{display:block}
-  .hf-note{display:flex;gap:18px;flex-wrap:wrap;margin-top:12px;font-size:12.5px;color:var(--muted)}
+  .hero-form .btn-primary{height:52px;padding:0 26px;font-size:15px;font-weight:800;border-radius:12px;min-width:158px}
+  .hf-note{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-top:12px;font-size:12.5px;color:var(--muted)}
+  /* місце під майбутню перевірку за VIN: тримає висоту картки такою самою,
+     як у прорахунку пригону, де тут живе розкривний блок */
+  .soon{
+    margin-top:14px;border-top:1px solid var(--line);padding-top:12px;
+    font-size:13.5px;font-weight:600;color:var(--faint);cursor:default;user-select:none;
+  }
   .hf-note b{color:var(--text)}
   .hf-status.err{color:var(--red)}
   .spin{display:inline-block;width:13px;height:13px;border:2px solid var(--line-strong);border-top-color:var(--ink);border-radius:50%;vertical-align:-2px;margin-right:8px;animation:sp 1s linear infinite}
@@ -306,6 +313,12 @@
   .sline .dot{margin-top:5px}
   .sline b{font-weight:600}
   footer{max-width:1160px;margin:48px auto 0;padding:0 20px;font-size:12.5px;color:var(--faint);text-align:center}
+  /* безшовний перехід між сторінками: браузер плавно перемальовує лише те,
+     що змінилось, а шапка і футер візуально лишаються на місці */
+  html{scrollbar-gutter:stable}
+  @view-transition{navigation:auto}
+  header{view-transition-name:site-header}
+  footer{view-transition-name:site-footer}
 </style>
 </head>
 <body>
@@ -353,6 +366,7 @@
         <span>VIN і історію знаходимо автоматично</span>
         <span>Результат за 1–2 хвилини</span>
       </div>
+      <div class="soon">Немає посилання? Перевірка за VIN зʼявиться незабаром</div>
     </div>
   </div>
 </div>
@@ -390,7 +404,7 @@
 <footer>
   <div class="footer-in">
     <a class="logo" href="/"><span class="l">Cal</span><span class="r">Car</span></a>
-    <span>beta · звіт складається з відкритих даних і AI-аналізу</span>
+    <span>beta · AI-аналіз, остаточне рішення завжди за вами</span>
     <span class="right">© 2026 CalCar · calcar.io</span>
   </div>
 </footer>
