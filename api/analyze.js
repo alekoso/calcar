@@ -336,6 +336,8 @@ export default async function handler(req, res) {
       title_code: lot?.title_code || null,
       keys: lot?.keys || null,
       run_and_drive: lot?.run_and_drive ?? null,
+      sale_date: lot?.sale_date || null,
+      sale_status: lot?.sale_status || null,
       airbags: lot?.airbags || null,
       est_retail_value: lot?.est_retail_value || null,
       battery_kwh: lot?.battery_kwh || null,

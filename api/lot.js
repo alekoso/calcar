@@ -146,6 +146,8 @@ function normalize(item) {
     title_state: item.title_state || null,
     keys: item.keys || null,
     airbags: null,
+    sale_date: item.sale_date || item.auction_date || null,
+    sale_status: item.sale_status || item.lot_status || null,
     run_and_drive: item.run_and_drive ?? null,
     location_state: item.location_state || null,
     location_city: item.location_city || null,
@@ -293,6 +295,13 @@ function normalizeGeneric(item, source) {
       if (/present|yes/i.test(s)) return 'YES';
       return k;
     })(),
+    sale_date: (() => {
+      const d = pick(flat, ['saleDate', 'auctionDate', 'auctionDateTime', 'saleDateTime', 'liveDate']);
+      if (!d) return null;
+      const dt = new Date(typeof d === 'number' && d < 1e12 ? d * 1000 : d);
+      return isNaN(dt.getTime()) ? null : dt.toISOString();
+    })(),
+    sale_status: pick(flat, ['saleStatus', 'auctionStatus', 'lotStatus', 'status']) || null,
     run_and_drive: (() => {
       const r = pick(flat, ['runAndDrive', 'runsAndDrives', 'startCode', 'runCondition']);
       if (typeof r === 'boolean') return r;
