@@ -315,4 +315,8 @@ window.CALCAR_DICT = {
   /* ---- CalCar Check (en, iteration 6) ---- */
   'Оцінка:': 'Score:',
   'Оцінка враховує історію авто, потенційну вартість помилки та невизначеність доступних даних. Рішення завжди за вами': 'The score reflects the car history, the potential cost of a mistake and data uncertainty. The decision is always yours',
+  'Торги були': 'Auction was on',
+  'Торги': 'Auction',
+  'Торги завершено': 'Auction closed',
+  'Дані аукціону станом на': 'Auction data as of',
 };
