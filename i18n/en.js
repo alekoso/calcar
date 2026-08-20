@@ -382,4 +382,8 @@ window.CALCAR_DICT = {
   /* ---- CalCar Check (en, iteration 20) ---- */
   'Змінити': 'Edit',
   'Скасувати': 'Cancel',
+  /* ---- CalCar Check (en, iteration 21) ---- */
+  'Задай питання про це авто…': 'Ask anything about this car…',
+  'CalCar бачить цей звіт і дані оголошення': 'CalCar sees this report and the listing data',
+  'CalCar бачить дані лота, фото і твій кошторис': 'CalCar sees the lot data, photos and your estimate',
 };
