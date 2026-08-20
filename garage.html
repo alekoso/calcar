@@ -463,7 +463,7 @@ h1{font-size:27px;letter-spacing:-.01em}
 <script>
 /* CalCar Garage */
 (async function () {
-  var cfg = window.CALCAR_CONFIG;
+  var cfg = window.CALCAR_SUPABASE || {};
   function $(id) { return document.getElementById(id); }
   function show(id, on) { var el = $(id); if (el) el.style.display = on ? '' : 'none'; }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -474,7 +474,7 @@ h1{font-size:27px;letter-spacing:-.01em}
     catch (e) { return d; }
   }
 
-  if (!cfg || !cfg.url || !cfg.anon || /YOUR_/.test(cfg.url + cfg.anon)) { show('noCfg', true); return; }
+  if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) { show('noCfg', true); return; }
   var SB = supabase.createClient(cfg.url, cfg.anon);
   window.SB = SB;
   var { data: sess } = await SB.auth.getSession();
@@ -639,23 +639,24 @@ h1{font-size:27px;letter-spacing:-.01em}
     show('checkNone', false); show('checkDone', false);
     var rep = null;
     try {
-      var r = await SB.from('reports').select('id,created_at,title')
-        .eq('kind', 'check').eq('data->>vin', car.vin)
+      /* public_id зʼявився міграцією: якщо її ще нема, працюємо без короткої адреси */
+      var q = await SB.from('reports').select('id,public_id,created_at')
+        .eq('data->_meta->>vin', car.vin)
         .order('created_at', { ascending: false }).limit(1);
-      rep = r.data && r.data[0];
-      if (!rep) {
-        r = await SB.from('reports').select('id,created_at,title')
-          .eq('kind', 'check').eq('data->_meta->>vin', car.vin)
-          .order('created_at', { ascending: false }).limit(1);
-        rep = r.data && r.data[0];
-      }
+      if (q.error) q = await SB.from('reports').select('id,created_at')
+        .eq('data->_meta->>vin', car.vin)
+        .order('created_at', { ascending: false }).limit(1);
+      rep = q.data && q.data[0];
     } catch (e) { rep = null; }
     if (rep) {
-      $('checkDoneT').textContent = 'Перевірка виконана ' + fmtDate(rep.created_at.slice(0, 10));
-      $('btnOpenReport').href = '/result-check.html?id=' + rep.id;
-      if (car.check_report_id !== rep.id) SB.from('garage_vehicles').update({ check_report_id: rep.id }).eq('id', car.id);
+      $('checkDoneT').textContent = 'Перевірка виконана ' + fmtDate(String(rep.created_at).slice(0, 10));
+      $('btnOpenReport').href = rep.public_id ? '/check/' + rep.public_id : '/result-check.html?id=' + rep.id;
+      if (car.check_report_id !== rep.id) {
+        SB.from('garage_vehicles').update({ check_report_id: rep.id }).eq('id', car.id).then(function () {}, function () {});
+      }
       show('checkDone', true);
     } else {
+      $('btnCheck').href = '/?vin=' + encodeURIComponent(car.vin);
       show('checkNone', true);
     }
   }

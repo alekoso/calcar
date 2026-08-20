@@ -8,6 +8,16 @@ if ((g.match(/<script/g)||[]).length !== (g.match(/<\/script>/g)||[]).length) er
 ['listView','carView','mAdd','mEntry','fVin','eDate','btnSaveCar','btnSaveEntry','entries','emptyGarage','carList','checkNone','checkDone','recallsBox','noAuth','noCfg']
   .forEach(id => { if (!g.includes('id="'+id+'"')) errs.push('нема елемента #'+id); });
 if (!g.includes('calcarLang')) errs.push('i18n-двигун не вбудований');
+/* ключове: ім'я конфігу має збігатися з реальним config.js та кабінетом */
+const cfgName = (fs.readFileSync('config.js','utf8').match(/window\.(CALCAR_[A-Z_]+)/) || [])[1];
+if (!cfgName) errs.push('не знайдено імʼя конфігу в config.js');
+else {
+  if (!g.includes('window.' + cfgName)) errs.push('garage читає не той конфіг, треба window.' + cfgName);
+  const cab = fs.readFileSync('cabinet.html','utf8');
+  if (!cab.includes('window.' + cfgName)) errs.push('кабінет читає інший конфіг, перевір узгодженість');
+}
+/* VIN у звітах лежить у data->_meta->>vin */
+if (!g.includes("data->_meta->>vin")) errs.push('пошук звіту не за реальним шляхом VIN');
 if (!g.includes('DecodeVinValues')) errs.push('нема VIN-декодера');
 if (!g.includes("from('garage_vehicles')")) errs.push('нема запитів до garage_vehicles');
 if (!g.includes('createSignedUrls')) errs.push('нема підписаних URL для приватних фото');
