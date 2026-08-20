@@ -365,4 +365,18 @@ window.CALCAR_DICT = {
   'Чат по авто': 'Car chat',
   'Відкрити вихідне оголошення': 'Open the original listing',
   'Відкрити лот на аукціоні': 'Open the auction lot',
+  /* ---- CalCar Check (en, iteration 18) ---- */
+  'Прикріпити фото або PDF': 'Attach a photo or PDF',
+  'Закрити': 'Close',
+  /* ---- CalCar Check (en, iteration 19) ---- */
+  'Мій кабінет': 'My account',
+  'Звіти': 'Reports',
+  'Памʼять': 'Memory',
+  'Акаунт': 'Account',
+  'Памʼять помічника': 'Assistant memory',
+  'Налаштування акаунта': 'Account settings',
+  'Пошта': 'Email',
+  'Вхід': 'Sign-in',
+  'Вийти з акаунта': 'Sign out',
+  'Пригін': 'Import',
 };
