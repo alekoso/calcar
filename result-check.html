@@ -381,6 +381,20 @@
   .eq-chips span{font-size:12.5px;background:var(--bg);border:1px solid var(--line);border-radius:16px;padding:4px 11px}
 
   /* переклад звіту */
+  /* стани сторінки: скелетон до готовності даних, звіт одним перемиканням */
+  .report-skel{max-width:1160px;margin:0 auto;padding:20px}
+  body.report-ready .report-skel{display:none}
+  body:not(.report-ready) .wrap{display:none}
+  .sk{display:inline-block;background:#ECEEEA;border-radius:8px;animation:skp 1.5s ease-in-out infinite}
+  @keyframes skp{0%,100%{opacity:1}50%{opacity:.55}}
+  .skel-top{display:flex;align-items:center;margin-bottom:20px}
+  .skel-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 1px 2px rgba(20,22,25,.04);margin-bottom:16px;overflow:hidden}
+  .skel-strip{display:flex;gap:6px;padding:10px 20px 4px}
+  .skel-strip .sk{width:96px;height:120px;border-radius:10px;flex-shrink:0}
+  .skel-specs{display:flex;gap:24px;flex-wrap:wrap;padding:16px 20px 22px}
+  .skel-specs .sk{width:120px;height:34px}
+  @media print{.report-skel{display:none!important}}
+
   .trbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--brand-soft);border:1px solid #DDF0B8;border-radius:var(--radius);padding:10px 16px;margin-bottom:20px;font-size:13.5px;color:var(--brand-ink)}
   .trbar button{margin-left:auto;background:var(--brand);border:1px solid rgba(20,22,25,.08);border-radius:10px;height:34px;padding:0 14px;font-size:13px;font-weight:700;color:var(--ink);cursor:pointer;font-family:inherit}
   .trbar button:disabled{opacity:.6;cursor:default}
@@ -581,6 +595,23 @@
     </div>
   </div>
 </header>
+
+<div class="report-skel" id="reportSkel" aria-hidden="true">
+  <div class="skel-top"><span class="sk" style="width:150px;height:40px"></span><span class="sk" style="width:132px;height:44px;margin-left:auto"></span></div>
+  <div class="skel-card">
+    <div class="skel-strip"><i class="sk"></i><i class="sk"></i><i class="sk"></i><i class="sk"></i><i class="sk"></i><i class="sk"></i></div>
+    <div class="sk" style="width:46%;height:26px;margin:18px 20px 0"></div>
+    <div class="skel-specs">
+      <span class="sk"></span><span class="sk"></span><span class="sk"></span><span class="sk"></span><span class="sk"></span>
+    </div>
+  </div>
+  <div class="skel-card" style="padding:20px">
+    <div class="sk" style="width:32%;height:18px"></div>
+    <div class="sk" style="width:96%;height:13px;margin-top:16px"></div>
+    <div class="sk" style="width:90%;height:13px;margin-top:9px"></div>
+    <div class="sk" style="width:62%;height:13px;margin-top:9px"></div>
+  </div>
+</div>
 
 <div class="wrap">
 
@@ -877,6 +908,9 @@ function boot(){
   boot2(DATA);
   trSetup();
   chatInit();
+  /* дані відрендерені повністю: показуємо звіт одним перемиканням.
+     До цього людина бачить скелетон, а не порожній шаблон */
+  document.body.classList.add('report-ready');
 }
 
 function boot2(D){
