@@ -470,10 +470,12 @@
 
   /* ---------- чат-агент по авто ---------- */
   body{transition:padding-right .25s ease}
-  .wrap{transition:margin .25s ease}
-  /* чат зайняв праву частину: звіт іде вліво, а не пере-центрується */
+  .wrap{transition:max-width .25s ease,margin .25s ease,padding .25s ease}
+  /* докований чат: сторінка стає двома панелями, звіт займає всю ліву частину
+     і більше не тримається вузькою колонкою по центру */
   body.chat-docked{padding-right:420px}
-  body.chat-docked .wrap{margin-left:0;margin-right:auto}
+  body.chat-docked .wrap{max-width:none;margin-left:0;margin-right:0}
+  body.chat-docked header .header-in{max-width:none}
   /* ---- report toolbar: дії конкретного звіту (спільний компонент) ---- */
   
   .btn-chat{
