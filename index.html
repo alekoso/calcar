@@ -797,7 +797,7 @@ try { localStorage.setItem('calcarProduct', 'import'); } catch (e) {}
   if (typeof supabase === 'undefined' || !window.CALCAR_SUPABASE?.url) return;
   window.SB = supabase.createClient(window.CALCAR_SUPABASE.url, window.CALCAR_SUPABASE.anon);
   window.SB.auth.getSession().then(({ data }) => {
-    if (data?.session) document.getElementById('authLabel').textContent = 'Кабінет';
+    if (data?.session) document.getElementById('authLabel').textContent = t('Кабінет');
   });
 })();
 </script>
