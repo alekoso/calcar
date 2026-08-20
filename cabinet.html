@@ -187,7 +187,10 @@
  .mem-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding:16px 20px 10px}
  .mem-head b{font-size:15px}
  .mem-hint{font-size:12.5px;color:var(--muted)}
- #memText{display:block;width:calc(100% - 40px);margin:0 20px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:inherit;font-size:13.5px;color:var(--text);resize:vertical;min-height:84px;background:var(--bg)}
+ #memText{display:block;width:calc(100% - 40px);margin:0 20px;border:1px solid var(--line);border-radius:10px;padding:12px 14px;font:inherit;font-size:13.5px;line-height:1.6;color:var(--text);resize:vertical;min-height:96px;max-height:60vh;background:var(--bg);overflow-y:auto}
+ /* режим читання: те саме поле, але без рамки і без правки */
+ #memText[readonly]{background:transparent;border-color:transparent;padding:12px 6px;cursor:default;resize:none}
+ #memText[readonly]:focus{outline:none}
  #memText:focus{outline:none;border-color:var(--line-strong)}
  .mem-actions{display:flex;align-items:center;gap:10px;padding:12px 20px 16px}
  .mem-save{border:none;border-radius:10px;background:var(--brand);color:var(--ink);font-weight:700;font-size:13px;padding:8px 16px;cursor:pointer;font-family:inherit}
@@ -347,7 +350,9 @@
   </div>
   <textarea id="memText" rows="4" placeholder="Поки порожньо. Поговори з помічником у будь-якому звіті, і тут зʼявиться нотатка"></textarea>
   <div class="mem-actions">
-   <button class="mem-save" id="memSave">Зберегти</button>
+   <button class="mem-save" id="memEdit">Змінити</button>
+   <button class="mem-save" id="memSave" style="display:none">Зберегти</button>
+   <button class="mem-clear" id="memCancel" style="display:none">Скасувати</button>
    <button class="mem-clear" id="memClear">Стерти памʼять</button>
    <span class="mem-status" id="memStatus"></span>
   </div>
@@ -426,20 +431,50 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  ta.value = row?.memory || '';
  } catch (e) { card.style.display = 'none'; return; }
 
+ const bEdit = document.getElementById('memEdit');
+ const bSave = document.getElementById('memSave');
+ const bCancel = document.getElementById('memCancel');
+ let saved = ta.value;   /* останній збережений текст: для скасування */
+
+ /* висота поля росте під обсяг тексту, але не більше половини екрана */
+ function autoGrow() {
+ ta.style.height = 'auto';
+ ta.style.height = Math.min(ta.scrollHeight + 2, Math.round(innerHeight * 0.6)) + 'px';
+ }
+ ta.addEventListener('input', autoGrow);
+
+ /* режим читання за замовчуванням: правити можна лише після "Змінити" */
+ function setMode(editing) {
+ ta.readOnly = !editing;
+ bEdit.style.display = editing ? 'none' : '';
+ bSave.style.display = editing ? '' : 'none';
+ bCancel.style.display = editing ? '' : 'none';
+ autoGrow();
+ if (editing) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+ }
+
  async function save(text, okMsg) {
  st.textContent = t('Зберігаю…');
  try {
  const { error } = await SB.from('user_memory').upsert({ user_id: uid, memory: text || null, updated_at: new Date().toISOString() });
- st.textContent = error ? t('Не збереглося') : okMsg;
+ if (error) { st.textContent = t('Не збереглося'); }
+ else { saved = text || ''; st.textContent = okMsg; setMode(false); }
  } catch (e) { st.textContent = t('Не збереглося'); }
  setTimeout(() => { st.textContent = ''; }, 2600);
  }
- document.getElementById('memSave').onclick = () => save(ta.value.trim().slice(0, 2000), t('Збережено ✓'));
+
+ bEdit.onclick = () => setMode(true);
+ bCancel.onclick = () => { ta.value = saved; setMode(false); };
+ bSave.onclick = () => save(ta.value.trim().slice(0, 2000), t('Збережено ✓'));
  document.getElementById('memClear').onclick = async () => {
  if (!confirm(t('Стерти памʼять помічника? Дію не можна скасувати'))) return;
  ta.value = '';
  save(null, t('Стерто ✓'));
  };
+
+ setMode(false);
+ /* порожня памʼять: одразу даємо писати, ховати нічого */
+ if (!ta.value) setMode(true);
  }
 
  /* ---- вкладки кабінету: Звіти / Памʼять / Акаунт, з підтримкою #хеша ---- */
