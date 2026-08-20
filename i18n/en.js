@@ -353,4 +353,16 @@ window.CALCAR_DICT = {
   'Безкоштовна перевірка': 'Free check',
   'Результат за ~1–2 хв': 'Result in ~1–2 min',
   'Перевірка лише за VIN зʼявиться скоро': 'VIN-only check is coming soon',
+  /* ---- CalCar Check (en, iteration 16) ---- */
+  'Памʼять CalCar': 'CalCar memory',
+  'Помічник запамʼятовує важливе з розмов: імʼя, бюджет, що шукаєш. Можеш виправити або стерти': 'The assistant remembers what matters from your chats: name, budget, what you are looking for. You can edit or erase it',
+  'Поки порожньо. Поговори з помічником у будь-якому звіті, і тут зʼявиться нотатка': 'Empty for now. Talk to the assistant in any report and a note will appear here',
+  'Зберегти': 'Save',
+  'Стерти памʼять': 'Erase memory',
+  'Стерти памʼять помічника? Дію не можна скасувати': 'Erase the assistant memory? This cannot be undone',
+  'Стерто ✓': 'Erased ✓',
+  /* ---- CalCar Check (en, iteration 17) ---- */
+  'Чат по авто': 'Car chat',
+  'Відкрити вихідне оголошення': 'Open the original listing',
+  'Відкрити лот на аукціоні': 'Open the auction lot',
 };
