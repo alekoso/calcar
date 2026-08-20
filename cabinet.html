@@ -184,8 +184,6 @@
  .switch a{flex:1;text-align:center}
  .header-right{margin-left:auto}
  }
- .btn-out{display:none;align-items:center;gap:8px;border:1px solid var(--line-strong);border-radius:20px;padding:7px 14px;color:var(--ink);font-weight:600;font-size:13px;background:var(--card);cursor:pointer}
- .btn-out:hover{background:var(--surface-2)}
  .mem-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding:16px 20px 10px}
  .mem-head b{font-size:15px}
  .mem-hint{font-size:12.5px;color:var(--muted)}
@@ -196,10 +194,6 @@
  .mem-clear{border:1px solid var(--line-strong);border-radius:10px;background:var(--card);color:var(--muted);font-weight:600;font-size:13px;padding:8px 14px;cursor:pointer;font-family:inherit}
  .mem-clear:hover{color:var(--red);border-color:var(--red)}
  .mem-status{font-size:12.5px;color:var(--muted)}
- .cab-tabs{display:flex;gap:2px;background:var(--surface-2);border-radius:22px;padding:3px;width:max-content;margin:0 0 16px}
- .cab-tabs button{border:none;background:transparent;padding:8px 16px;border-radius:19px;font-family:inherit;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;transition:background .15s,color .15s}
- .cab-tabs button:hover{color:var(--ink)}
- .cab-tabs button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgba(20,22,25,.08)}
  .acc-row{display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid var(--line);font-size:14px}
  .acc-lbl{flex:0 0 90px;color:var(--muted);font-size:13px}
  .wrap{max-width:960px;margin:0 auto;padding:28px 20px 60px}
@@ -304,7 +298,6 @@
  <a href="/cabinet.html#account">Налаштування акаунта</a>
  </div>
  </div>
- <button id="signOut" style="display:none" hidden></button>
  </div>
  </div>
 </header>
@@ -336,12 +329,7 @@
 
  <!-- reports -->
  <div id="listBox" style="display:none">
- <h1>Мій кабінет</h1>
- <nav class="cab-tabs" id="cabTabs">
-  <button data-tab="reports" class="on" type="button">Звіти</button>
-  <button data-tab="memory" type="button">Памʼять</button>
-  <button data-tab="account" type="button">Акаунт</button>
- </nav>
+ <h1 id="cabTitle">Звіти</h1>
  <div id="tab-reports">
  <div class="search-wrap" id="searchWrap">
  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
@@ -395,7 +383,6 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  function showAuth() {
  document.getElementById('authBox').style.display = '';
  document.getElementById('listBox').style.display = 'none';
- document.getElementById('signOut').style.display = 'none';
 
  document.getElementById('googleBtn').onclick = async () => {
  const { error } = await SB.auth.signInWithOAuth({
@@ -456,25 +443,21 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  }
 
  /* ---- вкладки кабінету: Звіти / Памʼять / Акаунт, з підтримкою #хеша ---- */
+ /* розділ кабінету обирається в меню кнопки Кабінет (шапка), сторінка
+    показує лише обраний. Дублювати навігацію на сторінці не потрібно */
+ const TAB_TITLES = { reports: 'Звіти', memory: 'Памʼять помічника', account: 'Налаштування акаунта' };
  function switchTab(name) {
  if (!document.getElementById('tab-' + name)) name = 'reports';
- document.querySelectorAll('#cabTabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === name));
  ['reports', 'memory', 'account'].forEach(n => {
  document.getElementById('tab-' + n).style.display = n === name ? '' : 'none';
  });
- history.replaceState(null, '', '#' + name);
+ document.getElementById('cabTitle').textContent = t(TAB_TITLES[name]);
  }
- document.getElementById('cabTabs').addEventListener('click', e => {
- const b = e.target.closest('button');
- if (b) switchTab(b.dataset.tab);
- });
+ window.addEventListener('hashchange', () => switchTab((location.hash || '').replace('#', '') || 'reports'));
 
  async function showList() {
  document.getElementById('authBox').style.display = 'none';
  document.getElementById('listBox').style.display = '';
- const so = document.getElementById('signOut');
- so.style.display = 'inline-flex';
- so.onclick = async () => { await SB.auth.signOut(); location.reload(); };
  initMemory();
  switchTab((location.hash || '').replace('#', '') || 'reports');
  try {
