@@ -513,7 +513,8 @@
   /* шар 1: світла шапка з назвою авто другим рядком */
   .chat-head{
     display:flex;align-items:center;gap:12px;padding:0 20px;flex-shrink:0;
-    height:var(--hdr-h);min-height:var(--hdr-h);box-sizing:border-box;
+    height:calc(var(--hdr-h) + var(--hdr-line));min-height:calc(var(--hdr-h) + var(--hdr-line));max-height:calc(var(--hdr-h) + var(--hdr-line));
+    box-sizing:border-box;padding-top:0;padding-bottom:0;margin:0;
     background:rgba(255,255,255,.88);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
     border-bottom:1px solid var(--line);box-shadow:0 2px 8px rgba(20,22,25,.04);
   }
@@ -530,7 +531,7 @@
   /* шар 2: полотно розмови */
   .chat-canvas{flex:1;overflow-y:auto;display:flex;flex-direction:column}
   .chat-msgs{display:flex;flex-direction:column;gap:16px;padding:20px 22px}
-  .chat-msg{max-width:88%;font-size:14.5px;line-height:1.62;white-space:pre-wrap;word-wrap:break-word}
+  .chat-msg{max-width:95%;font-size:14.5px;line-height:1.62;white-space:pre-wrap;word-wrap:break-word}
   .chat-msg.ai{
     align-self:flex-start;background:var(--card);border-radius:18px;padding:12px 14px;color:var(--text);
     box-shadow:0 1px 2px rgba(20,22,25,.05),0 6px 18px rgba(20,22,25,.04);
@@ -550,9 +551,9 @@
   .chat-sugg button:hover{border-color:var(--brand);background:var(--brand-soft)}
 
   /* шар 3: composer однією карткою, лаймовий лише send */
-  .chat-composer{flex-shrink:0;padding:10px 16px 12px}
+  .chat-composer{flex-shrink:0;padding:8px 16px 10px}
   .chat-box{
-    background:var(--card);border:1px solid var(--line);border-radius:18px;padding:10px 10px 8px;
+    background:var(--card);border:1px solid var(--line);border-radius:18px;padding:8px 8px 6px;
     box-shadow:0 1px 2px rgba(20,22,25,.04),0 8px 24px rgba(20,22,25,.06);
     transition:border-color .15s,box-shadow .15s;
   }
@@ -563,7 +564,7 @@
     padding:2px 6px;min-height:24px;max-height:120px;box-sizing:border-box;
   }
   .chat-box textarea::placeholder{color:var(--faint)}
-  .chat-box-row{display:flex;align-items:center;gap:8px;margin-top:4px}
+  .chat-box-row{display:flex;align-items:center;gap:8px;margin-top:2px}
   .chat-attach{
     width:34px;height:34px;border:none;border-radius:50%;background:transparent;color:var(--muted);
     cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s,color .15s;
