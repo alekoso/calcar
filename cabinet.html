@@ -166,6 +166,16 @@
  .header-right{margin-left:auto;display:flex;align-items:center;gap:14px}
  .btn-out{display:none;align-items:center;gap:8px;border:1px solid var(--line-strong);border-radius:20px;padding:7px 14px;color:var(--ink);font-weight:600;font-size:13px;background:var(--card);cursor:pointer}
  .btn-out:hover{background:var(--surface-2)}
+ .mem-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding:16px 20px 10px}
+ .mem-head b{font-size:15px}
+ .mem-hint{font-size:12.5px;color:var(--muted)}
+ #memText{display:block;width:calc(100% - 40px);margin:0 20px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:inherit;font-size:13.5px;color:var(--text);resize:vertical;min-height:84px;background:var(--bg)}
+ #memText:focus{outline:none;border-color:var(--line-strong)}
+ .mem-actions{display:flex;align-items:center;gap:10px;padding:12px 20px 16px}
+ .mem-save{border:none;border-radius:10px;background:var(--brand);color:var(--ink);font-weight:700;font-size:13px;padding:8px 16px;cursor:pointer;font-family:inherit}
+ .mem-clear{border:1px solid var(--line-strong);border-radius:10px;background:var(--card);color:var(--muted);font-weight:600;font-size:13px;padding:8px 14px;cursor:pointer;font-family:inherit}
+ .mem-clear:hover{color:var(--red);border-color:var(--red)}
+ .mem-status{font-size:12.5px;color:var(--muted)}
  .wrap{max-width:960px;margin:0 auto;padding:28px 20px 60px}
  h1{font-size:24px;font-weight:800;letter-spacing:-.3px;margin-bottom:18px}
  .card{background:var(--card);border:1px solid var(--line);border-radius:16px}
@@ -292,6 +302,19 @@
  <button class="search-clear" id="searchClear" title="Очистити">✕</button>
  </div>
  <div class="card" id="reports"><div class="empty">Завантаження…</div></div>
+
+ <div class="card" id="memCard" style="display:none;margin-top:16px">
+  <div class="mem-head">
+   <b>Памʼять CalCar</b>
+   <span class="mem-hint">Помічник запамʼятовує важливе з розмов: імʼя, бюджет, що шукаєш. Можеш виправити або стерти</span>
+  </div>
+  <textarea id="memText" rows="4" placeholder="Поки порожньо. Поговори з помічником у будь-якому звіті, і тут зʼявиться нотатка"></textarea>
+  <div class="mem-actions">
+   <button class="mem-save" id="memSave">Зберегти</button>
+   <button class="mem-clear" id="memClear">Стерти памʼять</button>
+   <span class="mem-status" id="memStatus"></span>
+  </div>
+ </div>
  </div>
 </div>
 
@@ -339,12 +362,46 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  };
  }
 
+ /* ---- памʼять CalCar: одна нотатка на акаунт, людина бачить і керує ---- */
+ async function initMemory() {
+ const card = document.getElementById('memCard');
+ const ta = document.getElementById('memText');
+ const st = document.getElementById('memStatus');
+ card.style.display = '';
+ let uid = null;
+ try {
+ const { data } = await SB.auth.getSession();
+ uid = data?.session?.user?.id || null;
+ if (!uid) { card.style.display = 'none'; return; }
+ const { data: row, error } = await SB.from('user_memory').select('memory').eq('user_id', uid).maybeSingle();
+ /* міграцію ще не виконано: ховаємо картку, все інше працює */
+ if (error) { card.style.display = 'none'; return; }
+ ta.value = row?.memory || '';
+ } catch (e) { card.style.display = 'none'; return; }
+
+ async function save(text, okMsg) {
+ st.textContent = t('Зберігаю…');
+ try {
+ const { error } = await SB.from('user_memory').upsert({ user_id: uid, memory: text || null, updated_at: new Date().toISOString() });
+ st.textContent = error ? t('Не збереглося') : okMsg;
+ } catch (e) { st.textContent = t('Не збереглося'); }
+ setTimeout(() => { st.textContent = ''; }, 2600);
+ }
+ document.getElementById('memSave').onclick = () => save(ta.value.trim().slice(0, 2000), t('Збережено ✓'));
+ document.getElementById('memClear').onclick = async () => {
+ if (!confirm(t('Стерти памʼять помічника? Дію не можна скасувати'))) return;
+ ta.value = '';
+ save(null, t('Стерто ✓'));
+ };
+ }
+
  async function showList() {
  document.getElementById('authBox').style.display = 'none';
  document.getElementById('listBox').style.display = '';
  const so = document.getElementById('signOut');
  so.style.display = 'inline-flex';
  so.onclick = async () => { await SB.auth.signOut(); location.reload(); };
+ initMemory();
 
  const box = document.getElementById('reports');
  let { data: rows, error } = await SB.from('reports')

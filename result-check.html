@@ -222,6 +222,28 @@
   .btn-auth{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line-strong);border-radius:20px;padding:7px 14px;background:var(--card);color:var(--ink)!important;font-weight:600;font-size:13px;text-decoration:none;transition:background .15s,border-color .15s}
   .btn-auth:hover{background:var(--surface-2)}
 
+  /* ---- report toolbar: дії конкретного звіту (спільний компонент) ---- */
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:20px}
+  .btn-chat{
+    display:inline-flex;align-items:center;gap:8px;background:var(--brand);color:var(--ink);
+    border:1px solid rgba(20,22,25,.08);border-radius:12px;height:44px;padding:0 16px;
+    font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;text-decoration:none;white-space:nowrap;
+  }
+  .btn-chat:hover{background:var(--brand-hover)}
+  .btn-chat:active{background:var(--brand-active)}
+  .btn-chat svg{flex-shrink:0}
+  @media(max-width:620px){
+    .topbar .btn-back,.topbar .btn-chat{flex:1;justify-content:center}
+  }
+
+  /* ---- зовнішнє оголошення: маленька кнопка біля назви авто ---- */
+  .ext-link{
+    display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;flex:0 0 auto;
+    border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);
+    transition:background .15s;
+  }
+  .ext-link:hover{background:var(--surface-2)}
+
   /* ---- спільний компонент інформаційних секцій (еталон: Import) ---- */
   .wrap-sec{max-width:1160px;margin:0 auto;padding:0 20px}
   section{padding:56px 0}
@@ -294,7 +316,6 @@
     .header-right{margin-left:auto}
   }
 
-  .topbar{display:flex;align-items:center;gap:14px;margin-bottom:20px;flex-wrap:wrap}
   #saveHint{font-size:12.5px;color:var(--muted);opacity:0;transition:opacity .2s}
   #saveHint.show{opacity:1}
 
@@ -396,14 +417,6 @@
   .lightbox img{max-width:94vw;max-height:92vh;border-radius:10px}
 
   /* ---------- чат по цьому авто (як в Import) ---------- */
-  .chat-fab{
-    position:fixed;right:20px;bottom:20px;z-index:80;display:flex;align-items:center;gap:9px;
-    background:var(--graphite);color:#fff;border:none;border-radius:28px;height:52px;padding:0 20px 0 16px;
-    font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;
-    box-shadow:0 8px 24px rgba(10,20,35,.35);transition:background .15s,transform .15s;
-  }
-  .chat-fab:hover{background:var(--graphite-2);transform:translateY(-1px)}
-  .chat-fab .dot-ai{width:8px;height:8px;border-radius:50%;background:var(--brand);flex-shrink:0}
   .chat-overlay{position:fixed;inset:0;background:rgba(15,25,40,.28);z-index:125;opacity:0;pointer-events:none;transition:opacity .22s}
   .chat-overlay.open{opacity:1;pointer-events:auto}
   .chat-panel{
@@ -486,9 +499,12 @@
   </div>
 
   <div class="topbar">
-    <a class="btn-back" href="/">← Нова перевірка</a>
-    <span id="saveHint" style="margin-left:auto"></span>
-    <a class="btn-back" id="srcLink" href="#" target="_blank" rel="noopener" style="display:none">Відкрити оголошення ↗</a>
+    <a class="btn-back" href="/check">← Нова перевірка</a>
+    <span id="saveHint"></span>
+    <button class="btn-chat" id="chatTopBtn" type="button">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.9 8.9 0 0 1-3.7-.8L3 20l1-4.9a8.4 8.4 0 1 1 17-3.6z"/></svg>
+      Чат по авто
+    </button>
   </div>
 
   <!-- авто -->
@@ -496,6 +512,9 @@
     <div class="photo-strip" id="photoStrip" style="display:none"></div>
     <div class="lot-title">
       <h1 id="carTitle"></h1>
+      <a class="ext-link" id="srcLink" href="#" target="_blank" rel="noopener" style="display:none" title="Відкрити вихідне оголошення">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>
+      </a>
       <span class="badge blue">AI-перевірка оголошення</span>
     </div>
     <div class="spec-grid" id="specGrid"></div>
@@ -614,10 +633,7 @@
 </footer>
 
 <!-- чат по цьому авто -->
-<button class="chat-fab" id="chatFab" style="display:none">
-  <span class="dot-ai"></span>
-  Спитати про це авто
-</button>
+<button id="chatFab" style="display:none" hidden></button>
 <div class="chat-overlay" id="chatOverlay"></div>
 <div class="chat-panel" id="chatPanel">
   <div class="chat-head">
@@ -893,6 +909,18 @@ function makePid(){
   return out;
 }
 
+/* переписка зберігається у звіт тим самим полем, що в Import: data._chat */
+let chatSaveTimer = null;
+function persistChat(){
+  DATA._chat = chatHist.slice(-30);
+  try { sessionStorage.setItem('calcarCheck', JSON.stringify(DATA)); } catch (e) {}
+  if (!SB || !ROW_ID) return;
+  clearTimeout(chatSaveTimer);
+  chatSaveTimer = setTimeout(async () => {
+    try { await SB.from('reports').update({ data: DATA }).eq('id', ROW_ID); } catch (e) {}
+  }, 1200);
+}
+
 /* ---------- фінальні дії ---------- */
 document.getElementById('pdfBtn').addEventListener('click', () => {
   /* друк у PDF засобами браузера: назва файлу = назва авто */
@@ -950,13 +978,48 @@ async function saveIfNeeded(){
    даних). Беремо ОБИДВА типи: перевірки оголошень і прорахунки пригону, щоб
    можна було просити порівняння між ними. */
 let OTHER_REPORTS = null;
+
+/* ---------- спільна памʼять про користувача: одна нотатка на акаунт ---------- */
+let MEMORY = null, MEM_UID = null, memTimer = null, memLastLen = 0;
+async function loadMemory(){
+  if (!SB) return;
+  try {
+    const { data: s } = await SB.auth.getSession();
+    if (!s?.session) return;
+    MEM_UID = s.session.user.id;
+    const { data } = await SB.from('user_memory').select('memory').eq('user_id', MEM_UID).maybeSingle();
+    MEMORY = data?.memory || null;
+    memLastLen = chatHist.length;
+  } catch (e) {}
+}
+/* після відповіді помічника нотатка тихо оновлюється: раз на кілька реплік */
+function scheduleMemoryUpdate(){
+  if (!MEM_UID) return;
+  if (chatHist.length - memLastLen < 4) return;
+  clearTimeout(memTimer);
+  memTimer = setTimeout(async () => {
+    try {
+      const r = await fetch('/api/memory', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ memory: MEMORY, messages: chatHist.slice(-10) }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || typeof data.memory !== 'string') return;
+      MEMORY = data.memory || null;
+      memLastLen = chatHist.length;
+      await SB.from('user_memory').upsert({ user_id: MEM_UID, memory: MEMORY, updated_at: new Date().toISOString() });
+    } catch (e) {}
+  }, 8000);
+}
+
 async function loadOtherReports(){
   if (!SB) return;
   try {
     const { data: s } = await SB.auth.getSession();
     if (!s?.session) return;
     const { data: rows, error } = await SB.from('reports')
-      .select('id, created_at, kind, title:data->vehicle->>title, vin:data->_meta->>vin, url:data->_meta->>url, price:data->_meta->>price, lot:data->_meta->>lot_number, dmg:data->_meta->>damage, mil:data->vehicle->>mileage_note, eng:data->vehicle->>engine, drv:data->vehicle->>drive, score:data->verdict->>score, sum:data->verdict->>summary, risks:data->risks, flags:data->flags, snap:data->_snapshot')
+      .select('id, created_at, kind, title:data->vehicle->>title, vin:data->_meta->>vin, url:data->_meta->>url, price:data->_meta->>price, lot:data->_meta->>lot_number, dmg:data->_meta->>damage, mil:data->vehicle->>mileage_note, eng:data->vehicle->>engine, drv:data->vehicle->>drive, score:data->verdict->>score, sum:data->verdict->>summary, risks:data->risks, flags:data->flags, snap:data->_snapshot, chat:data->_chat')
       .order('created_at', { ascending: false })
       .limit(16);
     if (error || !Array.isArray(rows)) return;
@@ -983,6 +1046,8 @@ async function loadOtherReports(){
           .filter(f => f && (f.status === 'warn' || f.status === 'bad'))
           .slice(0, 5).map(f => String(f.text || '').slice(0, 140)),
         totals: r.snap || null,
+        chat_tail: (Array.isArray(r.chat) ? r.chat : []).slice(-6)
+          .map(m => (m.role === 'user' ? 'Користувач: ' : 'Помічник: ') + String(m.content || '').slice(0, 200)),
         analyzed_at: r.created_at,
         days_ago: Math.round((now - new Date(r.created_at).getTime()) / 86400000),
       }));
@@ -1009,16 +1074,21 @@ function chatMsgEl(role, text){
   return el;
 }
 function chatInit(){
-  $('chatFab').style.display = '';
+
   loadOtherReports();
+  loadMemory();
   $('chatCarTitle').textContent = DATA.vehicle?.title || t('AI-помічник CalCar');
-  try { chatHist = JSON.parse(sessionStorage.getItem('calcarCheckChat') || '[]'); } catch (e) { chatHist = []; }
+  /* переписка живе у звіті (data._chat), як в Import: відкрив звіт на іншому
+     пристрої або через тиждень, і чат памʼятає розмову */
+  if (Array.isArray(DATA._chat) && DATA._chat.length) chatHist = DATA._chat.slice(-30);
+  else { try { chatHist = JSON.parse(sessionStorage.getItem('calcarCheckChat') || '[]'); } catch (e) { chatHist = []; } }
   chatHist.forEach(m => chatMsgEl(m.role === 'assistant' ? 'ai' : 'user', m.content));
   if (chatHist.length) $('chatSugg').style.display = 'none';
 
   const open = () => { $('chatPanel').classList.add('open'); $('chatOverlay').classList.add('open'); $('chatText').focus(); };
   const close = () => { $('chatPanel').classList.remove('open'); $('chatOverlay').classList.remove('open'); };
   $('chatFab').addEventListener('click', open);
+  $('chatTopBtn').addEventListener('click', open);
   $('chatClose').addEventListener('click', close);
   $('chatOverlay').addEventListener('click', close);
 
@@ -1050,6 +1120,7 @@ async function sendChat(text){
         messages: chatHist.slice(-12),
         context: chatCtx(),
         others: OTHER_REPORTS,
+        memory: MEMORY,
         /* фото оголошення і кадри з аукціону США: помічник бачить те саме, що звіт */
         photos: [...(M.photos || []).slice(0, 6), ...(M.auction_photos || []).slice(0, 4)],
         lang: window.calcarLang(),
@@ -1060,6 +1131,8 @@ async function sendChat(text){
     if (!r.ok || !data.reply) throw new Error(data.error || t('Не вдалося відповісти, спробуй ще раз'));
     chatHist.push({ role: 'assistant', content: data.reply });
     chatMsgEl('ai', clean(data.reply));
+    persistChat();
+    scheduleMemoryUpdate();
     try { sessionStorage.setItem('calcarCheckChat', JSON.stringify(chatHist.slice(-30))); } catch (e) {}
   } catch (e) {
     typing.remove();
