@@ -1,8 +1,28 @@
 {
   "rewrites": [
-    { "source": "/", "destination": "/check.html" },
-    { "source": "/import", "destination": "/index.html" },
-    { "source": "/check", "destination": "/check.html" },
-    { "source": "/check/:id", "destination": "/result-check.html?id=:id" }
+    {
+      "source": "/",
+      "destination": "/check.html"
+    },
+    {
+      "source": "/import",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/check",
+      "destination": "/check.html"
+    },
+    {
+      "source": "/check/:id",
+      "destination": "/result-check.html?id=:id"
+    },
+    {
+      "source": "/garage",
+      "destination": "/garage.html"
+    },
+    {
+      "source": "/garage/:id",
+      "destination": "/garage.html?id=:id"
+    }
   ]
 }
