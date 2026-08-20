@@ -176,6 +176,12 @@
  .mem-clear{border:1px solid var(--line-strong);border-radius:10px;background:var(--card);color:var(--muted);font-weight:600;font-size:13px;padding:8px 14px;cursor:pointer;font-family:inherit}
  .mem-clear:hover{color:var(--red);border-color:var(--red)}
  .mem-status{font-size:12.5px;color:var(--muted)}
+ .cab-tabs{display:flex;gap:2px;background:var(--surface-2);border-radius:22px;padding:3px;width:max-content;margin:0 0 16px}
+ .cab-tabs button{border:none;background:transparent;padding:8px 16px;border-radius:19px;font-family:inherit;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;transition:background .15s,color .15s}
+ .cab-tabs button:hover{color:var(--ink)}
+ .cab-tabs button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgba(20,22,25,.08)}
+ .acc-row{display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid var(--line);font-size:14px}
+ .acc-lbl{flex:0 0 90px;color:var(--muted);font-size:13px}
  .wrap{max-width:960px;margin:0 auto;padding:28px 20px 60px}
  h1{font-size:24px;font-weight:800;letter-spacing:-.3px;margin-bottom:18px}
  .card{background:var(--card);border:1px solid var(--line);border-radius:16px}
@@ -203,6 +209,7 @@
  /* ---------- reports ---------- */
  #reports{padding:6px 0}
  .kind-badge{font-size:10.5px;font-weight:700;letter-spacing:.3px;background:var(--brand-soft);color:var(--brand-ink);border-radius:12px;padding:1px 7px;vertical-align:1px}
+ .kind-badge.imp{background:var(--surface-2);color:var(--ink-2)}
  .report{display:flex;align-items:center;gap:14px;padding:16px 22px;cursor:pointer;position:relative;border-bottom:1px solid var(--line);transition:background .12s}
  .report:last-child{border-bottom:none}
  .report:hover{background:#F6F8F3}
@@ -295,15 +302,23 @@
 
  <!-- reports -->
  <div id="listBox" style="display:none">
- <h1>Мої прорахунки</h1>
+ <h1>Мій кабінет</h1>
+ <nav class="cab-tabs" id="cabTabs">
+  <button data-tab="reports" class="on" type="button">Звіти</button>
+  <button data-tab="memory" type="button">Памʼять</button>
+  <button data-tab="account" type="button">Акаунт</button>
+ </nav>
+ <div id="tab-reports">
  <div class="search-wrap" id="searchWrap">
  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
  <input type="text" id="searchInput" placeholder="Пошук: VIN, марка, модель або номер лота" spellcheck="false" autocomplete="off">
  <button class="search-clear" id="searchClear" title="Очистити">✕</button>
  </div>
  <div class="card" id="reports"><div class="empty">Завантаження…</div></div>
+ </div>
 
- <div class="card" id="memCard" style="display:none;margin-top:16px">
+ <div id="tab-memory" style="display:none">
+ <div class="card" id="memCard" style="display:none">
   <div class="mem-head">
    <b>Памʼять CalCar</b>
    <span class="mem-hint">Помічник запамʼятовує важливе з розмов: імʼя, бюджет, що шукаєш. Можеш виправити або стерти</span>
@@ -313,6 +328,17 @@
    <button class="mem-save" id="memSave">Зберегти</button>
    <button class="mem-clear" id="memClear">Стерти памʼять</button>
    <span class="mem-status" id="memStatus"></span>
+  </div>
+ </div>
+ </div>
+
+ <div id="tab-account" style="display:none">
+  <div class="card">
+   <div class="acc-row"><span class="acc-lbl">Пошта</span><b id="accEmail">–</b></div>
+   <div class="acc-row"><span class="acc-lbl">Вхід</span><span>Google</span></div>
+   <div class="acc-row" style="border-bottom:none;padding-bottom:16px">
+    <button class="mem-clear" id="accSignOut">Вийти з акаунта</button>
+   </div>
   </div>
  </div>
  </div>
@@ -395,6 +421,20 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  };
  }
 
+ /* ---- вкладки кабінету: Звіти / Памʼять / Акаунт, з підтримкою #хеша ---- */
+ function switchTab(name) {
+ if (!document.getElementById('tab-' + name)) name = 'reports';
+ document.querySelectorAll('#cabTabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === name));
+ ['reports', 'memory', 'account'].forEach(n => {
+ document.getElementById('tab-' + n).style.display = n === name ? '' : 'none';
+ });
+ history.replaceState(null, '', '#' + name);
+ }
+ document.getElementById('cabTabs').addEventListener('click', e => {
+ const b = e.target.closest('button');
+ if (b) switchTab(b.dataset.tab);
+ });
+
  async function showList() {
  document.getElementById('authBox').style.display = 'none';
  document.getElementById('listBox').style.display = '';
@@ -402,6 +442,13 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  so.style.display = 'inline-flex';
  so.onclick = async () => { await SB.auth.signOut(); location.reload(); };
  initMemory();
+ switchTab((location.hash || '').replace('#', '') || 'reports');
+ try {
+ const { data } = await SB.auth.getSession();
+ const email = data?.session?.user?.email;
+ if (email) document.getElementById('accEmail').textContent = email;
+ } catch (e) {}
+ document.getElementById('accSignOut').onclick = async () => { await SB.auth.signOut(); location.reload(); };
 
  const box = document.getElementById('reports');
  let { data: rows, error } = await SB.from('reports')
@@ -421,7 +468,7 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  <div class="report" data-id="${r.id}">
  <div>
  <div class="t"></div>
- <div class="d">${r.kind === 'check' ? '<span class="kind-badge">' + t('Перевірка') + '</span> · ' : ''}${new Date(r.created_at).toLocaleString(calcarLocale())}</div>
+ <div class="d">${r.kind === 'check' ? '<span class="kind-badge">' + t('Перевірка') + '</span>' : '<span class="kind-badge imp">' + t('Пригін') + '</span>'} · ${new Date(r.created_at).toLocaleString(calcarLocale())}</div>
  </div>
  <span class="go">→</span>
  <button class="kebab" title="Дії">⋯</button>
