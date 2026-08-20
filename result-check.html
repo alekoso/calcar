@@ -435,7 +435,11 @@
   .lightbox img{max-width:94vw;max-height:92vh;border-radius:10px}
 
   /* ---------- чат по цьому авто (як в Import) ---------- */
+  body{transition:padding-right .25s ease}
+  .wrap{transition:margin .25s ease}
+  /* чат зайняв праву частину: звіт іде вліво, а не пере-центрується */
   body.chat-docked{padding-right:420px}
+  body.chat-docked .wrap{margin-left:0;margin-right:auto}
   .chat-overlay{position:fixed;inset:0;background:rgba(15,25,40,.28);z-index:125;opacity:0;pointer-events:none;transition:opacity .22s}
   .chat-overlay.open{opacity:1;pointer-events:auto}
   .chat-panel{

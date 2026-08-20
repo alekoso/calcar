@@ -470,7 +470,10 @@
 
   /* ---------- чат-агент по авто ---------- */
   body{transition:padding-right .25s ease}
+  .wrap{transition:margin .25s ease}
+  /* чат зайняв праву частину: звіт іде вліво, а не пере-центрується */
   body.chat-docked{padding-right:420px}
+  body.chat-docked .wrap{margin-left:0;margin-right:auto}
   /* ---- report toolbar: дії конкретного звіту (спільний компонент) ---- */
   
   .btn-chat{
