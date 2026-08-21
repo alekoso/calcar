@@ -650,8 +650,8 @@
           Кабінет
         </a>
       <div class="acc-menu">
+        <a href="/garage">Гараж</a>
         <a href="/cabinet.html#reports">Звіти</a>
-      <a href="/garage">Гараж</a>
         <a href="/cabinet.html#memory">Памʼять помічника</a>
         <a href="/cabinet.html#account">Налаштування акаунта</a>
       </div>
@@ -1947,7 +1947,7 @@ document.getElementById('printMeta').textContent =
   function addTyping() {
     const d = document.createElement('div');
     d.className = 'chat-msg typing';
-    d.innerHTML = t('Дивлюсь звіт') + '<i>…</i>';
+    d.innerHTML = '<i></i><i style="animation-delay:.2s"></i><i style="animation-delay:.4s"></i>';
     msgsEl.appendChild(d);
     const canvas = document.querySelector('.chat-canvas');
     (canvas || msgsEl).scrollTop = (canvas || msgsEl).scrollHeight;

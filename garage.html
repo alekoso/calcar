@@ -217,9 +217,14 @@ h1{font-size:27px;letter-spacing:-.01em}
 /* сторінка авто */
 .back{display:inline-flex;align-items:center;gap:6px;color:var(--muted);text-decoration:none;font-size:13.5px;font-weight:600;margin-bottom:14px}
 .back:hover{color:var(--ink)}
-.gal{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;margin-bottom:16px}
+.back-row{margin-bottom:14px}
+.gal{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:14px}
+.gal a{flex:0 0 auto;height:120px;border-radius:10px;overflow:hidden;background:var(--surface-2)}
+.gal-empty{margin-bottom:14px}
+.title-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+.title-row h1{font-size:27px;font-weight:800;letter-spacing:-.01em;margin:0}
 .gal a{flex:none;width:118px;height:82px;border-radius:9px;overflow:hidden;background:var(--surface-2);border:1px solid var(--line)}
-.gal img{width:100%;height:100%;object-fit:cover;display:block}
+.gal img{height:100%;width:auto;min-width:96px;object-fit:cover;display:block}
 .badge{display:inline-flex;align-items:center;gap:5px;background:var(--brand-soft);color:var(--brand-ink);border-radius:8px;padding:3px 9px;font-size:12px;font-weight:800;vertical-align:3px;margin-left:10px}
 .specs{display:flex;flex-wrap:wrap;gap:10px 28px;margin:14px 0 6px}
 .spec b{display:block;font-size:14.5px}
@@ -268,7 +273,16 @@ h1{font-size:27px;letter-spacing:-.01em}
 .filepick{border:1.5px dashed var(--line-strong);border-radius:10px;padding:14px;text-align:center;font-size:13px;color:var(--muted);cursor:pointer}
 .filepick:hover{border-color:var(--brand-active);color:var(--ink)}
 .fprev{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
-.fprev span{font-size:11.5px;background:var(--surface-2);border-radius:7px;padding:4px 8px;color:var(--ink-2)}
+.pv{position:relative;width:64px;height:64px;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:var(--surface-2);flex:0 0 auto}
+.pv img{width:100%;height:100%;object-fit:cover;display:block}
+.pv.doc{width:auto;max-width:190px;height:36px;display:inline-flex;align-items:center;gap:7px;padding:0 30px 0 10px;font-size:11.5px;color:var(--ink-2);overflow:hidden}
+.pv.doc i{font-style:normal;font-size:10px;font-weight:800;background:var(--ink);color:#fff;border-radius:4px;padding:2px 4px}
+.pv.doc span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pv .rm{position:absolute;top:3px;right:3px;width:18px;height:18px;border:none;border-radius:50%;background:rgba(20,22,25,.62);color:#fff;font-size:10px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+.pv .rm:hover{background:rgba(20,22,25,.85)}
+.addmore{font-size:12.5px;font-weight:700;color:var(--ink);background:none;border:1px dashed var(--line-strong);border-radius:10px;padding:0 12px;height:36px;cursor:pointer;align-self:center}
+.fix-link{display:block;margin-top:7px;font-size:12px;color:var(--muted);text-decoration:underline;cursor:pointer}
+.opt{font-weight:400;color:var(--faint);font-size:11px}
 .check-cta{padding:20px;display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap}
 .check-cta p{font-size:13.5px;color:var(--muted);margin-top:4px;max-width:520px}
 .recalls{padding:14px 18px;font-size:13.5px}
@@ -303,8 +317,8 @@ h1{font-size:27px;letter-spacing:-.01em}
  Кабінет
  </a>
  <div class="acc-menu">
+ <a href="/garage" style="background:var(--brand-soft)">Гараж</a>
  <a href="/cabinet.html#reports">Звіти</a>
-      <a href="/garage" class="on" style="background:var(--brand-soft);color:var(--brand-ink)">Гараж</a>
  <a href="/cabinet.html#memory">Памʼять помічника</a>
  <a href="/cabinet.html#account">Налаштування акаунта</a>
  </div>
@@ -343,10 +357,16 @@ h1{font-size:27px;letter-spacing:-.01em}
   </div>
 
   <div id="carView" style="display:none">
-    <a class="back" href="/garage">&#8592; Гараж</a>
+    <div class="back-row"><a class="back" href="/garage">&#8592; Гараж</a></div>
     <div class="gal" id="gal" style="display:none"></div>
-    <h1 style="display:inline">​</h1><span id="carTitle" style="font-size:27px;font-weight:800;letter-spacing:-.01em"></span><span class="badge">&#9733; Моя машина</span>
-    <button class="btn-ghost btn" id="btnEditCar" style="height:36px;padding:0 14px;font-size:12.5px;float:right">Редагувати авто</button>
+    <div class="gal-empty" id="galEmpty" style="display:none">
+      <button class="addlink" id="btnAddPhotos">+ Додати фотографії</button>
+    </div>
+    <div class="title-row">
+      <h1 id="carTitle"></h1>
+      <span class="badge">&#9733; Моя машина</span>
+      <button class="btn-ghost btn" id="btnEditCar" style="height:36px;padding:0 14px;font-size:12.5px;margin-left:auto">Редагувати авто</button>
+    </div>
     <div class="specs" id="specs"></div>
     <div class="vinline" id="vinLine"></div>
 
@@ -379,11 +399,6 @@ h1{font-size:27px;letter-spacing:-.01em}
         </div>
         <a class="btn" id="btnOpenReport" href="#">Відкрити повний звіт</a>
       </div>
-      <div class="card recalls" id="recallsBox" style="display:none">
-        <b id="recallsT">Відкликання виробника (NHTSA)</b>
-        <ul id="recallsList"></ul>
-        <div class="hint" style="margin-top:8px">Дані NHTSA за маркою, моделлю і роком. Уточни у дилера за VIN, чи закриті кампанії саме на цьому авто.</div>
-      </div>
     </div>
   </div>
 </div>
@@ -391,47 +406,56 @@ h1{font-size:27px;letter-spacing:-.01em}
 <div class="overlay" id="mAdd">
   <div class="modal">
     <div class="m-head"><b id="mAddTitle">Додати авто</b><button class="m-x" data-close>&#10005;</button></div>
-    <div class="f">
+
+    <div id="vinField" class="f">
       <label>VIN</label>
       <input id="fVin" maxlength="17" placeholder="17 символів" autocomplete="off" spellcheck="false" style="text-transform:uppercase;font-family:ui-monospace,Menlo,monospace">
       <div class="hint" id="vinHint" style="margin-top:5px"></div>
     </div>
-    <div class="knows" id="knows"><b>CalCar вже знає це авто</b><span id="knowsTxt"></span></div>
-    <div class="f2">
-      <div class="f"><label>Марка</label><input id="fMake"></div>
-      <div class="f"><label>Модель</label><input id="fModel"></div>
+    <div class="f"><label>Поточний пробіг, км</label><input id="fMileage" inputmode="numeric"></div>
+    <button class="btn" id="btnFind" style="width:100%;margin-bottom:14px">Знайти авто</button>
+
+    <div class="knows" id="knows" style="display:none">
+      <b id="knowsTitle">CalCar визначив авто</b><span id="knowsTxt"></span>
+      <a href="#" id="fixManual" class="fix-link">Дані визначені неправильно? Змінити вручну</a>
     </div>
-    <div class="f2">
-      <div class="f"><label>Рік</label><input id="fYear" inputmode="numeric" maxlength="4"></div>
-      <div class="f"><label>Поточний пробіг, км</label><input id="fMileage" inputmode="numeric"></div>
+
+    <div id="manualFields" style="display:none">
+      <div class="f2">
+        <div class="f"><label>Марка</label><input id="fMake"></div>
+        <div class="f"><label>Модель</label><input id="fModel"></div>
+      </div>
+      <div class="f2">
+        <div class="f"><label>Рік</label><input id="fYear" inputmode="numeric" maxlength="4"></div>
+        <div class="f"><label>Двигун</label><input id="fEngine" placeholder="2.0 бензин"></div>
+      </div>
+      <div class="f2">
+        <div class="f"><label>Коробка</label><input id="fTrans" placeholder="Автомат"></div>
+        <div class="f"><label>Привід</label><input id="fDrive"></div>
+      </div>
     </div>
-    <div class="f2">
-      <div class="f"><label>Двигун</label><input id="fEngine" placeholder="2.0 бензин"></div>
-      <div class="f"><label>Коробка</label><input id="fTrans" placeholder="Автомат"></div>
+
+    <div id="stepDetails" style="display:none">
+      <div class="f2">
+        <div class="f"><label>Держномер <span class="opt">(необовʼязково)</span></label><input id="fPlate" style="text-transform:uppercase"></div>
+        <div class="f"><label>Дата покупки <span class="opt">(необовʼязково)</span></label><input id="fPurchase" type="date"></div>
+      </div>
+      <div class="f">
+        <label>Фотографії авто</label>
+        <div class="filepick" id="carPick">Натисни, щоб додати фото (до 10)</div>
+        <input id="fCarPhotos" type="file" accept="image/*" multiple style="display:none">
+        <div class="fprev" id="carPickPrev"></div>
+      </div>
     </div>
-    <div class="f2">
-      <div class="f"><label>Привід</label><input id="fDrive"></div>
-      <div class="f"><label>Держномер</label><input id="fPlate" style="text-transform:uppercase"></div>
-    </div>
-    <div class="f2">
-      <div class="f"><label>Країна</label><input id="fCountry" value="Україна"></div>
-      <div class="f"><label>Місто</label><input id="fCity"></div>
-    </div>
-    <div class="f"><label>Дата покупки</label><input id="fPurchase" type="date"></div>
-    <div class="f">
-      <label>Фотографії авто</label>
-      <div class="filepick" id="carPick">Натисни, щоб додати фото (до 10)</div>
-      <input id="fCarPhotos" type="file" accept="image/*" multiple style="display:none">
-      <div class="fprev" id="carPickPrev"></div>
-    </div>
+
     <div class="err" id="addErr" style="display:none;margin-bottom:10px"></div>
-    <button class="btn" id="btnSaveCar" style="width:100%">Зберегти авто</button>
+    <button class="btn" id="btnSaveCar" style="width:100%;display:none">Зберегти авто</button>
   </div>
 </div>
 
 <div class="overlay" id="mEntry">
   <div class="modal">
-    <div class="m-head"><b>Додати запис</b><button class="m-x" data-close>&#10005;</button></div>
+    <div class="m-head"><b id="mEntryTitle">Додати запис</b><button class="m-x" data-close>&#10005;</button></div>
     <div class="f">
       <label>Тип події</label>
       <select id="eType">
@@ -449,6 +473,7 @@ h1{font-size:27px;letter-spacing:-.01em}
     <div class="f"><label>Вартість, грн (необовʼязково)</label><input id="eCost" inputmode="numeric"></div>
     <div class="f">
       <label>Документи і фото</label>
+      <div class="fprev" id="eExisting" style="margin:0 0 8px"></div>
       <div class="filepick" id="ePick">Чек, замовлення-наряд або фото (до 6)</div>
       <input id="eFiles" type="file" accept="image/*,application/pdf" multiple style="display:none">
       <div class="fprev" id="ePickPrev"></div>
@@ -467,7 +492,8 @@ h1{font-size:27px;letter-spacing:-.01em}
   function $(id) { return document.getElementById(id); }
   function show(id, on) { var el = $(id); if (el) el.style.display = on ? '' : 'none'; }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-  function fmtKm(n) { return n == null || n === '' ? '' : Number(n).toLocaleString('uk-UA') + ' км'; }
+  var T = window.t || function (x) { return x; };
+  function fmtKm(n) { return n == null || n === '' ? '' : Number(n).toLocaleString('uk-UA') + ' ' + T('км'); }
   function fmtDate(d) {
     if (!d) return '';
     try { return new Date(d + (String(d).length === 10 ? 'T12:00:00' : '')).toLocaleDateString((window.calcarLocale ? window.calcarLocale() : 'uk-UA'), { day: 'numeric', month: 'long', year: 'numeric' }); }
@@ -513,16 +539,18 @@ h1{font-size:27px;letter-spacing:-.01em}
       img.src = url;
     });
   }
+  var lastUploadError = null;
   async function uploadFiles(files, folder) {
-    var out = [];
+    var out = []; lastUploadError = null;
     for (var i = 0; i < files.length; i++) {
       var f = files[i];
-      if (f.size > 10 * 1024 * 1024) continue;
+      if (f.size > 10 * 1024 * 1024) { lastUploadError = T('файл завеликий (понад 10 МБ)'); continue; }
       var blob = await compress(f);
       var ext = /^image\//.test(f.type) ? 'jpg' : (f.name.split('.').pop() || 'bin').toLowerCase().slice(0, 5);
       var path = UID + '/' + folder + '/' + Date.now() + '_' + i + '.' + ext;
       var up = await SB.storage.from(BUCKET).upload(path, blob, { contentType: /^image\//.test(f.type) ? 'image/jpeg' : f.type });
-      if (!up.error) out.push({ path: path, name: f.name, mime: /^image\//.test(f.type) ? 'image/jpeg' : f.type, size: blob.size || f.size });
+      if (up.error) lastUploadError = up.error.message || String(up.error);
+      else out.push({ path: path, name: f.name, mime: /^image\//.test(f.type) ? 'image/jpeg' : f.type, size: blob.size || f.size });
     }
     return out;
   }
@@ -557,8 +585,8 @@ h1{font-size:27px;letter-spacing:-.01em}
         '<div class="car-meta">' + fmtKm(c.current_mileage) + (c.city ? ' · ' + esc(c.city) : '') + '</div></div>' +
         '<div class="car-side">' + (last
           ? '<div class="car-last">Останній запис<b>' + esc(last.type) + ' · ' + fmtDate(last.event_date) + '</b></div>'
-          : '<div class="car-last">Записів поки немає</div>') +
-        '<div class="car-counts">' + es.length + ' записів · ' + docs + ' документів</div></div>' +
+          : '<div class="car-last">' + T('Записів поки немає') + '</div>') +
+        '<div class="car-counts">' + es.length + ' ' + T('записів') + ' · ' + docs + ' ' + T('документів') + '</div></div>' +
         '<div class="chev">&#8250;</div>';
       el.onclick = function () { location.href = '/garage/' + c.id; };
       box.appendChild(el);
@@ -570,29 +598,27 @@ h1{font-size:27px;letter-spacing:-.01em}
     car = cars.find(function (c) { return c.id === id; });
     if (!car) { location.href = '/garage'; return; }
     show('listView', false); show('carView', true);
-    $('carTitle').textContent = ((car.make || '') + ' ' + (car.model || '') + ' ' + (car.year || '')).trim() || 'Авто';
-    document.title = ($('carTitle').textContent) + ' · Гараж CalCar';
+    $('carTitle').textContent = ((car.make || '') + ' ' + (car.model || '') + ' ' + (car.year || '')).trim() || T('Авто');
+    document.title = ($('carTitle').textContent) + ' · ' + T('Гараж CalCar');
 
     var sp = [];
-    if (car.current_mileage != null) sp.push([fmtKm(car.current_mileage), 'Пробіг']);
-    if (car.engine) sp.push([car.engine, 'Двигун']);
-    if (car.transmission) sp.push([car.transmission, 'Коробка']);
-    if (car.drive) sp.push([car.drive, 'Привід']);
-    if (car.country) sp.push([car.country, 'Країна']);
+    if (car.current_mileage != null) sp.push([fmtKm(car.current_mileage), T('Пробіг')]);
+    if (car.engine) sp.push([car.engine, T('Двигун')]);
+    if (car.transmission) sp.push([car.transmission, T('Коробка')]);
+    if (car.drive) sp.push([car.drive, T('Привід')]);
     $('specs').innerHTML = sp.map(function (p) { return '<div class="spec"><b>' + esc(p[0]) + '</b><span>' + esc(p[1]) + '</span></div>'; }).join('');
-    $('vinLine').innerHTML = 'VIN: ' + esc(car.vin) + (car.plate ? ' &nbsp;·&nbsp; Номер: ' + esc(car.plate) : '');
+    $('vinLine').innerHTML = 'VIN: ' + esc(car.vin) + (car.plate ? ' &nbsp;·&nbsp; ' + T('Номер:') + ' ' + esc(car.plate) : '');
 
     var ph = (car.photos || []).map(function (p) { return p.path; });
     if (ph.length) {
       var urls = await signed(ph);
       $('gal').innerHTML = urls.map(function (u) { return u ? '<a href="' + u + '" target="_blank" rel="noopener"><img alt="" src="' + u + '"></a>' : ''; }).join('');
-      show('gal', true);
-    } else show('gal', false);
+      show('gal', true); show('galEmpty', false);
+    } else { show('gal', false); show('galEmpty', true); }
 
     await loadEntries();
     renderEntries();
     checkBlock();
-    recalls();
   }
 
   async function loadEntries() {
@@ -625,11 +651,13 @@ h1{font-size:27px;letter-spacing:-.01em}
         ((e.cost != null && e.cost !== '') || (e.files || []).length
           ? '<div class="e-meta">' + (e.cost != null && e.cost !== '' ? Number(e.cost).toLocaleString('uk-UA') + ' грн' : '') +
             ((e.cost != null && e.cost !== '') && (e.files || []).length ? ' · ' : '') +
-            ((e.files || []).length ? (e.files || []).length + ' документів' : '') + '</div>' : '') +
+            ((e.files || []).length ? (e.files || []).length + ' ' + T('документів') : '') + '</div>' : '') +
         (files ? '<div class="e-files">' + files + '</div>' : '') +
-        '<div class="e-src">Додано власником</div></div>' +
+        '<div class="e-src">' + T('Додано власником') + '</div></div>' +
         '<button class="kebab" data-k="' + e.id + '">&#8942;</button>' +
-        '<div class="k-menu" data-m="' + e.id + '"><button data-del="' + e.id + '">Видалити запис</button></div>';
+        '<div class="k-menu" data-m="' + e.id + '">' +
+          '<button data-edit="' + e.id + '">' + T('Редагувати') + '</button>' +
+          '<button data-del="' + e.id + '">' + T('Видалити запис') + '</button></div>';
       box.appendChild(el);
     });
   }
@@ -661,125 +689,205 @@ h1{font-size:27px;letter-spacing:-.01em}
     }
   }
 
-  /* ---------- відкликання NHTSA (миттєва цінність) ---------- */
-  async function recalls() {
-    show('recallsBox', false);
-    if (!car.make || !car.model || !car.year) return;
-    try {
-      var u = 'https://api.nhtsa.gov/recalls/recallsByVehicle?make=' + encodeURIComponent(car.make) +
-        '&model=' + encodeURIComponent(car.model) + '&modelYear=' + encodeURIComponent(car.year);
-      var r = await fetch(u); var j = await r.json();
-      var list = (j && j.results) || [];
-      if (!list.length) return;
-      $('recallsT').textContent = 'Відкликання виробника (NHTSA): ' + list.length;
-      $('recallsList').innerHTML = list.slice(0, 3).map(function (x) {
-        return '<li>' + esc((x.Component || '').split(':').slice(-1)[0] || x.Component || '') +
-          (x.ReportReceivedDate ? ' · ' + esc(String(x.ReportReceivedDate).slice(0, 10)) : '') + '</li>';
-      }).join('');
-      show('recallsBox', true);
-    } catch (e) {}
-  }
-
   /* ---------- модалка авто ---------- */
   var carFiles = [];
+  var vinData = null;
+  function vinSummary(d) {
+    return [d.make, d.model, d.year].filter(Boolean).join(' ') +
+      ([d.engine, d.transmission, d.drive].filter(Boolean).length
+        ? ' · ' + [d.engine, d.transmission, d.drive].filter(Boolean).join(' · ') : '');
+  }
   function openAdd(editing) {
     editCarId = editing ? car.id : null;
-    $('mAddTitle').textContent = editing ? 'Редагувати авто' : 'Додати авто';
-    ['fVin', 'fMake', 'fModel', 'fYear', 'fMileage', 'fEngine', 'fTrans', 'fDrive', 'fPlate', 'fCity', 'fPurchase'].forEach(function (id) { $(id).value = ''; });
-    $('fCountry').value = 'Україна';
+    vinData = null;
+    $('mAddTitle').textContent = editing ? T('Редагувати авто') : T('Додати авто');
+    ['fVin', 'fMake', 'fModel', 'fYear', 'fMileage', 'fEngine', 'fTrans', 'fDrive', 'fPlate', 'fPurchase'].forEach(function (id) { $(id).value = ''; });
     $('vinHint').textContent = ''; $('addErr').style.display = 'none';
-    $('knows').style.display = 'none'; $('carPickPrev').innerHTML = ''; carFiles = [];
+    $('carPickPrev').innerHTML = ''; carFiles.length = 0;
+    show('manualFields', false);
+    lastDecoded = '';
     if (editing) {
-      $('fVin').value = car.vin || ''; $('fMake').value = car.make || ''; $('fModel').value = car.model || '';
-      $('fYear').value = car.year || ''; $('fMileage').value = car.current_mileage != null ? car.current_mileage : '';
-      $('fEngine').value = car.engine || ''; $('fTrans').value = car.transmission || '';
-      $('fDrive').value = car.drive || ''; $('fPlate').value = car.plate || '';
-      $('fCountry').value = car.country || ''; $('fCity').value = car.city || '';
+      /* редагування: пробіг, номер, дата, фото. VIN-дані окремим read-only блоком */
+      show('vinField', false); show('btnFind', false);
+      $('fMileage').value = car.current_mileage != null ? car.current_mileage : '';
+      $('fPlate').value = car.plate || '';
       $('fPurchase').value = car.purchase_date || '';
+      $('knowsTitle').textContent = T('Дані по VIN');
+      $('knowsTxt').textContent = vinSummary({ make: car.make, model: car.model, year: car.year, engine: car.engine, transmission: car.transmission, drive: car.drive }) + '\nVIN ' + (car.vin || '');
+      show('knows', true);
+      show('stepDetails', true);
+      $('btnSaveCar').textContent = T('Зберегти зміни');
+      show('btnSaveCar', true);
+    } else {
+      /* додавання: крок 1 = VIN + пробіг + Знайти авто */
+      show('vinField', true); show('btnFind', true);
+      $('knowsTitle').textContent = T('CalCar визначив авто');
+      show('knows', false);
+      show('stepDetails', false);
+      $('btnSaveCar').textContent = T('Зберегти авто');
+      show('btnSaveCar', false);
     }
     $('mAdd').classList.add('open');
     if (!editing) setTimeout(function () { $('fVin').focus(); }, 60);
   }
+  /* дані з ручних полів мають пріоритет, коли блок відкритий */
+  function manualOpen() { return $('manualFields').style.display !== 'none'; }
+  function collectVehicleData() {
+    if (manualOpen()) return {
+      make: $('fMake').value.trim() || null, model: $('fModel').value.trim() || null,
+      year: parseInt($('fYear').value, 10) || null,
+      engine: $('fEngine').value.trim() || null, transmission: $('fTrans').value.trim() || null,
+      drive: $('fDrive').value.trim() || null,
+    };
+    return vinData;
+  }
 
   var decodeTimer = null, lastDecoded = '';
-  async function decodeVin() {
+  function stepTwo() { show('stepDetails', true); show('btnSaveCar', true); }
+  async function decodeVin(force) {
     var vin = $('fVin').value.trim().toUpperCase();
     $('fVin').value = vin;
-    if (vin.length !== 17 || vin === lastDecoded) return;
+    if (vin.length !== 17) { if (force) { $('vinHint').textContent = T('VIN має містити 17 символів (без I, O, Q)'); } return; }
+    if (vin === lastDecoded && !force) return;
     lastDecoded = vin;
-    $('vinHint').textContent = 'Визначаю авто за VIN…';
+    $('vinHint').textContent = T('Визначаю авто за VIN…');
     try {
       var r = await fetch('https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/' + vin + '?format=json');
       var j = await r.json(); var v = j && j.Results && j.Results[0];
-      if (!v || !v.Make) { $('vinHint').textContent = 'Не вдалося визначити автоматично, впиши дані вручну'; return; }
-      if (!$('fMake').value) $('fMake').value = cap(v.Make);
-      if (!$('fModel').value) $('fModel').value = v.Model || '';
-      if (!$('fYear').value) $('fYear').value = v.ModelYear || '';
-      if (!$('fEngine').value) {
-        var disp = v.DisplacementL ? (Math.round(parseFloat(v.DisplacementL) * 10) / 10) + ' л' : '';
-        var fuel = ({ 'Gasoline': 'бензин', 'Diesel': 'дизель', 'Electric': 'електро' })[v.FuelTypePrimary] || (v.FuelTypePrimary || '').toLowerCase();
-        $('fEngine').value = (disp + ' ' + fuel).trim();
-      }
-      if (!$('fTrans').value && v.TransmissionStyle) $('fTrans').value = /auto|cvt/i.test(v.TransmissionStyle) ? 'Автомат' : (/manual/i.test(v.TransmissionStyle) ? 'Механіка' : v.TransmissionStyle);
-      if (!$('fDrive').value && v.DriveType) $('fDrive').value = /4|all|awd/i.test(v.DriveType) ? 'Повний' : (/front|fwd/i.test(v.DriveType) ? 'Передній' : (/rear|rwd/i.test(v.DriveType) ? 'Задній' : v.DriveType));
+      if (!v || !v.Make) throw new Error('empty');
+      var disp = v.DisplacementL ? (Math.round(parseFloat(v.DisplacementL) * 10) / 10) + ' ' + T('л') : '';
+      var fuel = ({ 'Gasoline': T('бензин'), 'Diesel': T('дизель'), 'Electric': T('електро') })[v.FuelTypePrimary] || (v.FuelTypePrimary || '').toLowerCase();
+      vinData = {
+        make: cap(v.Make), model: v.Model || null,
+        year: parseInt(v.ModelYear, 10) || null,
+        engine: (disp + ' ' + fuel).trim() || null,
+        transmission: v.TransmissionStyle ? (/auto|cvt/i.test(v.TransmissionStyle) ? T('Автомат') : (/manual/i.test(v.TransmissionStyle) ? T('Механіка') : v.TransmissionStyle)) : null,
+        drive: v.DriveType ? (/4|all|awd/i.test(v.DriveType) ? T('Повний') : (/front|fwd/i.test(v.DriveType) ? T('Передній') : (/rear|rwd/i.test(v.DriveType) ? T('Задній') : v.DriveType))) : null,
+      };
       $('vinHint').textContent = '';
-      $('knowsTxt').textContent = [cap(v.Make), v.Model, v.ModelYear].filter(Boolean).join(' ') +
-        (v.Trim ? ' · ' + v.Trim : '') + (v.PlantCountry ? ' · завод: ' + v.PlantCountry : '');
-      $('knows').style.display = 'block';
-    } catch (e) { $('vinHint').textContent = 'Не вдалося визначити автоматично, впиши дані вручну'; }
+      $('knowsTxt').textContent = vinSummary(vinData);
+      show('knows', true);
+      show('manualFields', false);
+      stepTwo();
+    } catch (e) {
+      vinData = null;
+      $('vinHint').textContent = T('Не вдалося визначити автоматично, запов дані вручну');
+      show('knows', false);
+      show('manualFields', true);
+      stepTwo();
+    }
   }
   function cap(s) { s = String(s || '').toLowerCase(); return s.replace(/(^|\s|-)\S/g, function (c) { return c.toUpperCase(); }); }
 
   async function saveCar() {
-    var vin = $('fVin').value.trim().toUpperCase();
-    var err = $('addErr');
-    if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(vin)) { err.textContent = 'VIN має містити 17 символів (без I, O, Q)'; err.style.display = 'block'; return; }
-    if (!editCarId && cars.some(function (c) { return c.vin === vin; })) { err.textContent = 'Це авто вже є у твоєму гаражі'; err.style.display = 'block'; return; }
+    var err = $('addErr'); err.style.display = 'none';
     var mil = $('fMileage').value.replace(/\D/g, '');
-    var row = {
-      vin: vin,
-      make: $('fMake').value.trim() || null, model: $('fModel').value.trim() || null,
-      year: parseInt($('fYear').value, 10) || null,
-      current_mileage: mil ? parseInt(mil, 10) : null,
-      engine: $('fEngine').value.trim() || null, transmission: $('fTrans').value.trim() || null,
-      drive: $('fDrive').value.trim() || null, plate: $('fPlate').value.trim().toUpperCase() || null,
-      country: $('fCountry').value.trim() || null, city: $('fCity').value.trim() || null,
-      purchase_date: $('fPurchase').value || null,
-    };
-    var b = $('btnSaveCar'); b.disabled = true; b.textContent = 'Зберігаю…';
+    var row, vin = null;
+    if (editCarId) {
+      row = {
+        current_mileage: mil ? parseInt(mil, 10) : null,
+        plate: $('fPlate').value.trim().toUpperCase() || null,
+        purchase_date: $('fPurchase').value || null,
+      };
+      if (manualOpen()) Object.assign(row, collectVehicleData());
+    } else {
+      vin = $('fVin').value.trim().toUpperCase();
+      if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(vin)) { err.textContent = T('VIN має містити 17 символів (без I, O, Q)'); err.style.display = 'block'; return; }
+      if (cars.some(function (c) { return c.vin === vin; })) { err.textContent = T('Це авто вже є у твоєму гаражі'); err.style.display = 'block'; return; }
+      var vd = collectVehicleData();
+      if (!vd || (!vd.make && !vd.model)) { err.textContent = T('Спочатку натисни «Знайти авто» або запов дані вручну'); err.style.display = 'block'; return; }
+      row = {
+        vin: vin, user_id: UID,
+        current_mileage: mil ? parseInt(mil, 10) : null,
+        plate: $('fPlate').value.trim().toUpperCase() || null,
+        purchase_date: $('fPurchase').value || null,
+        make: vd.make || null, model: vd.model || null, year: vd.year || null,
+        engine: vd.engine || null, transmission: vd.transmission || null, drive: vd.drive || null,
+      };
+    }
+    var b = $('btnSaveCar'); b.disabled = true; b.textContent = T('Зберігаю…');
     try {
       var id = editCarId;
       if (editCarId) {
         var u = await SB.from('garage_vehicles').update(row).eq('id', editCarId);
         if (u.error) throw u.error;
       } else {
-        row.user_id = UID;
         var ins = await SB.from('garage_vehicles').insert(row).select('id').single();
         if (ins.error) throw ins.error;
         id = ins.data.id;
       }
       if (carFiles.length) {
         var uploaded = await uploadFiles(carFiles.slice(0, 10), id);
+        /* редагування не сміє затерти наявні фото порожнім масивом */
         var prev = (editCarId && car && car.photos) || [];
-        await SB.from('garage_vehicles').update({ photos: prev.concat(uploaded) }).eq('id', id);
+        if (uploaded.length) {
+          var pu = await SB.from('garage_vehicles').update({ photos: prev.concat(uploaded) }).eq('id', id);
+          if (pu.error) throw pu.error;
+        }
+        if (lastUploadError) {
+          err.textContent = T('Частину фото не вдалося завантажити: ') + lastUploadError; err.style.display = 'block';
+          b.disabled = false; b.textContent = editCarId ? T('Зберегти зміни') : T('Зберегти авто');
+          return; /* людина бачить причину, збереження даних уже відбулося */
+        }
       }
       await loadCars();
       $('mAdd').classList.remove('open');
       location.href = '/garage/' + id;
     } catch (e) {
-      err.textContent = 'Не вдалося зберегти: ' + (e.message || e); err.style.display = 'block';
+      err.textContent = T('Не вдалося зберегти: ') + (e.message || e); err.style.display = 'block';
     }
-    b.disabled = false; b.textContent = 'Зберегти авто';
+    b.disabled = false; b.textContent = editCarId ? T('Зберегти зміни') : T('Зберегти авто');
   }
 
-  /* ---------- модалка запису ---------- */
-  var eFilesArr = [], mileConfirmed = false;
-  function openEntry() {
+  /* ---------- модалка запису ---------- */  /* ---------- модалка запису ---------- */
+  var eFilesArr = [], mileConfirmed = false, editEntryId = null, keepFiles = [];
+  function renderExisting() {
+    var box = $('eExisting'); box.innerHTML = '';
+    keepFiles.forEach(function (f, i) {
+      var pv = document.createElement('span');
+      var isImg = /image/.test(f.mime || '');
+      pv.className = 'pv' + (isImg ? '' : ' doc');
+      if (isImg && signedCache[f.path]) {
+        var img = document.createElement('img'); img.src = signedCache[f.path]; pv.appendChild(img);
+      } else if (isImg) {
+        pv.classList.add('doc');
+        var ic0 = document.createElement('i'); ic0.textContent = 'IMG';
+        var nm0 = document.createElement('span'); nm0.textContent = f.name || 'фото';
+        pv.append(ic0, nm0);
+      } else {
+        var ic = document.createElement('i'); ic.textContent = 'PDF';
+        var nm = document.createElement('span'); nm.textContent = f.name || 'документ';
+        pv.append(ic, nm);
+      }
+      var rm = document.createElement('button');
+      rm.type = 'button'; rm.className = 'rm'; rm.textContent = '\u2715';
+      rm.onclick = function (ev) { ev.stopPropagation(); keepFiles.splice(i, 1); renderExisting(); };
+      pv.appendChild(rm);
+      box.appendChild(pv);
+    });
+  }
+  function openEntry(entry) {
+    editEntryId = entry ? entry.id : null;
+    $('mEntryTitle').textContent = editEntryId ? T('Редагувати запис') : T('Додати запис');
+    $('btnSaveEntry').textContent = editEntryId ? T('Зберегти зміни') : T('Зберегти запис');
     ['eMileage', 'eDesc', 'eCost'].forEach(function (id) { $(id).value = ''; });
     $('eType').selectedIndex = 0;
     $('eDate').value = new Date().toISOString().slice(0, 10);
     $('eErr').style.display = 'none'; $('eMileWarn').style.display = 'none';
-    $('ePickPrev').innerHTML = ''; eFilesArr = []; mileConfirmed = false;
+    $('ePickPrev').innerHTML = ''; eFilesArr.length = 0; keepFiles = []; $('eExisting').innerHTML = ''; mileConfirmed = false;
+    if (editEntryId) {
+      for (var i = 0; i < $('eType').options.length; i++) if ($('eType').options[i].value === entry.type) $('eType').selectedIndex = i;
+      $('eDate').value = entry.event_date || '';
+      $('eMileage').value = entry.mileage != null ? entry.mileage : '';
+      $('eDesc').value = entry.description || '';
+      $('eCost').value = entry.cost != null ? entry.cost : '';
+      keepFiles = (entry.files || []).slice();
+      renderExisting();
+    } else {
+      /* розумний пробіг: підставляємо останній відомий, людина виправить */
+      var known = latestMileage();
+      if (known != null) $('eMileage').value = known;
+    }
     $('mEntry').classList.add('open');
   }
   function latestMileage() {
@@ -801,20 +909,36 @@ h1{font-size:27px;letter-spacing:-.01em}
       mileConfirmed = true;
       return;
     }
-    var b = $('btnSaveEntry'); b.disabled = true; b.textContent = 'Зберігаю…';
+    var b = $('btnSaveEntry'); b.disabled = true; b.textContent = T('Зберігаю…');
     try {
-      var row = {
-        user_id: UID, vehicle_id: car.id,
+      var fields = {
         type: $('eType').value, event_date: date, mileage: mil,
         description: $('eDesc').value.trim() || null,
         cost: $('eCost').value.replace(/[^\d.]/g, '') || null,
-        files: [],
       };
-      var ins = await SB.from('garage_entries').insert(row).select('id').single();
-      if (ins.error) throw ins.error;
-      if (eFilesArr.length) {
-        var uploaded = await uploadFiles(eFilesArr.slice(0, 6), car.id + '/e' + ins.data.id);
-        if (uploaded.length) await SB.from('garage_entries').update({ files: uploaded }).eq('id', ins.data.id);
+      var entryId;
+      if (editEntryId) {
+        entryId = editEntryId;
+        /* created_at не чіпаємо: правляться лише дані запису */
+        var up0 = await SB.from('garage_entries').update(fields).eq('id', entryId);
+        if (up0.error) throw up0.error;
+      } else {
+        var row = Object.assign({ user_id: UID, vehicle_id: car.id, files: [] }, fields);
+        var ins = await SB.from('garage_entries').insert(row).select('id').single();
+        if (ins.error) throw ins.error;
+        entryId = ins.data.id;
+      }
+      var newUploaded = [];
+      if (eFilesArr.length) newUploaded = await uploadFiles(eFilesArr.slice(0, 6), car.id + '/e' + entryId);
+      if (editEntryId || newUploaded.length) {
+        var files = (editEntryId ? keepFiles : []).concat(newUploaded);
+        var uf = await SB.from('garage_entries').update({ files: files }).eq('id', entryId);
+        if (uf.error) throw uf.error;
+      }
+      if (lastUploadError) {
+        err.textContent = T('Частину файлів не вдалося завантажити: ') + lastUploadError; err.style.display = 'block';
+        b.disabled = false; b.textContent = editEntryId ? T('Зберегти зміни') : T('Зберегти запис');
+        return;
       }
       if (mil != null && (car.current_mileage == null || mil > car.current_mileage)) {
         await SB.from('garage_vehicles').update({ current_mileage: mil }).eq('id', car.id);
@@ -823,9 +947,9 @@ h1{font-size:27px;letter-spacing:-.01em}
       $('mEntry').classList.remove('open');
       await loadEntries(); renderEntries(); openCarSpecsRefresh();
     } catch (e) {
-      err.textContent = 'Не вдалося зберегти: ' + (e.message || e); err.style.display = 'block';
+      err.textContent = T('Не вдалося зберегти: ') + (e.message || e); err.style.display = 'block';
     }
-    b.disabled = false; b.textContent = 'Зберегти запис';
+    b.disabled = false; b.textContent = editEntryId ? T('Зберегти зміни') : T('Зберегти запис');
   }
   function openCarSpecsRefresh() {
     var sp = $('specs').querySelector('.spec b');
@@ -840,10 +964,18 @@ h1{font-size:27px;letter-spacing:-.01em}
     var k = t.closest('.kebab');
     document.querySelectorAll('.k-menu.open').forEach(function (m) { if (!k || m.getAttribute('data-m') !== k.getAttribute('data-k')) m.classList.remove('open'); });
     if (k) { ev.stopPropagation(); document.querySelector('.k-menu[data-m="' + k.getAttribute('data-k') + '"]').classList.toggle('open'); return; }
+    var edt = t.closest('[data-edit]');
+    if (edt) {
+      var eid = edt.getAttribute('data-edit');
+      var en = entries.find(function (x) { return x.id === eid; });
+      document.querySelectorAll('.k-menu.open').forEach(function (m) { m.classList.remove('open'); });
+      if (en) openEntry(en);
+      return;
+    }
     var del = t.closest('[data-del]');
     if (del) {
       var id = del.getAttribute('data-del');
-      if (confirm('Видалити цей запис? Прикріплені документи теж буде видалено.')) {
+      if (confirm(T('Видалити цей запис? Прикріплені документи теж буде видалено.'))) {
         var e = entries.find(function (x) { return x.id === id; });
         var paths = ((e && e.files) || []).map(function (f) { return f.path; });
         SB.from('garage_entries').delete().eq('id', id).then(function () {
@@ -853,22 +985,60 @@ h1{font-size:27px;letter-spacing:-.01em}
       }
     }
   });
-  function pickWire(pickId, inputId, prevId, store, accept) {
+  function renderPicks(store, prevId, inputId) {
+    var box = $(prevId); box.innerHTML = '';
+    store.forEach(function (f, i) {
+      var pv = document.createElement('span');
+      var isImg = /^image\//.test(f.type);
+      pv.className = 'pv' + (isImg ? '' : ' doc');
+      if (isImg) {
+        var img = document.createElement('img');
+        img.src = URL.createObjectURL(f);
+        img.onload = function () { URL.revokeObjectURL(img.src); };
+        pv.appendChild(img);
+      } else {
+        var ic = document.createElement('i'); ic.textContent = 'PDF';
+        var nm = document.createElement('span'); nm.textContent = f.name;
+        pv.append(ic, nm);
+      }
+      var rm = document.createElement('button');
+      rm.type = 'button'; rm.className = 'rm'; rm.textContent = '\u2715';
+      rm.onclick = function (ev) { ev.stopPropagation(); store.splice(i, 1); renderPicks(store, prevId, inputId); };
+      pv.appendChild(rm);
+      box.appendChild(pv);
+    });
+    if (store.length) {
+      var more = document.createElement('button');
+      more.type = 'button'; more.className = 'addmore'; more.textContent = '+ ' + T('Додати ще');
+      more.onclick = function () { $(inputId).click(); };
+      box.appendChild(more);
+    }
+  }
+  function pickWire(pickId, inputId, prevId, store) {
     $(pickId).onclick = function () { $(inputId).click(); };
     $(inputId).onchange = function () {
       var fs = Array.prototype.slice.call(this.files || []);
       fs.forEach(function (f) { store.push(f); });
-      $(prevId).innerHTML = store.map(function (f) { return '<span>' + esc(f.name.length > 26 ? f.name.slice(0, 24) + '…' : f.name) + '</span>'; }).join('');
+      renderPicks(store, prevId, inputId);
       this.value = '';
     };
   }
   pickWire('carPick', 'fCarPhotos', 'carPickPrev', carFiles);
   pickWire('ePick', 'eFiles', 'ePickPrev', eFilesArr);
+  $('btnFind').onclick = function () { decodeVin(true); };
+  $('fixManual').onclick = function (ev) {
+    ev.preventDefault();
+    var d = vinData || (editCarId ? { make: car.make, model: car.model, year: car.year, engine: car.engine, transmission: car.transmission, drive: car.drive } : {});
+    $('fMake').value = d.make || ''; $('fModel').value = d.model || ''; $('fYear').value = d.year || '';
+    $('fEngine').value = d.engine || ''; $('fTrans').value = d.transmission || ''; $('fDrive').value = d.drive || '';
+    show('manualFields', true);
+  };
+  $('btnAddPhotos').onclick = function () { openAdd(true); };
   $('btnAddCar').onclick = function () { openAdd(false); };
   $('btnAddCar2').onclick = function () { openAdd(false); };
   $('btnEditCar').onclick = function () { openAdd(true); };
-  $('btnAddEntry').onclick = openEntry;
-  $('btnAddEntry2').onclick = openEntry;
+  $('btnAddEntry').onclick = function () { openEntry(null); };
+  $('btnAddEntry2').onclick = function () { openEntry(null); };
   $('btnSaveCar').onclick = saveCar;
   $('btnSaveEntry').onclick = saveEntry;
   $('fVin').addEventListener('input', function () { clearTimeout(decodeTimer); decodeTimer = setTimeout(decodeVin, 450); });

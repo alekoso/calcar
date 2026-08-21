@@ -587,8 +587,8 @@
           Кабінет
         </a>
       <div class="acc-menu">
+        <a href="/garage">Гараж</a>
         <a href="/cabinet.html#reports">Звіти</a>
-      <a href="/garage">Гараж</a>
         <a href="/cabinet.html#memory">Памʼять помічника</a>
         <a href="/cabinet.html#account">Налаштування акаунта</a>
       </div>
@@ -1352,7 +1352,9 @@ async function sendChat(text){
     };
   }
   const typing = chatMsgEl('typing', '');
-  typing.innerHTML = '<i>●</i> <i style="animation-delay:.2s">●</i> <i style="animation-delay:.4s">●</i>';
+  /* крапки малює CSS (кружечки з фоном), символи всередині не потрібні:
+     разом вони давали подвоєний індикатор */
+  typing.innerHTML = '<i></i><i style="animation-delay:.2s"></i><i style="animation-delay:.4s"></i>';
   try {
     const r = await fetch('/api/chat', {
       method: 'POST',

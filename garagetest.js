@@ -5,7 +5,7 @@ const g = fs.readFileSync('garage.html','utf8');
 
 /* 1. сторінка зібрана коректно */
 if ((g.match(/<script/g)||[]).length !== (g.match(/<\/script>/g)||[]).length) errs.push('script-теги не збігаються');
-['listView','carView','mAdd','mEntry','fVin','eDate','btnSaveCar','btnSaveEntry','entries','emptyGarage','carList','checkNone','checkDone','recallsBox','noAuth','noCfg']
+['listView','carView','mAdd','mEntry','fVin','eDate','btnSaveCar','btnSaveEntry','entries','emptyGarage','carList','checkNone','checkDone','noAuth','noCfg','btnFind','manualFields','stepDetails','galEmpty','btnAddPhotos','eExisting','mEntryTitle']
   .forEach(id => { if (!g.includes('id="'+id+'"')) errs.push('нема елемента #'+id); });
 if (!g.includes('calcarLang')) errs.push('i18n-двигун не вбудований');
 /* ключове: ім'я конфігу має збігатися з реальним config.js та кабінетом */
@@ -22,6 +22,9 @@ if (!g.includes('DecodeVinValues')) errs.push('нема VIN-декодера');
 if (!g.includes("from('garage_vehicles')")) errs.push('нема запитів до garage_vehicles');
 if (!g.includes('createSignedUrls')) errs.push('нема підписаних URL для приватних фото');
 if (!g.includes('Додано власником')) errs.push('нема позначки джерела');
+if (!g.includes('data-edit')) errs.push('нема редагування записів журналу');
+if (!g.includes('carFiles.length = 0')) errs.push('баг масиву фото повернувся: carFiles перепризначається');
+if (g.includes('recallsBox')) errs.push('recalls мав зникнути зі сторінки');
 
 /* 2. синтаксис основного скрипта */
 const scripts = g.split('<script>').slice(1).map(s => s.split('</script>')[0]).filter(s => s.includes('garage_vehicles'));
