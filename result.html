@@ -1072,7 +1072,7 @@ if (US) {
 }
 
 /* ================= шапка, комплектація, розбір ================= */
-function esc(s){ return String(s ?? '').replace(/\s*—\s*/g, ', ').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function esc(s){ return String(s ?? '').replace(/\s*\u2014\s*/g, ', ').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
 function renderHeaderBlocks(){
   const v = DATA.vehicle || {};
@@ -1115,7 +1115,7 @@ function renderHeaderBlocks(){
 
   document.getElementById('vinHint').textContent = '';
 
-  /* фото користувача — компактна стрічка */
+  /* фото користувача: компактна стрічка */
   try {
     const ph = JSON.parse(sessionStorage.getItem('calcarPhotos') || '[]');
     if (ph.length) {
@@ -1686,7 +1686,7 @@ function generatePdf() {
     doc.setFillColor(...(COLORS[status] || COLORS.unknown));
     doc.circle(M + 1.4, y - 1.1, 1.15, 'F');
     doc.setFont('DejaVu', 'bold'); setC(COLORS.text);
-    /* друкуємо весь рядок: жирна частина + звичайна, простим способом — жирний заголовок, сірий текст на нових рядках */
+    /* друкуємо весь рядок: жирна частина + звичайна, простим способом: жирний заголовок, сірий текст на нових рядках */
     doc.setFont('DejaVu', 'bold');
     const bl = doc.splitTextToSize(boldPart || '', W - 6);
     doc.text(bl, M + 5, y);
@@ -1967,7 +1967,7 @@ document.getElementById('printMeta').textContent =
     }
   }
 
-  const DOCK_MIN = 900; /* ширше — чат докується збоку і зсуває звіт, вужче — поверх */
+  const DOCK_MIN = 900; /* ширше: чат докується збоку і зсуває звіт, вужче: поверх */
   function openChat() {
     renderHistory();
     panel.classList.add('open');
@@ -2042,7 +2042,7 @@ document.getElementById('printMeta').textContent =
     };
   }
 
-  /* фото: прямі https-посилання аукціону; для ручного завантаження — стиснуті data:, менше */
+  /* фото: прямі https-посилання аукціону; для ручного завантаження, стиснуті data:, менше */
   function photosForChat() {
     const urls = (DATA._meta?.photos || []).filter(u => typeof u === 'string' && /^https:/.test(u)).slice(0, 6);
     if (urls.length) return urls;

@@ -664,7 +664,7 @@ btn.addEventListener('click', async () => {
   }, 7000);
 
   /* пошук уже готового звіту за цим самим лотом.
-     Головний ключ — НОМЕР ЛОТА, витягнутий із посилання: збережений у звіті
+     Головний ключ це НОМЕР ЛОТА, витягнутий із посилання: збережений у звіті
      lot_url приходить від актора (item_url з довгим slug) і майже ніколи
      не збігається буквально з тим, що вставив користувач. */
   async function findExistingReport(q) {
@@ -690,7 +690,7 @@ btn.addEventListener('click', async () => {
     } catch (e) { return null; }
   }
 
-  /* сервер може віддати не JSON (таймаут платформи) — показуємо зрозумілий текст */
+  /* сервер може віддати не JSON (таймаут платформи), показуємо зрозумілий текст */
   async function safeJson(resp) {
     const txt = await resp.text();
     try { return JSON.parse(txt); }
@@ -703,7 +703,7 @@ btn.addEventListener('click', async () => {
   }
 
   try {
-    /* якщо це авто вже аналізували — не витрачаємо запит, ведемо у звіт */
+    /* якщо це авто вже аналізували, не витрачаємо запит, ведемо у звіт */
     if (query && window.SB && !window.__forceReanalyze) {
       const existing = await findExistingReport(query);
       if (existing) {
@@ -750,7 +750,7 @@ btn.addEventListener('click', async () => {
        правки нового аналізу не мають перезаписати чужий рядок */
     sessionStorage.removeItem('calcarReportId');
 
-    /* якщо користувач у кабінеті — зберігаємо звіт (фото-URL так, важкі data:-фото ні) */
+    /* якщо користувач у кабінеті, зберігаємо звіт (фото-URL так, важкі data:-фото ні) */
     try {
       if (window.SB) {
         const { data: s } = await window.SB.auth.getSession();

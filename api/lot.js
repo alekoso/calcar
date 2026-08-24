@@ -194,7 +194,7 @@ function pick(flat, aliases) {
   return null;
 }
 
-/* IAAI віддає картинки через resizer з параметром ширини — піднімаємо до максимуму */
+/* IAAI віддає картинки через resizer з параметром ширини, піднімаємо до максимуму */
 function upscaleUrl(u) {
   return String(u)
     .replace(/([?&](?:width|w))=(\d+)/gi, (m, p, n) => Number(n) < 2000 ? p + '=2400' : m)
