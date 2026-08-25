@@ -12,7 +12,7 @@ export const SCORE_CONFIG = {
   CEILING_MAX: 9.5,
   COVERAGE_BONUS: {
     vin_decoded: 0.75,
-    photos_ok: 0.75,
+    photos_sufficient: 0.75,
     historical_listings: 0.7,
     mileage_history: 0.7,
     registration_data: 0.4,
@@ -22,7 +22,7 @@ export const SCORE_CONFIG = {
     seller_docs: 0.3,
   },
   /* пороги достатності джерел */
-  PHOTOS_OK_MIN: 6,          /* стільки фото вважаємо повноцінним оглядом */
+  PHOTOS_SUFFICIENT_MIN: 6,  /* мінімум доступних УНІКАЛЬНИХ фото, лише кількість */
   HISTORICAL_LISTINGS_MIN: 1,
   MILEAGE_OBS_MIN: 2,        /* менше двох незалежних точок це не хронологія */
   /* штрафи: один тип знахідки = одне число, штраф за ПОДІЮ, не за джерело */
@@ -81,23 +81,31 @@ const round1 = x => Math.round(x * 10) / 10;
 const round2 = x => Math.round(x * 100) / 100;
 const EPS = 1e-9;
 
-/* строга валідація: сміття логуються і пропускаються, розрахунок не падає */
+/* строга валідація: сміття логуються і пропускаються, розрахунок не падає.
+   Знахідка БЕЗ валідного evidence {source, description} на бал впливати не
+   може: і підтверджений ризик, і відкрите питання вимагають підстави */
 function sanitizeFindings(findings) {
   const ok = [];
   let dropped = 0;
   for (const f of Array.isArray(findings) ? findings : []) {
     if (!f || typeof f !== 'object' || Array.isArray(f) || !ALL_TYPES.has(f.type)) {
       dropped++;
-      console.log('[score] відкинута знахідка:', JSON.stringify(f).slice(0, 200));
+      console.log('[score] відкинута знахідка (невалідний тип чи форма):', JSON.stringify(f).slice(0, 200));
       continue;
     }
     const evidence = (Array.isArray(f.evidence) ? f.evidence : [])
-      .filter(e => e && typeof e === 'object' && EVIDENCE_SOURCES.has(e.source))
+      .filter(e => e && typeof e === 'object' && EVIDENCE_SOURCES.has(e.source)
+        && typeof e.description === 'string' && e.description.trim())
       .map(e => ({
         source: e.source,
         ref: typeof e.ref === 'string' ? e.ref.slice(0, 60) : null,
-        description: typeof e.description === 'string' ? e.description.slice(0, 300) : null,
+        description: e.description.trim().slice(0, 300),
       }));
+    if (!evidence.length) {
+      dropped++;
+      console.log('[score] відкинута знахідка (без валідного evidence):', f.type, String(f.event_id || ''));
+      continue;
+    }
     ok.push({
       type: f.type,
       event_id: (typeof f.event_id === 'string' || typeof f.event_id === 'number') ? String(f.event_id).slice(0, 60) : null,
@@ -127,21 +135,25 @@ function dedupeFindings(findings) {
   return [...map.values()];
 }
 
-/* доступність джерел: стани present / absent / not_applicable і бонус.
-   not_applicable (авто, якому джерела бути не повинно): бонус не нараховується
-   і не вимагається; сума решти джерел дозволяє дійти до стелі */
+/* доступність джерел: стани present / absent / unknown / not_applicable і
+   бонус. Бонус дає лише present. unknown (сигналу про застосовність нема) і
+   not_applicable (джерела бути не повинно за достовірними даними) бонус не
+   дають і формулу не змінюють; сума решти джерел дозволяє дійти до стелі.
+   Аукціон НЕ визначається місцем виробництва: WMI це не історія експлуатації */
 function buildCoverage(inputs, cfg) {
   const i = inputs && typeof inputs === 'object' ? inputs : {};
   const n = v => (typeof v === 'number' && isFinite(v) && v > 0 ? v : 0);
   const states = {
     vin_decoded: i.vin_decoded ? 'present' : 'absent',
-    photos_ok: n(i.photos_count) >= cfg.PHOTOS_OK_MIN ? 'present' : 'absent',
+    photos_sufficient: n(i.photos_count) >= cfg.PHOTOS_SUFFICIENT_MIN ? 'present' : 'absent',
     historical_listings: n(i.historical_listings_count) >= cfg.HISTORICAL_LISTINGS_MIN ? 'present' : 'absent',
     mileage_history: n(i.mileage_observation_count) >= cfg.MILEAGE_OBS_MIN ? 'present' : 'absent',
     registration_data: i.registration_data_exists ? 'present' : 'absent',
-    auction_record: (i.auction_applicable === false && !i.auction_record_exists)
-      ? 'not_applicable'
-      : (i.auction_record_exists ? 'present' : 'absent'),
+    auction_record: i.auction_record_exists
+      ? 'present'
+      : (i.auction_applicable === false
+        ? 'not_applicable'
+        : (i.auction_us_signal ? 'absent' : 'unknown')),
     service_history: i.service_history_exists ? 'present' : 'absent',
     inspection_history: i.inspection_history_exists ? 'present' : 'absent',
     seller_docs: i.seller_docs_exists ? 'present' : 'absent',

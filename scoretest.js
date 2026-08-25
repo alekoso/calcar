@@ -16,7 +16,7 @@ const F = (type, event_id, extra) => ({ type, event_id, evidence: [ev('current_p
 const FULL = {
   vin_decoded: true, photos_count: 24,
   historical_listings_count: 4, mileage_observation_count: 4,
-  auction_record_exists: true, auction_applicable: true,
+  auction_record_exists: true, auction_us_signal: true,
   registration_data_exists: true, service_history_exists: true,
   inspection_history_exists: true, seller_docs_exists: true,
 };
@@ -24,12 +24,13 @@ const FULL = {
 const VIN_PHOTOS = {
   vin_decoded: true, photos_count: 12,
   historical_listings_count: 0, mileage_observation_count: 0,
-  auction_record_exists: false, auction_applicable: false,
+  auction_record_exists: false, auction_us_signal: false,
   registration_data_exists: false, service_history_exists: false,
   inspection_history_exists: false, seller_docs_exists: false,
 };
-/* німецька машина з повною європейською історією, аукціон незастосовний */
-const GERMAN_FULL = { ...FULL, auction_record_exists: false, auction_applicable: false };
+/* німецька машина з повною європейською історією: запису нема, достовірного
+   сигналу США теж, стан unknown без бонуса */
+const GERMAN_FULL = { ...FULL, auction_record_exists: false, auction_us_signal: false };
 
 (async () => {
   const { computeScore, gradeFromScore, SCORE_CONFIG } = await import('file://' + tmp);
@@ -49,7 +50,26 @@ const GERMAN_FULL = { ...FULL, auction_record_exists: false, auction_applicable:
   /* 3. німецька машина з повною ЄС-історією, аукціон not_applicable */
   b = computeScore([], GERMAN_FULL);
   if (!(b.final >= 8.5)) errs.push('німецька з ЄС-історією: ' + b.final + ' < 8.5');
-  if (b.coverage.auction_record.state !== 'not_applicable') errs.push('німецька: аукціон не позначений not_applicable');
+  if (b.coverage.auction_record.state !== 'unknown') errs.push('німецька: аукціон без сигналу мав бути unknown, а не ' + b.coverage.auction_record.state);
+  if (b.coverage.auction_record.bonus !== 0) errs.push('німецька: unknown аукціон дав бонус');
+  /* явна застосовність за достовірними даними: not_applicable теж без бонуса */
+  b = computeScore([], { ...GERMAN_FULL, auction_applicable: false });
+  if (b.coverage.auction_record.state !== 'not_applicable') errs.push('явна незастосовність: стан ' + b.coverage.auction_record.state);
+  if (b.coverage.auction_record.bonus !== 0) errs.push('not_applicable аукціон дав бонус');
+  /* сигнал США без запису: applicable/absent, бонуса нема, формула та сама */
+  b = computeScore([], { ...GERMAN_FULL, auction_us_signal: true });
+  if (b.coverage.auction_record.state !== 'absent') errs.push('сигнал США без запису: стан ' + b.coverage.auction_record.state);
+
+  /* 3б. знахідка БЕЗ evidence на бал не впливає: у dropped, не в штрафи */
+  b = quiet(() => computeScore([
+    { type: 'STRUCTURAL_DAMAGE', event_id: 'acc1', repair_status: 'unknown' },
+    { type: 'STRUCTURAL_DAMAGE', event_id: 'acc2', repair_status: 'unknown', evidence: [] },
+    { type: 'FLOOD', event_id: 'f1', evidence: [{ source: 'us_auction', ref: 'x' }] },
+    { type: 'MILEAGE_CONFLICT_UNEXPLAINED', event_id: 'm1', evidence: [{ source: 'вигаданий', description: 'текст' }] },
+  ], FULL));
+  if (b.penalties.length !== 0) errs.push('знахідки без валідного evidence оштрафували: ' + JSON.stringify(b.penalties.map(p => p.type)));
+  if (b.dropped_findings !== 4) errs.push('без evidence: dropped ' + b.dropped_findings + ' замість 4');
+  if (b.final !== b.coverage_cap) errs.push('без evidence: бал мав лишитись на стелі');
 
   /* 4. тяжке ДТП з ремонтом unknown: кап 5.5 і його імʼя в обмежувачах */
   b = computeScore([F('STRUCTURAL_DAMAGE', 'acc1', { repair_status: 'unknown', severity: 'high' })], FULL);
@@ -117,6 +137,17 @@ const GERMAN_FULL = { ...FULL, auction_record_exists: false, auction_applicable:
   b = computeScore([], FULL);
   if (b.grade !== gradeFromScore(b.final)) errs.push('grade у розкладі не з фінального балу');
 
+  /* photos_sufficient: лише кількість унікальних кадрів, стара назва померла */
+  b = computeScore([], FULL);
+  if (!b.coverage.photos_sufficient) errs.push('нема джерела photos_sufficient у покритті');
+  if (b.coverage.photos_ok) errs.push('старе джерело photos_ok повернулось');
+  const src = fs.readFileSync('api/score.js', 'utf8');
+  if (src.includes('PHOTOS_OK_MIN')) errs.push('стара константа PHOTOS_OK_MIN лишилась');
+  const checkSrc = fs.readFileSync('api/check.js', 'utf8');
+  if (/\/\^\[1-5\]\//.test(checkSrc)) errs.push('check.js знову вгадує застосовність аукціону за WMI');
+  if (!checkSrc.includes('function photoKey(')) errs.push('check.js не дедуплікує кадри для photos_sufficient');
+  if (!checkSrc.includes('function normalizeListingUrl(')) errs.push('check.js не нормалізує source_url для дедуплікації');
+
   /* конфіг: кожен тип знахідки має рівно одне число штрафу */
   const typeCount = Object.keys(SCORE_CONFIG.PENALTIES).length;
   if (typeCount !== 13) errs.push('у конфігу ' + typeCount + ' типів замість 13');
@@ -131,7 +162,7 @@ const GERMAN_FULL = { ...FULL, auction_record_exists: false, auction_applicable:
   if (!check.includes('parsed.score_v2_preview = breakdown.final')) errs.push('check.js: не зберігає score_v2_preview');
   if (!check.includes('ВІДСУТНІСТЬ ДАНИХ НІКОЛИ НЕ Є ЗНАХІДКОЮ')) errs.push('check.js: зникло правило про відсутність даних');
   const chat = fs.readFileSync('api/chat.js', 'utf8');
-  if (!chat.includes('delete context.score_v2_preview')) errs.push('chat.js: не чистить поля v2 з контексту');
+  if (!chat.includes('delete c.score_v2_preview')) errs.push('chat.js: не чистить поля v2 з контексту');
 
   fs.unlinkSync(tmp);
   if (errs.length) { console.log('FAILED:', errs); process.exit(1); }

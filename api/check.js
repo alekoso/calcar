@@ -338,6 +338,20 @@ async function saveSnapshot(l, url) {
 /* ---------- 4б. Історія рову даних для Score v2 ----------
    Лише факти пайплайна: скільки МИ реально бачили це авто раніше.
    Поточне оголошення виключається, повторні аналізи того самого URL теж. */
+/* нормалізація URL оголошення для ідентичності: hash і трекінгові параметри
+   оголошення не змінюють. Інші query лишаємо, а marketplace listing id парсер
+   не витягує, тож надійнішої ідентичності за нормалізований URL поки нема */
+function normalizeListingUrl(u) {
+  try {
+    const url = new URL(String(u));
+    url.hash = '';
+    const drop = [];
+    url.searchParams.forEach((v, k) => { if (/^(utm_|fbclid$|gclid$|yclid$|ref$|referrer$)/i.test(k)) drop.push(k); });
+    drop.forEach(k => url.searchParams.delete(k));
+    return url.toString();
+  } catch (e) { return String(u || ''); }
+}
+
 async function readSnapshots(vin, currentUrl) {
   const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!base || !key || !vin) return [];
@@ -349,17 +363,27 @@ async function readSnapshots(vin, currentUrl) {
     });
     if (!r.ok) return [];
     const rows = await r.json();
-    /* одне джерело рахується один раз: дедуплікація за source_url */
+    /* одне джерело рахується один раз: дедуплікація за нормалізованим URL */
+    const cur = normalizeListingUrl(currentUrl);
     const seen = new Set();
     const out = [];
     for (const row of Array.isArray(rows) ? rows : []) {
-      const u = String(row.source_url || '');
-      if (!u || u === currentUrl || seen.has(u)) continue;
+      const u = normalizeListingUrl(row.source_url);
+      if (!u || u === cur || seen.has(u)) continue;
       seen.add(u);
       out.push({ odometer_km: row.odometer_km ?? null, source_url: u, created_at: row.created_at });
     }
     return out;
   } catch (e) { return []; }
+}
+
+/* унікальність кадру для photos_sufficient: у riastatic один кадр приходить
+   у варіантах розмірів (суфікси hd/fx/bx), ключ це імʼя без суфікса розміру,
+   той самий, що вже використовує витяг галереї вище */
+function photoKey(u) {
+  const m = /riastatic\.com\/photosnew\/auto\/photo\/([a-z0-9_\-]*?\d+)(?:hd|fx|bx)\.(?:webp|jpe?g)/i.exec(String(u));
+  if (m) return 'ria:' + m[1].toLowerCase();
+  return String(u).split('#')[0].split('?')[0];
 }
 
 /* ---------- 5. AI-розбір ---------- */
@@ -595,15 +619,18 @@ export default async function handler(req, res) {
       const snaps = await readSnapshots(listing.vin, url);
       const coverageInputs = {
         vin_decoded: !!nhtsa,
-        photos_count: listing.photos.length,
+        /* лише кількість унікальних кадрів, без AI-оцінки якості */
+        photos_count: new Set(listing.photos.map(photoKey)).size,
         historical_listings_count: snaps.length,
         /* незалежні часові точки пробігу, БЕЗ поточного оголошення; один запис
            рахується один раз (дедуплікація за source_url уже в readSnapshots) */
         mileage_observation_count: snaps.filter(r => r.odometer_km != null).length,
         auction_record_exists: !!auction,
-        /* застосовність аукціону: запис є, або VIN північноамериканський
-           (WMI 1-5), тоді запис МІГ би існувати. Інакше not_applicable */
-        auction_applicable: !!auction || (listing.vin ? /^[1-5]/.test(listing.vin) : false),
+        /* достовірний сигнал експлуатації чи імпорту зі США, ОКРІМ самого
+           запису аукціону. Місце виробництва (WMI) таким сигналом НЕ є:
+           надійнішого джерела в пайплайні поки нема, тож false, і стан
+           аукціону без запису буде unknown, без бонуса і без штрафу */
+        auction_us_signal: false,
         /* цих джерел у пайплайні поки немає: код чесно каже "не був" */
         registration_data_exists: false,
         service_history_exists: false,

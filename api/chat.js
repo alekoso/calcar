@@ -173,16 +173,22 @@ export default async function handler(req, res) {
 
     /* цитата зі звіту: сторінка ріже по 500, тут страхувальна межа */
     const quoted = typeof body.quoted_text === 'string' ? body.quoted_text.trim().replace(/\u2014/g, ',').slice(0, 600) : '';
-    let context = body.context || body.report || {};
-    /* тіньова оцінка Score v2: чат її повністю ігнорує і не згадує */
-    if (context && typeof context === 'object' && !Array.isArray(context)) {
-      context = { ...context };
-      delete context.score_facts;
-      delete context.score_v2_preview;
-      delete context.score_breakdown_v2;
+    /* тіньова оцінка Score v2: чат її повністю ігнорує і не згадує,
+       жодним шляхом: ні через context, ні через інші звіти користувача */
+    const stripV2 = o => {
+      if (!o || typeof o !== 'object' || Array.isArray(o)) return o;
+      const c = { ...o };
+      delete c.score_facts;
+      delete c.score_v2_preview;
+      delete c.score_breakdown_v2;
+      return c;
+    };
+    let context = stripV2(body.context || body.report || {});
+    if (context && Array.isArray(context.other_reports_of_this_user)) {
+      context = { ...context, other_reports_of_this_user: context.other_reports_of_this_user.map(stripV2) };
     }
     if (Array.isArray(body.others) && body.others.length) {
-      context = Object.assign({}, context, { other_reports_of_this_user: body.others.slice(0, 12) });
+      context = Object.assign({}, context, { other_reports_of_this_user: body.others.slice(0, 12).map(stripV2) });
     }
 
     const sanitizeBlocks = content => {

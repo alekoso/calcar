@@ -203,6 +203,16 @@ async function sys(product, memory, extra) {
       if (v2primer.includes(leak)) errs.push('поле ' + leak + ' просочилось у чат' + p);
     }
     if (!v2primer.includes('7.1')) errs.push('легасі verdict.score зник із контексту чату' + p);
+    /* v2 не протікає і через інші звіти користувача (body.others і context) */
+    await call(product, MEM, {
+      context: { vehicle: { title: 'BMW X5 2019' }, other_reports_of_this_user: [{ title: 'Kia EV6', score_v2_preview: 4.4 }] },
+      others: [{ title: 'Audi Q8 2020', totals: { total: 21000 }, score_facts: { findings: [] }, score_v2_preview: 6.1, score_breakdown_v2: { final: 6.1 } }],
+    });
+    const othersPrimer = sent.messages[1].content.find(bk => bk.type === 'text').text;
+    for (const leak of ['score_v2_preview', 'score_breakdown_v2', 'score_facts']) {
+      if (othersPrimer.includes(leak)) errs.push('поле ' + leak + ' протекло через інші звіти' + p);
+    }
+    if (!othersPrimer.includes('Audi Q8 2020') || !othersPrimer.includes('21000')) errs.push('корисні поля інших звітів постраждали від чистки' + p);
 
     /* 11. цитата зі звіту доходить до інструкції */
     const wQuote = await sys(product, MEM, { quoted_text: 'пробіг 190 тис підтверджений Carfax' });
