@@ -282,6 +282,29 @@ async function sys(product, memory, extra) {
     if (!s.includes("closest('#chatPanel, #chatSelAsk, input, textarea")) errs.push('сторінка ' + f + ' показує кнопку у чаті чи полях вводу');
     if (!s.includes('bindSelAsk();')) errs.push('сторінка ' + f + ' не підключає кнопку виділення');
     if (!s.includes('window.calcarOpenChat')) errs.push('сторінка ' + f + ' без гачка відкриття чату');
+    /* очищення після відправки зведене в одну функцію: половинчата чистка
+       лишала привид тексту в накладці поверх плейсхолдера */
+    if (!s.includes('function resetComposer(')) errs.push('сторінка ' + f + ': нема resetComposer');
+    if (!s.includes('resetComposer();')) errs.push('сторінка ' + f + ': шлях відправки не зве resetComposer');
+    if (s.includes("$('chatText').value = ''") || s.includes("ta.value = ''")) errs.push('сторінка ' + f + ': пряма чистка поля поза resetComposer');
+    const rc = (s.split('function resetComposer(')[1] || '').split('\n}')[0];
+    for (const need of ['renderTaOverlay();', 'clearQuote();', 'renderFiles();', "field.style.height = ''"]) {
+      if (!rc.includes(need)) errs.push('сторінка ' + f + ': resetComposer не робить ' + need);
+    }
+    /* кнопка @ у винятках "кліка мимо", інакше попап закривався миттєво */
+    if (!s.includes(".closest('#chatAtBtn') && e.target !== field) closeMention(false)")) errs.push('сторінка ' + f + ': кнопка @ не у винятках кліка мимо');
+    /* стиль @: та сама скріпка, власне правило не переозначає розмір, колір
+       і не робить гліф жирним */
+    const atRule = (s.split('.chat-attach.at{')[1] || '').split('}')[0];
+    if (!atRule) errs.push('сторінка ' + f + ': нема правила .chat-attach.at');
+    else {
+      if (/width|height|color|background/.test(atRule)) errs.push('сторінка ' + f + ': кнопка @ переозначає розмір чи колір скріпки');
+      if (!atRule.includes('font-weight:400')) errs.push('сторінка ' + f + ': гліф @ не тонкий');
+    }
+    /* кнопка виділення: над виділенням і фірмовим лаймом */
+    if (!s.includes('r.top - h - 8')) errs.push('сторінка ' + f + ': кнопка виділення не над виділенням');
+    const selRule = (s.split('.chat-selask{')[1] || '').split('}')[0];
+    if (!selRule.includes('background:var(--brand)')) errs.push('сторінка ' + f + ': кнопка виділення не фірмовим лаймом');
     const soloTa = (s.split('\n').find(l => l.trim().startsWith('.chat-box textarea{')) || '');
     const soloOv = (s.split('\n').find(l => l.trim().startsWith('.chat-ta-overlay{')) || '');
     if (soloTa.includes('min-height') || soloOv.includes('min-height')) errs.push('сторінка ' + f + ': окремий min-height поза спільним правилом, шари розʼїдуться');
@@ -296,7 +319,7 @@ async function sys(product, memory, extra) {
     if (!s.includes("getElementById('chatTaOverlay').addEventListener('click'")) errs.push('сторінка ' + f + ': пілюля не відкриває попап кліком');
     if (s.includes("getElementById('chatTaOverlay').addEventListener('pointerdown'")) errs.push('сторінка ' + f + ': відкриття з pointerdown повернулось (мигання)');
     if (/onmouseenter[^\n]*openMention|mouseover[^\n]*openMention/.test(s)) errs.push('сторінка ' + f + ': відкриття попапа з наведення');
-    if (!s.includes(".closest('.chat-ref-pill') && e.target !== field) closeMention(false)")) errs.push('сторінка ' + f + ': клік по пілюлі рахується кліком мимо');
+    if (!s.includes(".closest('.chat-ref-pill') && !e.target.closest('#chatAtBtn') && e.target !== field) closeMention(false)")) errs.push('сторінка ' + f + ': клік по пілюлі рахується кліком мимо');
     /* хрестика на пілюлі більше нема, зняття лише стиранням */
     if (s.includes('chat-ref-x') || s.includes('removeRefPill')) errs.push('сторінка ' + f + ': хрестик на пілюлі повернувся');
     if (!s.includes('refSpans().find(sp => sp.end === p)')) errs.push('сторінка ' + f + ': Backspace не зносить пілюлю цілком');

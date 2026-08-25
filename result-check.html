@@ -574,7 +574,7 @@
   .chat-mention-empty{padding:12px 14px;font-size:12.5px;color:var(--muted)}
 
   /* кнопка @ поруч зі скріпкою: той самий призрачний стиль */
-  .chat-attach.at{font-size:15.5px;font-weight:700}
+  .chat-attach.at{font-size:16.5px;font-weight:400;margin-left:-6px}
 
   /* цитата зі звіту над полем вводу */
   .chat-quote{
@@ -587,10 +587,11 @@
   /* плавуча кнопка біля виділеного фрагмента звіту */
   .chat-selask{
     position:fixed;z-index:140;display:none;align-items:center;
-    background:var(--ink);color:#fff;border:none;border-radius:16px;
-    padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;
+    background:var(--brand);color:var(--ink);border:none;border-radius:16px;
+    padding:7px 14px;font-size:12.5px;font-weight:700;cursor:pointer;
     box-shadow:0 6px 20px rgba(20,22,25,.18);
   }
+  .chat-selask:hover{background:var(--brand-hover)}
 
   .chat-note{display:flex;align-items:center;gap:5px;justify-content:center;margin-top:6px;font-size:11px;color:var(--faint)}
   .chat-note svg{flex-shrink:0;opacity:.7}
@@ -1242,6 +1243,19 @@ function setQuote(text){
   box.style.display = 'flex';
 }
 function clearQuote(){ QUOTE = ''; document.getElementById('chatQuote').style.display = 'none'; }
+/* єдиний шлях очищення після відправки: textarea, накладка, пілюлі, цитата,
+   файли і висота скидаються РАЗОМ. Половинчата чистка вже давала привид:
+   поле порожнє, а накладка тримала старий текст поверх плейсхолдера */
+function resetComposer(){
+  const field = document.getElementById('chatText');
+  field.value = '';
+  field.style.height = '';
+  pendingRefs.splice(0);
+  pendingFiles.splice(0);
+  clearQuote();
+  renderTaOverlay();
+  renderFiles();
+}
 function hideSelAsk(){ document.getElementById('chatSelAsk').style.display = 'none'; }
 function selInsideForbidden(sel){
   for (const node of [sel.anchorNode, sel.focusNode]) {
@@ -1262,8 +1276,10 @@ function updateSelAsk(){
   const btn = document.getElementById('chatSelAsk');
   btn.style.display = 'flex';
   const w = btn.offsetWidth || 130;
+  const h = btn.offsetHeight || 32;
   btn.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, r.right - w / 2)) + 'px';
-  btn.style.top = Math.min(window.innerHeight - 44, r.bottom + 8) + 'px';
+  /* над виділенням: знизу кнопку перекривало системне меню виділення macOS */
+  btn.style.top = Math.max(8, r.top - h - 8) + 'px';
 }
 function bindSelAsk(){
   const btn = document.getElementById('chatSelAsk');
@@ -1522,7 +1538,7 @@ function bindMention(){
   inp.addEventListener('input', () => { mentionIdx = 0; renderMention(); });
   /* кліком мимо не вважаються: сам попап (разом із рядком пошуку), пілюля, поле */
   document.addEventListener('click', e => {
-    if (mentionOpenNow() && !e.target.closest('#chatMention') && !e.target.closest('.chat-ref-pill') && e.target !== field) closeMention(false);
+    if (mentionOpenNow() && !e.target.closest('#chatMention') && !e.target.closest('.chat-ref-pill') && !e.target.closest('#chatAtBtn') && e.target !== field) closeMention(false);
   });
 }
 /* повні дані прикріплених звітів по id: без фото, урізані до ключового */
@@ -1741,7 +1757,7 @@ function chatInit(){
   const ta = $('chatText');
   const grow = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 120) + 'px'; };
   ta.addEventListener('input', grow);
-  $('chatSend').addEventListener('click', () => { sendChat($('chatText').value); ta.style.height = ''; });
+  $('chatSend').addEventListener('click', () => sendChat($('chatText').value));
   $('chatText').addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat($('chatText').value); }
   });
@@ -1751,16 +1767,12 @@ function chatInit(){
 async function sendChat(text){
   text = String(text || '').trim();
   if (!text && !pendingFiles.length) return;
-  $('chatText').value = '';
-  $('chatText').style.height = '';
   $('chatSugg').style.display = 'none';
   $('chatSend').disabled = true;
-  const atts = pendingFiles.splice(0);
+  const atts = pendingFiles.slice();
   const refs = await refPayload();
-  pendingRefs.splice(0);
   const quote = QUOTE || null;
-  clearQuote();
-  renderFiles();
+  resetComposer();
   /* в історії тримаємо лише текст із маркером файлів: самі файли великі,
      вони йдуть тільки з цим повідомленням і не переслідують подальші */
   const shown = text + (atts.length ? (text ? '\n' : '') + t('Додані файли:') + ' ' + atts.map(a => a.name).join(', ') : '');
