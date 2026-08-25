@@ -591,11 +591,6 @@
     position:relative;border-radius:6px;background:var(--surface-2);
     box-shadow:0 0 0 2px var(--surface-2);cursor:pointer;pointer-events:auto;
   }
-  .chat-ref-x{
-    position:absolute;top:-7px;right:-8px;width:14px;height:14px;border:none;border-radius:50%;
-    background:var(--ink);color:var(--card);font-size:8px;line-height:14px;text-align:center;
-    padding:0;cursor:pointer;pointer-events:auto;
-  }
   .chat-box-row{display:flex;align-items:center;gap:8px;margin-top:2px}
   .chat-attach{
     width:34px;height:34px;border:none;border-radius:50%;background:transparent;color:var(--muted);
@@ -2351,9 +2346,6 @@ document.getElementById('printMeta').textContent =
       pill.className = 'chat-ref-pill';
       pill.dataset.refId = m.ref.id;
       pill.textContent = text.slice(m.start, m.end);
-      const x = document.createElement('button');
-      x.type = 'button'; x.className = 'chat-ref-x'; x.textContent = '✕'; x.tabIndex = -1;
-      pill.appendChild(x);
       ov.appendChild(pill);
       pos = m.end;
     });
@@ -2370,15 +2362,6 @@ document.getElementById('printMeta').textContent =
       from = i + 1 + ref.title.length;
       return true;
     });
-  }
-  function removeRefPill(id){
-    const idx = pendingRefs.findIndex(r => r.id === id);
-    if (idx === -1) return;
-    const field = document.getElementById('chatText');
-    const name = '@' + pendingRefs[idx].title;
-    field.value = field.value.includes(name + ' ') ? field.value.replace(name + ' ', '') : field.value.replace(name, '');
-    pendingRefs.splice(idx, 1);
-    renderTaOverlay();
   }
   function pickMention(r){
     const field = document.getElementById('chatText');
@@ -2424,20 +2407,42 @@ document.getElementById('printMeta').textContent =
       if (mentionOpenNow() && (mentionPos < 0 || field.value[mentionPos] !== '@')) closeMention(false);
     });
     field.addEventListener('scroll', () => { document.getElementById('chatTaOverlay').scrollTop = field.scrollTop; });
-    document.getElementById('chatTaOverlay').addEventListener('pointerdown', e => {
-      const x = e.target.closest('.chat-ref-x');
+    /* попап відкриває лише свідомий клік по пілюлі. Саме click, не pointerdown:
+       click від того самого натискання інакше долітав до обробника "клік мимо"
+       і миттєво закривав щойно відкритий попап */
+    document.getElementById('chatTaOverlay').addEventListener('click', e => {
       const pill = e.target.closest('.chat-ref-pill');
-      if (!x && !pill) return;
+      if (!pill) return;
       e.preventDefault();
-      if (x) { removeRefPill(pill.dataset.refId); return; }
       mentionReplace = pendingRefs.findIndex(r => r.id === pill.dataset.refId);
       openMention(-1);
+    });
+    /* Backspace одразу за пілюлею зносить її цілком, як у месенджерах */
+    field.addEventListener('keydown', e => {
+      if (e.key !== 'Backspace' || field.selectionStart !== field.selectionEnd) return;
+      const p = field.selectionStart;
+      let from = 0;
+      for (const ref of pendingRefs) {
+        const name = '@' + ref.title;
+        const i = field.value.indexOf(name, from);
+        if (i === -1) continue;
+        from = i + name.length;
+        if (p === i + name.length) {
+          e.preventDefault();
+          field.value = field.value.slice(0, i) + field.value.slice(p);
+          field.setSelectionRange(i, i);
+          dropErasedRefs();
+          renderTaOverlay();
+          return;
+        }
+      }
     });
     field.addEventListener('keydown', e => { if (e.key === 'Escape' && mentionOpenNow()) closeMention(true); });
     inp.addEventListener('keydown', mentionKeydown);
     inp.addEventListener('input', () => { mentionIdx = 0; renderMention(); });
+    /* кліком мимо не вважаються: сам попап (разом із рядком пошуку), пілюля, поле */
     document.addEventListener('click', e => {
-      if (mentionOpenNow() && !e.target.closest('#chatMention') && e.target !== field) closeMention(false);
+      if (mentionOpenNow() && !e.target.closest('#chatMention') && !e.target.closest('.chat-ref-pill') && e.target !== field) closeMention(false);
     });
   }
   /* повні дані прикріплених звітів по id: без фото, урізані до ключового */

@@ -247,12 +247,20 @@ async function sys(product, memory, extra) {
     if (!s.includes('id="chatTaOverlay"')) errs.push('сторінка ' + f + ': нема накладки над полем');
     if (!s.includes('.chat-box textarea,.chat-ta-overlay{')) errs.push('сторінка ' + f + ': метрики textarea і накладки не спільним правилом');
     if (!s.includes('color:transparent;caret-color:var(--text)')) errs.push('сторінка ' + f + ': текст поля не схований під накладку');
-    if (!s.includes('chat-ref-pill') || !s.includes('chat-ref-x')) errs.push('сторінка ' + f + ': нема пілюлі або хрестика');
+    if (!s.includes('chat-ref-pill')) errs.push('сторінка ' + f + ': нема пілюлі згадки');
     if (!s.includes('pendingRefs[mentionReplace] = picked')) errs.push('сторінка ' + f + ': клік по пілюлі не замінює машину');
     if (!s.includes('dropErasedRefs();')) errs.push('сторінка ' + f + ': стирання назви не знімає прикріплення');
-    if (!s.includes('removeRefPill(')) errs.push('сторінка ' + f + ': хрестик не знімає прикріплення');
     if (!s.includes("field.addEventListener('scroll'")) errs.push('сторінка ' + f + ': нема синхронізації прокрутки накладки');
     if (s.includes('tag.textContent')) errs.push('сторінка ' + f + ': плашка продукту в @-попапі повернулась');
+    /* попап відкривається лише свідомим кліком по пілюлі: pointerdown миттєво
+       закривався обробником "клік мимо", hover не мусить відкривати взагалі */
+    if (!s.includes("getElementById('chatTaOverlay').addEventListener('click'")) errs.push('сторінка ' + f + ': пілюля не відкриває попап кліком');
+    if (s.includes("getElementById('chatTaOverlay').addEventListener('pointerdown'")) errs.push('сторінка ' + f + ': відкриття з pointerdown повернулось (мигання)');
+    if (/onmouseenter[^\n]*openMention|mouseover[^\n]*openMention/.test(s)) errs.push('сторінка ' + f + ': відкриття попапа з наведення');
+    if (!s.includes(".closest('.chat-ref-pill') && e.target !== field) closeMention(false)")) errs.push('сторінка ' + f + ': клік по пілюлі рахується кліком мимо');
+    /* хрестика на пілюлі більше нема, зняття лише стиранням */
+    if (s.includes('chat-ref-x') || s.includes('removeRefPill')) errs.push('сторінка ' + f + ': хрестик на пілюлі повернувся');
+    if (!s.includes("if (e.key !== 'Backspace' || field.selectionStart !== field.selectionEnd) return;")) errs.push('сторінка ' + f + ': Backspace не зносить пілюлю цілком');
   }
 
   /* нові рядки інтерфейсу мусять бути в обох словниках */
