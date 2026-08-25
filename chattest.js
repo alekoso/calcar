@@ -246,6 +246,13 @@ async function sys(product, memory, extra) {
     if (s.includes('chat-file-chip ref')) errs.push('сторінка ' + f + ': чип звіту над composer повернувся');
     if (!s.includes('id="chatTaOverlay"')) errs.push('сторінка ' + f + ': нема накладки над полем');
     if (!s.includes('.chat-box textarea,.chat-ta-overlay{')) errs.push('сторінка ' + f + ': метрики textarea і накладки не спільним правилом');
+    /* мінімальна висота поля: два рядки завжди, однакова для поля і накладки.
+       Живе тільки в спільному правилі метрик, окремих min-height бути не може */
+    const shared = (s.split('.chat-box textarea,.chat-ta-overlay{')[1] || '').split('}')[0];
+    if (!shared.includes('min-height:calc(3em + 4px)')) errs.push('сторінка ' + f + ': min-height у два рядки зник зі спільного правила');
+    const soloTa = (s.split('\n').find(l => l.trim().startsWith('.chat-box textarea{')) || '');
+    const soloOv = (s.split('\n').find(l => l.trim().startsWith('.chat-ta-overlay{')) || '');
+    if (soloTa.includes('min-height') || soloOv.includes('min-height')) errs.push('сторінка ' + f + ': окремий min-height поза спільним правилом, шари розʼїдуться');
     if (!s.includes('color:transparent;caret-color:var(--text)')) errs.push('сторінка ' + f + ': текст поля не схований під накладку');
     if (!s.includes('chat-ref-pill')) errs.push('сторінка ' + f + ': нема пілюлі згадки');
     if (!s.includes('pendingRefs[mentionReplace] = picked')) errs.push('сторінка ' + f + ': клік по пілюлі не замінює машину');
