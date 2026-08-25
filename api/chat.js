@@ -97,10 +97,15 @@ const REFS_TASK = `ДОДАНІ ЗВІТИ ДЛЯ ПОРІВНЯННЯ:
 - Порівнюй структуровано по пунктах: стан і пошкодження, пробіг, двигун і привід, комплектація, ризики й оцінка, підсумок під ключ (де є). Заверши ясним висновком: який варіант виглядає кращим для цієї людини і чому.
 - Зважай на вік доданого звіту (created_at): якщо йому понад ~60 днів, ціни й доступність застарілі, порівнюй характеристики, а не ціни.`;
 
-const SYSTEM = (product, memory, wantMemory, turns, hasRefs) => `${product === 'check' ? DOMAIN_CHECK : DOMAIN_IMPORT}
+/* Фрагмент звіту, який людина виділила кнопкою "Спитати про це" */
+const QUOTE_TASK = q => `ЦИТАТА ЗІ ЗВІТУ:
+"${q}"
+- Користувач виділив САМЕ цей фрагмент звіту і питає про нього. Відповідай про цей фрагмент у контексті всього звіту, а не загальними словами про авто.`;
+
+const SYSTEM = (product, memory, wantMemory, turns, hasRefs, quote) => `${product === 'check' ? DOMAIN_CHECK : DOMAIN_IMPORT}
 
 ${OWNER(memory)}
-${TURNS(turns) ? '\n' + TURNS(turns) + '\n' : ''}${hasRefs ? '\n' + REFS_TASK + '\n' : ''}
+${TURNS(turns) ? '\n' + TURNS(turns) + '\n' : ''}${hasRefs ? '\n' + REFS_TASK + '\n' : ''}${quote ? '\n' + QUOTE_TASK(quote) + '\n' : ''}
 ІНШІ ПРОРАХУНКИ КОРИСТУВАЧА (context.other_reports_of_this_user, якщо є):
 - Це авто, які ця людина вже аналізувала: назва, дата аналізу (analyzed_at і days_ago), пошкодження, пробіг, підсумок під ключ і ризик на момент збереження (totals), хвіст переписки (chat_tail).
 - Використовуй їх для порівнянь ("чи це краще за ту BMW?") і для розуміння, що людина шукає.
@@ -165,6 +170,9 @@ export default async function handler(req, res) {
         return pick;
       })
       .filter(r => Object.keys(r).length);
+
+    /* цитата зі звіту: сторінка ріже по 500, тут страхувальна межа */
+    const quoted = typeof body.quoted_text === 'string' ? body.quoted_text.trim().replace(/\u2014/g, ',').slice(0, 600) : '';
     let context = body.context || body.report || {};
     if (Array.isArray(body.others) && body.others.length) {
       context = Object.assign({}, context, { other_reports_of_this_user: body.others.slice(0, 12) });
@@ -237,7 +245,7 @@ export default async function handler(req, res) {
         model: process.env.CHAT_MODEL || process.env.OPENAI_MODEL || 'gpt-5.6-terra',
         max_completion_tokens: 2500,
         messages: [
-          { role: 'system', content: SYSTEM(product, memory, wantMemory, turns, refs.length > 0) },
+          { role: 'system', content: SYSTEM(product, memory, wantMemory, turns, refs.length > 0, quoted) },
           primer,
           { role: 'assistant', content: 'Прийняв, я вивчив дані і фото цього авто. Питай.' },
           ...hist,
@@ -277,6 +285,7 @@ export default async function handler(req, res) {
       '| memory', memory.length,
       '| turns', turns.length + '/' + cleanTurns.length,
       '| refs', refs.length,
+      '| quote', quoted.length,
       '| ai', Date.now() - t0, 'ms',
       '| tokens', JSON.stringify(data?.usage || {}));
 

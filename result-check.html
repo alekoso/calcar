@@ -573,6 +573,25 @@
   .chat-mention-item .age{font-size:11px;color:var(--faint);flex-shrink:0}
   .chat-mention-empty{padding:12px 14px;font-size:12.5px;color:var(--muted)}
 
+  /* кнопка @ поруч зі скріпкою: той самий призрачний стиль */
+  .chat-attach.at{font-size:15.5px;font-weight:700}
+
+  /* цитата зі звіту над полем вводу */
+  .chat-quote{
+    display:flex;align-items:center;gap:8px;margin:0 4px 8px;padding:6px 10px;
+    background:var(--surface-2);border-left:3px solid var(--brand);border-radius:8px;
+  }
+  .chat-quote span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;color:var(--muted)}
+  .chat-quote button{border:none;background:none;cursor:pointer;color:var(--faint);font-size:13px;padding:0;line-height:1}
+
+  /* плавуча кнопка біля виділеного фрагмента звіту */
+  .chat-selask{
+    position:fixed;z-index:140;display:none;align-items:center;
+    background:var(--ink);color:#fff;border:none;border-radius:16px;
+    padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;
+    box-shadow:0 6px 20px rgba(20,22,25,.18);
+  }
+
   .chat-note{display:flex;align-items:center;gap:5px;justify-content:center;margin-top:6px;font-size:11px;color:var(--faint)}
   .chat-note svg{flex-shrink:0;opacity:.7}
 
@@ -785,6 +804,7 @@
 
 <!-- чат по цьому авто -->
 <button id="chatFab" style="display:none" hidden></button>
+<button class="chat-selask" id="chatSelAsk" type="button">Спитати про це</button>
 <div class="chat-overlay" id="chatOverlay"></div>
 <div class="chat-panel" id="chatPanel">
   <div class="chat-head">
@@ -814,6 +834,10 @@
       <input type="text" id="mentionSearch" placeholder="Пошук звіту за назвою…" autocomplete="off">
       <div class="chat-mention-list" id="mentionList"></div>
     </div>
+    <div class="chat-quote" id="chatQuote" style="display:none">
+      <span id="chatQuoteText"></span>
+      <button type="button" id="chatQuoteX" aria-label="Прибрати цитату">✕</button>
+    </div>
     <div class="chat-files" id="chatFiles" style="display:none"></div>
     <div class="chat-box">
       <div class="chat-ta-wrap">
@@ -824,6 +848,7 @@
         <button class="chat-attach" id="chatAttach" type="button" title="Прикріпити фото або PDF" aria-label="Прикріпити файл">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
         </button>
+        <button class="chat-attach at" id="chatAtBtn" type="button" title="Додати звіт для порівняння" aria-label="Додати звіт для порівняння">@</button>
         <input type="file" id="chatFile" accept="image/*,application/pdf" multiple style="display:none">
         <button class="chat-send" id="chatSend" title="Надіслати" aria-label="Надіслати">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
@@ -1200,6 +1225,64 @@ async function saveChatMemory(note, userText, aiText){
   try { await SB.from('user_memory').upsert(patch); } catch (e) {}
 }
 
+
+/* ---------- цитата зі звіту: кнопка "Спитати про це" біля виділення ----------
+   Виділення в будь-якому місці звіту (поза чатом і полями вводу) показує
+   плавучу кнопку. Натиск відкриває чат (якщо закритий) і вішає цитату над
+   полем. Копіювання не перехоплюється: кнопка живе на pointerdown із
+   preventDefault і не чіпає само виділення. Одна цитата за раз. */
+let QUOTE = '', selCandidate = '', selTimer = null;
+function setQuote(text){
+  QUOTE = String(text || '').trim();
+  /* обрізаємо і вміст запиту: понад 500 символів мало що додає, а токени їсть */
+  if (QUOTE.length > 500) QUOTE = QUOTE.slice(0, 500) + '…';
+  const box = document.getElementById('chatQuote');
+  if (!QUOTE) { box.style.display = 'none'; return; }
+  document.getElementById('chatQuoteText').textContent = QUOTE;
+  box.style.display = 'flex';
+}
+function clearQuote(){ QUOTE = ''; document.getElementById('chatQuote').style.display = 'none'; }
+function hideSelAsk(){ document.getElementById('chatSelAsk').style.display = 'none'; }
+function selInsideForbidden(sel){
+  for (const node of [sel.anchorNode, sel.focusNode]) {
+    if (!node) return true;
+    const el = node.nodeType === 1 ? node : node.parentElement;
+    if (!el || el.closest('#chatPanel, #chatSelAsk, input, textarea, select, [contenteditable]')) return true;
+  }
+  return false;
+}
+function updateSelAsk(){
+  const sel = window.getSelection();
+  const text = sel && !sel.isCollapsed ? String(sel).trim() : '';
+  if (!text || selInsideForbidden(sel)) { hideSelAsk(); return; }
+  const rects = sel.getRangeAt(0).getClientRects();
+  if (!rects.length) { hideSelAsk(); return; }
+  const r = rects[rects.length - 1];
+  selCandidate = text;
+  const btn = document.getElementById('chatSelAsk');
+  btn.style.display = 'flex';
+  const w = btn.offsetWidth || 130;
+  btn.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, r.right - w / 2)) + 'px';
+  btn.style.top = Math.min(window.innerHeight - 44, r.bottom + 8) + 'px';
+}
+function bindSelAsk(){
+  const btn = document.getElementById('chatSelAsk');
+  if (!btn) return;
+  document.addEventListener('selectionchange', () => {
+    clearTimeout(selTimer);
+    selTimer = setTimeout(updateSelAsk, 180);
+  });
+  /* прокрутка зсуває виділення з-під кнопки: просто ховаємо її */
+  document.addEventListener('scroll', hideSelAsk, true);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') hideSelAsk(); });
+  btn.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    setQuote(selCandidate);
+    hideSelAsk();
+    if (window.calcarOpenChat) window.calcarOpenChat();
+  });
+  document.getElementById('chatQuoteX').addEventListener('click', clearQuote);
+}
 /* ---------- @-згадка звіту: попап зі списком звітів над composer ----------
    Ввід @ у полі відкриває список останніх звітів (назва, давність, плашка
    check/import) з пошуком за назвою. Стрілки і Enter обирають, Esc закриває.
@@ -1426,6 +1509,15 @@ function bindMention(){
     else field.setSelectionRange(q, q);
   });
   field.addEventListener('keydown', e => { if (e.key === 'Escape' && mentionOpenNow()) closeMention(true); });
+  /* кнопка @: те саме, що набрати @ з клавіатури, лише без зміни розкладки.
+     Логіка попапа та сама: вставляємо символ у позицію каретки і відкриваємо */
+  document.getElementById('chatAtBtn').addEventListener('click', () => {
+    const p = field.selectionStart ?? field.value.length;
+    field.value = field.value.slice(0, p) + '@' + field.value.slice(p);
+    field.setSelectionRange(p + 1, p + 1);
+    refSync();
+    openMention(p);
+  });
   inp.addEventListener('keydown', mentionKeydown);
   inp.addEventListener('input', () => { mentionIdx = 0; renderMention(); });
   /* кліком мимо не вважаються: сам попап (разом із рядком пошуку), пілюля, поле */
@@ -1602,6 +1694,7 @@ function chatInit(){
     else $('chatOverlay').classList.add('open');
     if (window.innerWidth > 560) $('chatText').focus();
   };
+  window.calcarOpenChat = open; /* гачок для кнопки "Спитати про це" */
   const close = () => {
     $('chatPanel').classList.remove('open');
     $('chatOverlay').classList.remove('open');
@@ -1653,6 +1746,7 @@ function chatInit(){
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat($('chatText').value); }
   });
   bindMention();
+  bindSelAsk();
 }
 async function sendChat(text){
   text = String(text || '').trim();
@@ -1664,6 +1758,8 @@ async function sendChat(text){
   const atts = pendingFiles.splice(0);
   const refs = await refPayload();
   pendingRefs.splice(0);
+  const quote = QUOTE || null;
+  clearQuote();
   renderFiles();
   /* в історії тримаємо лише текст із маркером файлів: самі файли великі,
      вони йдуть тільки з цим повідомленням і не переслідують подальші */
@@ -1700,6 +1796,7 @@ async function sendChat(text){
         report_id: ROW_ID || OPEN_ID || null,
         recent_turns: RECENT_TURNS,
         referenced_reports: refs,
+        quoted_text: quote,
         /* фото оголошення і кадри з аукціону США: помічник бачить те саме, що звіт */
         photos: [...(M.photos || []).slice(0, 6), ...(M.auction_photos || []).slice(0, 4)],
         lang: window.calcarLang(),

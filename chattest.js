@@ -196,7 +196,23 @@ async function sys(product, memory, extra) {
     /* без refs блока нема */
     if (withMem.includes('ДОДАНІ ЗВІТИ ДЛЯ ПОРІВНЯННЯ')) errs.push('блок доданих звітів є без refs' + p);
 
-    /* 11. правило продукту діє і на згенерований блок */
+    /* 11. цитата зі звіту доходить до інструкції */
+    const wQuote = await sys(product, MEM, { quoted_text: 'пробіг 190 тис підтверджений Carfax' });
+    if (!wQuote.includes('ЦИТАТА ЗІ ЗВІТУ')) errs.push('нема блоку цитати' + p);
+    if (!wQuote.includes('пробіг 190 тис підтверджений Carfax')) errs.push('текст цитати загубився' + p);
+    /* порожня і сміттєва цитата: запит живий, порожнього блока нема */
+    for (const junk of [undefined, null, 42, { a: 1 }, '', '   ', []]) {
+      const g = await call(product, MEM, { quoted_text: junk });
+      if (g.code !== 200 || !g.body.reply) errs.push('сміттєвий quoted_text зламав запит: ' + JSON.stringify(junk) + p);
+      const gs = sent.messages.find(m => m.role === 'system').content;
+      if (gs.includes('ЦИТАТА ЗІ ЗВІТУ')) errs.push('порожній блок цитати для ' + JSON.stringify(junk) + p);
+    }
+    /* страхувальна обрізка по 600 на сервері (сторінка ріже по 500 сама) */
+    const qcut = await sys(product, MEM, { quoted_text: 'Й'.repeat(600) + 'Ф'.repeat(100) });
+    if (!qcut.includes('Й'.repeat(600))) errs.push('цитату обрізало раніше за 600' + p);
+    if (qcut.includes('Ф'.repeat(10))) errs.push('цитата не обрізана по 600' + p);
+
+    /* 12. правило продукту діє і на згенерований блок */
     const dashTail = await sys(product, MEM, { report_id: 'AAA', recent_turns: [turn('AAA', 'BMW \u2014 X5', 'текст із \u2014 тире', 0)] });
     if (withMem.includes('\u2014')) errs.push('довге тире у системній інструкції' + p);
     if (dashTail.includes('\u2014')) errs.push('довге тире просочилось із хвоста' + p);
@@ -250,6 +266,22 @@ async function sys(product, memory, extra) {
        Живе тільки в спільному правилі метрик, окремих min-height бути не може */
     const shared = (s.split('.chat-box textarea,.chat-ta-overlay{')[1] || '').split('}')[0];
     if (!shared.includes('min-height:calc(3em + 4px)')) errs.push('сторінка ' + f + ': min-height у два рядки зник зі спільного правила');
+    /* кнопка @ відкриває ТОЙ САМИЙ попап: одна логіка, без другої копії */
+    if (!s.includes('id="chatAtBtn"')) errs.push('сторінка ' + f + ': нема кнопки @ у composer');
+    const atHandler = s.split("getElementById('chatAtBtn')")[1] || '';
+    if (!atHandler.slice(0, 400).includes('openMention(p)')) errs.push('сторінка ' + f + ': кнопка @ не відкриває спільний попап');
+    if ((s.match(/function openMention\(/g) || []).length !== 1) errs.push('сторінка ' + f + ': логіка попапа здубльована');
+    /* цитата: блок над полем, плавуча кнопка, надсилання і чистка */
+    for (const el of ['id="chatQuote"', 'id="chatQuoteText"', 'id="chatQuoteX"', 'id="chatSelAsk"']) {
+      if (!s.includes(el)) errs.push('сторінка ' + f + ' без елемента ' + el);
+    }
+    if (!/quoted_text:\s*quote/.test(s)) errs.push('сторінка ' + f + ' не шле quoted_text');
+    if (!s.includes('clearQuote();')) errs.push('сторінка ' + f + ' не чистить цитату при відправці');
+    if (!s.includes('QUOTE.slice(0, 500)')) errs.push('сторінка ' + f + ' не ріже цитату по 500');
+    if (!s.includes("addEventListener('selectionchange'")) errs.push('сторінка ' + f + ' не стежить за виділенням');
+    if (!s.includes("closest('#chatPanel, #chatSelAsk, input, textarea")) errs.push('сторінка ' + f + ' показує кнопку у чаті чи полях вводу');
+    if (!s.includes('bindSelAsk();')) errs.push('сторінка ' + f + ' не підключає кнопку виділення');
+    if (!s.includes('window.calcarOpenChat')) errs.push('сторінка ' + f + ' без гачка відкриття чату');
     const soloTa = (s.split('\n').find(l => l.trim().startsWith('.chat-box textarea{')) || '');
     const soloOv = (s.split('\n').find(l => l.trim().startsWith('.chat-ta-overlay{')) || '');
     if (soloTa.includes('min-height') || soloOv.includes('min-height')) errs.push('сторінка ' + f + ': окремий min-height поза спільним правилом, шари розʼїдуться');
@@ -286,7 +318,7 @@ async function sys(product, memory, extra) {
   /* нові рядки інтерфейсу мусять бути в обох словниках */
   for (const d of ['i18n/ru.js', 'i18n/en.js']) {
     const dict = fs.readFileSync(d, 'utf8');
-    for (const k of ['Асистент CalCar', 'Йдеться про:', 'Постав питання… @ щоб додати звіт для порівняння', 'Пошук звіту за назвою…', 'Звітів поки нема', 'сьогодні', 'дн. тому']) {
+    for (const k of ['Асистент CalCar', 'Йдеться про:', 'Постав питання… @ щоб додати звіт для порівняння', 'Пошук звіту за назвою…', 'Звітів поки нема', 'сьогодні', 'дн. тому', 'Додати звіт для порівняння', 'Спитати про це', 'Прибрати цитату']) {
       if (!dict.includes("'" + k + "'")) errs.push('нема ключа "' + k + '" у ' + d);
     }
   }
