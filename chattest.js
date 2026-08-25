@@ -260,7 +260,20 @@ async function sys(product, memory, extra) {
     if (!s.includes(".closest('.chat-ref-pill') && e.target !== field) closeMention(false)")) errs.push('сторінка ' + f + ': клік по пілюлі рахується кліком мимо');
     /* хрестика на пілюлі більше нема, зняття лише стиранням */
     if (s.includes('chat-ref-x') || s.includes('removeRefPill')) errs.push('сторінка ' + f + ': хрестик на пілюлі повернувся');
-    if (!s.includes("if (e.key !== 'Backspace' || field.selectionStart !== field.selectionEnd) return;")) errs.push('сторінка ' + f + ': Backspace не зносить пілюлю цілком');
+    if (!s.includes('refSpans().find(sp => sp.end === p)')) errs.push('сторінка ' + f + ': Backspace не зносить пілюлю цілком');
+    /* пілюля атомарна для стрілок в обидва боки, Shift-виділення цільне.
+       Живі натискання без браузера не проженеш: алгоритм стрибків прогнаний
+       окремою симуляцією на мок-полі, тут страхуємо наявність механізму */
+    if (!s.includes("if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;")) errs.push('сторінка ' + f + ': нема обробки стрілок біля пілюлі');
+    if (!s.includes('(back ? sp.end === p : sp.start === p)')) errs.push('сторінка ' + f + ': стрибок працює не в обидва боки');
+    if (!s.includes("q < anchor ? 'backward' : 'forward'")) errs.push('сторінка ' + f + ': Shift-виділення не захоплює пілюлю цільно');
+    /* програмна вставка смикає input: автогроу сторінки (зареєстрований
+       раніше) і накладка перераховуються, поле не схлопується */
+    if (!s.includes("dispatchEvent(new Event('input', { bubbles: true }))")) errs.push('сторінка ' + f + ': нема програмного input після вставки');
+    if (!/refSync\(\);\s*\n\s*closeMention\(true\);/.test(s)) errs.push('сторінка ' + f + ': вставка пілюлі не перераховує висоту поля');
+    const growAt = s.indexOf("addEventListener('input', ");
+    const bindAt = s.indexOf('bindMention();');
+    if (growAt === -1 || bindAt === -1 || growAt > bindAt) errs.push('сторінка ' + f + ': автогроу зареєстрований після синхронізації накладки');
   }
 
   /* нові рядки інтерфейсу мусять бути в обох словниках */

@@ -1310,6 +1310,25 @@ function renderTaOverlay(){
   ov.appendChild(document.createTextNode(text.slice(pos)));
   ov.scrollTop = field.scrollTop;
 }
+/* межі кожної пілюлі в тексті поля: [start, end) назви @Título */
+function refSpans(){
+  const text = document.getElementById('chatText').value;
+  const spans = [];
+  let from = 0;
+  pendingRefs.forEach(ref => {
+    const i = text.indexOf('@' + ref.title, from);
+    if (i === -1) return;
+    spans.push({ start: i, end: i + 1 + ref.title.length });
+    from = i + 1 + ref.title.length;
+  });
+  return spans;
+}
+/* програмна зміна value не породжує input: смикаємо його самі, щоб відпрацювали
+   автогроу сторінки (зареєстрований раніше) і синхронізація накладки. Без цього
+   вставлена назва не перераховувала висоту поля і текст ховався за прокрутку */
+function refSync(){
+  document.getElementById('chatText').dispatchEvent(new Event('input', { bubbles: true }));
+}
 /* стерта з тексту назва знімає прикріплення */
 function dropErasedRefs(){
   const text = document.getElementById('chatText').value;
@@ -1343,7 +1362,7 @@ function pickMention(r){
       field.value += (field.value && !/\s$/.test(field.value) ? ' ' : '') + name;
     }
   }
-  renderTaOverlay();
+  refSync();
   closeMention(true);
 }
 function mentionKeydown(e){
@@ -1375,25 +1394,36 @@ function bindMention(){
     mentionReplace = pendingRefs.findIndex(r => r.id === pill.dataset.refId);
     openMention(-1);
   });
-  /* Backspace одразу за пілюлею зносить її цілком, як у месенджерах */
+  /* пілюля атомарна для клавіатури: Backspace за нею зносить її цілком,
+     стрілки перестрибують назву одним натисканням в обидва боки, Shift зі
+     стрілкою захоплює її у виділення як єдине ціле. Каретка всередині назви
+     була б невидима (фон пілюлі малюється поверх каретки), тому їй там не місце */
   field.addEventListener('keydown', e => {
-    if (e.key !== 'Backspace' || field.selectionStart !== field.selectionEnd) return;
-    const p = field.selectionStart;
-    let from = 0;
-    for (const ref of pendingRefs) {
-      const name = '@' + ref.title;
-      const i = field.value.indexOf(name, from);
-      if (i === -1) continue;
-      from = i + name.length;
-      if (p === i + name.length) {
-        e.preventDefault();
-        field.value = field.value.slice(0, i) + field.value.slice(p);
-        field.setSelectionRange(i, i);
-        dropErasedRefs();
-        renderTaOverlay();
-        return;
-      }
+    if (e.key === 'Backspace') {
+      if (field.selectionStart !== field.selectionEnd) return;
+      const p = field.selectionStart;
+      const span = refSpans().find(sp => sp.end === p);
+      if (!span) return;
+      e.preventDefault();
+      field.value = field.value.slice(0, span.start) + field.value.slice(p);
+      field.setSelectionRange(span.start, span.start);
+      refSync();
+      return;
     }
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    const back = e.key === 'ArrowLeft';
+    const collapsed = field.selectionStart === field.selectionEnd;
+    /* без Shift наявне виділення браузер схлопує сам, не заважаємо */
+    if (!collapsed && !e.shiftKey) return;
+    const backward = field.selectionDirection === 'backward';
+    const p = collapsed ? field.selectionStart : (backward ? field.selectionStart : field.selectionEnd);
+    const anchor = collapsed ? p : (backward ? field.selectionEnd : field.selectionStart);
+    const span = refSpans().find(sp => (back ? sp.end === p : sp.start === p));
+    if (!span) return;
+    e.preventDefault();
+    const q = back ? span.start : span.end;
+    if (e.shiftKey) field.setSelectionRange(Math.min(anchor, q), Math.max(anchor, q), q < anchor ? 'backward' : 'forward');
+    else field.setSelectionRange(q, q);
   });
   field.addEventListener('keydown', e => { if (e.key === 'Escape' && mentionOpenNow()) closeMention(true); });
   inp.addEventListener('keydown', mentionKeydown);
