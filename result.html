@@ -641,7 +641,7 @@
   .chat-mention-empty{padding:12px 14px;font-size:12.5px;color:var(--muted)}
 
   /* кнопка @ поруч зі скріпкою: той самий призрачний стиль */
-  .chat-attach.at{font-size:16.5px;font-weight:400;margin-left:-6px}
+  .chat-attach.at{font-size:15.5px;font-weight:400;line-height:1;margin-left:-7px}
 
   /* цитата зі звіту над полем вводу */
   .chat-quote{
@@ -2433,10 +2433,10 @@ document.getElementById('printMeta').textContent =
     const marks = [];
     let from = 0;
     pendingRefs.forEach(ref => {
-      const i = text.indexOf('@' + ref.title, from);
+      const i = text.indexOf(ref.title, from);
       if (i === -1) return;
-      marks.push({ ref, start: i, end: i + 1 + ref.title.length });
-      from = i + 1 + ref.title.length;
+      marks.push({ ref, start: i, end: i + ref.title.length });
+      from = i + ref.title.length;
     });
     let pos = 0;
     marks.forEach(m => {
@@ -2457,10 +2457,10 @@ document.getElementById('printMeta').textContent =
     const spans = [];
     let from = 0;
     pendingRefs.forEach(ref => {
-      const i = text.indexOf('@' + ref.title, from);
+      const i = text.indexOf(ref.title, from);
       if (i === -1) return;
-      spans.push({ start: i, end: i + 1 + ref.title.length });
-      from = i + 1 + ref.title.length;
+      spans.push({ start: i, end: i + ref.title.length });
+      from = i + ref.title.length;
     });
     return spans;
   }
@@ -2475,9 +2475,9 @@ document.getElementById('printMeta').textContent =
     const text = document.getElementById('chatText').value;
     let from = 0;
     pendingRefs = pendingRefs.filter(ref => {
-      const i = text.indexOf('@' + ref.title, from);
+      const i = text.indexOf(ref.title, from);
       if (i === -1) return false;
-      from = i + 1 + ref.title.length;
+      from = i + ref.title.length;
       return true;
     });
   }
@@ -2490,13 +2490,14 @@ document.getElementById('printMeta').textContent =
       if (!dup) {
         const old = pendingRefs[mentionReplace];
         pendingRefs[mentionReplace] = picked;
-        field.value = field.value.replace('@' + old.title, '@' + picked.title);
+        field.value = field.value.replace(old.title, picked.title);
       }
     } else {
       /* максимум два прикріплені звіти */
       if (!dup && pendingRefs.length >= 2) { closeMention(true); return; }
       if (!dup) pendingRefs.push(picked);
-      const name = '@' + picked.title + ' ';
+      /* пілюля це сама назва без @; набраний тригерний @ видаляється */
+      const name = picked.title + ' ';
       if (mentionPos >= 0 && field.value[mentionPos] === '@') {
         field.value = field.value.slice(0, mentionPos) + name + field.value.slice(mentionPos + 1);
       } else {

@@ -298,8 +298,10 @@ async function sys(product, memory, extra) {
     const atRule = (s.split('.chat-attach.at{')[1] || '').split('}')[0];
     if (!atRule) errs.push('сторінка ' + f + ': нема правила .chat-attach.at');
     else {
-      if (/width|height|color|background/.test(atRule)) errs.push('сторінка ' + f + ': кнопка @ переозначає розмір чи колір скріпки');
+      const atProps = atRule.split(';').map(d => d.split(':')[0].trim());
+      if (atProps.some(p => ['width', 'height', 'color', 'background'].includes(p))) errs.push('сторінка ' + f + ': кнопка @ переозначає розмір чи колір скріпки');
       if (!atRule.includes('font-weight:400')) errs.push('сторінка ' + f + ': гліф @ не тонкий');
+      if (!atRule.includes('line-height:1')) errs.push('сторінка ' + f + ': гліф @ без line-height:1 знову сяде нижче центру');
     }
     /* кнопка виділення: над виділенням і фірмовим лаймом */
     if (!s.includes('r.top - h - 8')) errs.push('сторінка ' + f + ': кнопка виділення не над виділенням');
@@ -311,6 +313,15 @@ async function sys(product, memory, extra) {
     if (!s.includes('color:transparent;caret-color:var(--text)')) errs.push('сторінка ' + f + ': текст поля не схований під накладку');
     if (!s.includes('chat-ref-pill')) errs.push('сторінка ' + f + ': нема пілюлі згадки');
     if (!s.includes('pendingRefs[mentionReplace] = picked')) errs.push('сторінка ' + f + ': клік по пілюлі не замінює машину');
+    /* пілюля без @: механіка (пошук, стирання, Backspace, заміна) живе на
+       самій назві, тригерний @ після вибору видаляється */
+    if (s.includes("'@' + ref.title") || s.includes("'@' + picked.title") || s.includes("'@' + old.title")) {
+      errs.push('сторінка ' + f + ': пілюля знову з @ у тексті');
+    }
+    if (!s.includes("const name = picked.title + ' ';")) errs.push('сторінка ' + f + ': вставка не чистою назвою');
+    if (!s.includes('field.value.slice(0, mentionPos) + name + field.value.slice(mentionPos + 1)')) {
+      errs.push('сторінка ' + f + ': тригерний @ не видаляється при вставці');
+    }
     if (!s.includes('dropErasedRefs();')) errs.push('сторінка ' + f + ': стирання назви не знімає прикріплення');
     if (!s.includes("field.addEventListener('scroll'")) errs.push('сторінка ' + f + ': нема синхронізації прокрутки накладки');
     if (s.includes('tag.textContent')) errs.push('сторінка ' + f + ': плашка продукту в @-попапі повернулась');
