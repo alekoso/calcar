@@ -42,10 +42,58 @@ ${memory}
 - Не переказуй профіль цілком без запиту і не наголошуй, що ведеш записи: просто користуйся знанням природно.`
   : `ПРОФІЛЬ ВЛАСНИКА: нотатки про цю людину поки нема (не залогінена або памʼять ще порожня). Не вигадуй фактів про неї і не приписуй їй машин чи побажань. Якщо питає, що ти про неї знаєш, скажи чесно, що поки нічого не запамʼятав.`;
 
-const SYSTEM = (product, memory) => `${product === 'check' ? DOMAIN_CHECK : DOMAIN_IMPORT}
+
+/* Специфікація нотатки памʼяті. УВАГА: точна копія цієї константи живе
+   в api/memory.js (старий окремий шлях оновлення памʼяті, працює паралельно).
+   Змінюючи текст тут, зміни і там: chattest.js звіряє копії посимвольно. */
+const NOTE_SPEC = `Нотатка ведеться ЧОТИРМА розділами з такими заголовками, саме в цьому порядку:
+
+Людина:
+ринок, де людина шукає авто (Україна, пригін зі США, інше); рівень технічної грамотності; стиль використання авто (місто, траса, сімʼя, робота).
+
+Уподобання й обмеження:
+бюджет; тип кузова; паливо; марки; ставлення до битих авто зі США; допустимий пробіг; що для людини важливіше (надійність, комфорт, динаміка).
+
+Активний пошук:
+що людина шукає прямо зараз, вимоги, кандидати. Розділ ОБОВʼЯЗКОВО закривається: якщо людина написала, що купила авто або припинила пошук, очисти розділ, а підсумок перенеси одним рядком у Рішення.
+
+Рішення:
+журнал з датами: які авто людина дивилась, що відсіяла чи обрала і чому. До 10 рядків, свіжі витісняють старі.
+
+Загальні правила нотатки:
+- Свіже перемагає застаріле. Без повторів, без разових дрібниць.
+- Дані конкретних звітів (кошториси, ціни, VIN, деталі пошкоджень) не копіюй: вони приходять окремо разом зі звітом.
+- Порожній розділ лишай самим заголовком, не вигадуй вміст.
+- Пиши стисло, рядками. Мʼякий ліміт 2500 символів: наближаючись до нього, стискай формулювання і викидай найменш цінне.
+- Мовою, якою переважно пише користувач.
+- НІКОЛИ не використовуй символ довгого тире.`;
+
+/* Новий шлях памʼяті: модель повертає оновлену нотатку службовим блоком у тій
+   самій відповіді, окремий виклик /api/memory для цього більше не обовʼязковий.
+   Блок просять лише коли сторінка може нотатку зберегти (передала memory рядком,
+   тобто користувач залогінений). Все після рядка-маркера користувач не бачить. */
+const MEMORY_MARK = '[[MEMORY]]';
+const MEMORY_TASK = `СЛУЖБОВИЙ БЛОК ПАМʼЯТІ (технічний, обовʼязковий):
+- У САМОМУ КІНЦІ кожної відповіді додай окремий рядок ${MEMORY_MARK} і одразу після нього повну оновлену нотатку памʼяті про користувача. Поточна нотатка показана в блоці ПРОФІЛЬ ВЛАСНИКА (якщо її нема, почни нову).
+${NOTE_SPEC}
+- Онови нотатку фактами про ЛЮДИНУ з цієї розмови. Якщо нового про людину нічого нема, поверни нотатку без змін, але рядок ${MEMORY_MARK} і нотатку виведи однаково.
+- Користувач цього блока НЕ бачить: сервіс відрізає все, починаючи з рядка ${MEMORY_MARK}. У видимій частині відповіді не згадуй ні блок, ні те, що ведеш нотатку.`;
+
+
+/* Наскрізний хвіст розмов: без вгадування смислу. У блок ідуть УСІ репліки
+   поточного звіту плюс 4 найсвіжіші з інших, разом не більше 8. Жодної
+   фільтрації за словами чи марками. Порожній хвіст: блока нема взагалі. */
+const TURNS = list => list.length
+  ? `НЕДАВНІ РОЗМОВИ (останні репліки ЦІЄЇ Ж людини у чатах її звітів, найсвіжіші внизу):
+${list.map(t => '- [' + (t.title || 'звіт без назви') + (t.same ? ', цей самий звіт' : '') + (t.at ? ', ' + t.at.slice(0, 10) : '') + '] ' + (t.role === 'user' ? 'людина' : 'помічник') + ': ' + t.text).join('\n')}
+- Це розмови цієї самої людини, продовжуй їхню нитку природно. Згадуючи розмову з іншого звіту, називай те авто за назвою зі списку.
+- Якщо свіжа репліка суперечить старішій або нотатці профілю, вір свіжим словам.`
+  : '';
+
+const SYSTEM = (product, memory, wantMemory, turns) => `${product === 'check' ? DOMAIN_CHECK : DOMAIN_IMPORT}
 
 ${OWNER(memory)}
-
+${TURNS(turns) ? '\n' + TURNS(turns) + '\n' : ''}
 ІНШІ ПРОРАХУНКИ КОРИСТУВАЧА (context.other_reports_of_this_user, якщо є):
 - Це авто, які ця людина вже аналізувала: назва, дата аналізу (analyzed_at і days_ago), пошкодження, пробіг, підсумок під ключ і ризик на момент збереження (totals), хвіст переписки (chat_tail).
 - Використовуй їх для порівнянь ("чи це краще за ту BMW?") і для розуміння, що людина шукає.
@@ -61,7 +109,7 @@ ${OWNER(memory)}
 - Усі ціни в доларах США, орієнтовні для ринку України. Підсумок "під ключ" вже порахований у totals, використовуй його.
 - Можеш рахувати: наприклад, перерахувати підсумок з іншою ставкою (мито 10% від ставки, ПДВ 20% від ставки+мита+акцизу, акциз не змінюється).
 - НІКОЛИ не використовуй символ довгого тире, пиши кому, двокрапку або крапку.
-- Питання про саму людину, про її нинішнє авто і про її минулі прорахунки це частина твоєї теми, а не стороннє: відповідай на них по суті. Одним реченням і поверненням до теми відповідай лише на справді сторонні питання (погода, політика, теми поза автомобілями).`;
+- Питання про саму людину, про її нинішнє авто і про її минулі прорахунки це частина твоєї теми, а не стороннє: відповідай на них по суті. Одним реченням і поверненням до теми відповідай лише на справді сторонні питання (погода, політика, теми поза автомобілями).${wantMemory ? '\n\n' + MEMORY_TASK : ''}`;
 
 
 export default async function handler(req, res) {
@@ -76,9 +124,27 @@ export default async function handler(req, res) {
        кладе все в context: приймаємо обидві форми */
     const { messages, photos } = body;
     const product = body.product === 'check' ? 'check' : 'import';
-    /* памʼять шлють обидві сторінки полем memory: беремо як є, лише обрізаємо
-       по тій самій межі, що й api/memory.js, щоб не роздувати системний блок */
-    const memory = typeof body.memory === 'string' ? body.memory.trim().slice(0, 2000) : '';
+    /* памʼять шлють обидві сторінки полем memory: рядок значить, що користувач
+       залогінений і сторінка вміє зберегти оновлену нотатку (для гостей memory
+       приходить null і службовий блок памʼяті в моделі не просимо) */
+    const wantMemory = typeof body.memory === 'string';
+    const memory = wantMemory ? body.memory.trim().slice(0, 3000) : '';
+
+    /* хвіст розмов: чистимо від сміття, далі відбір без вгадування смислу:
+       усі репліки цього звіту плюс 4 найсвіжіші з інших, разом до 8 */
+    const curId = typeof body.report_id === 'string' && body.report_id ? body.report_id : null;
+    const cleanTurns = (Array.isArray(body.recent_turns) ? body.recent_turns : [])
+      .filter(t => t && typeof t === 'object' && (t.role === 'user' || t.role === 'assistant') && typeof t.text === 'string' && t.text.trim())
+      .slice(-24)
+      .map(t => ({
+        same: curId !== null && t.report_id === curId,
+        title: typeof t.title === 'string' ? t.title.replace(/\u2014/g, ',').slice(0, 80) : null,
+        at: typeof t.at === 'string' ? t.at.slice(0, 24) : null,
+        role: t.role,
+        text: t.text.trim().replace(/\u2014/g, ',').slice(0, 280),
+      }));
+    const freshOthers = cleanTurns.filter(t => !t.same).slice(-4);
+    const turns = cleanTurns.filter(t => t.same || freshOthers.includes(t)).slice(-8);
     let context = body.context || body.report || {};
     if (Array.isArray(body.others) && body.others.length) {
       context = Object.assign({}, context, { other_reports_of_this_user: body.others.slice(0, 12) });
@@ -131,7 +197,9 @@ export default async function handler(req, res) {
     const datas = https.length ? [] : raw.filter(u => /^data:image\/(?:jpeg|png|webp);base64,/.test(u)).slice(0, 3);
     const imgs = [...https, ...datas];
 
-    const ctxText = 'Дані по цьому авто (JSON):\n' + JSON.stringify(context || {}).slice(0, 42000);
+    /* дата потрібна службовому блоку памʼяті (журнал Рішення ведеться з датами)
+       і оцінці свіжості інших звітів */
+    const ctxText = 'Сьогодні: ' + new Date().toISOString().slice(0, 10) + '\nДані по цьому авто (JSON):\n' + JSON.stringify(context || {}).slice(0, 42000);
     const primer = {
       role: 'user',
       content: [
@@ -148,7 +216,7 @@ export default async function handler(req, res) {
         model: process.env.CHAT_MODEL || process.env.OPENAI_MODEL || 'gpt-5.6-terra',
         max_completion_tokens: 2500,
         messages: [
-          { role: 'system', content: SYSTEM(product, memory) },
+          { role: 'system', content: SYSTEM(product, memory, wantMemory, turns) },
           primer,
           { role: 'assistant', content: 'Прийняв, я вивчив дані і фото цього авто. Питай.' },
           ...hist,
@@ -186,17 +254,27 @@ export default async function handler(req, res) {
     console.log('[chat]', product, '| photos', imgs.length,
       '| hist', hist.length,
       '| memory', memory.length,
+      '| turns', turns.length + '/' + cleanTurns.length,
       '| ai', Date.now() - t0, 'ms',
       '| tokens', JSON.stringify(data?.usage || {}));
 
     if (data.error) {
       return res.status(502).json({ error: 'AI: ' + (data.error.message || 'помилка запиту') });
     }
-    const reply = (data.choices?.[0]?.message?.content || '').trim();
+    let reply = (data.choices?.[0]?.message?.content || '').trim();
+    /* службовий блок памʼяті: все після маркера це нотатка, користувачу її не показуємо.
+       Блока нема або він порожній: просто не оновлюємо памʼять цього разу, без помилок */
+    let memoryUpdate = null;
+    const mi = reply.indexOf(MEMORY_MARK);
+    if (mi !== -1) {
+      const note = reply.slice(mi + MEMORY_MARK.length).replace(/\u2014/g, ',').trim().slice(0, 2800);
+      reply = reply.slice(0, mi).trim();
+      if (note && note !== memory) memoryUpdate = note;
+    }
     if (!reply) {
       return res.status(502).json({ error: 'AI повернув порожню відповідь, спробуй ще раз' });
     }
-    return res.status(200).json({ reply });
+    return res.status(200).json(memoryUpdate ? { reply, memory_update: memoryUpdate } : { reply });
   } catch (e) {
     if (e.name === 'AbortError') {
       return res.status(504).json({ error: 'Відповідь не встигла за відведений час, спробуй ще раз' });

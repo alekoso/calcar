@@ -2156,10 +2156,36 @@ document.getElementById('printMeta').textContent =
       const { data: s } = await SB.auth.getSession();
       if (!s?.session) return;
       MEM_UID = s.session.user.id;
-      const { data } = await SB.from('user_memory').select('memory').eq('user_id', MEM_UID).maybeSingle();
-      MEMORY = data?.memory || null;
+      const { data } = await SB.from('user_memory').select('memory,recent_turns').eq('user_id', MEM_UID).maybeSingle();
+      /* порожній рядок, не null: для /api/chat це знак, що нотатку є куди зберегти */
+      MEMORY = data?.memory || '';
+      RECENT_TURNS = Array.isArray(data?.recent_turns) ? data.recent_turns.slice(-12) : [];
       memLastLen = history.length;
     } catch (e) {}
+  }
+
+  /* наскрізний хвіст розмов: останні 12 реплік з усіх вікон чату цього акаунта.
+     Зберігається в user_memory.recent_turns і їде в /api/chat, щоб помічник
+     памʼятав, про що людина щойно говорила в інших звітах */
+  let RECENT_TURNS = [];
+  function memTurn(role, text){
+    return {
+      report_id: REPORT_DB_ID || null,
+      title: (DATA && DATA.vehicle && DATA.vehicle.title) || null,
+      at: new Date().toISOString(),
+      role,
+      text: String(text || '').slice(0, 280),
+    };
+  }
+  /* новий шлях памʼяті: нотатка приїздить службовим полем разом із відповіддю
+     чату і пишеться поверх, старий /api/memory поки працює паралельно */
+  async function saveChatMemory(note, userText, aiText){
+    if (!MEM_UID) return;
+    const patch = { user_id: MEM_UID, updated_at: new Date().toISOString() };
+    if (typeof note === 'string' && note.trim()) { MEMORY = note.trim(); patch.memory = MEMORY; }
+    RECENT_TURNS = [...RECENT_TURNS, memTurn('user', userText), memTurn('assistant', aiText)].slice(-12);
+    patch.recent_turns = RECENT_TURNS;
+    try { await SB.from('user_memory').upsert(patch); } catch (e) {}
   }
   function scheduleMemoryUpdate(){
     if (!MEM_UID) return;
@@ -2174,7 +2200,7 @@ document.getElementById('printMeta').textContent =
         });
         const data = await r.json().catch(() => ({}));
         if (!r.ok || typeof data.memory !== 'string') return;
-        MEMORY = data.memory || null;
+        MEMORY = data.memory || '';
         memLastLen = history.length;
         await SB.from('user_memory').upsert({ user_id: MEM_UID, memory: MEMORY, updated_at: new Date().toISOString() });
       } catch (e) {}
@@ -2223,6 +2249,8 @@ document.getElementById('printMeta').textContent =
           context: chatContext(),
           photos: photosForChat(),
           memory: MEMORY,
+          report_id: REPORT_DB_ID,
+          recent_turns: RECENT_TURNS,
         }),
       });
       let d;
@@ -2231,6 +2259,7 @@ document.getElementById('printMeta').textContent =
       typing.remove();
       if (!r.ok || d.error || !d.reply) throw new Error(d.error || t('Не вдалося отримати відповідь'));
       history.push({ role: 'assistant', content: d.reply });
+      saveChatMemory(d.memory_update, shown, d.reply);
       scheduleMemoryUpdate();
       addMsg('ai', d.reply);
       persist();
