@@ -240,6 +240,19 @@ async function sys(product, memory, extra) {
     if (!s.includes("else if (e.key === 'Escape') { e.preventDefault(); closeMention(true); }")) {
       errs.push('сторінка ' + f + ': Esc з пошуку не закриває попап');
     }
+    /* прикріплення живе в тексті пілюлею, чипів над composer більше нема.
+       Живі перевірки метрик і кліків без браузера неможливі, механізм
+       страхуємо на рівні коду, решта в ручній перевірці */
+    if (s.includes('chat-file-chip ref')) errs.push('сторінка ' + f + ': чип звіту над composer повернувся');
+    if (!s.includes('id="chatTaOverlay"')) errs.push('сторінка ' + f + ': нема накладки над полем');
+    if (!s.includes('.chat-box textarea,.chat-ta-overlay{')) errs.push('сторінка ' + f + ': метрики textarea і накладки не спільним правилом');
+    if (!s.includes('color:transparent;caret-color:var(--text)')) errs.push('сторінка ' + f + ': текст поля не схований під накладку');
+    if (!s.includes('chat-ref-pill') || !s.includes('chat-ref-x')) errs.push('сторінка ' + f + ': нема пілюлі або хрестика');
+    if (!s.includes('pendingRefs[mentionReplace] = picked')) errs.push('сторінка ' + f + ': клік по пілюлі не замінює машину');
+    if (!s.includes('dropErasedRefs();')) errs.push('сторінка ' + f + ': стирання назви не знімає прикріплення');
+    if (!s.includes('removeRefPill(')) errs.push('сторінка ' + f + ': хрестик не знімає прикріплення');
+    if (!s.includes("field.addEventListener('scroll'")) errs.push('сторінка ' + f + ': нема синхронізації прокрутки накладки');
+    if (s.includes('tag.textContent')) errs.push('сторінка ' + f + ': плашка продукту в @-попапі повернулась');
   }
 
   /* нові рядки інтерфейсу мусять бути в обох словниках */

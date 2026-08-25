@@ -206,7 +206,7 @@
   header{background:rgba(255,255,255,.88);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line);color:var(--text);position:sticky;top:0;z-index:50}
   .header-in{max-width:1160px;margin:0 auto;padding:0 20px;height:56px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center}
   .hleft{display:flex;align-items:center;gap:14px;justify-self:start}
-  .header-right{margin-left:0;justify-self:end;display:flex;align-items:center;gap:16px;font-size:13px}
+  .header-right{margin-left:0;grid-column:3;justify-self:end;display:flex;align-items:center;gap:16px;font-size:13px}
   footer{border-top:1px solid var(--line);background:var(--card);margin-top:auto}
   .footer-in{max-width:1160px;margin:0 auto;padding:24px 20px;display:flex;gap:16px;flex-wrap:wrap;align-items:center;font-size:12.5px;color:var(--muted)}
   .footer-in .logo{font-size:12px}
@@ -505,12 +505,30 @@
     transition:border-color .15s,box-shadow .15s;
   }
   .chat-box:focus-within{border-color:var(--line-strong);box-shadow:0 1px 2px rgba(20,22,25,.05),0 10px 28px rgba(20,22,25,.09)}
-  .chat-box textarea{
+  .chat-ta-wrap{position:relative}
+  /* КРИТИЧНО: textarea і накладка з пілюлями мусять збігатися в метриках до
+     пікселя, тому всі шрифтові й габаритні властивості задані ОДНИМ правилом */
+  .chat-box textarea,.chat-ta-overlay{
     display:block;width:100%;border:none;background:transparent;resize:none;outline:none;
-    font-family:inherit;font-size:14.5px;line-height:1.5;color:var(--text);
+    font-family:inherit;font-size:14.5px;line-height:1.5;letter-spacing:normal;
     padding:2px 6px;min-height:24px;max-height:120px;box-sizing:border-box;
+    white-space:pre-wrap;overflow-wrap:break-word;word-break:normal;
   }
+  /* видимий текст малює накладка; у полі лишаються каретка і виділення */
+  .chat-box textarea{color:transparent;caret-color:var(--text)}
+  .chat-box textarea::selection{color:transparent}
   .chat-box textarea::placeholder{color:var(--faint)}
+  .chat-ta-overlay{position:absolute;inset:0;pointer-events:none;overflow:hidden;color:var(--text)}
+  /* пілюля прикріпленого звіту: фон без падінгів, box-shadow не рухає метрики */
+  .chat-ref-pill{
+    position:relative;border-radius:6px;background:var(--surface-2);
+    box-shadow:0 0 0 2px var(--surface-2);cursor:pointer;pointer-events:auto;
+  }
+  .chat-ref-x{
+    position:absolute;top:-7px;right:-8px;width:14px;height:14px;border:none;border-radius:50%;
+    background:var(--ink);color:var(--card);font-size:8px;line-height:14px;text-align:center;
+    padding:0;cursor:pointer;pointer-events:auto;
+  }
   .chat-box-row{display:flex;align-items:center;gap:8px;margin-top:2px}
   .chat-attach{
     width:34px;height:34px;border:none;border-radius:50%;background:transparent;color:var(--muted);
@@ -558,11 +576,6 @@
   .chat-mention-item.on{background:var(--surface-2)}
   .chat-mention-item .ttl2{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .chat-mention-item .age{font-size:11px;color:var(--faint);flex-shrink:0}
-  .chat-mention-item .tag{
-    flex-shrink:0;font-size:10px;font-weight:700;letter-spacing:.3px;border-radius:10px;padding:1px 7px;
-    background:var(--brand-soft);color:var(--brand-ink);
-  }
-  .chat-mention-item .tag.imp{background:var(--surface-2);color:var(--ink-2)}
   .chat-mention-empty{padding:12px 14px;font-size:12.5px;color:var(--muted)}
 
   .chat-note{display:flex;align-items:center;gap:5px;justify-content:center;margin-top:6px;font-size:11px;color:var(--faint)}
@@ -808,7 +821,10 @@
     </div>
     <div class="chat-files" id="chatFiles" style="display:none"></div>
     <div class="chat-box">
-      <textarea id="chatText" rows="1" placeholder="Постав питання… @ щоб додати звіт для порівняння"></textarea>
+      <div class="chat-ta-wrap">
+        <textarea id="chatText" rows="1" placeholder="Постав питання… @ щоб додати звіт для порівняння"></textarea>
+        <div class="chat-ta-overlay" id="chatTaOverlay" aria-hidden="true"></div>
+      </div>
       <div class="chat-box-row">
         <button class="chat-attach" id="chatAttach" type="button" title="Прикріпити фото або PDF" aria-label="Прикріпити файл">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
@@ -1193,7 +1209,7 @@ async function saveChatMemory(note, userText, aiText){
    Ввід @ у полі відкриває список останніх звітів (назва, давність, плашка
    check/import) з пошуком за назвою. Стрілки і Enter обирають, Esc закриває.
    Вибір вставляє @Назву в текст і чіпляє звіт чіпом, максимум два. */
-let REF_LIST = null, pendingRefs = [], mentionIdx = 0, mentionPos = -1;
+let REF_LIST = null, pendingRefs = [], mentionIdx = 0, mentionPos = -1, mentionReplace = -1;
 async function loadRefList(){
   if (REF_LIST) return REF_LIST;
   REF_LIST = [];
@@ -1233,16 +1249,13 @@ function renderMention(){
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'chat-mention-item' + (i === mentionIdx ? ' on' : '');
-    const tag = document.createElement('span');
-    tag.className = 'tag' + (r.kind === 'check' ? '' : ' imp');
-    tag.textContent = r.kind === 'check' ? t('Перевірка') : t('Пригін');
     const nm = document.createElement('span');
     nm.className = 'ttl2';
     nm.textContent = r.title || t('Прорахунок');
     const age = document.createElement('span');
     age.className = 'age';
     age.textContent = refDays(r.created_at);
-    b.append(tag, nm, age);
+    b.append(nm, age);
     b.onmouseenter = () => {
       mentionIdx = i;
       const on = list.querySelector('.chat-mention-item.on');
@@ -1268,21 +1281,86 @@ function openMention(pos){
 function closeMention(back){
   document.getElementById('chatMention').style.display = 'none';
   mentionPos = -1;
+  mentionReplace = -1;
   if (back) document.getElementById('chatText').focus();
+}
+
+/* Накладка над полем: текст 1:1 як у textarea (спільне CSS-правило метрик),
+   згадані звіти малюються пілюлями. Пілюля клікабельна: відкриває попап на
+   заміну машини; хрестик знімає прикріплення; стерта назва знімає його теж. */
+function renderTaOverlay(){
+  const field = document.getElementById('chatText');
+  const ov = document.getElementById('chatTaOverlay');
+  if (!ov) return;
+  ov.innerHTML = '';
+  const text = field.value;
+  const marks = [];
+  let from = 0;
+  pendingRefs.forEach(ref => {
+    const i = text.indexOf('@' + ref.title, from);
+    if (i === -1) return;
+    marks.push({ ref, start: i, end: i + 1 + ref.title.length });
+    from = i + 1 + ref.title.length;
+  });
+  let pos = 0;
+  marks.forEach(m => {
+    if (m.start > pos) ov.appendChild(document.createTextNode(text.slice(pos, m.start)));
+    const pill = document.createElement('span');
+    pill.className = 'chat-ref-pill';
+    pill.dataset.refId = m.ref.id;
+    pill.textContent = text.slice(m.start, m.end);
+    const x = document.createElement('button');
+    x.type = 'button'; x.className = 'chat-ref-x'; x.textContent = '✕'; x.tabIndex = -1;
+    pill.appendChild(x);
+    ov.appendChild(pill);
+    pos = m.end;
+  });
+  ov.appendChild(document.createTextNode(text.slice(pos)));
+  ov.scrollTop = field.scrollTop;
+}
+/* стерта з тексту назва знімає прикріплення */
+function dropErasedRefs(){
+  const text = document.getElementById('chatText').value;
+  let from = 0;
+  pendingRefs = pendingRefs.filter(ref => {
+    const i = text.indexOf('@' + ref.title, from);
+    if (i === -1) return false;
+    from = i + 1 + ref.title.length;
+    return true;
+  });
+}
+function removeRefPill(id){
+  const idx = pendingRefs.findIndex(r => r.id === id);
+  if (idx === -1) return;
+  const field = document.getElementById('chatText');
+  const name = '@' + pendingRefs[idx].title;
+  field.value = field.value.includes(name + ' ') ? field.value.replace(name + ' ', '') : field.value.replace(name, '');
+  pendingRefs.splice(idx, 1);
+  renderTaOverlay();
 }
 function pickMention(r){
   const field = document.getElementById('chatText');
   const dup = pendingRefs.some(x => x.id === r.id);
-  /* максимум два прикріплені звіти */
-  if (!dup && pendingRefs.length >= 2) { closeMention(true); return; }
-  if (!dup) pendingRefs.push({ id: r.id, title: r.title || t('Прорахунок'), kind: r.kind === 'check' ? 'check' : 'import' });
-  const name = '@' + (r.title || t('Прорахунок')) + ' ';
-  if (mentionPos >= 0 && field.value[mentionPos] === '@') {
-    field.value = field.value.slice(0, mentionPos) + name + field.value.slice(mentionPos + 1);
+  const picked = { id: r.id, title: r.title || t('Прорахунок'), kind: r.kind === 'check' ? 'check' : 'import' };
+  if (mentionReplace >= 0 && pendingRefs[mentionReplace]) {
+    /* клік по пілюлі: людина обирає іншу машину на заміну */
+    if (!dup) {
+      const old = pendingRefs[mentionReplace];
+      pendingRefs[mentionReplace] = picked;
+      field.value = field.value.replace('@' + old.title, '@' + picked.title);
+    }
   } else {
-    field.value += (field.value && !/\s$/.test(field.value) ? ' ' : '') + name;
+    /* максимум два прикріплені звіти */
+    if (!dup && pendingRefs.length >= 2) { closeMention(true); return; }
+    if (!dup) pendingRefs.push(picked);
+    const name = '@' + picked.title + ' ';
+    if (mentionPos >= 0 && field.value[mentionPos] === '@') {
+      field.value = field.value.slice(0, mentionPos) + name + field.value.slice(mentionPos + 1);
+    } else {
+      field.value += (field.value && !/\s$/.test(field.value) ? ' ' : '') + name;
+    }
   }
-  renderFiles();
+  renderTaOverlay();
   closeMention(true);
 }
 function mentionKeydown(e){
@@ -1297,9 +1375,21 @@ function bindMention(){
   const inp = document.getElementById('mentionSearch');
   if (!field || !inp) return;
   field.addEventListener('input', e => {
+    dropErasedRefs();
+    renderTaOverlay();
     if (e.data === '@') { openMention(field.selectionStart - 1); return; }
     /* тригерний @ стерли з тексту: попапу більше нема до чого */
     if (mentionOpenNow() && (mentionPos < 0 || field.value[mentionPos] !== '@')) closeMention(false);
+  });
+  field.addEventListener('scroll', () => { document.getElementById('chatTaOverlay').scrollTop = field.scrollTop; });
+  document.getElementById('chatTaOverlay').addEventListener('pointerdown', e => {
+    const x = e.target.closest('.chat-ref-x');
+    const pill = e.target.closest('.chat-ref-pill');
+    if (!x && !pill) return;
+    e.preventDefault();
+    if (x) { removeRefPill(pill.dataset.refId); return; }
+    mentionReplace = pendingRefs.findIndex(r => r.id === pill.dataset.refId);
+    openMention(-1);
   });
   field.addEventListener('keydown', e => { if (e.key === 'Escape' && mentionOpenNow()) closeMention(true); });
   inp.addEventListener('keydown', mentionKeydown);
@@ -1441,7 +1531,7 @@ async function shrinkImage(f) {
 function renderFiles() {
   const row = $('chatFiles');
   row.innerHTML = '';
-  row.style.display = (pendingFiles.length || pendingRefs.length) ? 'flex' : 'none';
+  row.style.display = pendingFiles.length ? 'flex' : 'none';
   pendingFiles.forEach((p, i) => {
     const chip = document.createElement('span');
     chip.className = 'chat-file-chip';
@@ -1450,17 +1540,6 @@ function renderFiles() {
     const x = document.createElement('button');
     x.type = 'button'; x.textContent = '✕';
     x.onclick = () => { pendingFiles.splice(i, 1); renderFiles(); };
-    chip.append(nm, x);
-    row.appendChild(chip);
-  });
-  pendingRefs.forEach((r, i) => {
-    const chip = document.createElement('span');
-    chip.className = 'chat-file-chip ref';
-    const nm = document.createElement('span');
-    nm.textContent = (r.kind === 'check' ? t('Перевірка') : t('Пригін')) + ' · ' + r.title;
-    const x = document.createElement('button');
-    x.type = 'button'; x.textContent = '✕';
-    x.onclick = () => { pendingRefs.splice(i, 1); renderFiles(); };
     chip.append(nm, x);
     row.appendChild(chip);
   });

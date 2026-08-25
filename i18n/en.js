@@ -384,7 +384,6 @@ window.CALCAR_DICT = {
   'Пошта': 'Email',
   'Вхід': 'Sign-in',
   'Вийти з акаунта': 'Sign out',
-  'Пригін': 'Import',
   /* ---- CalCar Check (en, iteration 20) ---- */
   'Змінити': 'Edit',
   'Скасувати': 'Cancel',

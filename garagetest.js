@@ -34,6 +34,14 @@ else {
   try { require('child_process').execSync('node --check /tmp/gm.js'); } catch(e){ errs.push('синтаксис основного скрипта: ' + e.message.split('\n')[1]); }
 }
 
+/* 3а. шапки: правий блок у третій колонці сітки, однаково на пʼяти grid-сторінках.
+   result.html живе на flex із margin-left:auto, це окрема архітектура шапки звіту */
+const HDR = '.header-right{margin-left:0;grid-column:3;justify-self:end;display:flex;align-items:center;gap:16px;font-size:13px}';
+for (const f of ['garage.html','cabinet.html','check.html','index.html','result-check.html']) {
+  if (!fs.readFileSync(f,'utf8').includes(HDR)) errs.push('шапка розійшлася: нема канонічного header-right у ' + f);
+}
+if (!fs.readFileSync('result.html','utf8').includes('.header-right{margin-left:auto;')) errs.push('flex-шапка result.html зламана');
+
 /* 3. меню на всіх сторінках */
 for (const f of ['garage.html','cabinet.html','check.html','index.html','result-check.html','result.html']) {
   const s = fs.readFileSync(f,'utf8');
@@ -45,8 +53,10 @@ for (const f of ['garage.html','cabinet.html','check.html','index.html','result-
   /* вітрина = лише Check: перемикач продуктів знятий, редирект-пастка теж */
   if (s.includes('class="switch"')) errs.push('перемикач продуктів повернувся у ' + f);
   if (s.includes('calcarProduct')) errs.push('редирект за calcarProduct повернувся у ' + f);
+  /* плашок Пригін/Перевірка більше нема ніде: продукт на вітрині один */
+  if (s.includes('kind-badge')) errs.push('плашка kind-badge повернулась у ' + f);
+  if (s.includes("t('Пригін')")) errs.push('плашка Пригін повернулась у ' + f);
 }
-if (fs.readFileSync('cabinet.html','utf8').includes('kind-badge')) errs.push('плашки Пригін/Перевірка повернулись у кабінет');
 
 /* 4. rewrites */
 const v = JSON.parse(fs.readFileSync('vercel.json','utf8'));
