@@ -451,7 +451,7 @@ ${auction && auction.photos.length ? `
 - Підтверджений ризик вимагає ПРЯМОГО доказу. Не підвищуй відкрите питання до підтвердженого ризику припущенням.
 - Різниця пробігів САМА ПО СОБІ це НЕ ODOMETER_ROLLBACK, а MILEAGE_CONFLICT_UNEXPLAINED. Тюнінг сам по собі НЕ MODIFICATION_TECHNICAL_CONCERN: потрібен конкретний технічний привід. Минуле ДТП саме по собі НЕ POOR_REPAIR_VISIBLE: потрібні видимі сліди поганого ремонту.
 - ВІДСУТНІСТЬ ДАНИХ НІКОЛИ НЕ Є ЗНАХІДКОЮ. Unknown не добре і не погано.
-- Знахідки ОДНОЇ події (одного ДТП) несуть спільний event_id: подія з кількома підтвердженнями це ОДНА знахідка з кількома evidence, не кілька знахідок.
+- event_id ОБОВʼЯЗКОВИЙ для КОЖНОЇ знахідки, без нього код її відкине. Для подій це імʼя події (accident_2020, flood_2021), для поточних станів і несправностей стабільний ідентифікатор (current_srs_fault, mileage_conflict_1, modification_suspension). Знахідки ОДНОЇ події (одного ДТП) несуть СПІЛЬНИЙ event_id: подія з кількома підтвердженнями це ОДНА знахідка з кількома evidence, не кілька знахідок.
 - repair_status (confirmed_ok | unknown | confirmed_bad) і severity (low|med|high) став де застосовно.
 - evidence: масив {source: seller_claim|current_photos|historical_listing|us_auction|registry|document, ref: конкретний запис (listing_3, photo_7, auction_event_1) де можливо, description: коротке доказове речення}. Одна знахідка може мати скільки завгодно доказів.
 - info_notes: вільний текст без впливу на бал. Якщо знахідок нема, findings це порожній масив.
@@ -618,7 +618,9 @@ export default async function handler(req, res) {
     try {
       const snaps = await readSnapshots(listing.vin, url);
       const coverageInputs = {
-        vin_decoded: !!nhtsa,
+        /* порожній обʼєкт від NHTSA це НЕ декодування: потрібні змістовні
+           поля, мінімум Make плюс Model або ModelYear */
+        vin_decoded: !!(nhtsa && nhtsa.Make && (nhtsa.Model || nhtsa.ModelYear)),
         /* лише кількість унікальних кадрів, без AI-оцінки якості */
         photos_count: new Set(listing.photos.map(photoKey)).size,
         historical_listings_count: snaps.length,

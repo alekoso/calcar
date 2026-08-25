@@ -71,6 +71,20 @@ const GERMAN_FULL = { ...FULL, auction_record_exists: false, auction_us_signal: 
   if (b.dropped_findings !== 4) errs.push('без evidence: dropped ' + b.dropped_findings + ' замість 4');
   if (b.final !== b.coverage_cap) errs.push('без evidence: бал мав лишитись на стелі');
 
+  /* 3в. confirmed_bad НЕ обходить структурний кап: він для всього, крім confirmed_ok */
+  b = computeScore([F('STRUCTURAL_DAMAGE', 'acc1', { repair_status: 'confirmed_bad' })], FULL);
+  if (!(b.final <= 5.5)) errs.push('структурне confirmed_bad обійшло кап: ' + b.final);
+  if (!b.limiting_factors.includes('hard_cap:STRUCTURAL_DAMAGE')) errs.push('confirmed_bad: капа нема в обмежувачах');
+
+  /* 3г. event_id обовʼязковий: два однакові ризики без нього не штрафують двічі, обидва в dropped */
+  b = quiet(() => computeScore([
+    { type: 'ODOMETER_ROLLBACK', evidence: [ev('registry', 'r1', 'запис реєстру')] },
+    { type: 'ODOMETER_ROLLBACK', evidence: [ev('historical_listing', 'listing_2', 'менший пробіг пізніше')] },
+    { type: 'ODOMETER_ROLLBACK', event_id: '   ', evidence: [ev('registry', 'r1', 'запис')] },
+  ], FULL));
+  if (b.penalties.length !== 0) errs.push('без event_id оштрафувало: ' + b.penalties.length + ' разів');
+  if (b.dropped_findings !== 3) errs.push('без event_id: dropped ' + b.dropped_findings + ' замість 3');
+
   /* 4. тяжке ДТП з ремонтом unknown: кап 5.5 і його імʼя в обмежувачах */
   b = computeScore([F('STRUCTURAL_DAMAGE', 'acc1', { repair_status: 'unknown', severity: 'high' })], FULL);
   if (!(b.final <= 5.5)) errs.push('структурне unknown: ' + b.final + ' > 5.5');
@@ -144,6 +158,11 @@ const GERMAN_FULL = { ...FULL, auction_record_exists: false, auction_us_signal: 
   const src = fs.readFileSync('api/score.js', 'utf8');
   if (src.includes('PHOTOS_OK_MIN')) errs.push('стара константа PHOTOS_OK_MIN лишилась');
   const checkSrc = fs.readFileSync('api/check.js', 'utf8');
+  /* vin_decoded лише за змістовним декодуванням, порожній обʼєкт правдивий */
+  if (!checkSrc.includes('nhtsa && nhtsa.Make && (nhtsa.Model || nhtsa.ModelYear)')) errs.push('check.js: vin_decoded знову через !!nhtsa');
+  /* промпт вимагає event_id завжди, включно з поточними станами */
+  if (!checkSrc.includes('event_id ОБОВʼЯЗКОВИЙ для КОЖНОЇ знахідки')) errs.push('check.js: промпт не вимагає event_id завжди');
+  if (!checkSrc.includes('current_srs_fault')) errs.push('check.js: промпт без прикладу event_id для поточних станів');
   if (/\/\^\[1-5\]\//.test(checkSrc)) errs.push('check.js знову вгадує застосовність аукціону за WMI');
   if (!checkSrc.includes('function photoKey(')) errs.push('check.js не дедуплікує кадри для photos_sufficient');
   if (!checkSrc.includes('function normalizeListingUrl(')) errs.push('check.js не нормалізує source_url для дедуплікації');

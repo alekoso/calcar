@@ -53,8 +53,9 @@ export const SCORE_CONFIG = {
     FIRE: 4.5,
     VIN_IDENTITY_PROBLEM: 3.5,
   },
-  /* структурне пошкодження без підтвердженого ремонту: окремий кап.
-     repair_status відсутній чи unknown = ремонт не підтверджений */
+  /* структурне пошкодження без ПІДТВЕРДЖЕНОГО ЯКІСНОГО ремонту: окремий кап.
+     Застосовується до будь-якого repair_status, крім confirmed_ok:
+     unknown, відсутній і confirmed_bad однаково не дають обійти кап */
   STRUCTURAL_UNKNOWN_CAP: 5.5,
   /* пороги grade рахуються з ФІНАЛЬНОГО балу, капи вдруге не застосовуються */
   GRADE_THRESHOLDS: [
@@ -106,9 +107,18 @@ function sanitizeFindings(findings) {
       console.log('[score] відкинута знахідка (без валідного evidence):', f.type, String(f.event_id || ''));
       continue;
     }
+    /* event_id обовʼязковий: дедуплікація подій не має залежати від
+       слухняності моделі, знахідка без ідентичності події не рахується */
+    const eid = (typeof f.event_id === 'string' && f.event_id.trim()) || (typeof f.event_id === 'number')
+      ? String(f.event_id).trim().slice(0, 60) : null;
+    if (!eid) {
+      dropped++;
+      console.log('[score] відкинута знахідка (без event_id):', f.type);
+      continue;
+    }
     ok.push({
       type: f.type,
-      event_id: (typeof f.event_id === 'string' || typeof f.event_id === 'number') ? String(f.event_id).slice(0, 60) : null,
+      event_id: eid,
       severity: typeof f.severity === 'string' ? f.severity.slice(0, 10) : null,
       repair_status: REPAIR_STATUSES.has(f.repair_status) ? f.repair_status : null,
       evidence,
@@ -122,8 +132,9 @@ function sanitizeFindings(findings) {
 const REPAIR_RANK = { confirmed_bad: 2, unknown: 1, confirmed_ok: 0 };
 function dedupeFindings(findings) {
   const map = new Map();
-  findings.forEach((f, i) => {
-    const key = f.type + '|' + (f.event_id === null ? '__auto_' + i : f.event_id);
+  findings.forEach(f => {
+    /* event_id гарантований санітизацією вище */
+    const key = f.type + '|' + f.event_id;
     const cur = map.get(key);
     if (!cur) { map.set(key, { ...f, evidence: [...f.evidence] }); return; }
     cur.evidence.push(...f.evidence);
@@ -193,7 +204,7 @@ export function computeScore(findings, coverageInputs, cfg = SCORE_CONFIG) {
   const caps = [];
   for (const f of events) {
     if (cfg.HARD_CAPS[f.type] !== undefined) caps.push({ name: 'hard_cap:' + f.type, value: cfg.HARD_CAPS[f.type] });
-    if (f.type === 'STRUCTURAL_DAMAGE' && f.repair_status !== 'confirmed_ok' && f.repair_status !== 'confirmed_bad') {
+    if (f.type === 'STRUCTURAL_DAMAGE' && f.repair_status !== 'confirmed_ok') {
       caps.push({ name: 'hard_cap:STRUCTURAL_DAMAGE', value: cfg.STRUCTURAL_UNKNOWN_CAP });
     }
   }
