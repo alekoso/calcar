@@ -42,12 +42,18 @@ for (const f of ['garage.html','cabinet.html','check.html','index.html','result-
   if (!s.includes('.acc-wrap::after')) errs.push('нема моста наведення (.acc-wrap::after) у ' + f);
   /* клік по пункту закриває меню: на кабінеті переходу нема і меню висіло */
   if (!s.includes(".closest('.acc-menu a')")) errs.push('нема закриття меню кліком у ' + f);
+  /* вітрина = лише Check: перемикач продуктів знятий, редирект-пастка теж */
+  if (s.includes('class="switch"')) errs.push('перемикач продуктів повернувся у ' + f);
+  if (s.includes('calcarProduct')) errs.push('редирект за calcarProduct повернувся у ' + f);
 }
+if (fs.readFileSync('cabinet.html','utf8').includes('kind-badge')) errs.push('плашки Пригін/Перевірка повернулись у кабінет');
 
 /* 4. rewrites */
 const v = JSON.parse(fs.readFileSync('vercel.json','utf8'));
 const src = v.rewrites.map(r=>r.source);
 if (!src.includes('/garage') || !src.includes('/garage/:id')) errs.push('нема rewrites для гаража');
+/* Import прибраний з вітрини, але живий: прямі посилання і закладки працюють */
+if (!src.includes('/import')) errs.push('зник rewrite /import: закладки Import помруть');
 
 /* 5. SQL: політики і незмінний created_at */
 const q = fs.readFileSync('supabase-garage.sql','utf8');

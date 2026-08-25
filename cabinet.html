@@ -165,10 +165,6 @@
  .logo .r{background:var(--graphite);color:#fff;padding:.62em .72em .62em .98em;margin-left:-.26em;clip-path:polygon(.46em 0,100% 0,100% 100%,0 100%)}
  .header-right{margin-left:0;justify-self:end;display:flex;align-items:center;gap:16px;font-size:13px}
  .hleft{display:flex;align-items:center;gap:14px;justify-self:start}
- .switch{display:flex;gap:2px;background:var(--surface-2);border-radius:22px;padding:3px}
- .switch a{display:block;padding:8px 16px;border-radius:19px;font-size:13px;font-weight:600;color:var(--muted);text-decoration:none;white-space:nowrap;transition:background .15s,color .15s}
- .switch a:hover{color:var(--ink)}
- .switch a.on{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgba(20,22,25,.08)}
  .btn-auth{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line-strong);border-radius:20px;padding:7px 14px;background:var(--card);color:var(--ink)!important;font-weight:600;font-size:13px;text-decoration:none;transition:background .15s,border-color .15s}
  .btn-auth:hover{background:var(--surface-2)}
  .acc-wrap{position:relative;display:inline-flex}
@@ -177,11 +173,8 @@
  .acc-wrap:hover .acc-menu,.acc-wrap:focus-within .acc-menu{display:block}
  .acc-menu a{display:block;padding:9px 12px;border-radius:8px;font-size:13.5px;font-weight:600;color:var(--ink);text-decoration:none}
  .acc-menu a:hover{background:var(--surface-2)}
- @media(max-width:860px){.switch a{padding:8px 12px;font-size:12.5px}}
  @media(max-width:620px){
  header .header-in{display:flex;flex-wrap:wrap;height:auto;padding:10px 16px;gap:10px}
- .switch{order:3;width:100%;margin-top:4px}
- .switch a{flex:1;text-align:center}
  .header-right{margin-left:auto}
  }
  .mem-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding:16px 20px 10px}
@@ -225,8 +218,6 @@
 
  /* ---------- reports ---------- */
  #reports{padding:6px 0}
- .kind-badge{font-size:10.5px;font-weight:700;letter-spacing:.3px;background:var(--brand-soft);color:var(--brand-ink);border-radius:12px;padding:1px 7px;vertical-align:1px}
- .kind-badge.imp{background:var(--surface-2);color:var(--ink-2)}
  .report{display:flex;align-items:center;gap:14px;padding:16px 22px;cursor:pointer;position:relative;border-bottom:1px solid var(--line);transition:background .12s}
  .report:last-child{border-bottom:none}
  .report:hover{background:#F6F8F3}
@@ -277,10 +268,6 @@
  <a class="logo" href="/"><span class="l">Cal</span><span class="r">Car</span></a>
  <div class="beta">beta</div>
  </div>
- <nav class="switch">
- <a href="/check">Перевірка авто</a>
- <a href="/import">Пригін зі США</a>
- </nav>
  <div class="header-right">
  <div class="lang-dd" id="langDd">
  <button class="lang-btn" type="button" id="langBtn">UA <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
@@ -521,7 +508,7 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  <div class="report" data-id="${r.id}">
  <div>
  <div class="t"></div>
- <div class="d">${r.kind === 'check' ? '<span class="kind-badge">' + t('Перевірка') + '</span>' : '<span class="kind-badge imp">' + t('Пригін') + '</span>'} · ${new Date(r.created_at).toLocaleString(calcarLocale())}</div>
+ <div class="d">${new Date(r.created_at).toLocaleString(calcarLocale())}</div>
  </div>
  <span class="go">→</span>
  <button class="kebab" title="Дії">⋯</button>

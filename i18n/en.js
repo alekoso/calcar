@@ -231,7 +231,6 @@ window.CALCAR_DICT = {
   'Комплектація підтверджена': 'Equipment confirmed',
   'заводськими даними за VIN.': 'by factory VIN data.',
   'CalCar Check · beta · звіт складається з відкритих даних і AI-аналізу, остаточне рішення завжди за вами': 'CalCar Check · beta · the report is built from open data and AI analysis, the final decision is always yours',
-  'Пригін зі США': 'Import from the US',
   'Читаю сторінку оголошення…': 'Reading the listing page…',
   'Витягую VIN, ціну, пробіг і фото…': 'Extracting VIN, price, mileage and photos…',
   'Декодую VIN і збираю історію авто…': 'Decoding the VIN and gathering history…',
@@ -332,7 +331,6 @@ window.CALCAR_DICT = {
   'Перевірка оголошення': 'Listing check',
   'beta · звіт складається з відкритих даних і AI-аналізу': 'beta · the report is built from open data and AI analysis',
   '© 2026 CalCar · calcar.io': '© 2026 CalCar · calcar.io',
-  'Перевірка авто': 'Car check',
   'Безкоштовно, поки триває бета': 'Free while in beta',
   'VIN і історію знаходимо автоматично': 'We find the VIN and history automatically',
   /* ---- CalCar Check (en, iteration 10) ---- */
