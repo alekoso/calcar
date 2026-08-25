@@ -631,5 +631,19 @@ async function run() {
   }
 }
 </script>
+<script>
+/* Клік по пункту меню акаунта закриває меню: на сторінці кабінету переходу
+   нема і меню інакше лишалось висіти. Ховаємо інлайн-стилем, він сильніший
+   за hover-правило, і знімаємо його, коли курсор покинув кнопку. */
+document.addEventListener('click', function (e) {
+  var a = e.target.closest ? e.target.closest('.acc-menu a') : null;
+  if (!a) return;
+  var w = a.closest('.acc-wrap'), m = a.closest('.acc-menu');
+  if (!w || !m) return;
+  m.style.display = 'none';
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  w.addEventListener('mouseleave', function () { m.style.display = ''; }, { once: true });
+});
+</script>
 </body>
 </html>

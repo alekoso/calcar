@@ -38,6 +38,10 @@ else {
 for (const f of ['garage.html','cabinet.html','check.html','index.html','result-check.html','result.html']) {
   const s = fs.readFileSync(f,'utf8');
   if (!s.includes('href="/garage"')) errs.push('нема пункту Гараж у ' + f);
+  /* міст під кнопкою: без нього hover злітає в зазорі і меню закривається */
+  if (!s.includes('.acc-wrap::after')) errs.push('нема моста наведення (.acc-wrap::after) у ' + f);
+  /* клік по пункту закриває меню: на кабінеті переходу нема і меню висіло */
+  if (!s.includes(".closest('.acc-menu a')")) errs.push('нема закриття меню кліком у ' + f);
 }
 
 /* 4. rewrites */

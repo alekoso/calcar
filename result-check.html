@@ -1257,8 +1257,15 @@ function renderMention(){
     age.className = 'age';
     age.textContent = refDays(r.created_at);
     b.append(tag, nm, age);
-    b.onmouseenter = () => { mentionIdx = i; renderMention(); };
-    b.onclick = () => pickMention(r);
+    b.onmouseenter = () => {
+      mentionIdx = i;
+      const on = list.querySelector('.chat-mention-item.on');
+      if (on) on.classList.remove('on');
+      b.classList.add('on');
+    };
+    /* вибір на pointerdown з preventDefault: click приходив уже після втрати
+       фокуса і перемальовування списку, тому по машині неможливо було влучити */
+    b.onpointerdown = e => { e.preventDefault(); pickMention(r); };
     list.appendChild(b);
   });
 }
@@ -1304,7 +1311,9 @@ function bindMention(){
   const inp = document.getElementById('mentionSearch');
   if (!field || !inp) return;
   field.addEventListener('input', e => {
-    if (e.data === '@') openMention(field.selectionStart - 1);
+    if (e.data === '@') { openMention(field.selectionStart - 1); return; }
+    /* тригерний @ стерли з тексту: попапу більше нема до чого */
+    if (mentionOpenNow() && (mentionPos < 0 || field.value[mentionPos] !== '@')) closeMention(false);
   });
   field.addEventListener('keydown', e => { if (e.key === 'Escape' && mentionOpenNow()) closeMention(true); });
   inp.addEventListener('keydown', mentionKeydown);
@@ -1612,6 +1621,20 @@ async function sendChat(text){
     $('chatSend').disabled = false;
   }
 }
+</script>
+<script>
+/* Клік по пункту меню акаунта закриває меню: на сторінці кабінету переходу
+   нема і меню інакше лишалось висіти. Ховаємо інлайн-стилем, він сильніший
+   за hover-правило, і знімаємо його, коли курсор покинув кнопку. */
+document.addEventListener('click', function (e) {
+  var a = e.target.closest ? e.target.closest('.acc-menu a') : null;
+  if (!a) return;
+  var w = a.closest('.acc-wrap'), m = a.closest('.acc-menu');
+  if (!w || !m) return;
+  m.style.display = 'none';
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  w.addEventListener('mouseleave', function () { m.style.display = ''; }, { once: true });
+});
 </script>
 </body>
 </html>

@@ -173,6 +173,7 @@ header{background:rgba(255,255,255,.88);backdrop-filter:blur(10px);-webkit-backd
 .btn-auth{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line-strong);border-radius:20px;padding:7px 14px;background:var(--card);color:var(--ink)!important;font-weight:600;font-size:13px;text-decoration:none;transition:background .15s,border-color .15s}
 .btn-auth:hover{background:var(--surface-2)}
 .acc-wrap{position:relative;display:inline-flex}
+.acc-wrap::after{content:"";position:absolute;left:0;right:0;top:100%;height:10px}
 .acc-menu{position:absolute;top:calc(100% + 8px);right:0;min-width:216px;padding:6px;z-index:70;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 28px rgba(20,22,25,.12);display:none}
 .acc-wrap:hover .acc-menu,.acc-wrap:focus-within .acc-menu{display:block}
 .acc-menu a{display:block;padding:9px 12px;border-radius:8px;font-size:13.5px;font-weight:600;color:var(--ink);text-decoration:none}
@@ -1052,6 +1053,20 @@ h1{font-size:27px;letter-spacing:-.01em}
   if (target) { await openCar(target); } else { await renderList(); }
 })();
 
+</script>
+<script>
+/* Клік по пункту меню акаунта закриває меню: на сторінці кабінету переходу
+   нема і меню інакше лишалось висіти. Ховаємо інлайн-стилем, він сильніший
+   за hover-правило, і знімаємо його, коли курсор покинув кнопку. */
+document.addEventListener('click', function (e) {
+  var a = e.target.closest ? e.target.closest('.acc-menu a') : null;
+  if (!a) return;
+  var w = a.closest('.acc-wrap'), m = a.closest('.acc-menu');
+  if (!w || !m) return;
+  m.style.display = 'none';
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  w.addEventListener('mouseleave', function () { m.style.display = ''; }, { once: true });
+});
 </script>
 </body>
 </html>

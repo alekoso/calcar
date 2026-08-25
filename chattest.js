@@ -220,6 +220,26 @@ async function sys(product, memory, extra) {
     if (!s.includes('placeholder="Постав питання… @ щоб додати звіт для порівняння"')) errs.push('сторінка ' + f + ' зі старим плейсхолдером');
     if (!s.includes('pendingRefs.length >= 2')) errs.push('сторінка ' + f + ' без ліміту двох прикріплених звітів');
     if (!s.includes('bindMention();')) errs.push('сторінка ' + f + ' не підключає @-попап');
+    /* вибір машини мишею: pointerdown із preventDefault ДО втрати фокуса.
+       Живі події без браузера не проженеш, тут страхуємо сам механізм:
+       фактичний клік мишею і клавіатура лишаються ручною перевіркою */
+    if (!/onpointerdown = e => \{ e\.preventDefault\(\); pickMention\(r\); \}/.test(s)) {
+      errs.push('сторінка ' + f + ': вибір у попапі не на pointerdown+preventDefault');
+    }
+    if (/b\.onclick = \(\) => pickMention/.test(s)) errs.push('сторінка ' + f + ': лишився вибір на click (гонка фокуса повернулась)');
+    if (/onmouseenter = \(\) => \{ mentionIdx = i; renderMention\(\); \}/.test(s)) {
+      errs.push('сторінка ' + f + ': наведення перемальовує список (вбивало вузол під кліком)');
+    }
+    /* стертий @ закриває попап; Esc закриває і з поля, і з пошуку */
+    if (!s.includes("field.value[mentionPos] !== '@')) closeMention(false)")) {
+      errs.push('сторінка ' + f + ': попап не закривається після стирання @');
+    }
+    if (!s.includes("if (e.key === 'Escape' && mentionOpenNow()) closeMention(true)")) {
+      errs.push('сторінка ' + f + ': Esc з поля не закриває попап');
+    }
+    if (!s.includes("else if (e.key === 'Escape') { e.preventDefault(); closeMention(true); }")) {
+      errs.push('сторінка ' + f + ': Esc з пошуку не закриває попап');
+    }
   }
 
   /* нові рядки інтерфейсу мусять бути в обох словниках */
