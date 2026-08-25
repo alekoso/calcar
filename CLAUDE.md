@@ -15,7 +15,7 @@ CalCar (calcar.io): платформа, яка допомагає зрозумі
 Статичні HTML-сторінки без збірки, серверна логіка: функції Vercel, дані: Supabase.
 
 ```
-index.html            головна Import (вставити лот -> прорахунок)
+import.html           головна Import (вставити лот -> прорахунок)
 result.html           звіт Import (найбільший файл, ~284 KB)
 check.html            головна Check (вставити оголошення)
 result-check.html     звіт Check

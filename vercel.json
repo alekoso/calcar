@@ -1,4 +1,11 @@
 {
+  "redirects": [
+    {
+      "source": "/index.html",
+      "destination": "/import",
+      "permanent": false
+    }
+  ],
   "rewrites": [
     {
       "source": "/",
@@ -6,7 +13,7 @@
     },
     {
       "source": "/import",
-      "destination": "/index.html"
+      "destination": "/import.html"
     },
     {
       "source": "/check",

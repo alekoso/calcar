@@ -37,13 +37,13 @@ else {
 /* 3а. шапки: правий блок у третій колонці сітки, однаково на пʼяти grid-сторінках.
    result.html живе на flex із margin-left:auto, це окрема архітектура шапки звіту */
 const HDR = '.header-right{margin-left:0;grid-column:3;justify-self:end;display:flex;align-items:center;gap:16px;font-size:13px}';
-for (const f of ['garage.html','cabinet.html','check.html','index.html','result-check.html']) {
+for (const f of ['garage.html','cabinet.html','check.html','import.html','result-check.html']) {
   if (!fs.readFileSync(f,'utf8').includes(HDR)) errs.push('шапка розійшлася: нема канонічного header-right у ' + f);
 }
 if (!fs.readFileSync('result.html','utf8').includes('.header-right{margin-left:auto;')) errs.push('flex-шапка result.html зламана');
 
 /* 3. меню на всіх сторінках */
-for (const f of ['garage.html','cabinet.html','check.html','index.html','result-check.html','result.html']) {
+for (const f of ['garage.html','cabinet.html','check.html','import.html','result-check.html','result.html']) {
   const s = fs.readFileSync(f,'utf8');
   if (!s.includes('href="/garage"')) errs.push('нема пункту Гараж у ' + f);
   /* міст під кнопкою: без нього hover злітає в зазорі і меню закривається */
@@ -61,6 +61,14 @@ for (const f of ['garage.html','cabinet.html','check.html','index.html','result-
 /* 4. rewrites */
 const v = JSON.parse(fs.readFileSync('vercel.json','utf8'));
 const src = v.rewrites.map(r=>r.source);
+/* головна це Check для всіх. ПАСТКА: rewrites у Vercel застосовуються лише
+   коли шлях не збігся з файловою системою, тому фізичний index.html у корені
+   мовчки перекриває правило "/" і головна стає Import */
+const rootRule = v.rewrites.find(r => r.source === '/');
+if (!rootRule || rootRule.destination !== '/check.html') errs.push('маршрут / не веде на check.html');
+if (fs.existsSync('index.html')) errs.push('у корені зʼявився index.html: він перекриє rewrite "/" і головна стане Import');
+const impRule = v.rewrites.find(r => r.source === '/import');
+if (!impRule || !fs.existsSync(impRule.destination.slice(1))) errs.push('/import веде на неіснуючий файл');
 if (!src.includes('/garage') || !src.includes('/garage/:id')) errs.push('нема rewrites для гаража');
 /* Import прибраний з вітрини, але живий: прямі посилання і закладки працюють */
 if (!src.includes('/import')) errs.push('зник rewrite /import: закладки Import помруть');
