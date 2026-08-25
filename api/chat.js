@@ -90,10 +90,17 @@ ${list.map(t => '- [' + (t.title || 'звіт без назви') + (t.same ? ',
 - Якщо свіжа репліка суперечить старішій або нотатці профілю, вір свіжим словам.`
   : '';
 
-const SYSTEM = (product, memory, wantMemory, turns) => `${product === 'check' ? DOMAIN_CHECK : DOMAIN_IMPORT}
+
+/* Звіти, які людина явно приклала до питання через @: до двох, без фото */
+const REFS_TASK = `ДОДАНІ ЗВІТИ ДЛЯ ПОРІВНЯННЯ:
+- До питання прикладені збережені звіти цієї ж людини (у першому повідомленні, "Додані користувачем звіти для порівняння"). Це прямий запит порівняти їх з авто цього звіту або відповісти по них.
+- Порівнюй структуровано по пунктах: стан і пошкодження, пробіг, двигун і привід, комплектація, ризики й оцінка, підсумок під ключ (де є). Заверши ясним висновком: який варіант виглядає кращим для цієї людини і чому.
+- Зважай на вік доданого звіту (created_at): якщо йому понад ~60 днів, ціни й доступність застарілі, порівнюй характеристики, а не ціни.`;
+
+const SYSTEM = (product, memory, wantMemory, turns, hasRefs) => `${product === 'check' ? DOMAIN_CHECK : DOMAIN_IMPORT}
 
 ${OWNER(memory)}
-${TURNS(turns) ? '\n' + TURNS(turns) + '\n' : ''}
+${TURNS(turns) ? '\n' + TURNS(turns) + '\n' : ''}${hasRefs ? '\n' + REFS_TASK + '\n' : ''}
 ІНШІ ПРОРАХУНКИ КОРИСТУВАЧА (context.other_reports_of_this_user, якщо є):
 - Це авто, які ця людина вже аналізувала: назва, дата аналізу (analyzed_at і days_ago), пошкодження, пробіг, підсумок під ключ і ризик на момент збереження (totals), хвіст переписки (chat_tail).
 - Використовуй їх для порівнянь ("чи це краще за ту BMW?") і для розуміння, що людина шукає.
@@ -145,6 +152,19 @@ export default async function handler(req, res) {
       }));
     const freshOthers = cleanTurns.filter(t => !t.same).slice(-4);
     const turns = cleanTurns.filter(t => t.same || freshOthers.includes(t)).slice(-8);
+
+    /* звіти, прикладені через @: білий список полів, максимум два, без фото */
+    const refs = (Array.isArray(body.referenced_reports) ? body.referenced_reports : [])
+      .filter(r => r && typeof r === 'object' && !Array.isArray(r))
+      .slice(0, 2)
+      .map(r => {
+        const pick = {};
+        for (const k of ['id', 'title', 'kind', 'created_at', 'vehicle', 'verdict', 'risks', 'flags', 'damage_note', 'totals', 'meta']) {
+          if (r[k] !== undefined && r[k] !== null) pick[k] = r[k];
+        }
+        return pick;
+      })
+      .filter(r => Object.keys(r).length);
     let context = body.context || body.report || {};
     if (Array.isArray(body.others) && body.others.length) {
       context = Object.assign({}, context, { other_reports_of_this_user: body.others.slice(0, 12) });
@@ -199,7 +219,8 @@ export default async function handler(req, res) {
 
     /* дата потрібна службовому блоку памʼяті (журнал Рішення ведеться з датами)
        і оцінці свіжості інших звітів */
-    const ctxText = 'Сьогодні: ' + new Date().toISOString().slice(0, 10) + '\nДані по цьому авто (JSON):\n' + JSON.stringify(context || {}).slice(0, 42000);
+    const ctxText = 'Сьогодні: ' + new Date().toISOString().slice(0, 10) + '\nДані по цьому авто (JSON):\n' + JSON.stringify(context || {}).slice(0, 42000)
+      + (refs.length ? '\n\nДодані користувачем звіти для порівняння (JSON):\n' + JSON.stringify(refs).slice(0, 24000) : '');
     const primer = {
       role: 'user',
       content: [
@@ -216,7 +237,7 @@ export default async function handler(req, res) {
         model: process.env.CHAT_MODEL || process.env.OPENAI_MODEL || 'gpt-5.6-terra',
         max_completion_tokens: 2500,
         messages: [
-          { role: 'system', content: SYSTEM(product, memory, wantMemory, turns) },
+          { role: 'system', content: SYSTEM(product, memory, wantMemory, turns, refs.length > 0) },
           primer,
           { role: 'assistant', content: 'Прийняв, я вивчив дані і фото цього авто. Питай.' },
           ...hist,
@@ -255,6 +276,7 @@ export default async function handler(req, res) {
       '| hist', hist.length,
       '| memory', memory.length,
       '| turns', turns.length + '/' + cleanTurns.length,
+      '| refs', refs.length,
       '| ai', Date.now() - t0, 'ms',
       '| tokens', JSON.stringify(data?.usage || {}));
 

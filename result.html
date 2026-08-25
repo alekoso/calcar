@@ -596,6 +596,41 @@
   .chat-file-chip{display:inline-flex;align-items:center;gap:6px;background:var(--surface-2);border:1px solid var(--line);border-radius:14px;padding:4px 10px;font-size:12px;max-width:100%}
   .chat-file-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px}
   .chat-file-chip button{border:none;background:none;cursor:pointer;color:var(--faint);font-size:13px;padding:0;line-height:1}
+  .chat-file-chip.ref span::before{content:"@ ";color:var(--faint)}
+
+  /* плашка контексту: закріплена над полотном розмови, не прокручується */
+  .chat-ctx{flex-shrink:0;padding:10px 22px 0}
+  .chat-ctx span{
+    display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    background:var(--surface-2);border:1px solid var(--line);border-radius:20px;
+    padding:3px 12px;font-size:11.5px;color:var(--muted);
+  }
+
+  /* попап згадки звіту через @ */
+  .chat-composer{position:relative}
+  .chat-mention{
+    position:absolute;left:8px;right:8px;bottom:calc(100% + 6px);z-index:5;
+    background:var(--card);border:1px solid var(--line);border-radius:14px;
+    box-shadow:0 10px 30px rgba(20,22,25,.12);overflow:hidden;
+  }
+  .chat-mention input{
+    width:100%;border:none;outline:none;background:transparent;box-sizing:border-box;
+    padding:10px 14px;font-size:13px;color:var(--ink);border-bottom:1px solid var(--line);
+  }
+  .chat-mention-list{max-height:190px;overflow-y:auto}
+  .chat-mention-item{
+    display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:none;background:none;
+    cursor:pointer;padding:8px 14px;font-size:13px;color:var(--ink);
+  }
+  .chat-mention-item.on{background:var(--surface-2)}
+  .chat-mention-item .ttl2{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .chat-mention-item .age{font-size:11px;color:var(--faint);flex-shrink:0}
+  .chat-mention-item .tag{
+    flex-shrink:0;font-size:10px;font-weight:700;letter-spacing:.3px;border-radius:10px;padding:1px 7px;
+    background:var(--brand-soft);color:var(--brand-ink);
+  }
+  .chat-mention-item .tag.imp{background:var(--surface-2);color:var(--ink-2)}
+  .chat-mention-empty{padding:12px 14px;font-size:12.5px;color:var(--muted)}
 
   .chat-note{display:flex;align-items:center;gap:5px;justify-content:center;margin-top:6px;font-size:11px;color:var(--faint)}
   .chat-note svg{flex-shrink:0;opacity:.7}
@@ -938,13 +973,14 @@
 <div class="chat-panel" id="chatPanel">
   <div class="chat-head">
     <div class="ttl">
-      <b>Чат по цьому авто</b>
-      <span id="chatCarTitle">AI-помічник CalCar</span>
+      <b>Асистент CalCar</b>
     </div>
     <button class="chat-close" id="chatClose" title="Згорнути" aria-label="Згорнути">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
     </button>
   </div>
+
+  <div class="chat-ctx" id="chatCtx" style="display:none"><span id="chatCtxCar"></span></div>
 
   <div class="chat-canvas">
     <div class="chat-msgs" id="chatMsgs"></div>
@@ -957,9 +993,13 @@
   </div>
 
   <div class="chat-composer">
+    <div class="chat-mention" id="chatMention" style="display:none">
+      <input type="text" id="mentionSearch" placeholder="Пошук звіту за назвою…" autocomplete="off">
+      <div class="chat-mention-list" id="mentionList"></div>
+    </div>
     <div class="chat-files" id="chatFiles" style="display:none"></div>
     <div class="chat-box">
-      <textarea id="chatText" rows="1" placeholder="Задай питання про це авто…"></textarea>
+      <textarea id="chatText" rows="1" placeholder="Постав питання… @ щоб додати звіт для порівняння"></textarea>
       <div class="chat-box-row">
         <button class="chat-attach" id="chatAttach" type="button" title="Додати файл: Carfax, фото, інший звіт" aria-label="Прикріпити файл">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05 12.25 20.24a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
@@ -1911,7 +1951,10 @@ document.getElementById('printMeta').textContent =
   const ta = document.getElementById('chatText');
   const sendBtn = document.getElementById('chatSend');
 
-  document.getElementById('chatCarTitle').textContent = DATA.vehicle?.title || t('AI-помічник CalCar');
+  if (DATA.vehicle?.title) {
+    document.getElementById('chatCtxCar').textContent = t('Йдеться про:') + ' ' + DATA.vehicle.title;
+    document.getElementById('chatCtx').style.display = '';
+  }
 
   /* Історія чату: живе в localStorage (переживає закриття браузера) і дзеркалиться
      у звіт в Supabase як data._chat через звичайне автозбереження, тому на іншому
@@ -2076,7 +2119,7 @@ document.getElementById('printMeta').textContent =
   }
   function renderFiles() {
     filesRow.innerHTML = '';
-    filesRow.style.display = pendingFiles.length ? 'flex' : 'none';
+    filesRow.style.display = (pendingFiles.length || pendingRefs.length) ? 'flex' : 'none';
     pendingFiles.forEach((p, i) => {
       const chip = document.createElement('span');
       chip.className = 'chat-file-chip';
@@ -2088,6 +2131,17 @@ document.getElementById('printMeta').textContent =
       chip.append(nm, x);
       filesRow.appendChild(chip);
     });
+      pendingRefs.forEach((r, i) => {
+        const chip = document.createElement('span');
+        chip.className = 'chat-file-chip ref';
+        const nm = document.createElement('span');
+        nm.textContent = (r.kind === 'check' ? t('Перевірка') : t('Пригін')) + ' · ' + r.title;
+        const x = document.createElement('button');
+        x.type = 'button'; x.textContent = '✕';
+        x.onclick = () => { pendingRefs.splice(i, 1); renderFiles(); };
+        chip.append(nm, x);
+        filesRow.appendChild(chip);
+      });
   }
   attachBtn.addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', async () => {
@@ -2187,6 +2241,146 @@ document.getElementById('printMeta').textContent =
     patch.recent_turns = RECENT_TURNS;
     try { await SB.from('user_memory').upsert(patch); } catch (e) {}
   }
+
+  /* ---------- @-згадка звіту: попап зі списком звітів над composer ----------
+     Ввід @ у полі відкриває список останніх звітів (назва, давність, плашка
+     check/import) з пошуком за назвою. Стрілки і Enter обирають, Esc закриває.
+     Вибір вставляє @Назву в текст і чіпляє звіт чіпом, максимум два. */
+  let REF_LIST = null, pendingRefs = [], mentionIdx = 0, mentionPos = -1;
+  async function loadRefList(){
+    if (REF_LIST) return REF_LIST;
+    REF_LIST = [];
+    try {
+      const { data: s } = await SB.auth.getSession();
+      if (!s?.session) return REF_LIST;
+      const { data: rows } = await SB.from('reports')
+        .select('id,title,kind,created_at')
+        .order('created_at', { ascending: false })
+        .limit(20);
+      REF_LIST = (rows || []).filter(r => r.id !== (REPORT_DB_ID || null));
+    } catch (e) {}
+    return REF_LIST;
+  }
+  function refDays(iso){
+    const d = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000));
+    return d === 0 ? t('сьогодні') : d + ' ' + t('дн. тому');
+  }
+  function mentionRows(){
+    const q = (document.getElementById('mentionSearch').value || '').trim().toLowerCase();
+    return (REF_LIST || []).filter(r => !q || String(r.title || '').toLowerCase().includes(q)).slice(0, 8);
+  }
+  function mentionOpenNow(){ return document.getElementById('chatMention').style.display !== 'none'; }
+  function renderMention(){
+    const list = document.getElementById('mentionList');
+    const rows = mentionRows();
+    if (mentionIdx >= rows.length) mentionIdx = Math.max(0, rows.length - 1);
+    list.innerHTML = '';
+    if (!rows.length) {
+      const d = document.createElement('div');
+      d.className = 'chat-mention-empty';
+      d.textContent = t('Звітів поки нема');
+      list.appendChild(d);
+      return;
+    }
+    rows.forEach((r, i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chat-mention-item' + (i === mentionIdx ? ' on' : '');
+      const tag = document.createElement('span');
+      tag.className = 'tag' + (r.kind === 'check' ? '' : ' imp');
+      tag.textContent = r.kind === 'check' ? t('Перевірка') : t('Пригін');
+      const nm = document.createElement('span');
+      nm.className = 'ttl2';
+      nm.textContent = r.title || t('Прорахунок');
+      const age = document.createElement('span');
+      age.className = 'age';
+      age.textContent = refDays(r.created_at);
+      b.append(tag, nm, age);
+      b.onmouseenter = () => { mentionIdx = i; renderMention(); };
+      b.onclick = () => pickMention(r);
+      list.appendChild(b);
+    });
+  }
+  function openMention(pos){
+    mentionPos = pos;
+    mentionIdx = 0;
+    document.getElementById('chatMention').style.display = 'block';
+    const inp = document.getElementById('mentionSearch');
+    inp.value = '';
+    renderMention();
+    loadRefList().then(renderMention);
+    inp.focus();
+  }
+  function closeMention(back){
+    document.getElementById('chatMention').style.display = 'none';
+    mentionPos = -1;
+    if (back) document.getElementById('chatText').focus();
+  }
+  function pickMention(r){
+    const field = document.getElementById('chatText');
+    const dup = pendingRefs.some(x => x.id === r.id);
+    /* максимум два прикріплені звіти */
+    if (!dup && pendingRefs.length >= 2) { closeMention(true); return; }
+    if (!dup) pendingRefs.push({ id: r.id, title: r.title || t('Прорахунок'), kind: r.kind === 'check' ? 'check' : 'import' });
+    const name = '@' + (r.title || t('Прорахунок')) + ' ';
+    if (mentionPos >= 0 && field.value[mentionPos] === '@') {
+      field.value = field.value.slice(0, mentionPos) + name + field.value.slice(mentionPos + 1);
+    } else {
+      field.value += (field.value && !/\s$/.test(field.value) ? ' ' : '') + name;
+    }
+    renderFiles();
+    closeMention(true);
+  }
+  function mentionKeydown(e){
+    const rows = mentionRows();
+    if (e.key === 'ArrowDown') { e.preventDefault(); mentionIdx = Math.min(rows.length - 1, mentionIdx + 1); renderMention(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); mentionIdx = Math.max(0, mentionIdx - 1); renderMention(); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (rows[mentionIdx]) pickMention(rows[mentionIdx]); }
+    else if (e.key === 'Escape') { e.preventDefault(); closeMention(true); }
+  }
+  function bindMention(){
+    const field = document.getElementById('chatText');
+    const inp = document.getElementById('mentionSearch');
+    if (!field || !inp) return;
+    field.addEventListener('input', e => {
+      if (e.data === '@') openMention(field.selectionStart - 1);
+    });
+    field.addEventListener('keydown', e => { if (e.key === 'Escape' && mentionOpenNow()) closeMention(true); });
+    inp.addEventListener('keydown', mentionKeydown);
+    inp.addEventListener('input', () => { mentionIdx = 0; renderMention(); });
+    document.addEventListener('click', e => {
+      if (mentionOpenNow() && !e.target.closest('#chatMention') && e.target !== field) closeMention(false);
+    });
+  }
+  /* повні дані прикріплених звітів по id: без фото, урізані до ключового */
+  async function refPayload(){
+    if (!pendingRefs.length) return null;
+    const out = [];
+    try {
+      const { data: rows } = await SB.from('reports')
+        .select('id,title,kind,created_at,data')
+        .in('id', pendingRefs.map(r => r.id));
+      pendingRefs.forEach(ref => {
+        const row = (rows || []).find(x => x.id === ref.id);
+        const d = (row && row.data) || {};
+        const meta = d._meta || {};
+        out.push({
+          id: ref.id, title: (row && row.title) || ref.title, kind: (row && row.kind) || ref.kind,
+          created_at: (row && row.created_at) || null,
+          vehicle: d.vehicle || null,
+          verdict: d.verdict || null,
+          risks: d.risks || null,
+          flags: d.flags || null,
+          damage_note: d.damage_note || null,
+          totals: d.totals || d._snapshot || null,
+          meta: { vin: meta.vin || null, price: meta.price || null, damage: meta.damage || null, lot_number: meta.lot_number || null, mileage: meta.mileage || null },
+        });
+      });
+    } catch (e) {
+      pendingRefs.forEach(ref => out.push({ id: ref.id, title: ref.title, kind: ref.kind }));
+    }
+    return out.slice(0, 2);
+  }
   function scheduleMemoryUpdate(){
     if (!MEM_UID) return;
     if (history.length - memLastLen < 4) return;
@@ -2219,6 +2413,8 @@ document.getElementById('printMeta').textContent =
     ta.value = '';
     ta.style.height = '';
     const atts = pendingFiles.splice(0);
+    const refs = await refPayload();
+    pendingRefs.splice(0);
     renderFiles();
     /* в історії тримаємо лише текст із маркером файлів: самі файли великі,
        вони йдуть тільки з цим повідомленням і не переслідують подальші */
@@ -2251,6 +2447,7 @@ document.getElementById('printMeta').textContent =
           memory: MEMORY,
           report_id: REPORT_DB_ID,
           recent_turns: RECENT_TURNS,
+          referenced_reports: refs,
         }),
       });
       let d;
@@ -2281,6 +2478,7 @@ document.getElementById('printMeta').textContent =
     ta.style.height = 'auto';
     ta.style.height = Math.min(120, ta.scrollHeight) + 'px';
   });
+  bindMention();
 })();
 
 /* дані відрендерені: показуємо звіт одним перемиканням (до цього скелетон) */

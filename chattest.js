@@ -170,13 +170,39 @@ async function sys(product, memory, extra) {
     /* порожній хвіст: блока нема і порожнього заголовка теж */
     if (withMem.includes('НЕДАВНІ РОЗМОВИ')) errs.push('блок розмов є при порожньому хвості' + p);
 
-    /* 10. правило продукту діє і на згенерований блок */
+    /* 10. звіти, прикладені через @, доходять до інструкції і праймера */
+    const ref = (id, title) => ({ id, title, kind: 'check', created_at: '2026-08-20T10:00:00Z', vehicle: { title }, verdict: { score: 7 }, photos: ['СЕКРЕТНЕ_ФОТО'], _chat: ['зайве'] });
+    let rr = await call(product, MEM, { referenced_reports: [ref('r1', 'Audi Q8 2020'), ref('r2', 'Kia EV6 2022')] });
+    let rSys = sent.messages.find(m => m.role === 'system').content;
+    let primer = sent.messages[1].content.find(b => b.type === 'text').text;
+    if (!rSys.includes('ДОДАНІ ЗВІТИ ДЛЯ ПОРІВНЯННЯ')) errs.push('нема блоку доданих звітів' + p);
+    if (!primer.includes('Додані користувачем звіти для порівняння')) errs.push('дані доданих звітів не в праймері' + p);
+    if (!primer.includes('Audi Q8 2020') || !primer.includes('Kia EV6 2022')) errs.push('загубився доданий звіт' + p);
+    if (primer.includes('СЕКРЕТНЕ_ФОТО') || primer.includes('зайве')) errs.push('білий список полів не працює (фото або чат просочились)' + p);
+
+    /* ліміт два: третій відкидається */
+    await call(product, MEM, { referenced_reports: [ref('r1', 'Перший'), ref('r2', 'Другий'), ref('r3', 'Третій')] });
+    primer = sent.messages[1].content.find(b => b.type === 'text').text;
+    if (!primer.includes('Перший') || !primer.includes('Другий')) errs.push('загубився звіт із перших двох' + p);
+    if (primer.includes('Третій')) errs.push('третій доданий звіт не відкинуто' + p);
+
+    /* сміття не ламає запит і не вмикає блок */
+    for (const junk of [null, 42, 'рядок', { a: 1 }, [null, 5, 'x', []], []]) {
+      const g = await call(product, MEM, { referenced_reports: junk });
+      if (g.code !== 200 || !g.body.reply) errs.push('сміттєвий referenced_reports зламав запит: ' + JSON.stringify(junk) + p);
+      const gs = sent.messages.find(m => m.role === 'system').content;
+      if (gs.includes('ДОДАНІ ЗВІТИ ДЛЯ ПОРІВНЯННЯ')) errs.push('блок доданих звітів зі сміття: ' + JSON.stringify(junk) + p);
+    }
+    /* без refs блока нема */
+    if (withMem.includes('ДОДАНІ ЗВІТИ ДЛЯ ПОРІВНЯННЯ')) errs.push('блок доданих звітів є без refs' + p);
+
+    /* 11. правило продукту діє і на згенерований блок */
     const dashTail = await sys(product, MEM, { report_id: 'AAA', recent_turns: [turn('AAA', 'BMW \u2014 X5', 'текст із \u2014 тире', 0)] });
     if (withMem.includes('\u2014')) errs.push('довге тире у системній інструкції' + p);
     if (dashTail.includes('\u2014')) errs.push('довге тире просочилось із хвоста' + p);
   }
 
-  /* 11. контракт зі сторінками: memory, recent_turns, report_id і збереження нотатки */
+  /* 12. контракт зі сторінками: memory, recent_turns, report_id і збереження нотатки */
   for (const f of ['result.html', 'result-check.html']) {
     const s = fs.readFileSync(f, 'utf8');
     if (!/memory:\s*MEMORY/.test(s)) errs.push('сторінка ' + f + ' більше не шле memory у /api/chat');
@@ -184,9 +210,39 @@ async function sys(product, memory, extra) {
     if (!/report_id:/.test(s)) errs.push('сторінка ' + f + ' не шле report_id у /api/chat');
     if (!s.includes('saveChatMemory(')) errs.push('сторінка ' + f + ' не зберігає memory_update з відповіді');
     if (!s.includes("select('memory,recent_turns')")) errs.push('сторінка ' + f + ' не читає recent_turns з user_memory');
+    /* інтерфейс єдиного асистента: @-попап, плашка контексту, ліміт два звіти */
+    if (!/referenced_reports:\s*refs/.test(s)) errs.push('сторінка ' + f + ' не шле referenced_reports');
+    for (const el of ['id="chatMention"', 'id="mentionSearch"', 'id="mentionList"', 'id="chatCtx"', 'id="chatCtxCar"']) {
+      if (!s.includes(el)) errs.push('сторінка ' + f + ' без елемента ' + el);
+    }
+    if (s.includes('chatCarTitle')) errs.push('сторінка ' + f + ' досі тримає назву авто в шапці чату');
+    if (!s.includes('<b>Асистент CalCar</b>')) errs.push('сторінка ' + f + ' без заголовка Асистент CalCar');
+    if (!s.includes('placeholder="Постав питання… @ щоб додати звіт для порівняння"')) errs.push('сторінка ' + f + ' зі старим плейсхолдером');
+    if (!s.includes('pendingRefs.length >= 2')) errs.push('сторінка ' + f + ' без ліміту двох прикріплених звітів');
+    if (!s.includes('bindMention();')) errs.push('сторінка ' + f + ' не підключає @-попап');
   }
 
-  /* 12. специфікація нотатки: копії в api/memory.js і api/chat.js посимвольно рівні */
+  /* нові рядки інтерфейсу мусять бути в обох словниках */
+  for (const d of ['i18n/ru.js', 'i18n/en.js']) {
+    const dict = fs.readFileSync(d, 'utf8');
+    for (const k of ['Асистент CalCar', 'Йдеться про:', 'Постав питання… @ щоб додати звіт для порівняння', 'Пошук звіту за назвою…', 'Звітів поки нема', 'сьогодні', 'дн. тому']) {
+      if (!dict.includes("'" + k + "'")) errs.push('нема ключа "' + k + '" у ' + d);
+    }
+  }
+
+  /* синтаксис усіх вбудованих скриптів сторінок звітів (логіка попапа теж тут) */
+  for (const f of ['result.html', 'result-check.html']) {
+    const scripts = fs.readFileSync(f, 'utf8').split('<script>').slice(1).map(x => x.split('<\/script>')[0]);
+    scripts.forEach((code, i) => {
+      const tp = path.join(os.tmpdir(), 'calcar_ui_' + i + '.js');
+      fs.writeFileSync(tp, code);
+      try { require('child_process').execSync('node --check ' + JSON.stringify(tp)); }
+      catch (e) { errs.push('синтаксис скрипта ' + i + ' у ' + f + ': ' + String(e.message).split('\n')[1]); }
+      fs.unlinkSync(tp);
+    });
+  }
+
+  /* 13. специфікація нотатки: копії в api/memory.js і api/chat.js посимвольно рівні */
   const specOf = file => {
     const m = fs.readFileSync(file, 'utf8').match(/const NOTE_SPEC = `([\s\S]*?)`;/);
     return m && m[1];
@@ -200,6 +256,6 @@ async function sys(product, memory, extra) {
 
   fs.unlinkSync(tmp);
   if (errs.length) { console.log('FAILED:', errs); process.exit(1); }
-  console.log('памʼять і службовий блок · відбір хвоста розмов (свій звіт увесь, чужих до 4, разом до 8) · сміття не ламає · NOTE_SPEC збігається · контракт сторінок');
+  console.log('памʼять і службовий блок · хвіст розмов (свій увесь, чужих до 4, разом до 8) · @-звіти (ліміт 2, білий список) · сміття не ламає · словники й синтаксис сторінок');
   console.log('CHAT MEMORY TEST PASSED');
 })().catch(e => { console.log('FAILED:', e.message); process.exit(1); });
