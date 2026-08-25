@@ -196,6 +196,14 @@ async function sys(product, memory, extra) {
     /* без refs блока нема */
     if (withMem.includes('ДОДАНІ ЗВІТИ ДЛЯ ПОРІВНЯННЯ')) errs.push('блок доданих звітів є без refs' + p);
 
+    /* 10б. тіньова оцінка v2: чат її повністю ігнорує */
+    await call(product, MEM, { context: { vehicle: { title: 'BMW X5 2019' }, verdict: { score: 7.1 }, score_v2_preview: 5.5, score_breakdown_v2: { final: 5.5 }, score_facts: { findings: [{ type: 'FLOOD' }] } } });
+    const v2primer = sent.messages[1].content.find(bk => bk.type === 'text').text;
+    for (const leak of ['score_v2_preview', 'score_breakdown_v2', 'score_facts']) {
+      if (v2primer.includes(leak)) errs.push('поле ' + leak + ' просочилось у чат' + p);
+    }
+    if (!v2primer.includes('7.1')) errs.push('легасі verdict.score зник із контексту чату' + p);
+
     /* 11. цитата зі звіту доходить до інструкції */
     const wQuote = await sys(product, MEM, { quoted_text: 'пробіг 190 тис підтверджений Carfax' });
     if (!wQuote.includes('ЦИТАТА ЗІ ЗВІТУ')) errs.push('нема блоку цитати' + p);

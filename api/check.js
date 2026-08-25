@@ -1,5 +1,7 @@
 export const config = { maxDuration: 300 };
 
+import { computeScore } from './score.js';
+
 /* ============================================================
    CalCar Check, рушій v1: посилання на оголошення -> звіт.
    Потік: fetch сторінки -> витяг фактів (детермінований) ->
@@ -333,6 +335,33 @@ async function saveSnapshot(l, url) {
   } catch (e) { return 'error'; }
 }
 
+/* ---------- 4б. Історія рову даних для Score v2 ----------
+   Лише факти пайплайна: скільки МИ реально бачили це авто раніше.
+   Поточне оголошення виключається, повторні аналізи того самого URL теж. */
+async function readSnapshots(vin, currentUrl) {
+  const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!base || !key || !vin) return [];
+  try {
+    const r = await fetch(base.replace(/\/$/, '')
+      + '/rest/v1/vehicle_snapshots?vin=eq.' + encodeURIComponent(vin)
+      + '&select=odometer_km,source_url,created_at&order=created_at.asc&limit=200', {
+      headers: { apikey: key, authorization: 'Bearer ' + key },
+    });
+    if (!r.ok) return [];
+    const rows = await r.json();
+    /* одне джерело рахується один раз: дедуплікація за source_url */
+    const seen = new Set();
+    const out = [];
+    for (const row of Array.isArray(rows) ? rows : []) {
+      const u = String(row.source_url || '');
+      if (!u || u === currentUrl || seen.has(u)) continue;
+      seen.add(u);
+      out.push({ odometer_km: row.odometer_km ?? null, source_url: u, created_at: row.created_at });
+    }
+    return out;
+  } catch (e) { return []; }
+}
+
 /* ---------- 5. AI-розбір ---------- */
 const PROMPT = (l, nhtsa, auction, langDirective) => `Ти експертна система CalCar Check: незалежний розбір оголошення про продаж вживаного авто. Твоя робота: звірити те, що СТВЕРДЖУЄ продавець, із тим, що КАЖУТЬ дані і фото, і чесно відповісти, чи варто брати саме це авто.
 
@@ -393,6 +422,16 @@ ${auction && auction.photos.length ? `
 
 "model_notes.issues": типові слабкі місця САМЕ ЦІЄЇ версії (марка + модель + рік + двигун + фактичний пробіг). 0-4 пункти. Кожен пункт мусить бути задокументованою особливістю саме цієї моделі і покоління; якщо речення без змін пасує іншому авто, викинь його. Тільки проблеми, актуальні при ЦЬОМУ пробігу. Якщо певного нічого немає, порожній масив. Без цін.
 
+"score_facts": СЛУЖБОВА класифікація знахідок для коду, на текст звіту НЕ впливає, verdict.score і verdict.grade рахуй як раніше, незалежно від неї. Жорсткі правила класифікації:
+- type СТРОГО з переліку. Підтверджені ризики: STRUCTURAL_DAMAGE, AIRBAGS_DEPLOYED, SRS_FAULT (поточна несправність SRS), FLOOD, FIRE, ODOMETER_ROLLBACK, VIN_IDENTITY_PROBLEM, SERIOUS_POWERTRAIN_FAULT, POOR_REPAIR_VISIBLE, CRITICAL_WARNING_LIGHTS. Відкриті питання: MILEAGE_CONFLICT_UNEXPLAINED, MAJOR_REPAIR_UNVERIFIED, MODIFICATION_TECHNICAL_CONCERN.
+- Підтверджений ризик вимагає ПРЯМОГО доказу. Не підвищуй відкрите питання до підтвердженого ризику припущенням.
+- Різниця пробігів САМА ПО СОБІ це НЕ ODOMETER_ROLLBACK, а MILEAGE_CONFLICT_UNEXPLAINED. Тюнінг сам по собі НЕ MODIFICATION_TECHNICAL_CONCERN: потрібен конкретний технічний привід. Минуле ДТП саме по собі НЕ POOR_REPAIR_VISIBLE: потрібні видимі сліди поганого ремонту.
+- ВІДСУТНІСТЬ ДАНИХ НІКОЛИ НЕ Є ЗНАХІДКОЮ. Unknown не добре і не погано.
+- Знахідки ОДНОЇ події (одного ДТП) несуть спільний event_id: подія з кількома підтвердженнями це ОДНА знахідка з кількома evidence, не кілька знахідок.
+- repair_status (confirmed_ok | unknown | confirmed_bad) і severity (low|med|high) став де застосовно.
+- evidence: масив {source: seller_claim|current_photos|historical_listing|us_auction|registry|document, ref: конкретний запис (listing_3, photo_7, auction_event_1) де можливо, description: коротке доказове речення}. Одна знахідка може мати скільки завгодно доказів.
+- info_notes: вільний текст без впливу на бал. Якщо знахідок нема, findings це порожній масив.
+
 "verdict.grade": buy (брати, істотних проблем не знайдено), inspect (можна брати після конкретних перевірок), caution (є серйозні розбіжності, торг або обережність), avoid (знайдені факти прямо суперечать оголошенню або ризик надто високий). Оцінюй відносно ринку вживаних авто: сліди експлуатації це норма, а не привід для avoid. Але приховування фактів продавцем (знайдене ДТП при "без ДТП") завжди мінімум caution.
 
 Відповідай ЛИШЕ валідним JSON без markdown, точно за схемою:
@@ -408,6 +447,7 @@ ${auction && auction.photos.length ? `
  "data_notes":"сміття чи суперечності в даних площадки, 1-2 речення, або null",
  "model_notes":{"issues":[{"unit":"вузол/двигун","title":"назва проблеми","detail":"1-2 речення","severity":"low|med|high"}]},
  "checklist":["конкретна перевірка при огляді, 1 рядок", "..."],
+ "score_facts":{"findings":[{"type":"STRUCTURAL_DAMAGE","event_id":"accident_2020","severity":"high","repair_status":"unknown","evidence":[{"source":"us_auction","ref":"auction_event_1","description":"на аукціонних фото деформований лівий лонжерон"}]}],"info_notes":["вільна замітка без впливу на бал"]},
  "verdict":{"score":7.4,"summary":"3-5 речень людською мовою: що це за авто і пропозиція, головні знахідки, чи варто розглядати і за яких умов. Без канцеляриту"}
 }
 "checklist": 3-6 пунктів, і це поради ПОКУПЦЮ ДЛЯ ЖИВОГО ОГЛЯДУ І ТЕСТ-ДРАЙВУ, а не дослідницькі завдання. ЖОРСТКІ правила:
@@ -547,6 +587,36 @@ export default async function handler(req, res) {
     } catch (e) {
       return res.status(502).json({ error: 'AI повернув невалідну відповідь, спробуй ще раз' });
     }
+
+    /* ---- CalCar Score v2, тіньовий режим: модель класифікувала знахідки,
+       код визначає доступність джерел із фактів пайплайна, формула рахує.
+       Користувач бачить легасі verdict.score, v2 лише зберігається в data ---- */
+    try {
+      const snaps = await readSnapshots(listing.vin, url);
+      const coverageInputs = {
+        vin_decoded: !!nhtsa,
+        photos_count: listing.photos.length,
+        historical_listings_count: snaps.length,
+        /* незалежні часові точки пробігу, БЕЗ поточного оголошення; один запис
+           рахується один раз (дедуплікація за source_url уже в readSnapshots) */
+        mileage_observation_count: snaps.filter(r => r.odometer_km != null).length,
+        auction_record_exists: !!auction,
+        /* застосовність аукціону: запис є, або VIN північноамериканський
+           (WMI 1-5), тоді запис МІГ би існувати. Інакше not_applicable */
+        auction_applicable: !!auction || (listing.vin ? /^[1-5]/.test(listing.vin) : false),
+        /* цих джерел у пайплайні поки немає: код чесно каже "не був" */
+        registration_data_exists: false,
+        service_history_exists: false,
+        inspection_history_exists: false,
+        seller_docs_exists: false,
+      };
+      const findings = Array.isArray(parsed?.score_facts?.findings) ? parsed.score_facts.findings : [];
+      const breakdown = computeScore(findings, coverageInputs);
+      parsed.score_v2_preview = breakdown.final;
+      parsed.score_breakdown_v2 = breakdown;
+      console.log('[check] score_v2', breakdown.final, '(legacy', (parsed.verdict && parsed.verdict.score) + ')',
+        '| cap', breakdown.coverage_cap, '| lim', breakdown.limiting_factors.join(',') || 'none');
+    } catch (e) { console.log('[check] score_v2 failed:', e.message); }
 
     parsed._meta = {
       kind: 'check',
