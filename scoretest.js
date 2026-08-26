@@ -244,6 +244,11 @@ const GERMAN_FULL = { ...FULL, auction_record_exists: false, auction_us_signal: 
   /* промпт вимагає event_id завжди, включно з поточними станами */
   if (!checkSrc.includes('event_id ОБОВʼЯЗКОВИЙ для КОЖНОЇ знахідки')) errs.push('check.js: промпт не вимагає event_id завжди');
   if (!checkSrc.includes('current_srs_fault')) errs.push('check.js: промпт без прикладу event_id для поточних станів');
+  /* правило mileage-conflict на основі аукціонного одометра: 5 умов */
+  if (!checkSrc.includes('MILEAGE_CONFLICT_UNEXPLAINED на основі АУКЦІОННОГО одометра дозволений ЛИШЕ коли ОДНОЧАСНО')) errs.push('check.js: нема 5 умов mileage-conflict');
+  if (!checkSrc.includes('статус actual')) errs.push('check.js: правило не вимагає статус actual');
+  if (!checkSrc.includes('дата хоч однієї точки ненадійна')) errs.push('check.js: правило не відкидає ненадійну дату');
+  if (!checkSrc.includes("odometer_status: ['actual', 'not_actual', 'exempt', 'unknown']")) errs.push('check.js: persistence не пише odometer_status');
   /* межі статусів відновлення жорсткі і живуть у промпті */
   if (!checkSrc.includes('confirmed_ok ЗАБОРОНЕНИЙ')) errs.push('check.js: промпт дозволяє confirmed_ok за фото');
   if (!checkSrc.includes('лишається unknown, НЕ visually_consistent')) errs.push('check.js: невидима зона удару не лишає unknown');

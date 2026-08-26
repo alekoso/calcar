@@ -439,6 +439,7 @@ async function writeAuctionEvent(vin, rec) {
         sale_date: rec.meta?.sale_date || null,
         odometer_value: rec.meta?.odometer_value ?? null,
         odometer_unit: unit,
+        odometer_status: ['actual', 'not_actual', 'exempt', 'unknown'].includes(rec.meta?.odometer_status) ? rec.meta.odometer_status : 'unknown',
         primary_damage: rec.meta?.primary_damage || null,
         secondary_damage: rec.meta?.secondary_damage || null,
         title_status: rec.meta?.title_status || null,
@@ -450,6 +451,7 @@ async function writeAuctionEvent(vin, rec) {
           sources_checked: rec.sources_checked || [],
           lot_id_source: rec.meta?.lot_id_source || null,
           sale_date_raw: rec.meta?.sale_date_raw || null,
+          odometer_status_raw: rec.meta?.odometer_status_raw || null,
         },
         checked_at: new Date().toISOString(),
       }),
@@ -662,7 +664,8 @@ ${auction && auction.photos.length ? `
 "score_facts": СЛУЖБОВА класифікація знахідок для коду, на текст звіту НЕ впливає, verdict.score і verdict.grade рахуй як раніше, незалежно від неї. Жорсткі правила класифікації:
 - type СТРОГО з переліку. Підтверджені ризики: STRUCTURAL_DAMAGE, AIRBAGS_DEPLOYED, SRS_FAULT (поточна несправність SRS), FLOOD, FIRE, ODOMETER_ROLLBACK, VIN_IDENTITY_PROBLEM, SERIOUS_POWERTRAIN_FAULT, POOR_REPAIR_VISIBLE, CRITICAL_WARNING_LIGHTS. Відкриті питання: MILEAGE_CONFLICT_UNEXPLAINED, MAJOR_REPAIR_UNVERIFIED, MODIFICATION_TECHNICAL_CONCERN.
 - Підтверджений ризик вимагає ПРЯМОГО доказу. Не підвищуй відкрите питання до підтвердженого ризику припущенням.
-- ОДИНИЦІ ПРОБІГУ: перед будь-яким порівнянням пробігу (аукціон проти історії проти поточного оголошення) приведи значення до ОДНІЄЇ одиниці. Аукціонний одометр США зазвичай у милях (mi), українські оголошення у км: 1 mi = 1.609 km. MILEAGE_CONFLICT_UNEXPLAINED виставляй лише коли конфлікт лишається ПІСЛЯ коректної конвертації. Якщо одиниця точки пробігу невідома (unknown), числовий конфлікт на її основі НЕ виставляй: збережи як інформаційний факт в info_notes із вихідним значенням.
+- ОДИНИЦІ ПРОБІГУ: перед будь-яким порівнянням пробігу (аукціон проти історії проти поточного оголошення) приведи значення до ОДНІЄЇ одиниці. Аукціонний одометр США зазвичай у милях (mi), українські оголошення у км: 1 mi = 1.609 km.
+- MILEAGE_CONFLICT_UNEXPLAINED на основі АУКЦІОННОГО одометра дозволений ЛИШЕ коли ОДНОЧАСНО: одиниця аукціонної точки не unknown; її статус actual (не not_actual, не exempt, не unknown); аукціонна точка має надійну дату; порівнювана точка з історії чи оголошення теж має надійну дату; і ПІСЛЯ переведення одиниць пізніша точка справді нижча за ранішу. Якщо статус not_actual, exempt чи unknown, одиниця unknown, або дата хоч однієї точки ненадійна: конфлікт НЕ виставляй, збережи як інформаційний факт в info_notes із вихідним значенням і статусом.
 - Різниця пробігів САМА ПО СОБІ це НЕ ODOMETER_ROLLBACK, а MILEAGE_CONFLICT_UNEXPLAINED. Тюнінг сам по собі НЕ MODIFICATION_TECHNICAL_CONCERN: потрібен конкретний технічний привід. Минуле ДТП саме по собі НЕ POOR_REPAIR_VISIBLE: потрібні видимі сліди поганого ремонту.
 - ВІДСУТНІСТЬ ДАНИХ НІКОЛИ НЕ Є ЗНАХІДКОЮ. Unknown не добре і не погано.
 - event_id ОБОВʼЯЗКОВИЙ для КОЖНОЇ знахідки, без нього код її відкине. Для подій це імʼя події (accident_2020, flood_2021), для поточних станів і несправностей стабільний ідентифікатор (current_srs_fault, mileage_conflict_1, modification_suspension). Знахідки ОДНОЇ події (одного ДТП) несуть СПІЛЬНИЙ event_id: подія з кількома підтвердженнями це ОДНА знахідка з кількома evidence, не кілька знахідок.

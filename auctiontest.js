@@ -207,6 +207,22 @@ function makeFetch(map) {
     /* дата ISO парситься, погана дата: null + raw */
     const goodDate = A.extractLotMeta('Auction ended on June 4, 2025 Lot #9999999', 'https://x/9999999');
     if (goodDate.sale_date !== '2025-06-04') errs.push('ISO-дата не розпарсилась: ' + goodDate.sale_date);
+
+    /* статус пробігу: actual / not_actual / exempt / unknown */
+    const actualM = A.extractLotMeta('Odometer: 17850 mi Actual Lot #1000001', 'https://x/1000001');
+    if (actualM.odometer_status !== 'actual') errs.push('actual статус: ' + actualM.odometer_status);
+    if (!actualM.odometer_status_raw) errs.push('actual raw порожній');
+    const notActM = A.extractLotMeta('Odometer 55000 mi Not Actual Lot #1000002', 'https://x/1000002');
+    if (notActM.odometer_status !== 'not_actual') errs.push('not_actual статус: ' + notActM.odometer_status);
+    const tmuM = A.extractLotMeta('Mileage 90000 mi TMU Lot #1000003', 'https://x/1000003');
+    if (tmuM.odometer_status !== 'not_actual') errs.push('TMU не not_actual: ' + tmuM.odometer_status);
+    const exM = A.extractLotMeta('Odometer 120000 mi Exempt Lot #1000004', 'https://x/1000004');
+    if (exM.odometer_status !== 'exempt') errs.push('exempt статус: ' + exM.odometer_status);
+    const unkM = A.extractLotMeta('Mileage 21000 km Lot #1000005', 'https://x/1000005');
+    if (unkM.odometer_status !== 'unknown') errs.push('без маркера статус не unknown: ' + unkM.odometer_status);
+    if (unkM.odometer_status_raw !== null) errs.push('unknown статус має raw');
+    const amStatus = A.extractLotMeta('Подтвержденный пробег в момент инспекции 17850 mi Lot #42968456', 'https://x/42968456');
+    if (amStatus.odometer_status !== 'actual') errs.push('americamotors "Подтвержденный" не actual: ' + amStatus.odometer_status);
   } else errs.push('нема extractLotMeta');
 
   /* recoverLotId: строгі guard-и */

@@ -343,6 +343,18 @@ export function extractLotMeta(html, url) {
   let om = plain.match(/(\d[\d\s,.]{1,9})\s*(?:mi|miles|миль|міль)(?![a-zа-яіїєґ])/i);
   if (om) { odometer_value = parseInt(om[1].replace(/[^\d]/g, ''), 10) || null; odometer_unit = 'mi'; }
   else { om = plain.match(/(\d[\d\s,.]{1,9})\s*(?:km|км)(?![a-zа-яіїєґ])/i); if (om) { odometer_value = parseInt(om[1].replace(/[^\d]/g, ''), 10) || null; odometer_unit = 'km'; } }
+  /* статус пробігу з джерела (actual|not_actual|exempt|unknown), сирий рядок
+     окремо. Одиниця і статус НЕ припускаються, беруться з тексту лота */
+  let odometer_status = 'unknown', odometer_status_raw = null;
+  const CYR = '[а-яіїєґё]';
+  const sm = plain.match(new RegExp('(not[\\s-]?actual|true\\s+mileage\\s+unknown|\\bTMU\\b|exceeds\\s+mechanical\\s+limits|mileage\\s+exempt|\\bexempt\\b|\\bactual\\b|підтвердж' + CYR + '+\\s+пробіг|подтвержд' + CYR + '+\\s+пробег|не\\s+відповідає\\s+пробіг|скручен' + CYR + '*)', 'i'));
+  if (sm) {
+    odometer_status_raw = sm[0].trim().slice(0, 60);
+    const tt = sm[0].toLowerCase();
+    if (/not|tmu|true\s+mileage|скручен|не\s+відповідає/.test(tt)) odometer_status = 'not_actual';
+    else if (/exempt|exceeds/.test(tt)) odometer_status = 'exempt';
+    else odometer_status = 'actual';
+  }
   /* ідентичність події: lot id DIRECT зі сторінки або URL */
   const lot_id = ((String(url || '').match(/\/(\d{7,9})\b/) || [])[1]
     || (plain.match(/(?:Lot|Лот|лота)[:\s#№]{0,5}(\d{7,9})/i) || [])[1] || null);
@@ -353,7 +365,7 @@ export function extractLotMeta(html, url) {
   const primary_damage = clean((plain.match(/(?:Primary damage|Осн\.? поврежд\w*|Основн\w+ пошкодж\w*)[:\s]{0,5}([A-Za-z\- ,\/]{1,30})/i) || [])[1]);
   const secondary_damage = clean((plain.match(/(?:Secondary damage|Втор\.? поврежд\w*|Другорядн\w+ пошкодж\w*)[:\s]{0,5}([A-Za-z\- ,\/]{1,30})/i) || [])[1]);
   const title_status = clean((plain.match(/(?:Title status|Document type|Тип документа|Тип документу)[:\s]{0,5}([A-Za-z\- ,\/]{1,30})/i) || [])[1]);
-  return { auction_house, sale_date, sale_date_raw, odometer_value, odometer_unit, lot_id, lot_id_source: lot_id ? 'direct' : null, primary_damage, secondary_damage, title_status };
+  return { auction_house, sale_date, sale_date_raw, odometer_value, odometer_unit, odometer_status, odometer_status_raw, lot_id, lot_id_source: lot_id ? 'direct' : null, primary_damage, secondary_damage, title_status };
 }
 
 /* строге відновлення lot_id з discovery-кандидата: ЛИШЕ коли одночасно
