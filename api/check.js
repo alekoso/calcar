@@ -417,6 +417,45 @@ async function writeAuctionCache(vin, row) {
   } catch (e) { /* кеш не критичний */ }
 }
 
+/* ---------- 4в2. Нормалізація фактів держ/історичного блоку RIA ----------
+   ДЕТЕРМІНОВАНІ маркери з офіційних блоків сторінки: власники, точки пробігу,
+   минулі оголошення, запис ДТП, пригін зі США, аукціонний запис у даних
+   площадки. Один і той самий нормалізований набір їде і в coverage (Score),
+   і в промпт (purchase_decision): факт не має губитись між ними */
+export function extractHistoryFacts(text) {
+  const t = String(text || '');
+  const registry_present = /за офіційними відкритими державними даними/i.test(t)
+    && !/Відсутня інформація із офіційних відкритих даних/i.test(t)
+    && (/\d+\s*власник/i.test(t) || /Остання операція/i.test(t));
+  let owners_count = null;
+  for (const m of t.matchAll(/(\d+)(?:-[а-яіїє]+)?\s*власник/gi)) {
+    const n = parseInt(m[1], 10);
+    if (n && (owners_count === null || n > owners_count)) owners_count = n;
+  }
+  /* aiText може дублювати секції сторінки: рахуємо УНІКАЛЬНІ датовані записи,
+     а не сирі збіги, інакше та сама подія рахується двічі */
+  const past_listings = new Set(
+    [...t.matchAll(/(\d{2}\.\d{2}\.\d{2})\s+Продавалось на AUTO\.RIA/g)].map(m => m[1])
+  ).size;
+  const past_mileage_points = new Set([
+    ...[...t.matchAll(/(\d{2}\.\d{2}\.\d{2})\s+Продавалось на AUTO\.RIA\s+Продавець вказав пробіг\s*(\d+)/g)].map(m => m[1] + '|' + m[2]),
+    ...[...t.matchAll(/(\d{2}\.\d{2}\.\d{2})\s+Зафіксовано пробіг\s*(\d+)/g)].map(m => m[1] + '|' + m[2]),
+  ]).size;
+  const accident_recorded = /Зафіксовано ДТП/i.test(t) || /Був(?:ла)?\s+у\s+ДТП/i.test(t);
+  const accident_note = ((t.match(/Зафіксовано ДТП\s*[•]?\s*(.{10,180}?)(?:Історія авто|Вподобали|Пробіг від|$)/i) || [])[1] || '').trim() || null;
+  return {
+    registry_present,
+    owners_count,
+    past_listings,
+    past_mileage_points,
+    accident_recorded,
+    accident_note,
+    us_import_record: /Пригнано з США|Ввезено з США|Пригнано зі США/i.test(t),
+    /* \w не матчить кирилицю: явний літерал фрази площадки */
+    ria_auction_record: /архівні дані з офіційного аукціону/i.test(t),
+  };
+}
+
 /* ---------- 4г. Валідація фінального висновку ----------
    Битий чи неповний purchase_decision не валить звіт: поле просто
    прибирається, і сторінка рендерить старий verdict.summary */
@@ -511,7 +550,7 @@ const PROMPT = (l, nhtsa, auction, langDirective, decisionStyle) => `Ти екс
 ${langDirective}
 
 ФАКТИ, ВИТЯГНУТІ ЗІ СТОРІНКИ ОГОЛОШЕННЯ (детермінований парс):
-${JSON.stringify({ title: l.title, vin: l.vin, plate: l.plate, price: l.price, currency: l.currency, odometer_km: l.odometer_km, year: l.year })}
+${JSON.stringify({ title: l.title, vin: l.vin, plate: l.plate, price: l.price, currency: l.currency, odometer_km: l.odometer_km, year: l.year, history_facts: l.history_facts })}
 
 ТЕКСТ СТОРІНКИ ОГОЛОШЕННЯ (опис продавця + офіційні блоки перевірки площадки, якщо є):
 ${l.text}
@@ -577,7 +616,9 @@ ${auction && auction.photos.length ? `
   * confirmed_ok: ЛИШЕ обʼєктивні дані якості відновлення: незалежна інспекція чи діагностика, документований ремонт РАЗОМ із результатами перевірки. Сам факт рахунку чи документів на ремонт confirmed_ok НЕ дає. За одним візуальним порівнянням фото confirmed_ok ЗАБОРОНЕНИЙ.
   * unknown: усе інше. severity (low|med|high) де застосовно.
 - АУКЦІОННІ МАТЕРІАЛИ (фото до ремонту, метадані лота) встановлюють ХАРАКТЕР і МАСШТАБ вихідного пошкодження. Розрізняй два різні висновки: "характер вихідного пошкодження встановлений" (це дають аукціонні фото) і "якість ремонту підтверджена" (цього вони НЕ дають). Висновки лише по конкретних зонах, які реально є на фото.
-- Якщо MAJOR_REPAIR_UNVERIFIED існував лише через невідомість масштабу, а аукціонні матеріали показують некрупне пошкодження (навісні елементи, подушки не спрацювали, силова структура не зачеплена): питання ЗНІМАЄТЬСЯ, крупного ремонту, ймовірно, не було, знахідку не створюй. Якщо пошкодження крупне: порівняння зон до/після дає лише висновок про видимі ознаки, статус за межами вище.
+- Якщо MAJOR_REPAIR_UNVERIFIED існував лише через невідомість масштабу, а аукціонні матеріали ДОСТУПНІ і показують некрупне пошкодження (навісні елементи, подушки не спрацювали, силова структура не зачеплена): питання ЗНІМАЄТЬСЯ, крупного ремонту, ймовірно, не було, знахідку не створюй. НЕДОСТУПНІСТЬ матеріалів сама по собі ані знімає питання, ані створює знахідку. Якщо пошкодження крупне: порівняння зон до/після дає лише висновок про видимі ознаки, статус за межами вище.
+- ОФІЦІЙНИЙ ЗАПИС ПРО ДТП (позначка "Був у ДТП", "Зафіксовано ДТП" у держ/історичному блоці, history_facts.accident_recorded) це ФАКТ із доказом (source historical_listing чи registry), НЕ "відсутність даних". Але MAJOR_REPAIR_UNVERIFIED НЕ ставиться автоматично при кожному відомому ДТП: лише коли Є докази, що пошкодження вимагало СУТТЄВОГО ремонту (спрацьовані подушки, кілька зон, структурні пошкодження, важкі формулювання запису) І ремонт не підтверджений. Відоме ДТП без доказів суттєвості: фіксуй в info_notes із точним текстом запису, на бал воно не впливає.
+- РОЗБІЖНОСТІ ПРОДАВЦЯ (слова проти офіційних даних: "другий власник" при чотирьох тощо) живуть у discrepancies і в purchase_decision (main_concerns, questions_for_seller). У score_facts їх НЕ класифікуй: самі по собі вони технічну чи історичну оцінку авто не погіршують.
 - evidence: масив {source: seller_claim|current_photos|historical_listing|us_auction|registry|document, ref: конкретний запис (listing_3, photo_7, auction_event_1) де можливо, description: коротке доказове речення}. Одна знахідка може мати скільки завгодно доказів.
 - Для MODIFICATION_TECHNICAL_CONCERN додатково: serious_intervention true, якщо є хоч одне серйозне втручання (прошивка чи наддув, вихлоп із видаленням каталізаторів, інше втручання в силовий агрегат); maintenance_evidence true, лише якщо в матеріалах РЕАЛЬНО є підтвердження обслуговування чи діагностики (сервісні записи, логи, документи). Нема даних = false, не вигадуй.
 - "signals": {"seller_claims_us_import": true лише при ЯВНІЙ заяві продавця про пригін зі США ("пригнана зі США", "авто з Америки"). Непевність = false}.
@@ -639,6 +680,7 @@ export default async function handler(req, res) {
     }
 
     const listing = extractListing(html, url);
+    listing.history_facts = extractHistoryFacts(listing.text);
     if (!listing.photos.length && !listing.vin && !listing.text) {
       return res.status(422).json({ error: 'Зі сторінки не вдалося витягнути дані оголошення. Надішли інше посилання' });
     }
@@ -789,34 +831,45 @@ export default async function handler(req, res) {
        Користувач бачить легасі verdict.score, v2 лише зберігається в data ---- */
     try {
       const snaps = await readSnapshots(listing.vin, url);
+      const hf = listing.history_facts || {};
+      const nhtsaMeaningful = !!(nhtsa && nhtsa.Make && (nhtsa.Model || nhtsa.ModelYear));
       const coverageInputs = {
-        /* порожній обʼєкт від NHTSA це НЕ декодування: потрібні змістовні
-           поля, мінімум Make плюс Model або ModelYear */
-        vin_decoded: !!(nhtsa && nhtsa.Make && (nhtsa.Model || nhtsa.ModelYear)),
+        /* ідентичність не залежить від одного NHTSA: для євро-VIN достатньо,
+           щоб достовірне джерело (держреєстр у блоці RIA показує марку,
+           модель і рік саме за цим VIN) підтвердило авто. Порожній декод
+           NHTSA сам по собі бал не занижує */
+        identity_confirmed: nhtsaMeaningful || hf.registry_present === true,
         /* лише кількість унікальних кадрів, без AI-оцінки якості */
         photos_count: new Set(listing.photos.map(photoKey)).size,
-        historical_listings_count: snaps.length,
-        /* незалежні часові точки пробігу, БЕЗ поточного оголошення; один запис
-           рахується один раз (дедуплікація за source_url уже в readSnapshots) */
-        mileage_observation_count: snaps.filter(r => r.odometer_km != null).length,
-        auction_record_exists: !!auction,
-        /* сигнал США: ЛИШЕ жорсткі тригери: запис держреєстру про ввіз
-           (у пайплайні поки нема), явна заява продавця про пригін
-           (класифікація моделі або консервативний regex по тексту),
-           північноамериканський формат VIN (WMI 1-5) у машини на ринку
-           України. Аукціонні маркування на фото це спостереження в
-           info_notes і тригером ЯВНО не є */
+        /* минулі оголошення: наш рів даних АБО історичний блок площадки */
+        historical_listings_count: Math.max(snaps.length, hf.past_listings || 0),
+        /* незалежні часові точки пробігу З МИНУЛОГО, без поточного оголошення:
+           рів даних або зафіксовані площадкою минулі продажі і фіксації */
+        mileage_observation_count: Math.max(
+          snaps.filter(r => r.odometer_km != null).length,
+          hf.past_mileage_points || 0
+        ),
+        /* запис аукціону існує, якщо він у нас (пошук/лістинг) АБО площадка
+           сама цитує архівні дані офіційного аукціону */
+        auction_record_exists: !!auction || hf.ria_auction_record === true,
+        /* сигнал США: ЛИШЕ жорсткі тригери: позначка площадки "Пригнано з
+           США", явна заява продавця (класифікація моделі або консервативний
+           regex), північноамериканський VIN (WMI 1-5) на ринку України.
+           Аукціонні маркування на фото це спостереження в info_notes і
+           тригером ЯВНО не є */
         auction_us_signal: !!(
-          parsed?.score_facts?.signals?.seller_claims_us_import === true
-          || /приг\w{0,12}\s+(?:з|зі|из)\s+США/i.test(listing.text || '')
+          hf.us_import_record === true
+          || parsed?.score_facts?.signals?.seller_claims_us_import === true
+          || /приг[а-яіїєґ]{0,12}\s+(?:з|зі|из)\s+США/i.test(listing.text || '')
           || (listing.vin && /^[1-5]/.test(listing.vin) && listing.country === 'UA')
         ),
         /* джерела реально відповіли і запису нема: у парі з сигналом дає
            absent. Заблокований доступ (source_unreachable) лишає unknown,
            стеля не чіпається, вини машини нема */
         auction_checked: !!(auctionSearch && auctionSearch.status === 'absent'),
+        /* держдані: офіційний блок площадки з власниками й операціями */
+        registration_data_exists: hf.registry_present === true,
         /* цих джерел у пайплайні поки немає: код чесно каже "не був" */
-        registration_data_exists: false,
         service_history_exists: false,
         inspection_history_exists: false,
         seller_docs_exists: false,
@@ -857,6 +910,7 @@ export default async function handler(req, res) {
       auction_url: listing.auction_url || null,
       auction_photos: auctionPhotos,
       auction_search: auctionSearch,
+      history_facts: listing.history_facts || null,
       /* паспорт джерела для інтерфейсу: без посилань назовні */
       auction_meta: auctionSearch && auctionSearch.status === 'found'
         ? { house: auctionSearch.house || null, date: auctionSearch.sale_date || null }

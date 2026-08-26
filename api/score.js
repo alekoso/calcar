@@ -11,7 +11,7 @@ export const SCORE_CONFIG = {
   BASE_CEILING: 5.0,
   CEILING_MAX: 9.5,
   COVERAGE_BONUS: {
-    vin_decoded: 0.75,
+    identity_confirmed: 0.75,
     photos_sufficient: 0.75,
     historical_listings: 0.7,
     mileage_history: 0.7,
@@ -166,7 +166,10 @@ function buildCoverage(inputs, cfg) {
   const i = inputs && typeof inputs === 'object' ? inputs : {};
   const n = v => (typeof v === 'number' && isFinite(v) && v > 0 ? v : 0);
   const states = {
-    vin_decoded: i.vin_decoded ? 'present' : 'absent',
+    /* ідентичність авто підтверджена будь-яким достовірним джерелом
+       (NHTSA-декод, держреєстр за VIN тощо), не одним декодером.
+       Старі збережені входи з vin_decoded читаються далі */
+    identity_confirmed: (i.identity_confirmed !== undefined ? i.identity_confirmed : i.vin_decoded) ? 'present' : 'absent',
     photos_sufficient: n(i.photos_count) >= cfg.PHOTOS_SUFFICIENT_MIN ? 'present' : 'absent',
     historical_listings: n(i.historical_listings_count) >= cfg.HISTORICAL_LISTINGS_MIN ? 'present' : 'absent',
     mileage_history: n(i.mileage_observation_count) >= cfg.MILEAGE_OBS_MIN ? 'present' : 'absent',

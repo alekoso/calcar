@@ -71,6 +71,48 @@ const REPORTS = [
   if (!save.includes(".insert(")) errs.push('збереження звіту не через insert');
   if (/from\('reports'\)[\s\S]{0,120}?\.update\(/.test(page)) errs.push('у check.html зʼявився update по reports: старий звіт можна перезаписати');
 
+  /* 5. нормалізація держ/історичного блоку RIA: реальні фрагменти сторінок */
+  const grabFn = grab(api, 'extractHistoryFacts');
+  if (!grabFn) errs.push('extractHistoryFacts не знайдена в api/check.js');
+  else {
+    const hf = new Function('text', grabFn + '\nreturn extractHistoryFacts(text);');
+    /* фрагмент S550 (реєстр є, ДТП нема, 2 минулі продажі з пробігами) */
+    const s550 = 'ДТП Немає офіційно зареєстрованих Страхові випадки в Україні Не виявлено '
+      + 'Історія авто за VIN-кодом 25.08.26 Продається на AUTO.RIA Продавець вказав пробіг 153 тис. км 4-ий власник '
+      + '26.09.24 Продавалось на AUTO.RIA Продавець вказав пробіг 144 тис. км 20.09.24 Продавалось на AUTO.RIA Продавець вказав пробіг 143 тис. км '
+      + 'Перевірено AUTO.RIA за офіційними відкритими державними даними Mercedes-Benz S-Class 2008 Остання операція 03.10.2024 4 власники';
+    const a = hf(s550);
+    if (!a.registry_present) errs.push('S550: реєстр не розпізнаний');
+    if (a.owners_count !== 4) errs.push('S550: власники ' + a.owners_count + ' замість 4');
+    if (a.past_listings !== 2) errs.push('S550: минулі оголошення ' + a.past_listings + ' замість 2');
+    if (a.past_mileage_points !== 2) errs.push('S550: точки пробігу ' + a.past_mileage_points + ' замість 2');
+    if (a.accident_recorded) errs.push('S550: "Немає офіційно зареєстрованих" хибно розпізнане як ДТП');
+    if (a.us_import_record || a.ria_auction_record) errs.push('S550: хибний сигнал США чи аукціону');
+    /* фрагмент Tesla WP7V3G (ДТП зафіксоване, пригін, аукціонні дані площадки, реєстр порожній) */
+    const tesla = 'Був у ДТП Пригнано з США Торг Обмін '
+      + 'Перевірено AUTO.RIA за офіційними відкритими державними даними Відсутня інформація із офіційних відкритих даних '
+      + 'останній зафіксований від 29.12.2025 джерело фіксації - архівні дані з офіційного аукціону ІААІ в США '
+      + 'ДТП Зафіксовано ДТП • на території США в 2025 році із пошкодженням правої сторони кузова та зовнішнього інтерфейсу '
+      + 'Історія авто за VIN-кодом 26.08.26 Продається на AUTO.RIA Продавець вказав пробіг 29 тис. км '
+      + '03.02.26 Продавалось на AUTO.RIA Продавець вказав пробіг 29 тис. км 29.12.25 Зафіксовано пробіг 29 тис. км';
+    const b = hf(tesla);
+    if (b.registry_present) errs.push('Tesla: порожній реєстр розпізнаний як наявний');
+    if (!b.accident_recorded) errs.push('Tesla: зафіксоване ДТП загублене');
+    if (!b.accident_note || !b.accident_note.includes('правої сторони')) errs.push('Tesla: нотатка ДТП без зони: ' + b.accident_note);
+    if (!b.us_import_record) errs.push('Tesla: позначка "Пригнано з США" загублена');
+    if (!b.ria_auction_record) errs.push('Tesla: аукціонні дані площадки загублені');
+    if (b.past_listings !== 1) errs.push('Tesla: минулі оголошення ' + b.past_listings);
+    if (b.past_mileage_points !== 2) errs.push('Tesla: точки пробігу ' + b.past_mileage_points + ' замість 2');
+    /* порожнеча не ламає */
+    const c = hf('');
+    if (c.registry_present || c.accident_recorded || c.past_listings) errs.push('порожній текст дає факти');
+  }
+  /* нормалізовані факти течуть в ОБИДВА місця: coverage і промпт */
+  if (!api.includes('history_facts: l.history_facts')) errs.push('check.js: факти не йдуть у промпт');
+  if (!api.includes('hf.registry_present === true')) errs.push('check.js: coverage не читає реєстр із фактів');
+  if (!api.includes('identity_confirmed: nhtsaMeaningful || hf.registry_present')) errs.push('check.js: ідентичність залежить лише від NHTSA');
+  if (!api.includes('hf.ria_auction_record === true')) errs.push('check.js: аукціонний запис площадки не рахується');
+
   /* 5. словники */
   for (const d of ['i18n/ru.js', 'i18n/en.js']) {
     const dict = fs.readFileSync(d, 'utf8');

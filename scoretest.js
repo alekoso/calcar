@@ -196,7 +196,14 @@ const GERMAN_FULL = { ...FULL, auction_record_exists: false, auction_us_signal: 
   if (src.includes('PHOTOS_OK_MIN')) errs.push('стара константа PHOTOS_OK_MIN лишилась');
   const checkSrc = fs.readFileSync('api/check.js', 'utf8');
   /* vin_decoded лише за змістовним декодуванням, порожній обʼєкт правдивий */
-  if (!checkSrc.includes('nhtsa && nhtsa.Make && (nhtsa.Model || nhtsa.ModelYear)')) errs.push('check.js: vin_decoded знову через !!nhtsa');
+  if (!checkSrc.includes('nhtsa && nhtsa.Make && (nhtsa.Model || nhtsa.ModelYear)')) errs.push('check.js: змістовність NHTSA-декоду зникла');
+  /* ідентичність не залежить від одного NHTSA: реєстр за VIN теж підтверджує */
+  if (!checkSrc.includes('identity_confirmed: nhtsaMeaningful || hf.registry_present')) errs.push('check.js: identity лише через NHTSA');
+  b = computeScore([], { identity_confirmed: true, photos_count: 12, historical_listings_count: 0, mileage_observation_count: 0, auction_record_exists: false, registration_data_exists: false, service_history_exists: false, inspection_history_exists: false, seller_docs_exists: false });
+  if (b.coverage.identity_confirmed.state !== 'present') errs.push('identity_confirmed не читається');
+  /* старі збережені входи з vin_decoded відтворюються далі */
+  b = computeScore([], { vin_decoded: true, photos_count: 12, historical_listings_count: 0, mileage_observation_count: 0, auction_record_exists: false, registration_data_exists: false, service_history_exists: false, inspection_history_exists: false, seller_docs_exists: false });
+  if (b.coverage.identity_confirmed.state !== 'present') errs.push('фолбек vin_decoded для старих входів зламаний');
   /* промпт вимагає event_id завжди, включно з поточними станами */
   if (!checkSrc.includes('event_id ОБОВʼЯЗКОВИЙ для КОЖНОЇ знахідки')) errs.push('check.js: промпт не вимагає event_id завжди');
   if (!checkSrc.includes('current_srs_fault')) errs.push('check.js: промпт без прикладу event_id для поточних станів');
