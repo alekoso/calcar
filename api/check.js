@@ -402,23 +402,42 @@ async function readAuctionCache(vin) {
     return Array.isArray(rows) && rows[0] ? rows[0] : null;
   } catch (e) { return null; }
 }
-/* аукціонна подія: ключ source + lot_id, у VIN подій може бути кілька.
-   До виконання міграції власником запис мовчки не відбувається */
+/* аукціонна подія: ключ (auction_house, lot_id) ідентифікує ПОДІЮ, не
+   джерело. Одна подія, знайдена на кількох дзеркалах, лишається одним
+   рядком і обогачується (source_urls зливаються). У VIN подій може бути
+   кілька. До виконання міграції власником запис мовчки не відбувається */
 async function writeAuctionEvent(vin, rec) {
   const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!base || !key || !vin || !rec || !rec.source) return;
+  if (!base || !key || !vin || !rec) return;
+  const house = String(rec.meta?.auction_house || '').toUpperCase();
+  const lotId = String(rec.meta?.lot_id || '');
+  /* без надійної ідентичності події не пишемо: ключ мусить бути повним */
+  if (!house || !lotId) return;
+  const root = base.replace(/\/$/, '');
+  const hdr = { apikey: key, authorization: 'Bearer ' + key };
   try {
-    await fetch(base.replace(/\/$/, '') + '/rest/v1/auction_events?on_conflict=source,lot_id', {
+    /* обогачення source_urls: читаємо наявний рядок, зливаємо джерела */
+    let sourceUrls = rec.lot_url ? [rec.lot_url] : [];
+    try {
+      const r = await fetch(root + '/rest/v1/auction_events?auction_house=eq.' + encodeURIComponent(house) + '&lot_id=eq.' + encodeURIComponent(lotId) + '&select=source_urls', { headers: hdr });
+      if (r.ok) {
+        const rows = await r.json();
+        const prev = Array.isArray(rows?.[0]?.source_urls) ? rows[0].source_urls : [];
+        sourceUrls = [...new Set([...prev, ...sourceUrls])];
+      }
+    } catch (e) { /* перший запис події: наявного рядка нема */ }
+    await fetch(root + '/rest/v1/auction_events?on_conflict=auction_house,lot_id', {
       method: 'POST',
-      headers: {
-        apikey: key, authorization: 'Bearer ' + key,
-        'content-type': 'application/json', prefer: 'resolution=merge-duplicates,return=minimal',
-      },
+      headers: { ...hdr, 'content-type': 'application/json', prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify({
-        source: rec.source,
-        lot_id: String(rec.meta?.lot_id || rec.lot_url || ''),
+        auction_house: house,
+        lot_id: lotId,
         vin,
-        lot_url: rec.lot_url || null,
+        sale_date: rec.meta?.sale_date || null,
+        odometer: rec.meta?.odometer_mi ?? null,
+        primary_damage: rec.meta?.primary_damage || null,
+        title_status: rec.meta?.title_status || null,
+        source_urls: sourceUrls,
         record: { photo_urls: rec.photo_urls || [], identity: rec.identity || null, meta: rec.meta || null, sources_checked: rec.sources_checked || [] },
         checked_at: new Date().toISOString(),
       }),

@@ -304,10 +304,13 @@ export function extractLotMeta(html, url) {
   const date = (plain.match(/Auction ended[^.]*?((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})/i)
     || plain.match(/\b(\d{2}[./]\d{2}[./]\d{4})\b/) || [])[1] || null;
   const odometer_mi = parseInt(((plain.match(/(\d[\d\s,.]{2,9})\s*(?:mi|миль|міль)\b/i) || [])[1] || '').replace(/[^\d]/g, ''), 10) || null;
-  /* ідентичність події: source + lot id; лот беремо з URL або тексту */
+  /* ідентичність події: auction_house + lot id; лот беремо з URL або тексту */
   const lot_id = ((String(url || '').match(/(\d{7,9})/) || [])[1]
     || (plain.match(/Lot[:\s#]{0,4}(\d{7,9})/i) || [])[1] || null);
-  return { auction_house: house, sale_date: date, odometer_mi, lot_id };
+  /* невізуальні метадані: тягнемо завжди, вони безкоштовні */
+  const primary_damage = ((plain.match(/(?:Primary damage|Осн\.? повреждения|Основні пошкодження|Основное повреждение)[:\s]{0,5}([A-Za-zА-Яа-яІіЇїЄє ,\/]{3,40})/i) || [])[1] || '').trim() || null;
+  const title_status = ((plain.match(/(?:Title status|Document type|Тип документа|Тип документу)[:\s]{0,5}([A-Za-zА-Яа-яІіЇїЄє ,\/]{3,40})/i) || [])[1] || '').trim() || null;
+  return { auction_house: house, sale_date: date, odometer_mi, lot_id, primary_damage, title_status };
 }
 
 /* ---------- оркестратор ----------
