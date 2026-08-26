@@ -65,6 +65,9 @@ function makeFetch(map) {
   if (rec.meta?.sale_date !== 'June 4, 2025') errs.push('паспорт: дата ' + rec.meta?.sale_date);
   const dl = await quiet(() => A.downloadLotPhotos(rec.photo_urls, { fetchImpl: happy }));
   if (dl.photos.length !== 2) errs.push('скачано ' + dl.photos.length + ' фото замість 2');
+  /* ранній вихід при found законний: found у аудиті, не вимагає обходу решти */
+  const stF = Object.fromEntries((rec.sources_checked || []).map(c => [c.source, c.status]));
+  if (stF['bid.cars'] !== 'found') errs.push('аудит found бреше: ' + JSON.stringify(stF));
 
   /* 2. строга ідентичність: VIN лише в тілі сторінки (схожі лоти) не рахується */
   const noZone = A.verifyLotIdentity({ url: 'https://bid.cars/en/lot/0-1/2018-BMW', html: '<title>2018 BMW 5 Series</title><div>' + VIN + '</div><span>VIN: WBAJA9C51KB111111</span>' }, VIN, NHTSA);
@@ -83,16 +86,46 @@ function makeFetch(map) {
   const y3 = A.verifyLotIdentity({ url: LOT_URL, html: '<title>2015 BMW 530e ' + VIN + '</title>' }, VIN, NHTSA);
   if (!y3.matched || y3.confidence !== 'reduced') errs.push('великий розліт року не дав reduced');
 
-  /* 3. absent проти source_unreachable */
+  /* 3. СТРОГИЙ absent проти source_unreachable */
   const answeredNo = makeFetch([
     [/vin-lot/, { body: JSON.stringify({ results: 0 }) }],
     [/bidfax|poctra/, { body: '<html>Nothing found</html>' }],
   ]);
   rec = await quiet(() => A.findAuctionRecord(VIN, NHTSA, { fetchImpl: answeredNo }));
-  if (rec.status !== 'absent' || rec.reason !== 'sources_answered_no_record') errs.push('джерела відповіли без запису: ' + rec.status + '/' + rec.reason);
+  if (rec.status !== 'absent' || rec.reason !== 'sources_answered_no_record') errs.push('усі відповіли без запису: ' + rec.status + '/' + rec.reason);
+  if (!Array.isArray(rec.sources_checked) || rec.sources_checked.length !== 3 || !rec.sources_checked.every(c => c.status === 'not_found')) {
+    errs.push('аудит absent неповний: ' + JSON.stringify(rec.sources_checked));
+  }
+  /* два джерела "нема" + одне впало = unreachable, НЕ absent */
+  const twoNoOneDown = makeFetch([
+    [/vin-lot/, { body: JSON.stringify({ results: 0 }) }],
+    [/bidfax/, { body: '<html>Nothing found</html>' }],
+    [/poctra/, { status: 403, body: 'Just a moment cloudflare' }],
+  ]);
+  rec = await quiet(() => A.findAuctionRecord(VIN, NHTSA, { fetchImpl: twoNoOneDown }));
+  if (rec.status !== 'unknown' || rec.reason !== 'source_unreachable') errs.push('часткова відповідь дала ' + rec.status + ' замість unknown');
+  const st = Object.fromEntries(rec.sources_checked.map(c => [c.source, c.status]));
+  if (st['bid.cars'] !== 'not_found' || st['bidfax.info'] !== 'not_found' || st['poctra.com'] !== 'blocked') {
+    errs.push('аудит часткової відповіді бреше: ' + JSON.stringify(st));
+  }
+  /* 200 із нерозпарсеною відповіддю (не JSON) = unreachable, не not_found */
+  const unparsed = makeFetch([
+    [/vin-lot/, { body: '<html>this is not json</html>' }],
+    [/bidfax|poctra/, { body: '<html>Nothing found</html>' }],
+  ]);
+  rec = await quiet(() => A.findAuctionRecord(VIN, NHTSA, { fetchImpl: unparsed }));
+  if (rec.status !== 'unknown') errs.push('нерозпарсений JSON дав ' + rec.status + ' замість unknown');
+  /* перший відповів "нема": обхід ПРОДОВЖУЄТЬСЯ, всі три опитані */
+  const seen = [];
+  const trackFetch = async (url) => { seen.push(String(url)); return answeredNo(url); };
+  rec = await quiet(() => A.findAuctionRecord(VIN, NHTSA, { fetchImpl: trackFetch }));
+  if (!(seen.some(u => u.includes('bidfax')) && seen.some(u => u.includes('poctra')))) {
+    errs.push('обхід зупинився достроково без found: ' + JSON.stringify(seen));
+  }
   const allBlocked = makeFetch([[/./, { status: 403, body: 'Just a moment cloudflare' }]]);
   rec = await quiet(() => A.findAuctionRecord(VIN, NHTSA, { fetchImpl: allBlocked }));
   if (rec.status !== 'unknown' || rec.reason !== 'source_unreachable') errs.push('усе заблоковане мало дати unknown/source_unreachable: ' + rec.status + '/' + rec.reason);
+  if (!rec.sources_checked.every(c => c.status === 'blocked')) errs.push('аудит блокувань бреше: ' + JSON.stringify(rec.sources_checked));
 
   /* 4. ліміти фото: розмір, сигнатура, content-type, сумарний ліміт, максимум 20 */
   const CFG = { ...A.AUCTION_CONFIG, MAX_PHOTOS: 5, MAX_PHOTO_BYTES: 250000, MAX_TOTAL_BYTES: 400000 };

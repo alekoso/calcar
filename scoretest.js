@@ -207,9 +207,14 @@ const GERMAN_FULL = { ...FULL, auction_record_exists: false, auction_us_signal: 
   if (!checkSrc.includes('питання ЗНІМАЄТЬСЯ')) errs.push('check.js: MAJOR_REPAIR_UNVERIFIED не знімається некрупним пошкодженням');
   if (!checkSrc.includes('Сам факт рахунку чи документів на ремонт confirmed_ok НЕ дає')) errs.push('check.js: документи без перевірки дають confirmed_ok');
   /* тригери сигналу США і поля тюнінгу живуть у промпті і коді */
-  for (const k of ['seller_claims_us_import', 'us_auction_markings_visible', 'serious_intervention', 'maintenance_evidence']) {
+  for (const k of ['seller_claims_us_import', 'serious_intervention', 'maintenance_evidence']) {
     if (!checkSrc.includes(k)) errs.push('check.js: нема поля ' + k);
   }
+  /* маркування на фото це спостереження в info_notes і ЯВНО не тригер стелі */
+  const sigExpr = (checkSrc.split('auction_us_signal: !!(')[1] || '').split(')')[0] + ')';
+  if (sigExpr.includes('markings')) errs.push('check.js: маркування на фото знову тригер applicable');
+  if (!checkSrc.includes('Тригером застосовності аукціону вони НЕ є')) errs.push('check.js: промпт не виключає маркування з тригерів');
+  if (!checkSrc.includes('breakdown.sources_checked')) errs.push('check.js: нема аудиту sources_checked у breakdown');
   if (!checkSrc.includes("/^[1-5]/.test(listing.vin) && listing.country === 'UA'")) errs.push('check.js: нема тригера NA-VIN на ринку України');
   /* WMI повернутий свідомо калібрувальною ітерацією, але ЛИШЕ як сигнал
      "NA-VIN на ринку України" для absent-логіки, не як застосовність сам

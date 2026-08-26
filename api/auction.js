@@ -181,24 +181,31 @@ export async function discoverVinCandidates(vin, opts = {}, cfg = AUCTION_CONFIG
   const t0 = Date.now();
   for (const src of cfg.SOURCES) {
     const url = src.searchUrl(V);
-    const d = { source: src.name, step: 'discovery', url, status: null, blocked: false, found: false, ms: 0 };
+    /* outcome на джерело: found | not_found | blocked | unreachable.
+       not_found ЛИШЕ коли джерело успішно відповіло і відповідь розпарсилась */
+    const d = { source: src.name, step: 'discovery', url, status: null, blocked: false, found: false, outcome: 'unreachable', ms: 0 };
     const ts = Date.now();
     try {
       const r = await fetchText(url, opts);
       d.status = r.status;
       d.blocked = r.blocked;
-      if (!r.blocked && r.status === 200) {
+      if (r.blocked) {
+        d.outcome = 'blocked';
+      } else if (r.status === 200) {
         if (src.searchKind === 'json_lot_url') {
           try {
             const j = JSON.parse(r.body);
-            if (j && j.url && src.lotUrlPattern.test(j.url)) { out.push({ source: src.name, url: j.url }); d.found = true; }
-          } catch (e) { /* не JSON: кандидата нема */ }
+            if (j && j.url && src.lotUrlPattern.test(j.url)) { out.push({ source: src.name, url: j.url }); d.found = true; d.outcome = 'candidate'; }
+            else d.outcome = 'not_found';
+          } catch (e) { d.outcome = 'unreachable'; /* 200, але не розпарсилось */ }
         } else {
+          d.outcome = 'not_found';
           /* точний VIN у href в межах домену джерела */
           for (const m of r.body.matchAll(/href="(https?:\/\/[^"]+)"/gi)) {
             if (m[1].toUpperCase().includes(V) && src.lotUrlPattern.test(m[1])) {
               out.push({ source: src.name, url: m[1] });
               d.found = true;
+              d.outcome = 'candidate';
               break;
             }
           }
@@ -210,7 +217,7 @@ export async function discoverVinCandidates(vin, opts = {}, cfg = AUCTION_CONFIG
     }
     d.ms = Date.now() - ts;
     console.log('[auction] source=' + src.name, 'step=discovery', 'status=' + d.status,
-      d.blocked ? 'BLOCKED' : (d.found ? 'found' : 'not_found'), d.ms + 'ms');
+      d.blocked ? 'BLOCKED' : d.outcome, d.ms + 'ms');
     diag.push(d);
   }
   return { candidates: out, diagnostics: diag, discovery_ms: Date.now() - t0 };
@@ -234,20 +241,28 @@ export async function findAuctionRecord(vin, nhtsa, opts = {}, cfg = AUCTION_CON
   const t0 = Date.now();
   const disco = await discoverVinCandidates(vin, opts, cfg);
   const diagnostics = [...disco.diagnostics];
-  let answered = disco.diagnostics.some(d => !d.blocked && d.status === 200);
+  /* СТРОГИЙ absent: рахується лише коли КОЖНЕ джерело ланцюга успішно
+     відповіло відсутністю запису. Ранній вихід дозволений лише при found.
+     Будь-який таймаут, блокування чи нерозпарсена відповідь хоч одного
+     джерела = source_unreachable, стеля не чіпається */
+  const outcomes = {};
+  for (const d of disco.diagnostics) outcomes[d.source] = d.outcome;
 
   for (const cand of disco.candidates) {
-    if (Date.now() - t0 > (opts.totalBudgetMs || cfg.TOTAL_BUDGET_MS)) break;
+    if (Date.now() - t0 > (opts.totalBudgetMs || cfg.TOTAL_BUDGET_MS)) { outcomes[cand.source] = 'unreachable'; continue; }
     const d = { source: cand.source, step: 'lot', url: cand.url, status: null, blocked: false, found: false, ms: 0 };
     const ts = Date.now();
     try {
       const r = await fetchText(cand.url, opts);
       d.status = r.status;
       d.blocked = r.blocked;
+      if (r.blocked) outcomes[cand.source] = 'blocked';
+      else if (r.status !== 200) outcomes[cand.source] = 'unreachable';
       if (!r.blocked && r.status === 200) {
-        answered = true;
         const identity = verifyLotIdentity({ url: cand.url, html: r.body }, vin, nhtsa);
         d.identity = identity.matched ? (identity.confidence || 'high') : identity.reason;
+        /* сторінка лота відповіла, але це не наш запис: джерело чесно "нема" */
+        outcomes[cand.source] = identity.matched ? 'found' : 'not_found';
         if (identity.matched) {
           d.found = true;
           const photoUrls = [...new Set([...r.body.matchAll(/https?:\/\/[^"'\s>]+\.(?:jpe?g|png|webp)/gi)]
@@ -255,6 +270,7 @@ export async function findAuctionRecord(vin, nhtsa, opts = {}, cfg = AUCTION_CON
           d.ms = Date.now() - ts;
           diagnostics.push(d);
           console.log('[auction] source=' + cand.source, 'step=lot', 'status=200 found identity=' + d.identity, d.ms + 'ms');
+          /* ранній вихід законний ЛИШЕ при found */
           return {
             status: 'found',
             source: cand.source,
@@ -262,6 +278,7 @@ export async function findAuctionRecord(vin, nhtsa, opts = {}, cfg = AUCTION_CON
             identity,
             meta: extractLotMeta(r.body),
             photo_urls: photoUrls.slice(0, cfg.MAX_PHOTOS),
+            sources_checked: sourcesChecked(outcomes, cfg),
             diagnostics,
             total_ms: Date.now() - t0,
           };
@@ -270,6 +287,7 @@ export async function findAuctionRecord(vin, nhtsa, opts = {}, cfg = AUCTION_CON
     } catch (e) {
       d.status = 'error';
       d.error = String(e.message || e).slice(0, 80);
+      outcomes[cand.source] = 'unreachable';
     }
     d.ms = Date.now() - ts;
     console.log('[auction] source=' + cand.source, 'step=lot', 'status=' + d.status,
@@ -277,10 +295,22 @@ export async function findAuctionRecord(vin, nhtsa, opts = {}, cfg = AUCTION_CON
     diagnostics.push(d);
   }
 
+  const checked = sourcesChecked(outcomes, cfg);
+  const allAnsweredNo = checked.length > 0 && checked.every(c => c.status === 'not_found');
   return {
-    status: answered ? 'absent' : 'unknown',
-    reason: answered ? 'sources_answered_no_record' : 'source_unreachable',
+    status: allAnsweredNo ? 'absent' : 'unknown',
+    reason: allAnsweredNo ? 'sources_answered_no_record' : 'source_unreachable',
+    sources_checked: checked,
     diagnostics,
     total_ms: Date.now() - t0,
   };
+}
+
+/* аудит опитування для score_breakdown_v2 і майбутнього блоку осей:
+   по одному рядку на джерело ланцюга */
+function sourcesChecked(outcomes, cfg) {
+  return cfg.SOURCES.map(src => {
+    const o = outcomes[src.name] || 'unreachable';
+    return { source: src.name, status: o === 'candidate' ? 'unreachable' : o };
+  });
 }
