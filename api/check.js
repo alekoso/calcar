@@ -409,10 +409,12 @@ async function readAuctionCache(vin) {
 async function writeAuctionEvent(vin, rec) {
   const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!base || !key || !vin || !rec) return;
-  const house = String(rec.meta?.auction_house || '').toUpperCase();
+  const house = String(rec.meta?.auction_house || '');
   const lotId = String(rec.meta?.lot_id || '');
-  /* без надійної ідентичності події не пишемо: ключ мусить бути повним */
-  if (!house || !lotId) return;
+  /* ключ мусить бути повним і канонічним. Домен дзеркала домом не є */
+  if (house !== 'IAAI' && house !== 'COPART') return;
+  if (!lotId) return;
+  const unit = ['mi', 'km', 'unknown'].includes(rec.meta?.odometer_unit) ? rec.meta.odometer_unit : 'unknown';
   const root = base.replace(/\/$/, '');
   const hdr = { apikey: key, authorization: 'Bearer ' + key };
   try {
@@ -426,6 +428,7 @@ async function writeAuctionEvent(vin, rec) {
         sourceUrls = [...new Set([...prev, ...sourceUrls])];
       }
     } catch (e) { /* перший запис події: наявного рядка нема */ }
+    /* first_seen_at НЕ шлемо: default now() на insert, при обогаченні лишається */
     await fetch(root + '/rest/v1/auction_events?on_conflict=auction_house,lot_id', {
       method: 'POST',
       headers: { ...hdr, 'content-type': 'application/json', prefer: 'resolution=merge-duplicates,return=minimal' },
@@ -434,11 +437,20 @@ async function writeAuctionEvent(vin, rec) {
         lot_id: lotId,
         vin,
         sale_date: rec.meta?.sale_date || null,
-        odometer: rec.meta?.odometer_mi ?? null,
+        odometer_value: rec.meta?.odometer_value ?? null,
+        odometer_unit: unit,
         primary_damage: rec.meta?.primary_damage || null,
+        secondary_damage: rec.meta?.secondary_damage || null,
         title_status: rec.meta?.title_status || null,
         source_urls: sourceUrls,
-        record: { photo_urls: rec.photo_urls || [], identity: rec.identity || null, meta: rec.meta || null, sources_checked: rec.sources_checked || [] },
+        record: {
+          photo_urls: rec.photo_urls || [],
+          identity: rec.identity || null,
+          meta: rec.meta || null,
+          sources_checked: rec.sources_checked || [],
+          lot_id_source: rec.meta?.lot_id_source || null,
+          sale_date_raw: rec.meta?.sale_date_raw || null,
+        },
         checked_at: new Date().toISOString(),
       }),
     });
@@ -650,6 +662,7 @@ ${auction && auction.photos.length ? `
 "score_facts": СЛУЖБОВА класифікація знахідок для коду, на текст звіту НЕ впливає, verdict.score і verdict.grade рахуй як раніше, незалежно від неї. Жорсткі правила класифікації:
 - type СТРОГО з переліку. Підтверджені ризики: STRUCTURAL_DAMAGE, AIRBAGS_DEPLOYED, SRS_FAULT (поточна несправність SRS), FLOOD, FIRE, ODOMETER_ROLLBACK, VIN_IDENTITY_PROBLEM, SERIOUS_POWERTRAIN_FAULT, POOR_REPAIR_VISIBLE, CRITICAL_WARNING_LIGHTS. Відкриті питання: MILEAGE_CONFLICT_UNEXPLAINED, MAJOR_REPAIR_UNVERIFIED, MODIFICATION_TECHNICAL_CONCERN.
 - Підтверджений ризик вимагає ПРЯМОГО доказу. Не підвищуй відкрите питання до підтвердженого ризику припущенням.
+- ОДИНИЦІ ПРОБІГУ: перед будь-яким порівнянням пробігу (аукціон проти історії проти поточного оголошення) приведи значення до ОДНІЄЇ одиниці. Аукціонний одометр США зазвичай у милях (mi), українські оголошення у км: 1 mi = 1.609 km. MILEAGE_CONFLICT_UNEXPLAINED виставляй лише коли конфлікт лишається ПІСЛЯ коректної конвертації. Якщо одиниця точки пробігу невідома (unknown), числовий конфлікт на її основі НЕ виставляй: збережи як інформаційний факт в info_notes із вихідним значенням.
 - Різниця пробігів САМА ПО СОБІ це НЕ ODOMETER_ROLLBACK, а MILEAGE_CONFLICT_UNEXPLAINED. Тюнінг сам по собі НЕ MODIFICATION_TECHNICAL_CONCERN: потрібен конкретний технічний привід. Минуле ДТП саме по собі НЕ POOR_REPAIR_VISIBLE: потрібні видимі сліди поганого ремонту.
 - ВІДСУТНІСТЬ ДАНИХ НІКОЛИ НЕ Є ЗНАХІДКОЮ. Unknown не добре і не погано.
 - event_id ОБОВʼЯЗКОВИЙ для КОЖНОЇ знахідки, без нього код її відкине. Для подій це імʼя події (accident_2020, flood_2021), для поточних станів і несправностей стабільний ідентифікатор (current_srs_fault, mileage_conflict_1, modification_suspension). Знахідки ОДНОЇ події (одного ДТП) несуть СПІЛЬНИЙ event_id: подія з кількома підтвердженнями це ОДНА знахідка з кількома evidence, не кілька знахідок.
@@ -800,7 +813,7 @@ export default async function handler(req, res) {
             auctionSearch.house = rec.meta?.auction_house || null;
             auctionSearch.sale_date = rec.meta?.sale_date || null;
             auctionSearch.paid = rec.paid || null;
-            auctionSearch.odometer_mi = rec.meta?.odometer_mi || null;
+            auctionSearch.odometer = rec.meta ? { value: rec.meta.odometer_value, unit: rec.meta.odometer_unit } : null;
             /* подія постійна за source+lot; vin-кеш лишається для сумісності */
             await writeAuctionEvent(listing.vin, rec);
             await writeAuctionCache(listing.vin, { status: 'found', source: rec.source, lot_url: rec.lot_url, record: { photo_urls: rec.photo_urls || [], identity: rec.identity, meta: rec.meta || null, sources_checked: rec.sources_checked || [] } });

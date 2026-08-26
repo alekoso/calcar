@@ -297,20 +297,77 @@ export async function discoverVinCandidates(vin, opts = {}, cfg = AUCTION_CONFIG
 }
 
 /* паспорт джерела: аукціонний дім і дата продажу з тексту лота */
+/* канонічний ідентифікатор аукціонного дому. Домен дзеркала
+   (americamotors.com, bid.cars, bidfax.info) НІКОЛИ не auction_house:
+   тут лише самі доми, і жодних варіантів регістру назовні */
+export function canonicalAuctionHouse(raw) {
+  const t = String(raw || '').trim().toLowerCase();
+  /* чистий домен-токен (americamotors.com, copart.com, bid.cars) домом НЕ є */
+  if (/^[a-z0-9.\-]+\.(com|info|cars|net|org|ua|bg)$/.test(t)) return null;
+  if (/\biaai\b|иааи|іааі|insurance auto auctions/.test(t)) return 'IAAI';
+  if (/\bcopart\b/.test(t)) return 'COPART';
+  return null;
+}
+
+/* пробіг у км з явної одиниці. unit СТРОГО mi|km|unknown; unknown або
+   невідоме число дають null (порівнювати такий пробіг заборонено) */
+export function odometerToKm(value, unit) {
+  const v = Number(value);
+  if (!isFinite(v) || v <= 0) return null;
+  if (unit === 'km') return Math.round(v);
+  if (unit === 'mi') return Math.round(v * 1.609344);
+  return null;
+}
+
+/* дата продажу: суворий ISO-парс, інакше null (не вгадуємо формат). Сирий
+   рядок повертається окремо, щоб не втратити його для відладки */
+function parseSaleDate(raw) {
+  const r = String(raw || '').trim();
+  let iso = null;
+  const pad = n => String(n).padStart(2, '0');
+  let m = r.match(/((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})/i);
+  if (m) { const d = new Date(m[1]); if (!isNaN(d)) iso = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  if (!iso) { m = r.match(/\b(\d{4})-(\d{2})-(\d{2})\b/); if (m) { const d = new Date(m[0]); if (!isNaN(d) && +m[1] >= 1990 && +m[1] <= 2100) iso = m[1] + '-' + m[2] + '-' + m[3]; } }
+  return { sale_date: iso, sale_date_raw: iso ? null : (r.slice(0, 40) || null) };
+}
+
 export function extractLotMeta(html, url) {
-  const plain = String(html || '').replace(/<[^>]+>/g, ' ');
-  const house = /\bIAAI\b|Иааи|Insurance Auto Auctions/i.test(plain) ? 'IAAI'
-    : (/\bCopart\b/i.test(plain) ? 'Copart' : null);
-  const date = (plain.match(/Auction ended[^.]*?((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})/i)
-    || plain.match(/\b(\d{2}[./]\d{2}[./]\d{4})\b/) || [])[1] || null;
-  const odometer_mi = parseInt(((plain.match(/(\d[\d\s,.]{2,9})\s*(?:mi|миль|міль)\b/i) || [])[1] || '').replace(/[^\d]/g, ''), 10) || null;
-  /* ідентичність події: auction_house + lot id; лот беремо з URL або тексту */
-  const lot_id = ((String(url || '').match(/(\d{7,9})/) || [])[1]
-    || (plain.match(/Lot[:\s#]{0,4}(\d{7,9})/i) || [])[1] || null);
-  /* невізуальні метадані: тягнемо завжди, вони безкоштовні */
-  const primary_damage = ((plain.match(/(?:Primary damage|Осн\.? повреждения|Основні пошкодження|Основное повреждение)[:\s]{0,5}([A-Za-zА-Яа-яІіЇїЄє ,\/]{3,40})/i) || [])[1] || '').trim() || null;
-  const title_status = ((plain.match(/(?:Title status|Document type|Тип документа|Тип документу)[:\s]{0,5}([A-Za-zА-Яа-яІіЇїЄє ,\/]{3,40})/i) || [])[1] || '').trim() || null;
-  return { auction_house: house, sale_date: date, odometer_mi, lot_id, primary_damage, title_status };
+  const plain = String(html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  const auction_house = canonicalAuctionHouse(plain);
+  /* дата: беремо ЛИШЕ явну "Auction ended" чи ISO; для американмоторс блок
+     "Дата продажи" стосується схожих авто, не цього лота, тому не чіпаємо */
+  const dateRaw = (plain.match(/Auction ended[^.]*?((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})/i) || [])[1] || null;
+  const { sale_date, sale_date_raw } = parseSaleDate(dateRaw);
+  /* одометр: число з ЯВНОЮ одиницею. Одиниця з джерела, НЕ припущення */
+  let odometer_value = null, odometer_unit = 'unknown';
+  let om = plain.match(/(\d[\d\s,.]{1,9})\s*(?:mi|miles|миль|міль)(?![a-zа-яіїєґ])/i);
+  if (om) { odometer_value = parseInt(om[1].replace(/[^\d]/g, ''), 10) || null; odometer_unit = 'mi'; }
+  else { om = plain.match(/(\d[\d\s,.]{1,9})\s*(?:km|км)(?![a-zа-яіїєґ])/i); if (om) { odometer_value = parseInt(om[1].replace(/[^\d]/g, ''), 10) || null; odometer_unit = 'km'; } }
+  /* ідентичність події: lot id DIRECT зі сторінки або URL */
+  const lot_id = ((String(url || '').match(/\/(\d{7,9})\b/) || [])[1]
+    || (plain.match(/(?:Lot|Лот|лота)[:\s#№]{0,5}(\d{7,9})/i) || [])[1] || null);
+  /* невізуальні метадані: тягнемо завжди, дефіс/тире = нема (null) */
+  /* damage/title: захоплюємо ЛИШЕ латиницю значення (аукціонні мітки латиною),
+     стоп на кирилиці наступного маркера; дефіс = нема */
+  const clean = v => { const t = (v || '').trim().replace(/^[-\u2013\u2014\s]+|[-\u2013\u2014\s]+$/g, ''); return t.length >= 2 ? t.slice(0, 40) : null; };
+  const primary_damage = clean((plain.match(/(?:Primary damage|Осн\.? поврежд\w*|Основн\w+ пошкодж\w*)[:\s]{0,5}([A-Za-z\- ,\/]{1,30})/i) || [])[1]);
+  const secondary_damage = clean((plain.match(/(?:Secondary damage|Втор\.? поврежд\w*|Другорядн\w+ пошкодж\w*)[:\s]{0,5}([A-Za-z\- ,\/]{1,30})/i) || [])[1]);
+  const title_status = clean((plain.match(/(?:Title status|Document type|Тип документа|Тип документу)[:\s]{0,5}([A-Za-z\- ,\/]{1,30})/i) || [])[1]);
+  return { auction_house, sale_date, sale_date_raw, odometer_value, odometer_unit, lot_id, lot_id_source: lot_id ? 'direct' : null, primary_damage, secondary_damage, title_status };
+}
+
+/* строге відновлення lot_id з discovery-кандидата: ЛИШЕ коли одночасно
+   VIN події підтверджений, auction_house події і кандидата відомі, після
+   канонізації збігаються, і кандидат про той самий VIN. Інакше null:
+   евристика "єдиний лот для VIN, значить він" ЗАБОРОНЕНА */
+export function recoverLotId(candidate, eventHouse, vin) {
+  if (!candidate || !eventHouse) return null;
+  const candHouse = canonicalAuctionHouse(candidate.house);
+  if (!candHouse || candHouse !== canonicalAuctionHouse(eventHouse)) return null;
+  if (!candidate.vinConfirmed) return null;
+  if (String(candidate.vin || '').toUpperCase() !== String(vin || '').toUpperCase()) return null;
+  const m = String(candidate.url || '').match(/(\d{7,9})/);
+  return m ? m[1] : null;
 }
 
 /* ---------- оркестратор ----------
@@ -353,14 +410,6 @@ export async function findAuctionRecord(vin, nhtsa, opts = {}, cfg = AUCTION_CON
           console.log('[auction] source=' + cand.source, 'step=lot', 'status=200 found identity=' + d.identity, d.ms + 'ms');
           /* ранній вихід законний ЛИШЕ при found */
           const meta = extractLotMeta(r.body, cand.url);
-          /* дзеркало (americamotors) часто без числового lot_id у URL: дотягуємо
-             з інших discovery-кандидатів тієї ж події, де id стоїть у шляху */
-          if (!meta.lot_id) {
-            for (const other of disco.candidates) {
-              const m = String(other.url).match(/\b(\d{7,9})\b/);
-              if (m) { meta.lot_id = m[1]; break; }
-            }
-          }
           const rec = {
             status: 'found',
             source: cand.source,

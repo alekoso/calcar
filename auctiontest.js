@@ -62,7 +62,7 @@ function makeFetch(map) {
   if (!(rec.photo_urls || []).some(u => u.includes('-1.jpg'))) errs.push('повний шлях: фото лота не витягнуті');
   /* паспорт джерела: аукціонний дім і дата продажу з лота */
   if (rec.meta?.auction_house !== 'IAAI') errs.push('паспорт: дім ' + rec.meta?.auction_house + ' замість IAAI');
-  if (rec.meta?.sale_date !== 'June 4, 2025') errs.push('паспорт: дата ' + rec.meta?.sale_date);
+  if (rec.meta?.sale_date !== '2025-06-04') errs.push('паспорт: дата ' + rec.meta?.sale_date + ' (очікував нормалізовану 2025-06-04)');
   const dl = await quiet(() => A.downloadLotPhotos(rec.photo_urls, { fetchImpl: happy }));
   if (dl.photos.length !== 2) errs.push('скачано ' + dl.photos.length + ' фото замість 2');
   /* ранній вихід при found законний: found у аудиті, не вимагає обходу решти */
@@ -161,6 +161,63 @@ function makeFetch(map) {
   ]) }));
   if (!disco.candidates.some(c => /newmirror\.example/.test(c.url))) errs.push('пошуковий кандидат нового домену загублений');
   if (disco.candidates.some(c => /evil\.example/.test(c.url))) errs.push('чужий домен лота з json джерела пройшов');
+
+  /* 8. метадані лота: одометр з одиницею, дата, damage, канонізація дому */
+  if (A.odometerToKm) {
+    /* 17,850 mi проти km після конвертації */
+    const km = A.odometerToKm(17850, 'mi');
+    if (km !== 28727) errs.push('17850 mi у км: ' + km + ' замість 28727');
+    /* заявлені 21000 km це той самий пробіг у межах похибки: не конфлікт */
+    if (Math.abs(km - 21000) < 5000) { /* реально різниця ~7700 км, конфлікт можливий: перевіряємо саму конвертацію, не рішення */ }
+    if (A.odometerToKm(120000, 'km') !== 120000) errs.push('km у km змінилось');
+    if (A.odometerToKm(100, 'unknown') !== null) errs.push('unknown одиниця дала число');
+    if (A.odometerToKm(0, 'mi') !== null || A.odometerToKm(-5, 'km') !== null) errs.push('невалідне значення дало число');
+  } else errs.push('нема odometerToKm');
+
+  if (A.canonicalAuctionHouse) {
+    if (A.canonicalAuctionHouse('Iaai / Иааи') !== 'IAAI') errs.push('IAAI не канонізується');
+    if (A.canonicalAuctionHouse('Sold at COPART') !== 'COPART') errs.push('COPART не канонізується');
+    if (A.canonicalAuctionHouse('IaaI') !== 'IAAI') errs.push('варіант регістру IaaI не канонізується');
+    /* домени дзеркал НІКОЛИ не дім */
+    for (const d of ['americamotors.com', 'bid.cars', 'bidfax.info', 'copart.com']) {
+      if (A.canonicalAuctionHouse(d) !== null) errs.push('домен ' + d + ' став домом');
+    }
+  } else errs.push('нема canonicalAuctionHouse');
+
+  /* extractLotMeta на реальному фрагменті americamotors */
+  if (A.extractLotMeta) {
+    const am = 'Детали лота #42968456 VIN: 7SAYGDED3PF966312 Автомобиль находится на аукционе Iaai / Иааи. '
+      + 'Пробег: 17850 mi. Основ. поврежд: - Втор. поврежд: Left Front Тип документа: Salvage';
+    const m = A.extractLotMeta(am, 'https://americamotors.com/en/tesla/model_y/7SAYGDED3PF966312');
+    if (m.auction_house !== 'IAAI') errs.push('am: дім ' + m.auction_house);
+    if (m.odometer_value !== 17850 || m.odometer_unit !== 'mi') errs.push('am: одометр ' + m.odometer_value + '/' + m.odometer_unit);
+    if (m.lot_id !== '42968456') errs.push('am: lot_id ' + m.lot_id);
+    if (m.lot_id_source !== 'direct') errs.push('am: lot_id_source ' + m.lot_id_source);
+    if (m.primary_damage !== null) errs.push('am: дефіс primary не став null: ' + m.primary_damage);
+    if (m.secondary_damage !== 'Left Front') errs.push('am: secondary ' + m.secondary_damage);
+    if (m.title_status !== 'Salvage') errs.push('am: title ' + m.title_status);
+    /* дата без явного "Auction ended": null, сирого нема */
+    if (m.sale_date !== null) errs.push('am: вгадана дата ' + m.sale_date);
+    /* km-джерело: одиниця km */
+    const km = A.extractLotMeta('Пробіг 120000 км Lot #1234567', 'https://x/1234567');
+    if (km.odometer_unit !== 'km' || km.odometer_value !== 120000) errs.push('km-джерело: ' + km.odometer_value + '/' + km.odometer_unit);
+    /* число без одиниці: unknown */
+    const noUnit = A.extractLotMeta('Mileage 55000 Lot #7654321', 'https://x/7654321');
+    if (noUnit.odometer_unit !== 'unknown') errs.push('число без одиниці не unknown: ' + noUnit.odometer_unit);
+    /* дата ISO парситься, погана дата: null + raw */
+    const goodDate = A.extractLotMeta('Auction ended on June 4, 2025 Lot #9999999', 'https://x/9999999');
+    if (goodDate.sale_date !== '2025-06-04') errs.push('ISO-дата не розпарсилась: ' + goodDate.sale_date);
+  } else errs.push('нема extractLotMeta');
+
+  /* recoverLotId: строгі guard-и */
+  if (A.recoverLotId) {
+    const good = { url: 'https://bid.cars/en/lot/0-42968456/x', house: 'Copart', vinConfirmed: true, vin: 'V1' };
+    if (A.recoverLotId(good, 'COPART', 'V1') !== '42968456') errs.push('валідне відновлення lot_id не спрацювало');
+    if (A.recoverLotId({ ...good, house: 'IAAI' }, 'COPART', 'V1') !== null) errs.push('розбіжність домів пропустила відновлення');
+    if (A.recoverLotId({ ...good, vinConfirmed: false }, 'COPART', 'V1') !== null) errs.push('непідтверджений VIN пропустив відновлення');
+    if (A.recoverLotId({ ...good, vin: 'V2' }, 'COPART', 'V1') !== null) errs.push('чужий VIN пропустив відновлення');
+    if (A.recoverLotId({ ...good, house: null }, 'COPART', 'V1') !== null) errs.push('невідомий дім кандидата пропустив відновлення');
+  } else errs.push('нема recoverLotId');
 
   /* 7. ZenRows: подвійна умова і закритий білий список */
   const OLD_KEY = process.env.ZENROWS_API_KEY;
