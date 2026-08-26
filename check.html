@@ -523,6 +523,47 @@ function setStatus(text, isErr) {
 }
 function esc(s){ return String(s ?? '').replace(/\s*\u2014\s*/g, ', ').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
+/* нормалізація URL оголошення для порівняння: ТОЧНА КОПІЯ функції з
+   api/check.js (там вона дедуплікує vehicle_snapshots). Змінюючи, зміни
+   обидві: checktest.js звіряє копії посимвольно */
+function normalizeListingUrl(u) {
+  try {
+    const url = new URL(String(u));
+    url.hash = '';
+    const drop = [];
+    url.searchParams.forEach((v, k) => { if (/^(utm_|fbclid$|gclid$|yclid$|ref$|referrer$)/i.test(k)) drop.push(k); });
+    drop.forEach(k => url.searchParams.delete(k));
+    return url.toString();
+  } catch (e) { return String(u || ''); }
+}
+
+/* захист від повторного аналізу, як в Import: те саме оголошення шукаємо
+   серед звітів користувача за нормалізованим URL, а якщо в посиланні видно
+   VIN, то й за VIN (те саме авто могло переїхати в нове оголошення).
+   Гість списку звітів не має, для нього перевірки нема */
+async function findExistingCheck(url) {
+  try {
+    if (!SB) return null;
+    const { data: s } = await SB.auth.getSession();
+    if (!s?.session) return null;
+    const { data: rows } = await SB.from('reports')
+      .select('id,public_id,created_at,url:data->_meta->>url,vin:data->_meta->>vin')
+      .eq('kind', 'check')
+      .order('created_at', { ascending: false })
+      .limit(100);
+    if (!Array.isArray(rows)) return null;
+    const cur = normalizeListingUrl(url);
+    const m = String(url).toUpperCase().match(/[A-HJ-NPR-Z0-9]{17}/);
+    /* як у парсера: VIN мусить мати і літери, і цифри, інакше випадковий збіг */
+    const vin = m && /[A-HJ-NPR-Z]/.test(m[0]) && /\d/.test(m[0]) ? m[0] : null;
+    for (const r of rows) {
+      if (r.url && normalizeListingUrl(r.url) === cur) return r;
+      if (vin && r.vin && String(r.vin).toUpperCase() === vin) return r;
+    }
+    return null;
+  } catch (e) { return null; }
+}
+
 /* короткий публічний id звіту: 6 символів, без схожих O/0, I/1 */
 function makePid(){
   const A = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -553,6 +594,31 @@ async function run() {
     return;
   }
   btn.disabled = true;
+
+  /* це авто вже перевірялось? Не палимо аналіз мовчки: людина обирає сама.
+     "Перевірити заново" чесно запускає новий аналіз (оголошення могло
+     змінитись), і новий звіт отримує ВЛАСНИЙ запис, старий не чіпається */
+  const force = window.__forceReanalyze;
+  window.__forceReanalyze = false;
+  if (!force) {
+    const existing = await findExistingCheck(url);
+    if (existing) {
+      const when = new Date(existing.created_at).toLocaleDateString(window.calcarLocale());
+      const href = existing.public_id ? '/check/' + existing.public_id : '/result-check.html?id=' + existing.id;
+      statusEl.className = 'hf-status on';
+      statusEl.innerHTML = esc(t('Ти вже перевіряв це авто') + ' (' + when + '). ')
+        + '<a href="' + href + '">' + esc(t('Відкрити звіт')) + '</a> ' + esc(t('або')) + ' '
+        + '<a href="#" id="recheckLink">' + esc(t('перевірити заново')) + '</a>';
+      document.getElementById('recheckLink').onclick = ev => {
+        ev.preventDefault();
+        window.__forceReanalyze = true;
+        run();
+      };
+      btn.disabled = false;
+      return;
+    }
+  }
+
   let i = 0;
   setStatus(t(STEPS[0]));
   timer = setInterval(() => { i = Math.min(i + 1, STEPS.length - 1); setStatus(t(STEPS[i])); }, 18000);

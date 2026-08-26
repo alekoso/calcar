@@ -97,6 +97,8 @@ window.CALCAR_DICT = {
     'Йдеться про:': 'Talking about:',
     'Постав питання… @ щоб додати звіт для порівняння': 'Ask a question… @ to add a report for comparison',
     'Пошук звіту за назвою…': 'Search reports by name…',
+    'Ти вже перевіряв це авто': 'You already checked this car',
+    'перевірити заново': 'check again',
     'Додати звіт для порівняння': 'Add a report for comparison',
     'Спитати про це': 'Ask about this',
     'Прибрати цитату': 'Remove quote',
