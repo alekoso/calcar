@@ -282,49 +282,6 @@ const GERMAN_FULL = { ...FULL, auction_record_exists: false, auction_us_signal: 
   if (b.coverage_cap !== 6.95) errs.push('стеля кейса округлення: ' + b.coverage_cap);
   if (b.final !== 6.9) errs.push('округлення показало більше за стелю: ' + b.final + ' замість 6.9');
 
-  /* subscore напрямків: похідне з penalties/coverage, без нових коефіцієнтів */
-  const { computeSubscores } = await import('file://' + tmp);
-  const covPresent = () => ({ identity_confirmed:{state:'present'}, photos_sufficient:{state:'present'}, historical_listings:{state:'present'}, mileage_history:{state:'present'}, registration_data:{state:'absent'}, auction_record:{state:'present'}, service_history:{state:'absent'}, inspection_history:{state:'absent'}, seller_docs:{state:'absent'} });
-  /* немає знахідок за наявних даних -> високий бал 10 */
-  let ss = computeSubscores({ penalties: [], coverage: covPresent(), accident_record_present: false });
-  if (ss.history !== 10 || ss.mileage !== 10 || ss.condition !== 10 || ss.technical !== 10) errs.push('чисте авто з даними не 10: ' + JSON.stringify(ss));
-  /* FLOOD -3 -> Історія 7, решта 10 */
-  ss = computeSubscores({ penalties: [{ type: 'FLOOD', amount: -3.0 }], coverage: covPresent(), accident_record_present: true });
-  if (ss.history !== 7) errs.push('FLOOD Історія: ' + ss.history);
-  if (ss.technical !== 10) errs.push('FLOOD не має чіпати Технічні: ' + ss.technical);
-  /* подушки -1.2 + пробіг -0.5 -> Технічні 8.8, Пробіг 9.5 */
-  ss = computeSubscores({ penalties: [{ type: 'AIRBAGS_DEPLOYED', amount: -1.2 }, { type: 'MILEAGE_CONFLICT_UNEXPLAINED', amount: -0.5 }], coverage: covPresent() });
-  if (ss.technical !== 8.8) errs.push('подушки Технічні: ' + ss.technical);
-  if (ss.mileage !== 9.5) errs.push('пробіг Пробіг: ' + ss.mileage);
-  /* немає даних по напрямку -> null */
-  const covNone = { identity_confirmed:{state:'present'}, photos_sufficient:{state:'absent'}, historical_listings:{state:'absent'}, mileage_history:{state:'absent'}, registration_data:{state:'absent'}, auction_record:{state:'unknown'}, service_history:{state:'absent'}, inspection_history:{state:'absent'}, seller_docs:{state:'absent'} };
-  ss = computeSubscores({ penalties: [], coverage: covNone, accident_record_present: false });
-  if (ss.condition !== null) errs.push('без фото Стан не null: ' + ss.condition);
-  if (ss.history !== null) errs.push('без історії Історія не null: ' + ss.history);
-  if (ss.technical !== null) errs.push('без даних Технічні не null: ' + ss.technical);
-  /* підлога 0: величезний штраф не дає відʼємне */
-  ss = computeSubscores({ penalties: [{ type: 'FLOOD', amount: -3 }, { type: 'FIRE', amount: -3.5 }, { type: 'FLOOD', amount: -3 }, { type: 'FIRE', amount: -3.5 }], coverage: covPresent() });
-  if (ss.history !== 0) errs.push('підлога 0 порушена: ' + ss.history);
-  /* похідне не чіпає основну формулу: final незмінний */
-  const base = computeScore([F('FLOOD', 'f1', {})], FULL);
-  if (typeof base.final !== 'number') errs.push('основна формула зламана subscore');
-
-  /* сторожі інтеграції і UI */
-  const checkSrc2 = fs.readFileSync('api/check.js', 'utf8');
-  if (!checkSrc2.includes('breakdown.subscores = computeSubscores(breakdown)')) errs.push('check.js не зберігає subscores');
-  const page = fs.readFileSync('result-check.html', 'utf8');
-  for (const el of ['id="scorePop"', 'bd2.subscores', "t('Історія')", "t('Технічні сигнали')", "t('нема даних')"]) {
-    if (!page.includes(el)) errs.push('result-check.html без ' + el);
-  }
-  if (!page.includes("badge.addEventListener('mouseenter'") || !page.includes("badge.addEventListener('click'")) errs.push('попап без hover/click');
-  if (!page.includes("if (!badge.contains(e.target)) closePop()")) errs.push('попап не закривається кліком поза ним');
-  for (const d of ['i18n/ru.js', 'i18n/en.js']) {
-    const dict = fs.readFileSync(d, 'utf8');
-    for (const k of ['Історія', 'Пробіг', 'Стан', 'Технічні сигнали', 'нема даних']) {
-      if (!dict.includes("'" + k + "'")) errs.push('нема ключа "' + k + '" у ' + d);
-    }
-  }
-
   /* конфіг: кожен тип знахідки має рівно одне число штрафу */
   const typeCount = Object.keys(SCORE_CONFIG.PENALTIES).length;
   if (typeCount !== 13) errs.push('у конфігу ' + typeCount + ' типів замість 13');
@@ -335,7 +292,7 @@ const GERMAN_FULL = { ...FULL, auction_record_exists: false, auction_us_signal: 
   if (!check.includes('"verdict":{"score":7.4')) errs.push('check.js: легасі verdict.score зник зі схеми');
   if (!check.includes('"verdict.score": чесна оцінка')) errs.push('check.js: легасі правила оцінки зникли з промпту');
   if (!check.includes('"score_facts"')) errs.push('check.js: score_facts нема в схемі');
-  if (!/import \{ computeScore.*\} from '\.\/score\.js'/.test(check)) errs.push('check.js: не імпортує чистий модуль оцінки');
+  if (!check.includes("import { computeScore } from './score.js'")) errs.push('check.js: не імпортує чистий модуль оцінки');
   if (!check.includes("parsed.score_v2_preview = breakdown.score_available === false ? null : breakdown.final")) errs.push('check.js: не зберігає score_v2_preview з урахуванням gate');
   if (!check.includes('ВІДСУТНІСТЬ ДАНИХ НІКОЛИ НЕ Є ЗНАХІДКОЮ')) errs.push('check.js: зникло правило про відсутність даних');
   const chat = fs.readFileSync('api/chat.js', 'utf8');

@@ -1,6 +1,6 @@
 export const config = { maxDuration: 300 };
 
-import { computeScore, computeSubscores } from './score.js';
+import { computeScore } from './score.js';
 import { findAuctionRecord, shouldRecheck, discoverVinCandidates, photoHasProvenance } from './auction.js';
 
 /* ============================================================
@@ -1017,8 +1017,6 @@ export default async function handler(req, res) {
          purchase_decision і майбутнього блоку осей, НЕ штраф */
       breakdown.accident_record_present = hf.accident_recorded === true;
       breakdown.accident_record_note = hf.accident_note || null;
-      /* деталізація по напрямках для попапа: похідне, не нова формула */
-      breakdown.subscores = computeSubscores(breakdown);
       parsed.score_v2_preview = breakdown.score_available === false ? null : breakdown.final;
       parsed.score_breakdown_v2 = breakdown;
       console.log('[check] score_v2', breakdown.final, '(legacy', (parsed.verdict && parsed.verdict.score) + ')',

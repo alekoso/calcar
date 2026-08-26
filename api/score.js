@@ -216,40 +216,6 @@ function buildCoverage(inputs, cfg) {
   return { coverage, ceiling: round2(Math.min(cfg.CEILING_MAX, ceiling)) };
 }
 
-/* Деталізація Score по напрямках: ПОХІДНЕ від наявних penalties і coverage,
-   БЕЗ нових коефіцієнтів і без нової архітектури. subscore = 10 мінус ті самі
-   штрафи, що вже враховані у breakdown.penalties, обмежено [0,10]. Немає
-   даних по напрямку: null (у UI прочерк). Немає знахідок за наявних даних:
-   високий бал, це нормально */
-export function computeSubscores(breakdown) {
-  if (!breakdown) return null;
-  const pens = breakdown.penalties || [];
-  const cov = breakdown.coverage || {};
-  const stateOf = k => cov[k] && cov[k].state;
-  const present = k => stateOf(k) === 'present';
-  const auctionKnown = ['present', 'checked_absent'].includes(stateOf('auction_record'));
-  const sum = types => pens.filter(p => types.includes(p.type)).reduce((a, p) => a + Math.abs(p.amount), 0);
-  const hasFinding = types => pens.some(p => types.includes(p.type));
-  const clamp = v => Math.max(0, Math.round(v * 10) / 10);
-  const DIR = {
-    /* FLOOD/FIRE + аукційні події і записи ДТП це історія авто */
-    history: ['FLOOD', 'FIRE'],
-    mileage: ['ODOMETER_ROLLBACK', 'MILEAGE_CONFLICT_UNEXPLAINED'],
-    condition: ['POOR_REPAIR_VISIBLE', 'CRITICAL_WARNING_LIGHTS'],
-    technical: ['AIRBAGS_DEPLOYED', 'SRS_FAULT', 'STRUCTURAL_DAMAGE', 'MAJOR_REPAIR_UNVERIFIED', 'MODIFICATION_TECHNICAL_CONCERN', 'SERIOUS_POWERTRAIN_FAULT', 'VIN_IDENTITY_PROBLEM'],
-  };
-  const historyData = auctionKnown || breakdown.accident_record_present === true || present('historical_listings') || hasFinding(DIR.history);
-  const mileageData = present('mileage_history') || auctionKnown || hasFinding(DIR.mileage);
-  const conditionData = present('photos_sufficient') || hasFinding(DIR.condition);
-  const technicalData = auctionKnown || present('photos_sufficient') || hasFinding(DIR.technical);
-  return {
-    history: historyData ? clamp(10 - sum(DIR.history)) : null,
-    mileage: mileageData ? clamp(10 - sum(DIR.mileage)) : null,
-    condition: conditionData ? clamp(10 - sum(DIR.condition)) : null,
-    technical: technicalData ? clamp(10 - sum(DIR.technical)) : null,
-  };
-}
-
 export function gradeFromScore(score, cfg = SCORE_CONFIG) {
   for (const t of cfg.GRADE_THRESHOLDS) if (score >= t.min) return t.grade;
   return cfg.GRADE_THRESHOLDS[cfg.GRADE_THRESHOLDS.length - 1].grade;
