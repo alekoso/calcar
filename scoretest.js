@@ -56,14 +56,25 @@ const GERMAN_FULL = { ...FULL, auction_record_exists: false, auction_us_signal: 
   b = computeScore([], { ...GERMAN_FULL, auction_applicable: false });
   if (b.coverage.auction_record.state !== 'not_applicable') errs.push('явна незастосовність: стан ' + b.coverage.auction_record.state);
   if (b.coverage.auction_record.bonus !== 0) errs.push('not_applicable аукціон дав бонус');
-  /* джерела відповіли і запису нема: absent, бонуса нема, формула та сама */
-  b = computeScore([], { ...GERMAN_FULL, auction_checked: true });
-  if (b.coverage.auction_record.state !== 'absent') errs.push('перевірена відсутність аукціону: стан ' + b.coverage.auction_record.state);
-  if (b.coverage.auction_record.bonus !== 0) errs.push('перевірена відсутність дала бонус');
+  /* absent лише в парі: сигнал США І джерела реально відповіли */
+  b = computeScore([], { ...GERMAN_FULL, auction_us_signal: true, auction_checked: true });
+  if (b.coverage.auction_record.state !== 'absent') errs.push('сигнал+опитані джерела: стан ' + b.coverage.auction_record.state);
+  if (b.coverage.auction_record.bonus !== 0) errs.push('absent дав бонус');
+  if (b.coverage.auction_record.note !== 'авто мало бути в аукціонних базах США, запис не знайдено') {
+    errs.push('нема явного рядка про absent: ' + b.coverage.auction_record.note);
+  }
+  /* чесний продавець із заявою про пригін: НУЛЬ штрафу понад відсутність
+     бонуса, підсумок рівно стеля */
+  if (b.penalties.length !== 0) errs.push('absent породив штраф');
+  if (b.final !== b.coverage_cap) errs.push('absent урізав понад відсутність бонуса: ' + b.final + ' проти стелі ' + b.coverage_cap);
 
-  /* сигнал США без запису: applicable/absent, бонуса нема, формула та сама */
+  /* опитані без сигналу: unknown, не absent */
+  b = computeScore([], { ...GERMAN_FULL, auction_checked: true });
+  if (b.coverage.auction_record.state !== 'unknown') errs.push('опитані без сигналу: стан ' + b.coverage.auction_record.state);
+  /* сигнал без відповіді джерел (source_unreachable): unknown, вини машини нема */
   b = computeScore([], { ...GERMAN_FULL, auction_us_signal: true });
-  if (b.coverage.auction_record.state !== 'absent') errs.push('сигнал США без запису: стан ' + b.coverage.auction_record.state);
+  if (b.coverage.auction_record.state !== 'unknown') errs.push('сигнал без відповіді джерел: стан ' + b.coverage.auction_record.state);
+  if (b.coverage.auction_record.note) errs.push('unknown отримав рядок absent');
 
   /* 3б. знахідка БЕЗ evidence на бал не впливає: у dropped, не в штрафи */
   b = quiet(() => computeScore([
@@ -133,6 +144,14 @@ const GERMAN_FULL = { ...FULL, auction_record_exists: false, auction_us_signal: 
   const unkBag = computeScore([F('AIRBAGS_DEPLOYED', 'acc1', { repair_status: 'unknown' })], FULL);
   if (!(Math.round((okBag.final - unkBag.final) * 10) / 10 >= 0.7)) errs.push('подушки: confirmed_ok (' + okBag.final + ') не мʼякший за unknown (' + unkBag.final + ')');
 
+  /* 7б. тюнінг двоярусний: серйозне втручання без підтверджень -0.6,
+     підтвердження обслуговування повертають -0.3, несерйозний завжди -0.3 */
+  const mod = extra => computeScore([F('MODIFICATION_TECHNICAL_CONCERN', 'm1', extra)], FULL).penalties[0].amount;
+  if (mod({ serious_intervention: true, maintenance_evidence: false }) !== -0.6) errs.push('серйозний тюнінг без підтверджень не -0.6');
+  if (mod({ serious_intervention: true, maintenance_evidence: true }) !== -0.3) errs.push('підтвердження не повернули -0.3');
+  if (mod({ serious_intervention: false, maintenance_evidence: false }) !== -0.3) errs.push('несерйозний тюнінг не -0.3');
+  if (mod({}) !== -0.3) errs.push('без прапорців не базовий -0.3');
+
   /* 8. скрутка і 9. VIN-проблема: жорсткі капи */
   b = computeScore([F('ODOMETER_ROLLBACK', 'e1', {})], FULL);
   if (!(b.final <= 4.5)) errs.push('скрутка: ' + b.final + ' > 4.5');
@@ -187,7 +206,14 @@ const GERMAN_FULL = { ...FULL, auction_record_exists: false, auction_us_signal: 
   if (!checkSrc.includes('ХАРАКТЕР і МАСШТАБ вихідного пошкодження')) errs.push('check.js: нема правила про аукціонні матеріали');
   if (!checkSrc.includes('питання ЗНІМАЄТЬСЯ')) errs.push('check.js: MAJOR_REPAIR_UNVERIFIED не знімається некрупним пошкодженням');
   if (!checkSrc.includes('Сам факт рахунку чи документів на ремонт confirmed_ok НЕ дає')) errs.push('check.js: документи без перевірки дають confirmed_ok');
-  if (/\/\^\[1-5\]\//.test(checkSrc)) errs.push('check.js знову вгадує застосовність аукціону за WMI');
+  /* тригери сигналу США і поля тюнінгу живуть у промпті і коді */
+  for (const k of ['seller_claims_us_import', 'us_auction_markings_visible', 'serious_intervention', 'maintenance_evidence']) {
+    if (!checkSrc.includes(k)) errs.push('check.js: нема поля ' + k);
+  }
+  if (!checkSrc.includes("/^[1-5]/.test(listing.vin) && listing.country === 'UA'")) errs.push('check.js: нема тригера NA-VIN на ринку України');
+  /* WMI повернутий свідомо калібрувальною ітерацією, але ЛИШЕ як сигнал
+     "NA-VIN на ринку України" для absent-логіки, не як застосовність сам
+     по собі: тригер мусить жити в парі з перевіркою ринку */
   if (!checkSrc.includes('function photoKey(')) errs.push('check.js не дедуплікує кадри для photos_sufficient');
   if (!checkSrc.includes('function normalizeListingUrl(')) errs.push('check.js не нормалізує source_url для дедуплікації');
 

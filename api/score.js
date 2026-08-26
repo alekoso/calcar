@@ -41,6 +41,10 @@ export const SCORE_CONFIG = {
     MAJOR_REPAIR_UNVERIFIED: 0.4,
     MODIFICATION_TECHNICAL_CONCERN: 0.3,
   },
+  /* серйозне втручання в силовий агрегат (прошивка/наддув, видалення
+     каталізаторів) БЕЗ жодних підтверджень обслуговування чи діагностики:
+     підвищений штраф; підтвердження повертають до базового (калібрується) */
+  MODIFICATION_SERIOUS_UNVERIFIED: 0.6,
   /* помʼякшення за статусом відновлення (калібрується).
      visually_consistent: пошкоджені зони на нинішніх фото без видимих слідів
      поганого ремонту; мʼякший штраф, але жорсткий кап НЕ знімає */
@@ -122,6 +126,8 @@ function sanitizeFindings(findings) {
     ok.push({
       type: f.type,
       event_id: eid,
+      serious_intervention: f.serious_intervention === true,
+      maintenance_evidence: f.maintenance_evidence === true,
       severity: typeof f.severity === 'string' ? f.severity.slice(0, 10) : null,
       repair_status: REPAIR_STATUSES.has(f.repair_status) ? f.repair_status : null,
       evidence,
@@ -145,6 +151,8 @@ function dedupeFindings(findings) {
     const b = f.repair_status === null ? REPAIR_RANK.unknown : REPAIR_RANK[f.repair_status];
     if (b > a) cur.repair_status = f.repair_status;
     if (!cur.severity && f.severity) cur.severity = f.severity;
+    cur.serious_intervention = cur.serious_intervention || f.serious_intervention;
+    cur.maintenance_evidence = cur.maintenance_evidence || f.maintenance_evidence;
   });
   return [...map.values()];
 }
@@ -167,7 +175,7 @@ function buildCoverage(inputs, cfg) {
       ? 'present'
       : (i.auction_applicable === false
         ? 'not_applicable'
-        : ((i.auction_us_signal || i.auction_checked) ? 'absent' : 'unknown')),
+        : ((i.auction_us_signal && i.auction_checked) ? 'absent' : 'unknown')),
     service_history: i.service_history_exists ? 'present' : 'absent',
     inspection_history: i.inspection_history_exists ? 'present' : 'absent',
     seller_docs: i.seller_docs_exists ? 'present' : 'absent',
@@ -178,6 +186,12 @@ function buildCoverage(inputs, cfg) {
     const bonus = state === 'present' ? cfg.COVERAGE_BONUS[src] : 0;
     ceiling += bonus;
     coverage[src] = { state, bonus };
+  }
+  /* авто МАЛО бути в базах, джерела відповіли, запису нема: фіксуємо явно.
+     Вклад non_negative: бонус просто не нараховується, додаткового вирахування
+     нема, відсутність бонуса вже понижує стелю */
+  if (coverage.auction_record.state === 'absent') {
+    coverage.auction_record.note = 'авто мало бути в аукціонних базах США, запис не знайдено';
   }
   return { coverage, ceiling: round2(Math.min(cfg.CEILING_MAX, ceiling)) };
 }
@@ -195,10 +209,15 @@ export function computeScore(findings, coverageInputs, cfg = SCORE_CONFIG) {
   /* штрафи: за подію, з помʼякшенням за підтверджений ремонт */
   const penalties = events.map(f => {
     const soft = cfg.SOFTENED_PENALTIES[f.type];
-    const amount = (soft && f.repair_status && soft[f.repair_status] !== undefined)
+    let amount = (soft && f.repair_status && soft[f.repair_status] !== undefined)
       ? soft[f.repair_status]
       : cfg.PENALTIES[f.type];
-    return { type: f.type, event_id: f.event_id, amount: -amount, repair_status: f.repair_status, severity: f.severity, evidence: f.evidence };
+    /* тюнінг двоярусний: серйозне втручання без жодного підтвердження
+       обслуговування штрафується сильніше */
+    if (f.type === 'MODIFICATION_TECHNICAL_CONCERN' && f.serious_intervention && !f.maintenance_evidence) {
+      amount = cfg.MODIFICATION_SERIOUS_UNVERIFIED;
+    }
+    return { type: f.type, event_id: f.event_id, amount: -amount, repair_status: f.repair_status, severity: f.severity, serious_intervention: f.serious_intervention || undefined, maintenance_evidence: f.maintenance_evidence || undefined, evidence: f.evidence };
   });
   const penaltySum = penalties.reduce((s, p) => s - p.amount, 0);
   const raw = 10 - penaltySum;

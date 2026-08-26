@@ -491,6 +491,8 @@ ${auction && auction.photos.length ? `
 - АУКЦІОННІ МАТЕРІАЛИ (фото до ремонту, метадані лота) встановлюють ХАРАКТЕР і МАСШТАБ вихідного пошкодження. Розрізняй два різні висновки: "характер вихідного пошкодження встановлений" (це дають аукціонні фото) і "якість ремонту підтверджена" (цього вони НЕ дають). Висновки лише по конкретних зонах, які реально є на фото.
 - Якщо MAJOR_REPAIR_UNVERIFIED існував лише через невідомість масштабу, а аукціонні матеріали показують некрупне пошкодження (навісні елементи, подушки не спрацювали, силова структура не зачеплена): питання ЗНІМАЄТЬСЯ, крупного ремонту, ймовірно, не було, знахідку не створюй. Якщо пошкодження крупне: порівняння зон до/після дає лише висновок про видимі ознаки, статус за межами вище.
 - evidence: масив {source: seller_claim|current_photos|historical_listing|us_auction|registry|document, ref: конкретний запис (listing_3, photo_7, auction_event_1) де можливо, description: коротке доказове речення}. Одна знахідка може мати скільки завгодно доказів.
+- Для MODIFICATION_TECHNICAL_CONCERN додатково: serious_intervention true, якщо є хоч одне серйозне втручання (прошивка чи наддув, вихлоп із видаленням каталізаторів, інше втручання в силовий агрегат); maintenance_evidence true, лише якщо в матеріалах РЕАЛЬНО є підтвердження обслуговування чи діагностики (сервісні записи, логи, документи). Нема даних = false, не вигадуй.
+- "signals": {"seller_claims_us_import": true лише при ЯВНІЙ заяві продавця про пригін зі США ("пригнана зі США", "авто з Америки"), "us_auction_markings_visible": true лише коли на фото РЕАЛЬНО видно аукціонні маркування (наліпки чи штрих-коди Copart/IAAI на склі або кузові, run-номер на лобовому). Непевність = false.
 - info_notes: вільний текст без впливу на бал. Якщо знахідок нема, findings це порожній масив.
 
 "verdict.grade": buy (брати, істотних проблем не знайдено), inspect (можна брати після конкретних перевірок), caution (є серйозні розбіжності, торг або обережність), avoid (знайдені факти прямо суперечать оголошенню або ризик надто високий). Оцінюй відносно ринку вживаних авто: сліди експлуатації це норма, а не привід для avoid. Але приховування фактів продавцем (знайдене ДТП при "без ДТП") завжди мінімум caution.
@@ -508,7 +510,7 @@ ${auction && auction.photos.length ? `
  "data_notes":"сміття чи суперечності в даних площадки, 1-2 речення, або null",
  "model_notes":{"issues":[{"unit":"вузол/двигун","title":"назва проблеми","detail":"1-2 речення","severity":"low|med|high"}]},
  "checklist":["конкретна перевірка при огляді, 1 рядок", "..."],
- "score_facts":{"findings":[{"type":"STRUCTURAL_DAMAGE","event_id":"accident_2020","severity":"high","repair_status":"unknown","evidence":[{"source":"us_auction","ref":"auction_event_1","description":"на аукціонних фото деформований лівий лонжерон"}]}],"info_notes":["вільна замітка без впливу на бал"]},
+ "score_facts":{"findings":[{"type":"STRUCTURAL_DAMAGE","event_id":"accident_2020","severity":"high","repair_status":"unknown","serious_intervention":false,"maintenance_evidence":false,"evidence":[{"source":"us_auction","ref":"auction_event_1","description":"на аукціонних фото деформований лівий лонжерон"}]}],"signals":{"seller_claims_us_import":false,"us_auction_markings_visible":false},"info_notes":["вільна замітка без впливу на бал"]},
  "verdict":{"score":7.4,"summary":"3-5 речень людською мовою: що це за авто і пропозиція, головні знахідки, чи варто розглядати і за яких умов. Без канцеляриту"}
 }
 "checklist": 3-6 пунктів, і це поради ПОКУПЦЮ ДЛЯ ЖИВОГО ОГЛЯДУ І ТЕСТ-ДРАЙВУ, а не дослідницькі завдання. ЖОРСТКІ правила:
@@ -703,12 +705,20 @@ export default async function handler(req, res) {
            рахується один раз (дедуплікація за source_url уже в readSnapshots) */
         mileage_observation_count: snaps.filter(r => r.odometer_km != null).length,
         auction_record_exists: !!auction,
-        /* достовірний сигнал експлуатації чи імпорту зі США, ОКРІМ самого
-           запису аукціону. Місце виробництва (WMI) таким сигналом НЕ є:
-           надійнішого джерела в пайплайні поки нема, тож false */
-        auction_us_signal: false,
-        /* джерела реально відповіли і запису нема: absent. Заблокований
-           доступ (source_unreachable) лишає unknown, машина не винна */
+        /* сигнал США, будь-який із тригерів: явна заява продавця про пригін
+           (класифікація моделі або консервативний regex по тексту), видимі
+           аукціонні маркування на фото, північноамериканський формат VIN
+           (WMI 1-5) у машини на ринку України. Держреєстру в пайплайні
+           поки нема */
+        auction_us_signal: !!(
+          parsed?.score_facts?.signals?.seller_claims_us_import === true
+          || parsed?.score_facts?.signals?.us_auction_markings_visible === true
+          || /приг\w{0,12}\s+(?:з|зі|из)\s+США/i.test(listing.text || '')
+          || (listing.vin && /^[1-5]/.test(listing.vin) && listing.country === 'UA')
+        ),
+        /* джерела реально відповіли і запису нема: у парі з сигналом дає
+           absent. Заблокований доступ (source_unreachable) лишає unknown,
+           стеля не чіпається, вини машини нема */
         auction_checked: !!(auctionSearch && auctionSearch.status === 'absent'),
         /* цих джерел у пайплайні поки немає: код чесно каже "не був" */
         registration_data_exists: false,
