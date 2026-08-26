@@ -822,7 +822,7 @@ export default async function handler(req, res) {
           }
           console.log('[auction] cache=hit', cached.status, listing.vin);
         } else {
-          const rec = await findAuctionRecord(listing.vin, nhtsa, { totalBudgetMs: 20000, nhtsa });
+          const rec = await findAuctionRecord(listing.vin, nhtsa, { totalBudgetMs: 20000, nhtsa, zenrowsTimeoutMs: 55000 });
           auctionSearch = {
             status: rec.status, reason: rec.reason || null, source: rec.source || null,
             lot_url: rec.lot_url || null, total_ms: rec.total_ms, cache: 'miss',

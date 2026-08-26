@@ -553,7 +553,7 @@ export async function zenrowsFetch(targetUrl, justification, opts = {}, cfg = AU
     const api = 'https://api.zenrows.com/v1/?apikey=' + encodeURIComponent(key)
       + '&url=' + encodeURIComponent(targetUrl) + params;
     const ctl = new AbortController();
-    const t = setTimeout(() => ctl.abort(), 90000);
+    const t = setTimeout(() => ctl.abort(), opts.zenrowsTimeoutMs || 90000);
     try {
       const r = await fetchImpl(api, { signal: ctl.signal });
       const body = await r.text();
@@ -565,7 +565,7 @@ export async function zenrowsFetch(targetUrl, justification, opts = {}, cfg = AU
   /* SPA-джерела (bid.cars) без js_render віддають порожній каркас: для них
      ОДИН запит одразу з рендером. Решта: дешевий базовий, ескалація лише за
      потреби. Так одна платна сходинка дає повну сторінку */
-  const spa = /bid\.cars|bidfax|poctra/i.test(String(targetUrl));
+  const spa = opts.allowSlowEnrich && /bid\.cars|bidfax|poctra/i.test(String(targetUrl));
   let calls = 1;
   let r = spa ? await call('&js_render=true&premium_proxy=true') : await call('');
   let credits = r.cost ? Number(r.cost) : (spa ? 25 : 1);
