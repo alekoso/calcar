@@ -99,6 +99,7 @@ window.CALCAR_DICT = {
     'Пошук звіту за назвою…': 'Search reports by name…',
     'Ти вже перевіряв це авто': 'You already checked this car',
     'Дані аукціону': 'Auction data',
+    'Наша оцінка на основі даних, які вдалося перевірити': 'Our score is based on the data we could verify',
     'Брати': 'Buy',
     'Їхати дивитись': 'Go see it',
     'Торгуватись': 'Negotiate',

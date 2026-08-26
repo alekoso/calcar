@@ -222,6 +222,11 @@ const GERMAN_FULL = { ...FULL, auction_record_exists: false, auction_us_signal: 
   if (!checkSrc.includes('function photoKey(')) errs.push('check.js не дедуплікує кадри для photos_sufficient');
   if (!checkSrc.includes('function normalizeListingUrl(')) errs.push('check.js не нормалізує source_url для дедуплікації');
 
+  /* округлення вниз: стеля 6.45 (база + VIN + аукціон) дає 6.4, не 6.5 */
+  b = computeScore([], { vin_decoded: true, photos_count: 0, historical_listings_count: 0, mileage_observation_count: 0, auction_record_exists: true, registration_data_exists: false, service_history_exists: false, inspection_history_exists: false, seller_docs_exists: false });
+  if (b.coverage_cap !== 6.45) errs.push('стеля кейса округлення: ' + b.coverage_cap);
+  if (b.final !== 6.4) errs.push('округлення показало більше за стелю: ' + b.final + ' замість 6.4');
+
   /* конфіг: кожен тип знахідки має рівно одне число штрафу */
   const typeCount = Object.keys(SCORE_CONFIG.PENALTIES).length;
   if (typeCount !== 13) errs.push('у конфігу ' + typeCount + ' типів замість 13');

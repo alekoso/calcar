@@ -242,7 +242,9 @@ export function computeScore(findings, coverageInputs, cfg = SCORE_CONFIG) {
       if (Math.abs(c.value - unfloored) < EPS && !limiting.includes(c.name)) limiting.push(c.name);
     }
   }
-  const final = round1(Math.max(0, unfloored));
+  /* фінал округлюється ВНИЗ до 0.1: звичайне округлення показувало більше
+     за стелю (стеля 5.75 давала 5.8 на екрані), не показуємо незароблене */
+  const final = Math.floor((Math.max(0, unfloored) + 1e-9) * 10) / 10;
 
   const reasons = [];
   if (limiting.includes('coverage')) reasons.push('оцінка обмежена покриттям даних: стеля ' + ceiling);

@@ -727,7 +727,7 @@
         <div class="pd-reasoning" id="pdReasoning" style="display:none"></div>
       </div>
       <div class="v-text" id="vText"></div>
-      <div class="hint" style="margin-top:10px">Оцінка враховує історію авто, потенційну вартість помилки та невизначеність доступних даних. Рішення завжди за вами</div>
+      <div class="hint" id="vHint" style="margin-top:10px">Оцінка враховує історію авто, потенційну вартість помилки та невизначеність доступних даних. Рішення завжди за вами</div>
     </div>
   </div>
 
@@ -1075,11 +1075,19 @@ function boot2(D){
   if (vd && vd.summary) {
     if (!(pd && pd.headline)) $('verdictCard').style.display = '';
     $('vText').textContent = clean(vd.summary);
-    const sc = typeof vd.score === 'number' ? Math.round(Math.max(0, Math.min(10, vd.score)) * 10) / 10 : null;
+    /* на екрані оцінка v2 (детермінована формула); легасі verdict.score
+       лишається у data і служить фолбеком для старих звітів */
+    const v2 = typeof D.score_v2_preview === 'number' ? D.score_v2_preview : null;
+    const g2 = D.score_breakdown_v2 && D.score_breakdown_v2.grade;
+    const sc = v2 !== null ? v2
+      : (typeof vd.score === 'number' ? Math.round(Math.max(0, Math.min(10, vd.score)) * 10) / 10 : null);
     if (sc !== null) {
-      /* оцінка авто: вище = краще */
-      const cls = sc >= 7.5 ? 'ok' : sc >= 5 ? 'warn' : 'bad';
-      const lbl = sc >= 8 ? t('варто розглядати') : sc >= 6 ? t('після перевірок') : sc >= 4 ? t('підвищений ризик') : t('високий ризик');
+      /* оцінка авто: вище = краще. Клас і підпис із grade формули, коли він є */
+      const GR = { buy: ['ok', t('варто розглядати')], inspect: ['warn', t('після перевірок')], caution: ['warn', t('підвищений ризик')], avoid: ['bad', t('високий ризик')] };
+      const gm = v2 !== null && GR[g2] ? GR[g2] : null;
+      const cls = gm ? gm[0] : (sc >= 7.5 ? 'ok' : sc >= 5 ? 'warn' : 'bad');
+      const lbl = gm ? gm[1] : (sc >= 8 ? t('варто розглядати') : sc >= 6 ? t('після перевірок') : sc >= 4 ? t('підвищений ризик') : t('високий ризик'));
+      if (v2 !== null) $('vHint').textContent = t('Наша оцінка на основі даних, які вдалося перевірити');
       $('scoreBadge').style.display = '';
       $('scoreDot').className = 'dot ' + cls;
       $('scoreVal').textContent = sc.toFixed(1) + ' / 10';

@@ -72,9 +72,13 @@ const VALID = {
   if (!page.includes("if (pd && pd.headline)")) errs.push('result-check.html: нема гілки нового рішення');
   if (!page.includes("if (!(pd && pd.headline)) $('verdictCard').style.display = ''")) errs.push('result-check.html: фолбек на verdict.summary зламаний');
   if (!page.includes("$('vText').style.display = 'none'")) errs.push('result-check.html: старий текст не ховається при новому блоці');
+  /* екран на v2 із фолбеком на легасі для старих звітів, підпис на місці */
+  if (!page.includes('D.score_v2_preview')) errs.push('result-check.html: екран не читає score_v2_preview');
+  if (!page.includes("typeof vd.score === 'number'")) errs.push('result-check.html: зник фолбек на легасі оцінку');
+  if (!page.includes('Наша оцінка на основі даних, які вдалося перевірити')) errs.push('result-check.html: нема підпису про дані');
   for (const d of ['i18n/ru.js', 'i18n/en.js']) {
     const dict = fs.readFileSync(d, 'utf8');
-    for (const k of ['Їхати дивитись', 'Читати повний розбір', 'Перевірити обовʼязково', 'Питання продавцю', 'Чого ми не перевірили']) {
+    for (const k of ['Їхати дивитись', 'Читати повний розбір', 'Перевірити обовʼязково', 'Питання продавцю', 'Чого ми не перевірили', 'Наша оцінка на основі даних, які вдалося перевірити']) {
       if (!dict.includes("'" + k + "'")) errs.push('нема ключа "' + k + '" у ' + d);
     }
   }
