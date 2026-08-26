@@ -866,11 +866,17 @@ export default async function handler(req, res) {
     const auctionLotId = auctionSearch && auctionSearch.status === 'found'
       ? (auctionSearch.lot_id_meta || (auctionSearch.record && auctionSearch.record.meta && auctionSearch.record.meta.lot_id) || null)
       : null;
+    /* у Vision: provenance-verified І публічно завантажувані. Фото за
+       антиботом (bid.cars CDN mercury/pluto) провенанс проходять, але OpenAI
+       їх не завантажить: у Vision вони не йдуть (інакше запит зависає на
+       кожному недоступному кадрі). Такі кадри лишаються в record, а зони і
+       подушки для них дає exact-lot metadata */
+    const visionLoadable = u => !/mercury\.bid|pluto\.bid|bid\.cars|bidfax|poctra|cf-chl/i.test(String(u));
     const auctionPhotos = (auction?.photos || [])
-      .filter(u => photoHasProvenance(u, listing.vin, auctionLotId))
+      .filter(u => photoHasProvenance(u, listing.vin, auctionLotId) && visionLoadable(u))
       .slice(0, 8);
     if ((auction?.photos || []).length && !auctionPhotos.length) {
-      console.log('[auction] усі', auction.photos.length, 'фото не пройшли провенанс, у Vision не йдуть');
+      console.log('[auction]', auction.photos.length, 'аукційних фото не йдуть у Vision (провенанс або недоступність), зони/подушки з metadata');
     }
     const img = (u, detail) => ({ type: 'image_url', image_url: { url: u, detail } });
     const content = [
