@@ -1047,7 +1047,12 @@ function boot2(D){
       $('usFindings').innerHTML = au.findings.map(f =>
         '<div class="flag"><span class="dot ' + st(f.status) + '"></span><span>' + esc(f.text) + '</span></div>').join('');
     }
-    if (M.auction_url) {
+    const am = M.auction_meta || {};
+    if (am.house || am.date) {
+      /* паспорт джерела за зразком позначок комплектації: без посилань назовні */
+      $('usSrc').innerHTML = '<span class="badge blue">'
+        + esc(t('Дані аукціону') + (am.house ? ' · ' + am.house : '') + (am.date ? ' · ' + am.date : '')) + '</span>';
+    } else if (M.auction_url) {
       const noPh = !auPh.length ? t('Фото з архіву не вдалося завантажити автоматично, відкрий архів за посиланням.') + ' ' : '';
       $('usSrc').innerHTML = noPh + t('Архів аукціону') + ': <a href="' + esc(M.auction_url) + '" target="_blank" rel="noopener">' + esc(M.auction_url) + '</a>';
     }

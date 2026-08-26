@@ -18,7 +18,8 @@ const jpeg = n => { const b = Buffer.alloc(n, 1); b[0] = 0xff; b[1] = 0xd8; b[2]
 const png = n => { const b = Buffer.alloc(n, 1); b[0] = 0x89; b[1] = 0x50; b[2] = 0x4e; b[3] = 0x47; return b; };
 
 const LOT_HTML = `<html><head><title>2018 BMW 5 Series, 530E Iperformance | ${VIN} | Bid History | BidCars</title></head>
-<body><h1>2018 BMW 5 SERIES, 530E IPERFORMANCE</h1><span>VIN: ${VIN}</span>
+<body><h1>2018 BMW 5 SERIES, 530E IPERFORMANCE</h1><span>VIN: ${VIN}</span><span class="badge">IAAI</span>
+<p>You are watching archived offer. Auction ended on Wednesday, June 4, 2025.</p>
 <img src="https://pluto.bid.car/0-42107936/2018-BMW-5-Series-${VIN}-1.jpg">
 <img src="https://pluto.bid.car/0-42107936/2018-BMW-5-Series-${VIN}-2.jpg">
 <div class="similar">Similar archival offers <a href="https://bid.cars/en/lot/0-999/2019-BMW-5-Series-WBAJA9C51KB111111">інший лот</a></div>
@@ -59,6 +60,9 @@ function makeFetch(map) {
   if (rec.lot_url !== LOT_URL) errs.push('повний шлях: не той лот');
   if (rec.identity?.confidence !== 'high') errs.push('повний шлях: впевненість ' + rec.identity?.confidence);
   if (!(rec.photo_urls || []).some(u => u.includes('-1.jpg'))) errs.push('повний шлях: фото лота не витягнуті');
+  /* паспорт джерела: аукціонний дім і дата продажу з лота */
+  if (rec.meta?.auction_house !== 'IAAI') errs.push('паспорт: дім ' + rec.meta?.auction_house + ' замість IAAI');
+  if (rec.meta?.sale_date !== 'June 4, 2025') errs.push('паспорт: дата ' + rec.meta?.sale_date);
   const dl = await quiet(() => A.downloadLotPhotos(rec.photo_urls, { fetchImpl: happy }));
   if (dl.photos.length !== 2) errs.push('скачано ' + dl.photos.length + ' фото замість 2');
 

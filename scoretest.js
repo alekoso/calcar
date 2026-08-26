@@ -76,6 +76,19 @@ const GERMAN_FULL = { ...FULL, auction_record_exists: false, auction_us_signal: 
   if (b.dropped_findings !== 4) errs.push('без evidence: dropped ' + b.dropped_findings + ' замість 4');
   if (b.final !== b.coverage_cap) errs.push('без evidence: бал мав лишитись на стелі');
 
+  /* 3д. visually_consistent: штраф мʼякший за unknown, але кап 5.5 НЕ знімається:
+     фото не бачить геометрію, зварку і SRS */
+  const vc = computeScore([F('STRUCTURAL_DAMAGE', 'acc1', { repair_status: 'visually_consistent' })], VIN_PHOTOS);
+  const unk = computeScore([F('STRUCTURAL_DAMAGE', 'acc1', { repair_status: 'unknown' })], VIN_PHOTOS);
+  if (vc.penalties[0].amount !== -1.4) errs.push('visually_consistent штраф ' + vc.penalties[0].amount + ' замість -1.4');
+  if (unk.penalties[0].amount !== -2.0) errs.push('unknown штраф ' + unk.penalties[0].amount + ' замість -2.0');
+  b = computeScore([F('STRUCTURAL_DAMAGE', 'acc1', { repair_status: 'visually_consistent' })], FULL);
+  if (!(b.final <= 5.5)) errs.push('visually_consistent обійшов структурний кап: ' + b.final);
+  if (!b.limiting_factors.includes('hard_cap:STRUCTURAL_DAMAGE')) errs.push('visually_consistent: капа нема в обмежувачах');
+  /* confirmed_ok кап знімає (обʼєктивні дані, не фото) */
+  b = computeScore([F('STRUCTURAL_DAMAGE', 'acc1', { repair_status: 'confirmed_ok' })], FULL);
+  if (b.limiting_factors.includes('hard_cap:STRUCTURAL_DAMAGE')) errs.push('confirmed_ok лишився під капом');
+
   /* 3в. confirmed_bad НЕ обходить структурний кап: він для всього, крім confirmed_ok */
   b = computeScore([F('STRUCTURAL_DAMAGE', 'acc1', { repair_status: 'confirmed_bad' })], FULL);
   if (!(b.final <= 5.5)) errs.push('структурне confirmed_bad обійшло кап: ' + b.final);
@@ -168,6 +181,12 @@ const GERMAN_FULL = { ...FULL, auction_record_exists: false, auction_us_signal: 
   /* промпт вимагає event_id завжди, включно з поточними станами */
   if (!checkSrc.includes('event_id ОБОВʼЯЗКОВИЙ для КОЖНОЇ знахідки')) errs.push('check.js: промпт не вимагає event_id завжди');
   if (!checkSrc.includes('current_srs_fault')) errs.push('check.js: промпт без прикладу event_id для поточних станів');
+  /* межі статусів відновлення жорсткі і живуть у промпті */
+  if (!checkSrc.includes('confirmed_ok ЗАБОРОНЕНИЙ')) errs.push('check.js: промпт дозволяє confirmed_ok за фото');
+  if (!checkSrc.includes('лишається unknown, НЕ visually_consistent')) errs.push('check.js: невидима зона удару не лишає unknown');
+  if (!checkSrc.includes('ХАРАКТЕР і МАСШТАБ вихідного пошкодження')) errs.push('check.js: нема правила про аукціонні матеріали');
+  if (!checkSrc.includes('питання ЗНІМАЄТЬСЯ')) errs.push('check.js: MAJOR_REPAIR_UNVERIFIED не знімається некрупним пошкодженням');
+  if (!checkSrc.includes('Сам факт рахунку чи документів на ремонт confirmed_ok НЕ дає')) errs.push('check.js: документи без перевірки дають confirmed_ok');
   if (/\/\^\[1-5\]\//.test(checkSrc)) errs.push('check.js знову вгадує застосовність аукціону за WMI');
   if (!checkSrc.includes('function photoKey(')) errs.push('check.js не дедуплікує кадри для photos_sufficient');
   if (!checkSrc.includes('function normalizeListingUrl(')) errs.push('check.js не нормалізує source_url для дедуплікації');

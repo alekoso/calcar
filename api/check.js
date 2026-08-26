@@ -483,7 +483,13 @@ ${auction && auction.photos.length ? `
 - Різниця пробігів САМА ПО СОБІ це НЕ ODOMETER_ROLLBACK, а MILEAGE_CONFLICT_UNEXPLAINED. Тюнінг сам по собі НЕ MODIFICATION_TECHNICAL_CONCERN: потрібен конкретний технічний привід. Минуле ДТП саме по собі НЕ POOR_REPAIR_VISIBLE: потрібні видимі сліди поганого ремонту.
 - ВІДСУТНІСТЬ ДАНИХ НІКОЛИ НЕ Є ЗНАХІДКОЮ. Unknown не добре і не погано.
 - event_id ОБОВʼЯЗКОВИЙ для КОЖНОЇ знахідки, без нього код її відкине. Для подій це імʼя події (accident_2020, flood_2021), для поточних станів і несправностей стабільний ідентифікатор (current_srs_fault, mileage_conflict_1, modification_suspension). Знахідки ОДНОЇ події (одного ДТП) несуть СПІЛЬНИЙ event_id: подія з кількома підтвердженнями це ОДНА знахідка з кількома evidence, не кілька знахідок.
-- repair_status (confirmed_ok | unknown | confirmed_bad) і severity (low|med|high) став де застосовно.
+- repair_status де застосовно, МЕЖІ ЖОРСТКІ:
+  * visually_consistent: пошкоджені на аукціоні зони на НИНІШНІХ фото без видимих слідів неякісного відновлення, І лише коли нинішні фото достатньо показують САМЕ ті зони і ракурси, що були пошкоджені. Потрібна зона не видна або порівняння ненадійне: лишається unknown, НЕ visually_consistent.
+  * confirmed_bad: конкретні ВИДИМІ дефекти ремонту (зазори, відтінок, шагрень, герметик), назви їх в evidence.
+  * confirmed_ok: ЛИШЕ обʼєктивні дані якості відновлення: незалежна інспекція чи діагностика, документований ремонт РАЗОМ із результатами перевірки. Сам факт рахунку чи документів на ремонт confirmed_ok НЕ дає. За одним візуальним порівнянням фото confirmed_ok ЗАБОРОНЕНИЙ.
+  * unknown: усе інше. severity (low|med|high) де застосовно.
+- АУКЦІОННІ МАТЕРІАЛИ (фото до ремонту, метадані лота) встановлюють ХАРАКТЕР і МАСШТАБ вихідного пошкодження. Розрізняй два різні висновки: "характер вихідного пошкодження встановлений" (це дають аукціонні фото) і "якість ремонту підтверджена" (цього вони НЕ дають). Висновки лише по конкретних зонах, які реально є на фото.
+- Якщо MAJOR_REPAIR_UNVERIFIED існував лише через невідомість масштабу, а аукціонні матеріали показують некрупне пошкодження (навісні елементи, подушки не спрацювали, силова структура не зачеплена): питання ЗНІМАЄТЬСЯ, крупного ремонту, ймовірно, не було, знахідку не створюй. Якщо пошкодження крупне: порівняння зон до/після дає лише висновок про видимі ознаки, статус за межами вище.
 - evidence: масив {source: seller_claim|current_photos|historical_listing|us_auction|registry|document, ref: конкретний запис (listing_3, photo_7, auction_event_1) де можливо, description: коротке доказове речення}. Одна знахідка може мати скільки завгодно доказів.
 - info_notes: вільний текст без впливу на бал. Якщо знахідок нема, findings це порожній масив.
 
@@ -581,6 +587,8 @@ export default async function handler(req, res) {
           auctionSearch = { status: cached.status, reason: 'cache', source: cached.source || null, lot_url: cached.lot_url || null, cache: 'hit' };
           if (cached.status === 'found' && cached.lot_url) {
             auction = { url: cached.lot_url, photos: Array.isArray(cached.record?.photo_urls) ? cached.record.photo_urls.slice(0, 8) : [], text: '', from_search: true };
+            auctionSearch.house = cached.record?.meta?.auction_house || null;
+            auctionSearch.sale_date = cached.record?.meta?.sale_date || null;
           }
           console.log('[auction] cache=hit', cached.status, listing.vin);
         } else {
@@ -592,8 +600,11 @@ export default async function handler(req, res) {
             sources: rec.diagnostics.map(d => ({ source: d.source, step: d.step, status: d.status, blocked: !!d.blocked, found: !!d.found, ms: d.ms })),
           };
           if (rec.status === 'found') {
-            auction = { url: rec.lot_url, photos: (rec.photo_urls || []).slice(0, 8), text: '', from_search: true };
-            await writeAuctionCache(listing.vin, { status: 'found', source: rec.source, lot_url: rec.lot_url, record: { photo_urls: rec.photo_urls || [], identity: rec.identity } });
+            const passport = 'Джерело: архів аукціону' + (rec.meta?.auction_house ? ' ' + rec.meta.auction_house : '') + (rec.meta?.sale_date ? ', продаж ' + rec.meta.sale_date : '');
+            auction = { url: rec.lot_url, photos: (rec.photo_urls || []).slice(0, 8), text: passport, from_search: true };
+            auctionSearch.house = rec.meta?.auction_house || null;
+            auctionSearch.sale_date = rec.meta?.sale_date || null;
+            await writeAuctionCache(listing.vin, { status: 'found', source: rec.source, lot_url: rec.lot_url, record: { photo_urls: rec.photo_urls || [], identity: rec.identity, meta: rec.meta || null } });
           } else if (rec.status === 'absent') {
             await writeAuctionCache(listing.vin, { status: 'absent', source: null, lot_url: null, record: null });
           }
@@ -707,6 +718,12 @@ export default async function handler(req, res) {
       };
       const findings = Array.isArray(parsed?.score_facts?.findings) ? parsed.score_facts.findings : [];
       const breakdown = computeScore(findings, coverageInputs);
+      /* економіка ретривала: ціна одного Check з аукціонним пошуком.
+         Прямий fetch безкоштовний, платний провайдер підставить свою ціну */
+      breakdown.retrieval_provider = auctionSearch ? (auctionSearch.cache === 'hit' ? 'cache' : 'direct_fetch') : null;
+      breakdown.retrieval_requests = auctionSearch && Array.isArray(auctionSearch.sources) ? auctionSearch.sources.length : 0;
+      breakdown.retrieval_cost_usd = 0;
+      breakdown.retrieval_cache_hit = !!(auctionSearch && auctionSearch.cache === 'hit');
       parsed.score_v2_preview = breakdown.final;
       parsed.score_breakdown_v2 = breakdown;
       console.log('[check] score_v2', breakdown.final, '(legacy', (parsed.verdict && parsed.verdict.score) + ')',
@@ -728,6 +745,10 @@ export default async function handler(req, res) {
       auction_url: listing.auction_url || null,
       auction_photos: auctionPhotos,
       auction_search: auctionSearch,
+      /* паспорт джерела для інтерфейсу: без посилань назовні */
+      auction_meta: auctionSearch && auctionSearch.status === 'found'
+        ? { house: auctionSearch.house || null, date: auctionSearch.sale_date || null }
+        : null,
       snapshot,
       analyzed_at: new Date().toISOString(),
     };

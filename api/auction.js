@@ -216,6 +216,16 @@ export async function discoverVinCandidates(vin, opts = {}, cfg = AUCTION_CONFIG
   return { candidates: out, diagnostics: diag, discovery_ms: Date.now() - t0 };
 }
 
+/* паспорт джерела: аукціонний дім і дата продажу з тексту лота */
+export function extractLotMeta(html) {
+  const plain = String(html || '').replace(/<[^>]+>/g, ' ');
+  const house = /\bIAAI\b|Insurance Auto Auctions/i.test(plain) ? 'IAAI'
+    : (/\bCopart\b/i.test(plain) ? 'Copart' : null);
+  const date = (plain.match(/Auction ended[^.]*?((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})/i)
+    || plain.match(/\b(\d{2}[./]\d{2}[./]\d{4})\b/) || [])[1] || null;
+  return { auction_house: house, sale_date: date };
+}
+
 /* ---------- оркестратор ----------
    Статуси: found (запис підтверджений), absent (джерела ВІДПОВІЛИ і запису
    нема), unknown/source_unreachable (вся ланка відвалилась по блокуваннях
@@ -250,6 +260,7 @@ export async function findAuctionRecord(vin, nhtsa, opts = {}, cfg = AUCTION_CON
             source: cand.source,
             lot_url: cand.url,
             identity,
+            meta: extractLotMeta(r.body),
             photo_urls: photoUrls.slice(0, cfg.MAX_PHOTOS),
             diagnostics,
             total_ms: Date.now() - t0,

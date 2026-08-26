@@ -41,9 +41,11 @@ export const SCORE_CONFIG = {
     MAJOR_REPAIR_UNVERIFIED: 0.4,
     MODIFICATION_TECHNICAL_CONCERN: 0.3,
   },
-  /* помʼякшення: підтверджено якісний ремонт зменшує штраф */
+  /* помʼякшення за статусом відновлення (калібрується).
+     visually_consistent: пошкоджені зони на нинішніх фото без видимих слідів
+     поганого ремонту; мʼякший штраф, але жорсткий кап НЕ знімає */
   SOFTENED_PENALTIES: {
-    STRUCTURAL_DAMAGE: { confirmed_ok: 1.0 },
+    STRUCTURAL_DAMAGE: { confirmed_ok: 1.0, visually_consistent: 1.4 },
     AIRBAGS_DEPLOYED: { confirmed_ok: 0.4 },
   },
   /* жорсткі капи підсумку за типом знахідки */
@@ -54,8 +56,9 @@ export const SCORE_CONFIG = {
     VIN_IDENTITY_PROBLEM: 3.5,
   },
   /* структурне пошкодження без ПІДТВЕРДЖЕНОГО ЯКІСНОГО ремонту: окремий кап.
-     Застосовується до будь-якого repair_status, крім confirmed_ok:
-     unknown, відсутній і confirmed_bad однаково не дають обійти кап */
+     Застосовується до будь-якого repair_status, крім confirmed_ok: unknown,
+     відсутній, confirmed_bad і visually_consistent однаково під капом.
+     Фото не бачить геометрію, зварку і SRS, заради яких кап існує */
   STRUCTURAL_UNKNOWN_CAP: 5.5,
   /* пороги grade рахуються з ФІНАЛЬНОГО балу, капи вдруге не застосовуються */
   GRADE_THRESHOLDS: [
@@ -76,7 +79,7 @@ export const OPEN_QUESTION_TYPES = [
 ];
 const ALL_TYPES = new Set([...CONFIRMED_RISK_TYPES, ...OPEN_QUESTION_TYPES]);
 const EVIDENCE_SOURCES = new Set(['seller_claim', 'current_photos', 'historical_listing', 'us_auction', 'registry', 'document']);
-const REPAIR_STATUSES = new Set(['confirmed_ok', 'unknown', 'confirmed_bad']);
+const REPAIR_STATUSES = new Set(['confirmed_ok', 'visually_consistent', 'unknown', 'confirmed_bad']);
 
 const round1 = x => Math.round(x * 10) / 10;
 const round2 = x => Math.round(x * 100) / 100;
@@ -129,7 +132,7 @@ function sanitizeFindings(findings) {
 
 /* дедуплікація: один type + один event_id = ОДНА подія з обʼєднаними evidence.
    repair_status береться найгірший: confirmed_bad > unknown > confirmed_ok */
-const REPAIR_RANK = { confirmed_bad: 2, unknown: 1, confirmed_ok: 0 };
+const REPAIR_RANK = { confirmed_bad: 3, unknown: 2, visually_consistent: 1, confirmed_ok: 0 };
 function dedupeFindings(findings) {
   const map = new Map();
   findings.forEach(f => {
@@ -138,8 +141,8 @@ function dedupeFindings(findings) {
     const cur = map.get(key);
     if (!cur) { map.set(key, { ...f, evidence: [...f.evidence] }); return; }
     cur.evidence.push(...f.evidence);
-    const a = cur.repair_status === null ? 1 : REPAIR_RANK[cur.repair_status];
-    const b = f.repair_status === null ? 1 : REPAIR_RANK[f.repair_status];
+    const a = cur.repair_status === null ? REPAIR_RANK.unknown : REPAIR_RANK[cur.repair_status];
+    const b = f.repair_status === null ? REPAIR_RANK.unknown : REPAIR_RANK[f.repair_status];
     if (b > a) cur.repair_status = f.repair_status;
     if (!cur.severity && f.severity) cur.severity = f.severity;
   });
