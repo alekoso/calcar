@@ -432,6 +432,19 @@
   .issue p{font-size:13.5px;color:var(--ink-2);margin-top:4px;line-height:1.5}
 
 
+  /* попап деталізації Score */
+  .score-pop{
+    position:absolute;top:calc(100% + 8px);right:0;z-index:60;min-width:200px;
+    background:var(--card);border:1px solid var(--line);border-radius:12px;
+    box-shadow:0 10px 28px rgba(20,22,25,.14);padding:8px;display:none;
+  }
+  .score-pop.open{display:block}
+  .score-pop-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:6px 8px;border-radius:8px;font-size:13px}
+  .score-pop-row b{font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
+  .score-pop-row span{color:var(--muted)}
+  .score-pop-row .dash{color:var(--faint)}
+  #scoreBadge{cursor:pointer;position:relative}
+
   /* фінальний висновок: рішення шарами */
   .pd-top{display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:8px}
   .pd-rec{flex-shrink:0;font-size:12px;font-weight:700;letter-spacing:.3px;border-radius:14px;padding:4px 12px}
@@ -713,7 +726,7 @@
   <div class="card" id="verdictCard" style="display:none">
     <div class="card-head">
       <h2>Чи варто брати</h2>
-      <span class="risk-badge" id="scoreBadge" style="display:none"><span class="dot ok" id="scoreDot"></span>Оцінка: <b id="scoreVal">–</b> <span class="risk-label" id="scoreLabel"></span></span>
+      <span class="risk-badge" id="scoreBadge" style="display:none"><span class="dot ok" id="scoreDot"></span>Оцінка: <b id="scoreVal">–</b> <span class="risk-label" id="scoreLabel"></span><div class="score-pop" id="scorePop"></div></span>
     </div>
     <div class="card-body">
       <div id="pdBlock" style="display:none">
@@ -1098,6 +1111,23 @@ function boot2(D){
       const cls = gm ? gm[0] : (sc >= 7.5 ? 'ok' : sc >= 5 ? 'warn' : 'bad');
       const lbl = gm ? gm[1] : (sc >= 8 ? t('варто розглядати') : sc >= 6 ? t('після перевірок') : sc >= 4 ? t('підвищений ризик') : t('високий ризик'));
       if (v2 !== null) $('vHint').textContent = t('Наша оцінка на основі даних, які вдалося перевірити');
+      /* попап деталізації: 4 напрямки, subscore або прочерк, без пояснень */
+      const subs = bd2 && bd2.subscores;
+      if (subs) {
+        const DIRS = [['history', t('Історія')], ['mileage', t('Пробіг')], ['condition', t('Стан')], ['technical', t('Технічні сигнали')]];
+        $('scorePop').innerHTML = DIRS.map(([k, title]) => {
+          const v = subs[k];
+          const val = (typeof v === 'number') ? '<b>' + v.toFixed(1) + '</b>' : '<b class="dash">' + t('нема даних') + '</b>';
+          return '<div class="score-pop-row"><span>' + esc(title) + '</span>' + val + '</div>';
+        }).join('');
+        const pop = $('scorePop'), badge = $('scoreBadge');
+        const openPop = () => pop.classList.add('open');
+        const closePop = () => pop.classList.remove('open');
+        badge.addEventListener('mouseenter', openPop);
+        badge.addEventListener('mouseleave', closePop);
+        badge.addEventListener('click', e => { e.stopPropagation(); pop.classList.toggle('open'); });
+        document.addEventListener('click', e => { if (!badge.contains(e.target)) closePop(); });
+      }
       $('scoreBadge').style.display = '';
       $('scoreDot').className = 'dot ' + cls;
       $('scoreVal').textContent = sc.toFixed(1) + ' / 10';
