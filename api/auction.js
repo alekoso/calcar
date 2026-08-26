@@ -352,12 +352,21 @@ export async function findAuctionRecord(vin, nhtsa, opts = {}, cfg = AUCTION_CON
           diagnostics.push(d);
           console.log('[auction] source=' + cand.source, 'step=lot', 'status=200 found identity=' + d.identity, d.ms + 'ms');
           /* ранній вихід законний ЛИШЕ при found */
+          const meta = extractLotMeta(r.body, cand.url);
+          /* дзеркало (americamotors) часто без числового lot_id у URL: дотягуємо
+             з інших discovery-кандидатів тієї ж події, де id стоїть у шляху */
+          if (!meta.lot_id) {
+            for (const other of disco.candidates) {
+              const m = String(other.url).match(/\b(\d{7,9})\b/);
+              if (m) { meta.lot_id = m[1]; break; }
+            }
+          }
           const rec = {
             status: 'found',
             source: cand.source,
             lot_url: cand.url,
             identity,
-            meta: extractLotMeta(r.body, cand.url),
+            meta,
             photo_urls: photoUrls.slice(0, cfg.MAX_PHOTOS),
             sources_checked: sourcesChecked(outcomes, cfg),
             diagnostics,
