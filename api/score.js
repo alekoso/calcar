@@ -59,11 +59,26 @@ export const SCORE_CONFIG = {
     FIRE: 4.5,
     VIN_IDENTITY_PROBLEM: 3.5,
   },
+  /* спрацьовані подушки: safety-критичний факт. Кап діє для будь-якого
+     repair_status, крім confirmed_ok із ЗМІСТОВНИМ підтвердженням відновлення
+     SRS; visually_consistent кап НЕ знімає (фото не бачить справність SRS),
+     confirmed_bad жорсткіший (калібрується) */
+  AIRBAGS_UNKNOWN_CAP: 7.0,
+  AIRBAGS_BAD_CAP: 6.0,
   /* структурне пошкодження без ПІДТВЕРДЖЕНОГО ЯКІСНОГО ремонту: окремий кап.
      Застосовується до будь-якого repair_status, крім confirmed_ok: unknown,
      відсутній, confirmed_bad і visually_consistent однаково під капом.
      Фото не бачить геометрію, зварку і SRS, заради яких кап існує */
   STRUCTURAL_UNKNOWN_CAP: 5.5,
+  /* мінімальний набір даних для видачі оцінки (провайдеро-незалежний):
+     ідентифіковане авто, достатньо фото, базові характеристики, пробіг.
+     Нижче порога score_available: false і жодної цифри */
+  ELIGIBILITY: {
+    REQUIRE_IDENTITY: true,
+    MIN_PHOTOS: 6,           /* = PHOTOS_SUFFICIENT_MIN */
+    REQUIRE_BASICS: true,    /* марка+модель+рік відомі з будь-якого джерела */
+    REQUIRE_MILEAGE: true,   /* заявлений пробіг присутній */
+  },
   /* пороги grade рахуються з ФІНАЛЬНОГО балу, капи вдруге не застосовуються */
   GRADE_THRESHOLDS: [
     { min: 8.5, grade: 'buy' },
@@ -178,7 +193,9 @@ function buildCoverage(inputs, cfg) {
       ? 'present'
       : (i.auction_applicable === false
         ? 'not_applicable'
-        : ((i.auction_us_signal && i.auction_checked) ? 'absent' : 'unknown')),
+        : ((i.auction_us_signal && i.auction_checked)
+          ? 'checked_absent'
+          : (i.auction_sources_unreachable ? 'source_unreachable' : 'unknown'))),
     service_history: i.service_history_exists ? 'present' : 'absent',
     inspection_history: i.inspection_history_exists ? 'present' : 'absent',
     seller_docs: i.seller_docs_exists ? 'present' : 'absent',
@@ -193,7 +210,7 @@ function buildCoverage(inputs, cfg) {
   /* авто МАЛО бути в базах, джерела відповіли, запису нема: фіксуємо явно.
      Вклад non_negative: бонус просто не нараховується, додаткового вирахування
      нема, відсутність бонуса вже понижує стелю */
-  if (coverage.auction_record.state === 'absent') {
+  if (coverage.auction_record.state === 'checked_absent') {
     coverage.auction_record.note = 'авто мало бути в аукціонних базах США, запис не знайдено';
   }
   return { coverage, ceiling: round2(Math.min(cfg.CEILING_MAX, ceiling)) };
@@ -204,10 +221,25 @@ export function gradeFromScore(score, cfg = SCORE_CONFIG) {
   return cfg.GRADE_THRESHOLDS[cfg.GRADE_THRESHOLDS.length - 1].grade;
 }
 
+/* чи достатньо даних, щоб чесно видати цифру. Старі збережені входи без
+   basics_known/mileage_known трактуються як true: зворотна сумісність */
+export function checkEligibility(i, cfg = SCORE_CONFIG) {
+  const e = cfg.ELIGIBILITY;
+  const inp = i && typeof i === 'object' ? i : {};
+  const missing = [];
+  const identity = inp.identity_confirmed !== undefined ? inp.identity_confirmed : inp.vin_decoded;
+  if (e.REQUIRE_IDENTITY && !identity) missing.push('identity');
+  if ((typeof inp.photos_count === 'number' ? inp.photos_count : 0) < e.MIN_PHOTOS) missing.push('photos');
+  if (e.REQUIRE_BASICS && inp.basics_known === false) missing.push('basics');
+  if (e.REQUIRE_MILEAGE && inp.mileage_known === false) missing.push('mileage');
+  return { eligible: missing.length === 0, missing };
+}
+
 export function computeScore(findings, coverageInputs, cfg = SCORE_CONFIG) {
   const { ok, dropped } = sanitizeFindings(findings);
   const events = dedupeFindings(ok);
   const { coverage, ceiling } = buildCoverage(coverageInputs, cfg);
+  const eligibility = checkEligibility(coverageInputs, cfg);
 
   /* штрафи: за подію, з помʼякшенням за підтверджений ремонт */
   const penalties = events.map(f => {
@@ -232,6 +264,9 @@ export function computeScore(findings, coverageInputs, cfg = SCORE_CONFIG) {
     if (f.type === 'STRUCTURAL_DAMAGE' && f.repair_status !== 'confirmed_ok') {
       caps.push({ name: 'hard_cap:STRUCTURAL_DAMAGE', value: cfg.STRUCTURAL_UNKNOWN_CAP });
     }
+    if (f.type === 'AIRBAGS_DEPLOYED' && f.repair_status !== 'confirmed_ok') {
+      caps.push({ name: 'hard_cap:AIRBAGS_DEPLOYED', value: f.repair_status === 'confirmed_bad' ? cfg.AIRBAGS_BAD_CAP : cfg.AIRBAGS_UNKNOWN_CAP });
+    }
   }
 
   /* підсумок = min(стеля, 10 - штрафи, капи), підлога 0.
@@ -250,13 +285,40 @@ export function computeScore(findings, coverageInputs, cfg = SCORE_CONFIG) {
   const final = Math.floor((Math.max(0, unfloored) + 1e-9) * 10) / 10;
 
   const reasons = [];
-  if (limiting.includes('coverage')) reasons.push('оцінка обмежена покриттям даних: стеля ' + ceiling);
+  if (limiting.includes('coverage')) {
+    /* різні причини стелі: бракує даних про авто чи наші джерела недоступні */
+    const unreachable = Object.values(coverage).some(c => c.state === 'source_unreachable');
+    reasons.push((unreachable
+      ? 'оцінка обмежена недоступністю джерел CalCar: стеля '
+      : 'оцінка обмежена даними авто: стеля ') + ceiling);
+  }
   for (const l of limiting) {
     if (l.startsWith('hard_cap:')) reasons.push('жорсткий кап ' + l.slice(9));
   }
 
+  if (!eligibility.eligible) {
+    /* нижче порога цифру не видаємо взагалі */
+    return {
+      score_v: 2,
+      score_available: false,
+      score_unavailable_missing: eligibility.missing,
+      final: null,
+      grade: null,
+      raw: round1(raw),
+      coverage_cap: ceiling,
+      coverage,
+      coverage_inputs: coverageInputs && typeof coverageInputs === 'object' ? coverageInputs : {},
+      penalties,
+      dropped_findings: dropped,
+      limiting_factors: [],
+      score_limited_by_data: false,
+      score_limit_reason: 'недостатньо даних для оцінки: ' + eligibility.missing.join(', '),
+    };
+  }
+
   return {
     score_v: 2,
+    score_available: true,
     final,
     grade: gradeFromScore(final, cfg),
     raw: round1(raw),

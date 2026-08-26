@@ -1077,8 +1077,18 @@ function boot2(D){
     $('vText').textContent = clean(vd.summary);
     /* на екрані оцінка v2 (детермінована формула); легасі verdict.score
        лишається у data і служить фолбеком для старих звітів */
-    const v2 = typeof D.score_v2_preview === 'number' ? D.score_v2_preview : null;
-    const g2 = D.score_breakdown_v2 && D.score_breakdown_v2.grade;
+    const bd2 = D.score_breakdown_v2 || null;
+    /* нижче порога даних цифру не показуємо взагалі */
+    if (bd2 && bd2.score_available === false) {
+      $('scoreBadge').style.display = '';
+      $('scoreDot').className = 'dot unknown';
+      $('scoreVal').textContent = '';
+      $('scoreLabel').textContent = t('Недостатньо даних для оцінки');
+      $('vHint').textContent = t('Наша оцінка на основі даних, які вдалося перевірити');
+    }
+    const v2 = (bd2 && bd2.score_available === false) ? null
+      : (typeof D.score_v2_preview === 'number' ? D.score_v2_preview : null);
+    const g2 = bd2 && bd2.grade;
     const sc = v2 !== null ? v2
       : (typeof vd.score === 'number' ? Math.round(Math.max(0, Math.min(10, vd.score)) * 10) / 10 : null);
     if (sc !== null) {

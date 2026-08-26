@@ -1,7 +1,7 @@
 export const config = { maxDuration: 300 };
 
 import { computeScore } from './score.js';
-import { findAuctionRecord, shouldRecheck } from './auction.js';
+import { findAuctionRecord, shouldRecheck, discoverVinCandidates } from './auction.js';
 
 /* ============================================================
    CalCar Check, рушій v1: посилання на оголошення -> звіт.
@@ -617,8 +617,9 @@ ${auction && auction.photos.length ? `
   * unknown: усе інше. severity (low|med|high) де застосовно.
 - АУКЦІОННІ МАТЕРІАЛИ (фото до ремонту, метадані лота) встановлюють ХАРАКТЕР і МАСШТАБ вихідного пошкодження. Розрізняй два різні висновки: "характер вихідного пошкодження встановлений" (це дають аукціонні фото) і "якість ремонту підтверджена" (цього вони НЕ дають). Висновки лише по конкретних зонах, які реально є на фото.
 - Якщо MAJOR_REPAIR_UNVERIFIED існував лише через невідомість масштабу, а аукціонні матеріали ДОСТУПНІ і показують некрупне пошкодження (навісні елементи, подушки не спрацювали, силова структура не зачеплена): питання ЗНІМАЄТЬСЯ, крупного ремонту, ймовірно, не було, знахідку не створюй. НЕДОСТУПНІСТЬ матеріалів сама по собі ані знімає питання, ані створює знахідку. Якщо пошкодження крупне: порівняння зон до/після дає лише висновок про видимі ознаки, статус за межами вище.
-- ОФІЦІЙНИЙ ЗАПИС ПРО ДТП (позначка "Був у ДТП", "Зафіксовано ДТП" у держ/історичному блоці, history_facts.accident_recorded) це ФАКТ із доказом (source historical_listing чи registry), НЕ "відсутність даних". Але MAJOR_REPAIR_UNVERIFIED НЕ ставиться автоматично при кожному відомому ДТП: лише коли Є докази, що пошкодження вимагало СУТТЄВОГО ремонту (спрацьовані подушки, кілька зон, структурні пошкодження, важкі формулювання запису) І ремонт не підтверджений. Відоме ДТП без доказів суттєвості: фіксуй в info_notes із точним текстом запису, на бал воно не впливає.
-- РОЗБІЖНОСТІ ПРОДАВЦЯ (слова проти офіційних даних: "другий власник" при чотирьох тощо) живуть у discrepancies і в purchase_decision (main_concerns, questions_for_seller). У score_facts їх НЕ класифікуй: самі по собі вони технічну чи історичну оцінку авто не погіршують.
+- ОФІЦІЙНИЙ ЗАПИС ПРО ДТП (позначка "Був у ДТП", "Зафіксовано ДТП" у держ/історичному блоці, history_facts.accident_recorded) це ФАКТ із доказом (source historical_listing чи registry), НЕ "відсутність даних". Але MAJOR_REPAIR_UNVERIFIED НЕ ставиться через саме підтверджене ДТП невідомої тяжкості: потрібен ПОЗИТИВНИЙ доказ суттєвості (спрацьовані подушки, структурні пошкодження, кілька зон, серйозний опис damage у записі). НЕДОСТУПНІСТЬ фото чи матеріалів доказом суттєвості НЕ є. Відоме ДТП без доказів суттєвості: фіксуй в info_notes із точним текстом запису, на бал воно не впливає, АЛЕ purchase_decision мусить помітно його відпрацювати: у main_concerns або must_check із текстом запису і конкретною перевіркою.
+- confirmed_ok для AIRBAGS_DEPLOYED лише зі ЗМІСТОВНИМ підтвердженням відновлення SRS: діагностика без помилок, документи ремонту РАЗОМ із перевіркою. "Нормальний салон на фото" це НЕ підтвердження SRS.
+- РОЗБІЖНОСТІ ПРОДАВЦЯ (слова проти офіційних даних: "другий власник" при чотирьох тощо) живуть у discrepancies і в purchase_decision: матеріальна суперечність продавця йде ПЕРШИМ пунктом main_concerns і питанням у questions_for_seller. У score_facts їх НЕ класифікуй: самі по собі вони технічну чи історичну оцінку авто не погіршують.
 - evidence: масив {source: seller_claim|current_photos|historical_listing|us_auction|registry|document, ref: конкретний запис (listing_3, photo_7, auction_event_1) де можливо, description: коротке доказове речення}. Одна знахідка може мати скільки завгодно доказів.
 - Для MODIFICATION_TECHNICAL_CONCERN додатково: serious_intervention true, якщо є хоч одне серйозне втручання (прошивка чи наддув, вихлоп із видаленням каталізаторів, інше втручання в силовий агрегат); maintenance_evidence true, лише якщо в матеріалах РЕАЛЬНО є підтвердження обслуговування чи діагностики (сервісні записи, логи, документи). Нема даних = false, не вигадуй.
 - "signals": {"seller_claims_us_import": true лише при ЯВНІЙ заяві продавця про пригін зі США ("пригнана зі США", "авто з Америки"). Непевність = false}.
@@ -727,6 +728,17 @@ export default async function handler(req, res) {
             auction = { url: cached.lot_url, photos: Array.isArray(cached.record?.photo_urls) ? cached.record.photo_urls.slice(0, 8) : [], text: '', from_search: true };
             auctionSearch.house = cached.record?.meta?.auction_house || null;
             auctionSearch.sale_date = cached.record?.meta?.sale_date || null;
+            /* знайдена подія постійна і повторно не оплачується, але у VIN
+               може зʼявитись НОВА аукціонна подія: discovery повторюємо і
+               дивимось лише на кандидатів з ІНШИМИ сторінками */
+            try {
+              const disco = await discoverVinCandidates(listing.vin, { totalBudgetMs: 8000 });
+              const fresh = disco.candidates.filter(c => normalizeListingUrl(c.url) !== normalizeListingUrl(cached.lot_url));
+              if (fresh.length) {
+                console.log('[auction] новий кандидат поза кешем:', fresh[0].url.slice(0, 90));
+                auctionSearch.new_candidates = fresh.map(c => c.url).slice(0, 3);
+              }
+            } catch (e) { /* повтор discovery не критичний */ }
           }
           console.log('[auction] cache=hit', cached.status, listing.vin);
         } else {
@@ -867,6 +879,12 @@ export default async function handler(req, res) {
            absent. Заблокований доступ (source_unreachable) лишає unknown,
            стеля не чіпається, вини машини нема */
         auction_checked: !!(auctionSearch && auctionSearch.status === 'absent'),
+        /* джерела намагались, але вся ланка недоступна: стан
+           source_unreachable у coverage, причина стелі "джерела CalCar" */
+        auction_sources_unreachable: !!(auctionSearch && auctionSearch.status === 'unknown' && auctionSearch.reason === 'source_unreachable'),
+        /* мінімальний набір для видачі оцінки (eligibility gate) */
+        basics_known: !!(listing.year && (listing.make || listing.model || listing.title)),
+        mileage_known: listing.odometer_km != null,
         /* держдані: офіційний блок площадки з власниками й операціями */
         registration_data_exists: hf.registry_present === true,
         /* цих джерел у пайплайні поки немає: код чесно каже "не був" */
@@ -885,7 +903,11 @@ export default async function handler(req, res) {
       /* аудит опитування: дані для майбутнього блоку осей
          ("перевірено: ..., запис не знайдено") */
       breakdown.sources_checked = auctionSearch ? (auctionSearch.sources_checked || []) : null;
-      parsed.score_v2_preview = breakdown.final;
+      /* підтверджене ДТП невідомої тяжкості: структурований факт для
+         purchase_decision і майбутнього блоку осей, НЕ штраф */
+      breakdown.accident_record_present = hf.accident_recorded === true;
+      breakdown.accident_record_note = hf.accident_note || null;
+      parsed.score_v2_preview = breakdown.score_available === false ? null : breakdown.final;
       parsed.score_breakdown_v2 = breakdown;
       console.log('[check] score_v2', breakdown.final, '(legacy', (parsed.verdict && parsed.verdict.score) + ')',
         '| cap', breakdown.coverage_cap, '| lim', breakdown.limiting_factors.join(',') || 'none');

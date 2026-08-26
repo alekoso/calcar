@@ -58,7 +58,7 @@ const GERMAN_FULL = { ...FULL, auction_record_exists: false, auction_us_signal: 
   if (b.coverage.auction_record.bonus !== 0) errs.push('not_applicable аукціон дав бонус');
   /* absent лише в парі: сигнал США І джерела реально відповіли */
   b = computeScore([], { ...GERMAN_FULL, auction_us_signal: true, auction_checked: true });
-  if (b.coverage.auction_record.state !== 'absent') errs.push('сигнал+опитані джерела: стан ' + b.coverage.auction_record.state);
+  if (b.coverage.auction_record.state !== 'checked_absent') errs.push('сигнал+опитані джерела: стан ' + b.coverage.auction_record.state);
   if (b.coverage.auction_record.bonus !== 0) errs.push('absent дав бонус');
   if (b.coverage.auction_record.note !== 'авто мало бути в аукціонних базах США, запис не знайдено') {
     errs.push('нема явного рядка про absent: ' + b.coverage.auction_record.note);
@@ -119,12 +119,12 @@ const GERMAN_FULL = { ...FULL, auction_record_exists: false, auction_us_signal: 
   if (!(b.final <= 5.5)) errs.push('структурне unknown: ' + b.final + ' > 5.5');
   if (!b.limiting_factors.includes('hard_cap:STRUCTURAL_DAMAGE')) errs.push('структурне unknown: капа нема в limiting_factors');
 
-  /* 5. стеля і кап чисельно збігаються: в обмежувачах ОБИДВА, прапорець не бреше */
-  const covEq = { ...VIN_PHOTOS, vin_decoded: false, photos_count: 0, service_history_exists: true };
-  /* base 5.0 + service 0.5 = 5.5 = кап структурного unknown */
-  b = computeScore([F('STRUCTURAL_DAMAGE', 'acc1', { repair_status: 'unknown' })], covEq);
-  if (b.coverage_cap !== 5.5) errs.push('кейс збігу: стеля ' + b.coverage_cap + ' замість 5.5');
-  if (!b.limiting_factors.includes('coverage') || !b.limiting_factors.includes('hard_cap:STRUCTURAL_DAMAGE')) {
+  /* 5. стеля і кап чисельно збігаються: в обмежувачах ОБИДВА, прапорець не бреше.
+     base 5.0 + identity 0.75 + фото 0.75 + сервіс 0.5 = 7.0 = кап подушок unknown */
+  const covEq = { ...VIN_PHOTOS, service_history_exists: true };
+  b = computeScore([F('AIRBAGS_DEPLOYED', 'acc1', { repair_status: 'unknown' })], covEq);
+  if (b.coverage_cap !== 7.0) errs.push('кейс збігу: стеля ' + b.coverage_cap + ' замість 7.0');
+  if (!b.limiting_factors.includes('coverage') || !b.limiting_factors.includes('hard_cap:AIRBAGS_DEPLOYED')) {
     errs.push('кейс збігу: очікував обидва обмежувачі, отримав ' + JSON.stringify(b.limiting_factors));
   }
   if (!b.score_limited_by_data) errs.push('кейс збігу: score_limited_by_data бреше');
@@ -151,6 +151,43 @@ const GERMAN_FULL = { ...FULL, auction_record_exists: false, auction_us_signal: 
   if (mod({ serious_intervention: true, maintenance_evidence: true }) !== -0.3) errs.push('підтвердження не повернули -0.3');
   if (mod({ serious_intervention: false, maintenance_evidence: false }) !== -0.3) errs.push('несерйозний тюнінг не -0.3');
   if (mod({}) !== -0.3) errs.push('без прапорців не базовий -0.3');
+
+  /* 7в. подушки: safety-кап. unknown і visually_consistent під капом 7.0,
+     confirmed_bad жорсткіший, confirmed_ok знімає */
+  b = computeScore([F('AIRBAGS_DEPLOYED', 'a1', { repair_status: 'unknown' })], FULL);
+  if (!(b.final <= 7.0) || !b.limiting_factors.includes('hard_cap:AIRBAGS_DEPLOYED')) errs.push('подушки unknown без капа 7.0: ' + b.final);
+  b = computeScore([F('AIRBAGS_DEPLOYED', 'a1', { repair_status: 'visually_consistent' })], FULL);
+  if (!(b.final <= 7.0)) errs.push('подушки visually_consistent обійшли кап: ' + b.final);
+  b = computeScore([F('AIRBAGS_DEPLOYED', 'a1', { repair_status: 'confirmed_bad' })], FULL);
+  if (!(b.final <= 6.0)) errs.push('подушки confirmed_bad мʼякші за кап 6.0: ' + b.final);
+  b = computeScore([F('AIRBAGS_DEPLOYED', 'a1', { repair_status: 'confirmed_ok' })], FULL);
+  if (b.limiting_factors.includes('hard_cap:AIRBAGS_DEPLOYED')) errs.push('confirmed_ok SRS лишився під капом');
+  /* комбінації: подушки+структурне = тісніший кап 5.5; подушки+пробіг = кап 7.0 і обидва штрафи */
+  b = computeScore([F('AIRBAGS_DEPLOYED', 'acc1', { repair_status: 'unknown' }), F('STRUCTURAL_DAMAGE', 'acc1x', { repair_status: 'unknown' })], FULL);
+  if (b.final !== 5.5) errs.push('подушки+структура: ' + b.final + ' замість 5.5');
+  b = computeScore([F('AIRBAGS_DEPLOYED', 'acc1', { repair_status: 'unknown' }), F('MILEAGE_CONFLICT_UNEXPLAINED', 'm1', {})], FULL);
+  if (b.final !== 7.0 || b.penalties.length !== 2) errs.push('подушки+пробіг: ' + b.final + '/' + b.penalties.length);
+
+  /* 7г. eligibility gate: нижче порога цифри нема */
+  const okInp = { identity_confirmed: true, photos_count: 12, basics_known: true, mileage_known: true, historical_listings_count: 0, mileage_observation_count: 0, auction_record_exists: false, registration_data_exists: false, service_history_exists: false, inspection_history_exists: false, seller_docs_exists: false };
+  b = computeScore([], okInp);
+  if (b.score_available !== true || typeof b.final !== 'number') errs.push('gate хибно зрізав повноцінний вхід');
+  for (const [k, v, name] of [['identity_confirmed', false, 'identity'], ['photos_count', 3, 'photos'], ['basics_known', false, 'basics'], ['mileage_known', false, 'mileage']]) {
+    b = computeScore([], { ...okInp, [k]: v });
+    if (b.score_available !== false || b.final !== null) errs.push('gate пропустив брак ' + name);
+    if (!b.score_unavailable_missing.includes(name)) errs.push('gate не назвав брак ' + name);
+  }
+  /* старі входи без basics/mileage полів: оцінка видається (зворотна сумісність) */
+  const legacyInp = { ...okInp }; delete legacyInp.basics_known; delete legacyInp.mileage_known;
+  b = computeScore([], legacyInp);
+  if (b.score_available !== true) errs.push('старі входи без полів gate зрізані');
+
+  /* 7д. причини стелі розрізняються: дані авто проти недоступності джерел */
+  b = computeScore([], { ...okInp, auction_us_signal: true, auction_sources_unreachable: true });
+  if (b.coverage.auction_record.state !== 'source_unreachable') errs.push('unreachable стан: ' + b.coverage.auction_record.state);
+  if (!/недоступністю джерел CalCar/.test(b.score_limit_reason || '')) errs.push('причина не про джерела: ' + b.score_limit_reason);
+  b = computeScore([], okInp);
+  if (!/даними авто/.test(b.score_limit_reason || '')) errs.push('причина не про дані авто: ' + b.score_limit_reason);
 
   /* 8. скрутка і 9. VIN-проблема: жорсткі капи */
   b = computeScore([F('ODOMETER_ROLLBACK', 'e1', {})], FULL);
@@ -229,10 +266,11 @@ const GERMAN_FULL = { ...FULL, auction_record_exists: false, auction_us_signal: 
   if (!checkSrc.includes('function photoKey(')) errs.push('check.js не дедуплікує кадри для photos_sufficient');
   if (!checkSrc.includes('function normalizeListingUrl(')) errs.push('check.js не нормалізує source_url для дедуплікації');
 
-  /* округлення вниз: стеля 6.45 (база + VIN + аукціон) дає 6.4, не 6.5 */
-  b = computeScore([], { vin_decoded: true, photos_count: 0, historical_listings_count: 0, mileage_observation_count: 0, auction_record_exists: true, registration_data_exists: false, service_history_exists: false, inspection_history_exists: false, seller_docs_exists: false });
-  if (b.coverage_cap !== 6.45) errs.push('стеля кейса округлення: ' + b.coverage_cap);
-  if (b.final !== 6.4) errs.push('округлення показало більше за стелю: ' + b.final + ' замість 6.4');
+  /* округлення вниз: дробова стеля 6.95 (cfg-override бонуса) дає 6.9, не 7.0 */
+  const fracCfg = { ...SCORE_CONFIG, COVERAGE_BONUS: { ...SCORE_CONFIG.COVERAGE_BONUS, service_history: 0.45 } };
+  b = computeScore([], { identity_confirmed: true, photos_count: 12, basics_known: true, mileage_known: true, service_history_exists: true, historical_listings_count: 0, mileage_observation_count: 0, auction_record_exists: false, registration_data_exists: false, inspection_history_exists: false, seller_docs_exists: false }, fracCfg);
+  if (b.coverage_cap !== 6.95) errs.push('стеля кейса округлення: ' + b.coverage_cap);
+  if (b.final !== 6.9) errs.push('округлення показало більше за стелю: ' + b.final + ' замість 6.9');
 
   /* конфіг: кожен тип знахідки має рівно одне число штрафу */
   const typeCount = Object.keys(SCORE_CONFIG.PENALTIES).length;
@@ -245,7 +283,7 @@ const GERMAN_FULL = { ...FULL, auction_record_exists: false, auction_us_signal: 
   if (!check.includes('"verdict.score": чесна оцінка')) errs.push('check.js: легасі правила оцінки зникли з промпту');
   if (!check.includes('"score_facts"')) errs.push('check.js: score_facts нема в схемі');
   if (!check.includes("import { computeScore } from './score.js'")) errs.push('check.js: не імпортує чистий модуль оцінки');
-  if (!check.includes('parsed.score_v2_preview = breakdown.final')) errs.push('check.js: не зберігає score_v2_preview');
+  if (!check.includes("parsed.score_v2_preview = breakdown.score_available === false ? null : breakdown.final")) errs.push('check.js: не зберігає score_v2_preview з урахуванням gate');
   if (!check.includes('ВІДСУТНІСТЬ ДАНИХ НІКОЛИ НЕ Є ЗНАХІДКОЮ')) errs.push('check.js: зникло правило про відсутність даних');
   const chat = fs.readFileSync('api/chat.js', 'utf8');
   if (!chat.includes('delete c.score_v2_preview')) errs.push('chat.js: не чистить поля v2 з контексту');
