@@ -1,7 +1,7 @@
 export const config = { maxDuration: 300 };
 
 import { computeScore } from './score.js';
-import { findAuctionRecord, shouldRecheck, discoverVinCandidates } from './auction.js';
+import { findAuctionRecord, shouldRecheck, discoverVinCandidates, photoHasProvenance } from './auction.js';
 
 /* ============================================================
    CalCar Check, рушій v1: посилання на оголошення -> звіт.
@@ -612,7 +612,7 @@ Tesla Model Y 2022
 ---
 `;
 
-const PROMPT = (l, nhtsa, auction, langDirective, decisionStyle) => `Ти експертна система CalCar Check: незалежний розбір оголошення про продаж вживаного авто. Твоя робота: звірити те, що СТВЕРДЖУЄ продавець, із тим, що КАЖУТЬ дані і фото, і чесно відповісти, чи варто брати саме це авто.
+const PROMPT = (l, nhtsa, auction, langDirective, decisionStyle, auctionMeta) => `Ти експертна система CalCar Check: незалежний розбір оголошення про продаж вживаного авто. Твоя робота: звірити те, що СТВЕРДЖУЄ продавець, із тим, що КАЖУТЬ дані і фото, і чесно відповісти, чи варто брати саме це авто.
 
 ${langDirective}
 
@@ -690,7 +690,13 @@ ${auction && auction.photos.length ? `
 - confirmed_ok для AIRBAGS_DEPLOYED лише зі ЗМІСТОВНИМ підтвердженням відновлення SRS: діагностика без помилок, документи ремонту РАЗОМ із перевіркою. "Нормальний салон на фото" це НЕ підтвердження SRS.
 - РОЗБІЖНОСТІ ПРОДАВЦЯ (слова проти офіційних даних: "другий власник" при чотирьох тощо) живуть у discrepancies і в purchase_decision: матеріальна суперечність продавця йде ПЕРШИМ пунктом main_concerns і питанням у questions_for_seller. У score_facts їх НЕ класифікуй: самі по собі вони технічну чи історичну оцінку авто не погіршують.
 - evidence: масив {source: seller_claim|current_photos|historical_listing|us_auction|registry|document, ref: конкретний запис (listing_3, photo_7, auction_event_1) де можливо, description: коротке доказове речення}. Одна знахідка може мати скільки завгодно доказів.
+${auctionMeta && auctionMeta.status === 'found' ? `
+METADATA EXACT-LOT (надійний historical, джерело ${auctionMeta.source || 'аукціон'}${auctionMeta.lot_id_meta ? ' лот ' + auctionMeta.lot_id_meta : ''}):${auctionMeta.airbags_meta ? '\n- Подушки за metadata лота: ' + JSON.stringify(auctionMeta.airbags_meta) : ''}${auctionMeta.primary_damage ? '\n- Primary damage: ' + auctionMeta.primary_damage : ''}${auctionMeta.secondary_damage ? '\n- Secondary damage: ' + auctionMeta.secondary_damage : ''}
+- METADATA І VISION ДОПОВНЮЮТЬ ОДНЕ ОДНОГО. Якщо metadata exact-lot прямо каже, що подушки спрацювали (Airbag: Driver/Passenger/Side тощо), створи AIRBAGS_DEPLOYED з evidence source us_auction і ref auction_metadata (НЕ current_photos, НЕ фото). Не вимагай фотопідтвердження салону: надійний exact-lot historical metadata сам є позитивним доказом. Це НЕ inference з характеру удару, а прямий запис аукціону.
+- Damage-зони з metadata (primary/secondary) бери як факт зони удару, навіть якщо кадр цієї зони у Vision відсутній.
+` : ''}
 - VISION ПО АУКЦІОННИХ ФОТО: зони пошкоджень, подушки та інші візуально визначувані факти з АУКЦІОННИХ кадрів фіксуй evidence із source us_auction і ref auction_photo_N (кадри нумеруються в порядку подачі). НЕ змішуй із current_photos: аукціонна сторінка пройшла перевірку точного VIN, її зображення успадковують звʼязок із цією подією; нинішні фото це лише current-state. Правила скромності діють і тут: салон на аукціонних кадрах не показаний, подушки unknown; зона не видна, unknown; "структура не видна" НЕ означає "структура ціла".
+- СТРУКТУРА, межа висновків: по фото допустимо сказати "видимих слідів структурного пошкодження нема" (no_visible_structural_damage), але НЕ "структура ціла" чи "structure ok", якщо силові елементи не обстежені повністю. Для бокового удару невидимі пороги і стійки лишаються unknown, не "цілі".
 - Для MODIFICATION_TECHNICAL_CONCERN додатково: serious_intervention true, якщо є хоч одне серйозне втручання (прошивка чи наддув, вихлоп із видаленням каталізаторів, інше втручання в силовий агрегат); maintenance_evidence true, лише якщо в матеріалах РЕАЛЬНО є підтвердження обслуговування чи діагностики (сервісні записи, логи, документи). Нема даних = false, не вигадуй.
 - "signals": {"seller_claims_us_import": true лише при ЯВНІЙ заяві продавця про пригін зі США ("пригнана зі США", "авто з Америки"). Непевність = false}.
 - Аукціонні маркування на фото (наліпки, штрих-коди Copart/IAAI, run-номер на лобовому) фіксуй ЛИШЕ спостереженням в info_notes. Тригером застосовності аукціону вони НЕ є і на стелю не впливають.
@@ -798,6 +804,10 @@ export default async function handler(req, res) {
             auction = { url: cached.lot_url, photos: Array.isArray(cached.record?.photo_urls) ? cached.record.photo_urls.slice(0, 8) : [], text: '', from_search: true };
             auctionSearch.house = cached.record?.meta?.auction_house || null;
             auctionSearch.sale_date = cached.record?.meta?.sale_date || null;
+            auctionSearch.lot_id_meta = cached.record?.meta?.lot_id || null;
+            auctionSearch.airbags_meta = cached.record?.meta?.airbags || null;
+            auctionSearch.primary_damage = cached.record?.meta?.primary_damage || null;
+            auctionSearch.secondary_damage = cached.record?.meta?.secondary_damage || null;
             /* знайдена подія постійна і повторно не оплачується, але у VIN
                може зʼявитись НОВА аукціонна подія: discovery повторюємо і
                дивимось лише на кандидатів з ІНШИМИ сторінками */
@@ -827,6 +837,10 @@ export default async function handler(req, res) {
             auctionSearch.sale_date = rec.meta?.sale_date || null;
             auctionSearch.paid = rec.paid || null;
             auctionSearch.odometer = rec.meta ? { value: rec.meta.odometer_value, unit: rec.meta.odometer_unit } : null;
+            auctionSearch.lot_id_meta = rec.meta?.lot_id || null;
+            auctionSearch.airbags_meta = rec.meta?.airbags || null;
+            auctionSearch.primary_damage = rec.meta?.primary_damage || null;
+            auctionSearch.secondary_damage = rec.meta?.secondary_damage || null;
             /* подія постійна за source+lot; vin-кеш лишається для сумісності */
             await writeAuctionEvent(listing.vin, rec);
             await writeAuctionCache(listing.vin, { status: 'found', source: rec.source, lot_url: rec.lot_url, record: { photo_urls: rec.photo_urls || [], identity: rec.identity, meta: rec.meta || null, sources_checked: rec.sources_checked || [] } });
@@ -845,7 +859,19 @@ export default async function handler(req, res) {
        тому: ключові кадри високою деталізацією, решта низькою. Модель все одно
        бачить весь набір (салон, деталі), але запит лишається в межах часу. */
     const photoUrls = listing.photos.slice(0, 24);
-    const auctionPhotos = (auction?.photos || []).slice(0, 8);
+    /* image-level provenance: у Vision ЛИШЕ кадри, чия належність exact lot
+       доведена URL (VIN або lot_id). Generic-галерея (americamotors cs.copart
+       без VIN) виключається: вона змішує різні авто. AmericaMotors лишається
+       для discovery і metadata, але не для visual evidence */
+    const auctionLotId = auctionSearch && auctionSearch.status === 'found'
+      ? (auctionSearch.lot_id_meta || (auctionSearch.record && auctionSearch.record.meta && auctionSearch.record.meta.lot_id) || null)
+      : null;
+    const auctionPhotos = (auction?.photos || [])
+      .filter(u => photoHasProvenance(u, listing.vin, auctionLotId))
+      .slice(0, 8);
+    if ((auction?.photos || []).length && !auctionPhotos.length) {
+      console.log('[auction] усі', auction.photos.length, 'фото не пройшли провенанс, у Vision не йдуть');
+    }
     const img = (u, detail) => ({ type: 'image_url', image_url: { url: u, detail } });
     const content = [
       { type: 'text', text: 'ФОТО З ОГОЛОШЕННЯ (стан зараз). Це ПОВНИЙ набір фото цього авто, включно з салоном і деталями: не пиши, що фото салону немає, якщо воно серед переданих. Якщо якийсь кадр очевидно належить ІНШОМУ авто (інша модель, інший колір, інший кузов), просто проігноруй його і не згадуй у звіті:' },
@@ -853,7 +879,7 @@ export default async function handler(req, res) {
       ...(auctionPhotos.length
         ? [{ type: 'text', text: 'ФОТО З АУКЦІОНУ США (до ремонту, архів). Нумерація: auction_photo_1..auction_photo_' + auctionPhotos.length + ' у порядку подачі:' }, ...auctionPhotos.map(u => img(u, 'high'))]
         : []),
-      { type: 'text', text: PROMPT(listing, nhtsa, auction, langDirective, decisionStyle) },
+      { type: 'text', text: PROMPT(listing, nhtsa, auction, langDirective, decisionStyle, auctionSearch) },
     ];
 
     const EFFORT = process.env.REASONING_EFFORT || 'high';

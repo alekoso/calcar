@@ -223,7 +223,24 @@ function makeFetch(map) {
     if (unkM.odometer_status_raw !== null) errs.push('unknown статус має raw');
     const amStatus = A.extractLotMeta('Подтвержденный пробег в момент инспекции 17850 mi Lot #42968456', 'https://x/42968456');
     if (amStatus.odometer_status !== 'actual') errs.push('americamotors "Подтвержденный" не actual: ' + amStatus.odometer_status);
+    /* airbags з metadata лота */
+    const air = A.extractLotMeta('Primary Damage Right side Secondary Left front Airbag: Driver Lot #42968456', 'https://x/42968456');
+    if (!air.airbags || air.airbags.deployed !== true) errs.push('Airbag: Driver не розпізнано deployed');
+    if (air.airbags.raw.toLowerCase().indexOf('driver') === -1) errs.push('airbags raw без Driver');
+    const airNone = A.extractLotMeta('Airbag: None Lot #1', 'https://x/1');
+    if (!airNone.airbags || airNone.airbags.deployed !== false) errs.push('Airbag: None не false');
+    const airAbsent = A.extractLotMeta('Odometer 100 mi Lot #2', 'https://x/2');
+    if (airAbsent.airbags !== null) errs.push('без поля airbags не null');
   } else errs.push('нема extractLotMeta');
+
+  /* image-level provenance: VIN або lot_id в URL пройде, generic ні */
+  if (A.photoHasProvenance) {
+    const VINp = '7SAYGDED3PF966312';
+    if (!A.photoHasProvenance('https://mercury.bid.cars/0-42968456/2023-Tesla-Model-Y-7SAYGDED3PF966312-1.jpg', VINp, '42968456')) errs.push('VIN-specific фото не пройшло провенанс');
+    if (!A.photoHasProvenance('https://x/lot/42968456/img.jpg', VINp, '42968456')) errs.push('lot_id у URL не пройшов провенанс');
+    if (A.photoHasProvenance('https://cs.copart.com/v1/AUTH_svc.pdoc00001/LPP228/451e5121f3f144cf92a35b582dbb00ac_ful.jpg', VINp, '42968456')) errs.push('generic cs.copart без VIN пройшов провенанс');
+    if (A.photoHasProvenance('https://x/photo.jpg', VINp, null)) errs.push('фото без VIN і lot_id пройшло провенанс');
+  } else errs.push('нема photoHasProvenance');
 
   /* recoverLotId: строгі guard-и */
   if (A.recoverLotId) {

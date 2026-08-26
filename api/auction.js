@@ -297,6 +297,17 @@ export async function discoverVinCandidates(vin, opts = {}, cfg = AUCTION_CONFIG
 }
 
 /* паспорт джерела: аукціонний дім і дата продажу з тексту лота */
+/* image-level provenance: фото можна віддавати Vision як evidence ЛИШЕ коли
+   його належність exact lot доведена на рівні URL: точний VIN або lot_id у
+   посиланні. Generic-галерея (cs.copart без VIN/lot) провенанс НЕ проходить:
+   вона змішує різні авто і у Vision не йде */
+export function photoHasProvenance(url, vin, lotId) {
+  const u = String(url || '').toUpperCase();
+  if (vin && u.includes(String(vin).toUpperCase())) return true;
+  if (lotId && new RegExp('\\b' + String(lotId) + '\\b').test(u)) return true;
+  return false;
+}
+
 /* канонічний ідентифікатор аукціонного дому. Домен дзеркала
    (americamotors.com, bid.cars, bidfax.info) НІКОЛИ не auction_house:
    тут лише самі доми, і жодних варіантів регістру назовні */
@@ -362,10 +373,21 @@ export function extractLotMeta(html, url) {
   /* damage/title: захоплюємо ЛИШЕ латиницю значення (аукціонні мітки латиною),
      стоп на кирилиці наступного маркера; дефіс = нема */
   const clean = v => { const t = (v || '').trim().replace(/^[-\u2013\u2014\s]+|[-\u2013\u2014\s]+$/g, ''); return t.length >= 2 ? t.slice(0, 40) : null; };
-  const primary_damage = clean((plain.match(/(?:Primary damage|Осн\.? поврежд\w*|Основн\w+ пошкодж\w*)[:\s]{0,5}([A-Za-z\- ,\/]{1,30})/i) || [])[1]);
-  const secondary_damage = clean((plain.match(/(?:Secondary damage|Втор\.? поврежд\w*|Другорядн\w+ пошкодж\w*)[:\s]{0,5}([A-Za-z\- ,\/]{1,30})/i) || [])[1]);
+  /* стоп на наступному маркері, щоб primary не тягнув 'Secondary damage ...' */
+  const dmgStop = '(?:Secondary|Odometer|Loss|Title|Airbag|Primary|VIN|Тип|Пробіг|Пробег|Втор|Основ|$)';
+  const primary_damage = clean((plain.match(new RegExp('(?:Primary damage|Осн\\.? поврежд[а-яіїєґё]*|Основн[а-яіїєґё]+ пошкодж[а-яіїєґё]*)[:\\s]{0,5}([A-Za-z\\- ,\\/]{1,30}?)\\s*' + dmgStop, 'i')) || [])[1]);
+  const secondary_damage = clean((plain.match(new RegExp('(?:Secondary damage|Втор\\.? поврежд[а-яіїєґё]*|Другорядн[а-яіїєґё]+ пошкодж[а-яіїєґё]*)[:\\s]{0,5}([A-Za-z\\- ,\\/]{1,30}?)\\s*' + dmgStop, 'i')) || [])[1]);
   const title_status = clean((plain.match(/(?:Title status|Document type|Тип документа|Тип документу)[:\s]{0,5}([A-Za-z\- ,\/]{1,30})/i) || [])[1]);
-  return { auction_house, sale_date, sale_date_raw, odometer_value, odometer_unit, odometer_status, odometer_status_raw, lot_id, lot_id_source: lot_id ? 'direct' : null, primary_damage, secondary_damage, title_status };
+  /* подушки з metadata лота (bid.cars/IAAI/Copart дають Airbag: Driver тощо).
+     Це НЕ visual evidence, а надійний historical metadata exact-lot */
+  const airRaw = (plain.match(/Airbags?[:\s]{0,4}([A-Za-z ,\/]{2,30})/i) || [])[1];
+  let airbags = null;
+  if (airRaw) {
+    const a = airRaw.trim().toLowerCase();
+    if (/none|no\b|not deployed|intact/.test(a)) airbags = { deployed: false, raw: airRaw.trim().slice(0, 30) };
+    else if (/driver|passenger|side|curtain|both|deployed|yes|front/.test(a)) airbags = { deployed: true, raw: airRaw.trim().slice(0, 30) };
+  }
+  return { auction_house, sale_date, sale_date_raw, odometer_value, odometer_unit, odometer_status, odometer_status_raw, lot_id, lot_id_source: lot_id ? 'direct' : null, primary_damage, secondary_damage, title_status, airbags };
 }
 
 /* строге відновлення lot_id з discovery-кандидата: ЛИШЕ коли одночасно
@@ -433,20 +455,27 @@ export async function findAuctionRecord(vin, nhtsa, opts = {}, cfg = AUCTION_CON
             diagnostics,
             total_ms: Date.now() - t0,
           };
-          /* безкоштовних фото недостатньо: photos_low_quality дозволяє один
-             платний добір із багатшого джерела. При достатніх фото платний
-             виклик ЗАБОРОНЕНИЙ: зони і подушки читає vision-аналіз */
-          if (rec.photo_urls.length < cfg.ZENROWS_MIN_FREE_PHOTOS && opts.allowPaid !== false && process.env.ZENROWS_API_KEY) {
+          /* провенанс-verified фото недостатньо: photos_low_quality дозволяє
+             один платний добір VIN-specific кадрів exact-lot. Рахуємо саме
+             provenance-verified: generic-галерея (americamotors cs.copart) у
+             Vision не йде, тож 10 чужих кадрів не рахуються за достатні */
+          const verified = rec.photo_urls.filter(u => photoHasProvenance(u, vin, rec.meta?.lot_id)).length;
+          if (verified < cfg.ZENROWS_MIN_FREE_PHOTOS && opts.allowPaid !== false && process.env.ZENROWS_API_KEY) {
             const alt = disco.candidates.find(c => c.url !== cand.url && (c.source === 'bid.cars' || /bid\.cars/.test(c.url)));
             if (alt) {
-              const reason = rec.photo_urls.length ? 'photos_low_quality' : 'photos_unavailable';
+              const reason = verified ? 'photos_low_quality' : 'photos_unavailable';
               const z = await zenrowsFetch(alt.url, { missing_reason: reason, missing_fact_required: true }, opts, cfg);
               if (!z.skipped && z.status === 200) {
                 const id2 = verifyLotIdentity({ url: alt.url, html: z.body }, vin, nhtsa);
                 if (id2.matched) {
+                  /* VIN-specific фото exact-lot: сильний провенанс */
                   const more = [...new Set([...z.body.matchAll(/https?:\/\/[^"'\s>]+\.(?:jpe?g|png|webp)/gi)]
-                    .map(m => m[0]).filter(u => /(copart|iaai|bid\.car)/i.test(u) && !/logo|icon|favicon|sprite|flag|thumb/i.test(u)))];
-                  rec.photo_urls = [...new Set([...rec.photo_urls, ...more])].slice(0, cfg.MAX_PHOTOS);
+                    .map(m => m[0]).filter(u => photoHasProvenance(u, vin, rec.meta?.lot_id) && !/logo|icon|favicon|sprite|flag|thumb/i.test(u)))];
+                  rec.photo_urls = [...new Set([...more, ...rec.photo_urls])].slice(0, cfg.MAX_PHOTOS);
+                  /* сторінку вже отримано з необхідної причини: беремо достовірні
+                     metadata (подушки, damage) без окремого запиту */
+                  const m2 = extractLotMeta(z.body, alt.url);
+                  rec.meta = { ...rec.meta, airbags: rec.meta?.airbags || m2.airbags, primary_damage: rec.meta?.primary_damage || m2.primary_damage, secondary_damage: rec.meta?.secondary_damage || m2.secondary_damage, lot_id: rec.meta?.lot_id || m2.lot_id };
                   rec.paid = { provider: 'zenrows', reason, calls: z.calls, credits: z.credits };
                 }
               }

@@ -248,6 +248,11 @@ const GERMAN_FULL = { ...FULL, auction_record_exists: false, auction_us_signal: 
   if (!checkSrc.includes('MILEAGE_CONFLICT_UNEXPLAINED на основі АУКЦІОННОГО одометра дозволений ЛИШЕ коли ОДНОЧАСНО')) errs.push('check.js: нема 5 умов mileage-conflict');
   if (!checkSrc.includes('статус actual')) errs.push('check.js: правило не вимагає статус actual');
   if (!checkSrc.includes('дата хоч однієї точки ненадійна')) errs.push('check.js: правило не відкидає ненадійну дату');
+  /* image-level provenance і metadata-правила */
+  if (!checkSrc.includes('photoHasProvenance(u, listing.vin, auctionLotId)')) errs.push('check.js: Vision-фото не фільтруються провенансом');
+  if (!checkSrc.includes('METADATA І VISION ДОПОВНЮЮТЬ ОДНЕ ОДНОГО')) errs.push('check.js: нема правила metadata+vision');
+  if (!checkSrc.includes('AIRBAGS_DEPLOYED з evidence source us_auction і ref auction_metadata')) errs.push('check.js: metadata-airbags не стає findings');
+  if (!checkSrc.includes('НЕ "структура ціла" чи "structure ok"')) errs.push('check.js: нема правила скромності по структурі');
   if (!checkSrc.includes("odometer_status: ['actual', 'not_actual', 'exempt', 'unknown']")) errs.push('check.js: persistence не пише odometer_status');
   /* межі статусів відновлення жорсткі і живуть у промпті */
   if (!checkSrc.includes('confirmed_ok ЗАБОРОНЕНИЙ')) errs.push('check.js: промпт дозволяє confirmed_ok за фото');
