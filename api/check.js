@@ -1,6 +1,7 @@
 export const config = { maxDuration: 300 };
 
 import { computeScore } from './score.js';
+import { findAuctionRecord, shouldRecheck } from './auction.js';
 
 /* ============================================================
    CalCar Check, рушій v1: посилання на оголошення -> звіт.
@@ -386,6 +387,36 @@ function photoKey(u) {
   return String(u).split('#')[0].split('?')[0];
 }
 
+/* ---------- 4в. Кеш аукціонних перевірок ----------
+   Таблиця auction_checks зʼявиться окремою міграцією; до того функції
+   тихо повертають null/ігнорують помилки, пайплайн від них не залежить */
+async function readAuctionCache(vin) {
+  const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!base || !key || !vin) return null;
+  try {
+    const r = await fetch(base.replace(/\/$/, '') + '/rest/v1/auction_checks?vin=eq.' + encodeURIComponent(vin) + '&select=*', {
+      headers: { apikey: key, authorization: 'Bearer ' + key },
+    });
+    if (!r.ok) return null;
+    const rows = await r.json();
+    return Array.isArray(rows) && rows[0] ? rows[0] : null;
+  } catch (e) { return null; }
+}
+async function writeAuctionCache(vin, row) {
+  const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!base || !key || !vin) return;
+  try {
+    await fetch(base.replace(/\/$/, '') + '/rest/v1/auction_checks?on_conflict=vin', {
+      method: 'POST',
+      headers: {
+        apikey: key, authorization: 'Bearer ' + key,
+        'content-type': 'application/json', prefer: 'resolution=merge-duplicates,return=minimal',
+      },
+      body: JSON.stringify({ vin, checked_at: new Date().toISOString(), ...row }),
+    });
+  } catch (e) { /* кеш не критичний */ }
+}
+
 /* ---------- 5. AI-розбір ---------- */
 const PROMPT = (l, nhtsa, auction, langDirective) => `Ти експертна система CalCar Check: незалежний розбір оголошення про продаж вживаного авто. Твоя робота: звірити те, що СТВЕРДЖУЄ продавець, із тим, що КАЖУТЬ дані і фото, і чесно відповісти, чи варто брати саме це авто.
 
@@ -537,6 +568,39 @@ export default async function handler(req, res) {
       auction = await fetchAuction(listing.auction_url);
     }
 
+    /* --- автономний аукціонний пошук за VIN: лістинг аукціону не дав ---
+       Статуси чесні: found лише зі строгою ідентичністю, absent лише коли
+       джерела ВІДПОВІЛИ, заблокований доступ це unknown/source_unreachable
+       і машину за нього не караємо. Діагностика по джерелах іде в логи
+       (Runtime Logs покажуть, кого прод-IP не проходить) і в _meta */
+    let auctionSearch = null;
+    if (!auction && listing.vin) {
+      try {
+        const cached = await readAuctionCache(listing.vin);
+        if (cached && !shouldRecheck(cached)) {
+          auctionSearch = { status: cached.status, reason: 'cache', source: cached.source || null, lot_url: cached.lot_url || null, cache: 'hit' };
+          if (cached.status === 'found' && cached.lot_url) {
+            auction = { url: cached.lot_url, photos: Array.isArray(cached.record?.photo_urls) ? cached.record.photo_urls.slice(0, 8) : [], text: '', from_search: true };
+          }
+          console.log('[auction] cache=hit', cached.status, listing.vin);
+        } else {
+          const rec = await findAuctionRecord(listing.vin, nhtsa, { totalBudgetMs: 20000 });
+          auctionSearch = {
+            status: rec.status, reason: rec.reason || null, source: rec.source || null,
+            lot_url: rec.lot_url || null, total_ms: rec.total_ms, cache: 'miss',
+            identity: rec.identity ? { confidence: rec.identity.confidence, year_page: rec.identity.year_page, year_vin: rec.identity.year_vin } : null,
+            sources: rec.diagnostics.map(d => ({ source: d.source, step: d.step, status: d.status, blocked: !!d.blocked, found: !!d.found, ms: d.ms })),
+          };
+          if (rec.status === 'found') {
+            auction = { url: rec.lot_url, photos: (rec.photo_urls || []).slice(0, 8), text: '', from_search: true };
+            await writeAuctionCache(listing.vin, { status: 'found', source: rec.source, lot_url: rec.lot_url, record: { photo_urls: rec.photo_urls || [], identity: rec.identity } });
+          } else if (rec.status === 'absent') {
+            await writeAuctionCache(listing.vin, { status: 'absent', source: null, lot_url: null, record: null });
+          }
+        }
+      } catch (e) { console.log('[auction] пошук впав:', e.message); }
+    }
+
     /* --- AI --- */
     const LANG_NAME = { ua: 'українською', ru: 'російською', en: 'англійською (English)' };
     const langDirective = 'МОВА ВІДПОВІДІ: усі текстові значення пиши ' + LANG_NAME[lang] + '. Ключі JSON та enum-значення (status, severity, verdict, grade, fuel) залишай латиницею точно за схемою.';
@@ -630,9 +694,11 @@ export default async function handler(req, res) {
         auction_record_exists: !!auction,
         /* достовірний сигнал експлуатації чи імпорту зі США, ОКРІМ самого
            запису аукціону. Місце виробництва (WMI) таким сигналом НЕ є:
-           надійнішого джерела в пайплайні поки нема, тож false, і стан
-           аукціону без запису буде unknown, без бонуса і без штрафу */
+           надійнішого джерела в пайплайні поки нема, тож false */
         auction_us_signal: false,
+        /* джерела реально відповіли і запису нема: absent. Заблокований
+           доступ (source_unreachable) лишає unknown, машина не винна */
+        auction_checked: !!(auctionSearch && auctionSearch.status === 'absent'),
         /* цих джерел у пайплайні поки немає: код чесно каже "не був" */
         registration_data_exists: false,
         service_history_exists: false,
@@ -661,6 +727,7 @@ export default async function handler(req, res) {
       photos: listing.photos.slice(0, 60),
       auction_url: listing.auction_url || null,
       auction_photos: auctionPhotos,
+      auction_search: auctionSearch,
       snapshot,
       analyzed_at: new Date().toISOString(),
     };

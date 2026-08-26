@@ -56,6 +56,11 @@ const GERMAN_FULL = { ...FULL, auction_record_exists: false, auction_us_signal: 
   b = computeScore([], { ...GERMAN_FULL, auction_applicable: false });
   if (b.coverage.auction_record.state !== 'not_applicable') errs.push('явна незастосовність: стан ' + b.coverage.auction_record.state);
   if (b.coverage.auction_record.bonus !== 0) errs.push('not_applicable аукціон дав бонус');
+  /* джерела відповіли і запису нема: absent, бонуса нема, формула та сама */
+  b = computeScore([], { ...GERMAN_FULL, auction_checked: true });
+  if (b.coverage.auction_record.state !== 'absent') errs.push('перевірена відсутність аукціону: стан ' + b.coverage.auction_record.state);
+  if (b.coverage.auction_record.bonus !== 0) errs.push('перевірена відсутність дала бонус');
+
   /* сигнал США без запису: applicable/absent, бонуса нема, формула та сама */
   b = computeScore([], { ...GERMAN_FULL, auction_us_signal: true });
   if (b.coverage.auction_record.state !== 'absent') errs.push('сигнал США без запису: стан ' + b.coverage.auction_record.state);

@@ -1,0 +1,128 @@
+/* Аукціонний пошук: юніт-еталони на мок-транспорті.
+   Мок відтворює РЕАЛЬНІ відповіді bid.cars, зняті браузером для
+   WBAJA9C5XJB033667: доводить, що з робочим транспортом (fetchImpl)
+   пайплайн проходить шлях цілком, а парсери від транспорту не залежать. */
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+const tmp = path.join(os.tmpdir(), 'calcar_auctiontest.mjs');
+fs.writeFileSync(tmp, fs.readFileSync('api/auction.js', 'utf8'));
+
+const errs = [];
+const VIN = 'WBAJA9C5XJB033667';
+const NHTSA = { Make: 'BMW', Model: '530e', ModelYear: '2018' };
+const LOT_URL = 'https://bid.cars/en/lot/0-42107936/2018-BMW-5-Series-WBAJA9C5XJB033667';
+
+const jpeg = n => { const b = Buffer.alloc(n, 1); b[0] = 0xff; b[1] = 0xd8; b[2] = 0xff; return b; };
+const png = n => { const b = Buffer.alloc(n, 1); b[0] = 0x89; b[1] = 0x50; b[2] = 0x4e; b[3] = 0x47; return b; };
+
+const LOT_HTML = `<html><head><title>2018 BMW 5 Series, 530E Iperformance | ${VIN} | Bid History | BidCars</title></head>
+<body><h1>2018 BMW 5 SERIES, 530E IPERFORMANCE</h1><span>VIN: ${VIN}</span>
+<img src="https://pluto.bid.car/0-42107936/2018-BMW-5-Series-${VIN}-1.jpg">
+<img src="https://pluto.bid.car/0-42107936/2018-BMW-5-Series-${VIN}-2.jpg">
+<div class="similar">Similar archival offers <a href="https://bid.cars/en/lot/0-999/2019-BMW-5-Series-WBAJA9C51KB111111">інший лот</a></div>
+</body></html>`;
+
+/* мок-транспорт: як бачив би пайплайн джерела БЕЗ Cloudflare */
+function makeFetch(map) {
+  return async (url) => {
+    for (const [re, resp] of map) {
+      if (re.test(String(url))) {
+        return {
+          ok: (resp.status || 200) < 400,
+          status: resp.status || 200,
+          headers: { get: h => (h.toLowerCase() === 'content-type' ? (resp.type || 'text/html') : null) },
+          text: async () => resp.body || '',
+          arrayBuffer: async () => (resp.buf || Buffer.alloc(0)),
+        };
+      }
+    }
+    return { ok: false, status: 404, headers: { get: () => null }, text: async () => 'not found', arrayBuffer: async () => Buffer.alloc(0) };
+  };
+}
+
+(async () => {
+  const A = await import('file://' + tmp);
+  const quiet = async fn => { const l = console.log; console.log = () => {}; try { return await fn(); } finally { console.log = l; } };
+
+  /* 1. повний шлях: discovery -> лот -> ідентичність -> фото */
+  const happy = makeFetch([
+    [/app\/search\/en\/vin-lot/, { body: JSON.stringify({ results: 1, url: LOT_URL }) }],
+    [/bid\.cars\/en\/lot\//, { body: LOT_HTML }],
+    [/pluto\.bid\.car.*-1\.jpg/, { type: 'image/jpeg', buf: jpeg(200000) }],
+    [/pluto\.bid\.car.*-2\.jpg/, { type: 'image/jpeg', buf: jpeg(300000) }],
+    [/bidfax|poctra/, { status: 403, body: 'Just a moment... cloudflare' }],
+  ]);
+  let rec = await quiet(() => A.findAuctionRecord(VIN, NHTSA, { fetchImpl: happy }));
+  if (rec.status !== 'found') errs.push('повний шлях: статус ' + rec.status + ' замість found');
+  if (rec.lot_url !== LOT_URL) errs.push('повний шлях: не той лот');
+  if (rec.identity?.confidence !== 'high') errs.push('повний шлях: впевненість ' + rec.identity?.confidence);
+  if (!(rec.photo_urls || []).some(u => u.includes('-1.jpg'))) errs.push('повний шлях: фото лота не витягнуті');
+  const dl = await quiet(() => A.downloadLotPhotos(rec.photo_urls, { fetchImpl: happy }));
+  if (dl.photos.length !== 2) errs.push('скачано ' + dl.photos.length + ' фото замість 2');
+
+  /* 2. строга ідентичність: VIN лише в тілі сторінки (схожі лоти) не рахується */
+  const noZone = A.verifyLotIdentity({ url: 'https://bid.cars/en/lot/0-1/2018-BMW', html: '<title>2018 BMW 5 Series</title><div>' + VIN + '</div><span>VIN: WBAJA9C51KB111111</span>' }, VIN, NHTSA);
+  if (!noZone.matched === false && noZone.matched) errs.push('VIN поза канонічною зоною пройшов');
+  /* підписане поле VIN: канонічна зона */
+  const labeled = A.verifyLotIdentity({ url: 'https://x/lot/1', html: '<title>2018 BMW 530e</title><b>VIN</b>: ' + VIN }, VIN, NHTSA);
+  if (!labeled.matched) errs.push('підписане поле VIN не зарахувалось');
+  /* марка або модель розійшлись: запис геть */
+  const wrongMake = A.verifyLotIdentity({ url: LOT_URL, html: '<title>2018 Audi A6 ' + VIN + '</title>' }, VIN, NHTSA);
+  if (wrongMake.matched) errs.push('чужа марка пройшла ідентичність');
+  const wrongModel = A.verifyLotIdentity({ url: LOT_URL, html: '<title>2018 BMW X5 ' + VIN + '</title>' }, VIN, { ...NHTSA, Model: '740i' });
+  if (wrongModel.matched) errs.push('чужа модель пройшла ідентичність');
+  /* рік +-1 законний, більший розліт = знижена впевненість, не відкидання */
+  const y1 = A.verifyLotIdentity({ url: LOT_URL, html: '<title>2017 BMW 530e ' + VIN + '</title>' }, VIN, NHTSA);
+  if (!y1.matched || y1.confidence !== 'high') errs.push('рік у допуску +-1 не пройшов як high');
+  const y3 = A.verifyLotIdentity({ url: LOT_URL, html: '<title>2015 BMW 530e ' + VIN + '</title>' }, VIN, NHTSA);
+  if (!y3.matched || y3.confidence !== 'reduced') errs.push('великий розліт року не дав reduced');
+
+  /* 3. absent проти source_unreachable */
+  const answeredNo = makeFetch([
+    [/vin-lot/, { body: JSON.stringify({ results: 0 }) }],
+    [/bidfax|poctra/, { body: '<html>Nothing found</html>' }],
+  ]);
+  rec = await quiet(() => A.findAuctionRecord(VIN, NHTSA, { fetchImpl: answeredNo }));
+  if (rec.status !== 'absent' || rec.reason !== 'sources_answered_no_record') errs.push('джерела відповіли без запису: ' + rec.status + '/' + rec.reason);
+  const allBlocked = makeFetch([[/./, { status: 403, body: 'Just a moment cloudflare' }]]);
+  rec = await quiet(() => A.findAuctionRecord(VIN, NHTSA, { fetchImpl: allBlocked }));
+  if (rec.status !== 'unknown' || rec.reason !== 'source_unreachable') errs.push('усе заблоковане мало дати unknown/source_unreachable: ' + rec.status + '/' + rec.reason);
+
+  /* 4. ліміти фото: розмір, сигнатура, content-type, сумарний ліміт, максимум 20 */
+  const CFG = { ...A.AUCTION_CONFIG, MAX_PHOTOS: 5, MAX_PHOTO_BYTES: 250000, MAX_TOTAL_BYTES: 400000 };
+  const photoFetch = makeFetch([
+    [/ok1\.jpg/, { type: 'image/jpeg', buf: jpeg(200000) }],
+    [/ok2\.png/, { type: 'image/png', buf: png(150000) }],
+    [/big\.jpg/, { type: 'image/jpeg', buf: jpeg(300000) }],
+    [/fake\.jpg/, { type: 'image/jpeg', buf: Buffer.from('<html>not an image at all</html>') }],
+    [/text\.jpg/, { type: 'text/html', body: '<html></html>' }],
+  ]);
+  const urls = ['https://x/ok1.jpg', 'https://x/big.jpg', 'https://x/fake.jpg', 'https://x/text.jpg', 'https://x/ok2.png', 'https://x/over-limit.jpg'];
+  const lim = await quiet(() => A.downloadLotPhotos(urls, { fetchImpl: photoFetch }, CFG));
+  if (lim.photos.length !== 2) errs.push('ліміти фото: скачано ' + lim.photos.length + ' замість 2');
+  const reasons = lim.skipped.map(s => s.reason).sort().join(',');
+  if (!reasons.includes('too_large') || !reasons.includes('bad_signature') || !reasons.includes('not_image_type')) {
+    errs.push('причини пропуску неповні: ' + reasons);
+  }
+  if (urls.length > CFG.MAX_PHOTOS && lim.photos.length + lim.skipped.length > CFG.MAX_PHOTOS) errs.push('оброблено понад MAX_PHOTOS');
+
+  /* 5. кеш відсутності: TTL 30 днів, знайдене постійне */
+  const now = Date.now();
+  if (!A.shouldRecheck(null, now)) errs.push('без кешу мала бути перевірка');
+  if (A.shouldRecheck({ status: 'found', checked_at: new Date(now - 400 * 86400000).toISOString() }, now)) errs.push('знайдений запис перепровіряється');
+  if (A.shouldRecheck({ status: 'absent', checked_at: new Date(now - 10 * 86400000).toISOString() }, now)) errs.push('свіжий absent перепровіряється до TTL');
+  if (!A.shouldRecheck({ status: 'absent', checked_at: new Date(now - 40 * 86400000).toISOString() }, now)) errs.push('старий absent не перепровіряється після TTL');
+
+  /* 6. discovery не виходить за білий список джерел */
+  const disco = await quiet(() => A.discoverVinCandidates(VIN, { fetchImpl: makeFetch([
+    [/vin-lot/, { body: JSON.stringify({ results: 1, url: 'https://evil.example.com/lot/' + VIN }) }],
+  ]) }));
+  if (disco.candidates.length) errs.push('discovery випустив кандидата поза білим списком: ' + JSON.stringify(disco.candidates));
+
+  if (errs.length) { console.log('FAILED:', errs); process.exit(1); }
+  console.log('повний шлях на мок-транспорті · строга ідентичність (зони, марка/модель, рік) · absent проти unreachable · ліміти фото · TTL кешу · білий список');
+  console.log('AUCTION TEST PASSED');
+  fs.unlinkSync(tmp);
+})().catch(e => { console.log('FAILED:', e.stack || e.message); process.exit(1); });

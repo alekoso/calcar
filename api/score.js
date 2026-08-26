@@ -164,7 +164,7 @@ function buildCoverage(inputs, cfg) {
       ? 'present'
       : (i.auction_applicable === false
         ? 'not_applicable'
-        : (i.auction_us_signal ? 'absent' : 'unknown')),
+        : ((i.auction_us_signal || i.auction_checked) ? 'absent' : 'unknown')),
     service_history: i.service_history_exists ? 'present' : 'absent',
     inspection_history: i.inspection_history_exists ? 'present' : 'absent',
     seller_docs: i.seller_docs_exists ? 'present' : 'absent',
