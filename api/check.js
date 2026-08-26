@@ -387,19 +387,29 @@ function photoKey(u) {
   return String(u).split('#')[0].split('?')[0];
 }
 
-/* ---------- 4в. Кеш аукціонних перевірок ----------
-   Таблиця auction_checks зʼявиться окремою міграцією; до того функції
-   тихо повертають null/ігнорують помилки, пайплайн від них не залежить */
+/* ---------- 4в. Кеш аукціонних подій ----------
+   Читаємо збережену подію з auction_events за VIN. Знайдена подія постійна:
+   повторний аналіз використовує її і НЕ платить за ретривал знову.
+   До виконання міграції функція тихо повертає null, пайплайн не залежить */
 async function readAuctionCache(vin) {
   const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!base || !key || !vin) return null;
   try {
-    const r = await fetch(base.replace(/\/$/, '') + '/rest/v1/auction_checks?vin=eq.' + encodeURIComponent(vin) + '&select=*', {
+    const r = await fetch(base.replace(/\/$/, '') + '/rest/v1/auction_events?vin=eq.' + encodeURIComponent(vin) + '&order=checked_at.desc&limit=1&select=*', {
       headers: { apikey: key, authorization: 'Bearer ' + key },
     });
     if (!r.ok) return null;
     const rows = await r.json();
-    return Array.isArray(rows) && rows[0] ? rows[0] : null;
+    const row = Array.isArray(rows) && rows[0] ? rows[0] : null;
+    if (!row) return null;
+    /* приводимо рядок події до форми, яку очікує гілка cache-hit */
+    return {
+      status: 'found',
+      source: row.auction_house || null,
+      lot_url: row.lot_url || (Array.isArray(row.source_urls) ? row.source_urls[0] : null),
+      checked_at: row.checked_at,
+      record: row.record || { photo_urls: [], meta: { auction_house: row.auction_house, lot_id: row.lot_id } },
+    };
   } catch (e) { return null; }
 }
 /* аукціонна подія: ключ (auction_house, lot_id) ідентифікує ПОДІЮ, не
