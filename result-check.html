@@ -432,6 +432,21 @@
   .issue p{font-size:13.5px;color:var(--ink-2);margin-top:4px;line-height:1.5}
 
 
+  /* фінальний висновок: рішення шарами */
+  .pd-top{display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+  .pd-rec{flex-shrink:0;font-size:12px;font-weight:700;letter-spacing:.3px;border-radius:14px;padding:4px 12px}
+  .pd-rec.ok{background:var(--green-soft);color:var(--green)}
+  .pd-rec.go{background:var(--blue-soft, var(--surface-2));color:var(--brand-ink)}
+  .pd-rec.warn{background:var(--amber-soft);color:var(--amber)}
+  .pd-rec.bad{background:var(--red-soft);color:var(--red)}
+  .pd-headline{font-size:17px;font-weight:700;line-height:1.35;color:var(--ink)}
+  .pd-short{font-size:14.5px;line-height:1.6;color:var(--text);margin:0 0 12px}
+  .pd-sec{margin-top:12px}
+  .pd-sec b{display:block;font-size:12.5px;letter-spacing:.2px;color:var(--muted);margin-bottom:6px}
+  .pd-sec ul{margin:0;padding-left:18px}
+  .pd-sec li{font-size:13.5px;line-height:1.55;margin-bottom:4px}
+  .pd-more{border:none;background:none;cursor:pointer;padding:0;margin-top:14px;font-size:13.5px;font-weight:600;color:var(--brand-ink);text-decoration:underline}
+  .pd-reasoning{margin-top:12px;font-size:14px;line-height:1.65;color:var(--text);white-space:pre-wrap}
   .srcline{font-size:12.5px;color:var(--muted);word-break:break-all}
   .srcline a{color:var(--brand-ink)}
   .lightbox{position:fixed;inset:0;background:rgba(10,18,28,.88);z-index:200;display:none;align-items:center;justify-content:center;cursor:zoom-out}
@@ -701,6 +716,16 @@
       <span class="risk-badge" id="scoreBadge" style="display:none"><span class="dot ok" id="scoreDot"></span>Оцінка: <b id="scoreVal">–</b> <span class="risk-label" id="scoreLabel"></span></span>
     </div>
     <div class="card-body">
+      <div id="pdBlock" style="display:none">
+        <div class="pd-top">
+          <span class="pd-rec" id="pdRec"></span>
+          <div class="pd-headline" id="pdHeadline"></div>
+        </div>
+        <p class="pd-short" id="pdShort"></p>
+        <div id="pdLists"></div>
+        <button class="pd-more" id="pdMoreBtn" type="button">Читати повний розбір</button>
+        <div class="pd-reasoning" id="pdReasoning" style="display:none"></div>
+      </div>
       <div class="v-text" id="vText"></div>
       <div class="hint" style="margin-top:10px">Оцінка враховує історію авто, потенційну вартість помилки та невизначеність доступних даних. Рішення завжди за вами</div>
     </div>
@@ -1003,8 +1028,52 @@ function boot2(D){
 
   /* ---- вердикт: бейдж оцінки в шапці картки, як ризик-скор в Import ---- */
   const vd = D.verdict;
-  if (vd && vd.summary) {
+  const pd = D.purchase_decision;
+  if (pd && pd.headline) {
+    /* нове рішення шарами; старий verdict.summary лишається фолбеком нижче */
     $('verdictCard').style.display = '';
+    const REC = {
+      buy: ['ok', t('Брати')],
+      go_see: ['go', t('Їхати дивитись')],
+      negotiate: ['warn', t('Торгуватись')],
+      skip: ['bad', t('Пропустити')],
+    };
+    const rc = REC[pd.recommendation] || REC.go_see;
+    $('pdBlock').style.display = '';
+    $('vText').style.display = 'none';
+    $('pdRec').className = 'pd-rec ' + rc[0];
+    $('pdRec').textContent = rc[1];
+    $('pdHeadline').textContent = clean(pd.headline);
+    $('pdShort').textContent = clean(pd.summary_short || '');
+    const SECS = [
+      ['why_consider', t('Чому варто розглядати')],
+      ['main_concerns', t('Головні застереження')],
+      ['must_check', t('Перевірити обовʼязково')],
+      ['questions_for_seller', t('Питання продавцю')],
+    ];
+    let lists = '';
+    for (const [key, title] of SECS) {
+      const items = Array.isArray(pd[key]) ? pd[key].filter(x => typeof x === 'string' && x.trim()) : [];
+      if (!items.length) continue;
+      lists += '<div class="pd-sec"><b>' + esc(title) + '</b><ul>' + items.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul></div>';
+    }
+    if (pd.value_context) lists += '<div class="pd-sec"><b>' + esc(t('Про ціну')) + '</b><p class="pd-short" style="margin:0">' + esc(pd.value_context) + '</p></div>';
+    const miss = Array.isArray(pd.missing_but_important) ? pd.missing_but_important.filter(x => typeof x === 'string' && x.trim()) : [];
+    if (miss.length) lists += '<div class="pd-sec"><b>' + esc(t('Чого ми не перевірили')) + '</b><ul>' + miss.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul></div>';
+    $('pdLists').innerHTML = lists;
+    if (pd.reasoning) {
+      $('pdReasoning').textContent = clean(pd.reasoning);
+      $('pdMoreBtn').onclick = () => {
+        const open = $('pdReasoning').style.display !== 'none';
+        $('pdReasoning').style.display = open ? 'none' : '';
+        $('pdMoreBtn').textContent = open ? t('Читати повний розбір') : t('Згорнути розбір');
+      };
+    } else {
+      $('pdMoreBtn').style.display = 'none';
+    }
+  }
+  if (vd && vd.summary) {
+    if (!(pd && pd.headline)) $('verdictCard').style.display = '';
     $('vText').textContent = clean(vd.summary);
     const sc = typeof vd.score === 'number' ? Math.round(Math.max(0, Math.min(10, vd.score)) * 10) / 10 : null;
     if (sc !== null) {
@@ -1642,7 +1711,7 @@ async function loadOtherReports(){
 function chatCtx(){
   const d = DATA || {};
   return {
-    vehicle: d.vehicle, verdict: d.verdict, risks: d.risks, equipment: d.equipment,
+    vehicle: d.vehicle, verdict: d.verdict, purchase_decision: d.purchase_decision || null, risks: d.risks, equipment: d.equipment,
     discrepancies: d.discrepancies, history: d.history, history_note: d.history_note,
     photo_findings: d.photo_findings, auction: d.auction,
     model_notes: d.model_notes, checklist: d.checklist, data_notes: d.data_notes,
