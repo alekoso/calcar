@@ -30,6 +30,30 @@ export const AUCTION_CONFIG = {
       lotUrlPattern: /^https:\/\/poctra\.com\/[a-z0-9\-\/]+$/i,
     },
   ],
+  /* безкоштовний discovery поза білим списком доменів: кандидатом стає
+     будь-яка публічна сторінка з точним VIN в URL; використання даних
+     завжди йде через строгу перевірку ідентичності */
+  SEARCH_ENDPOINT: vin => 'https://html.duckduckgo.com/html/?q=%22' + vin + '%22',
+  SEARCH_MAX_CANDIDATES: 8,
+  /* безкоштовні дзеркала: production-адаптер без VIN-specific хардкоду,
+     URL будується з марки/моделі декодування */
+  MIRRORS: [
+    {
+      name: 'americamotors.com',
+      url: (vin, nhtsa) => {
+        const mk = String(nhtsa && nhtsa.Make || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
+        const md = String(nhtsa && nhtsa.Model || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
+        return (mk && md) ? 'https://americamotors.com/en/' + mk + '/' + md + '/' + vin : null;
+      },
+    },
+  ],
+  /* якість безкоштовних фото, нижче якої дозволений платний fallback */
+  ZENROWS_MIN_FREE_PHOTOS: 4,
+  /* закритий білий список причин платного виклику, без "аналогічних".
+     sale_price_missing причиною НЕ є (ціна не в продуктовій логіці);
+     need_damage_labels ЗАБОРОНЕНА при наявності якісних фото: зони і подушки
+     визначає vision-аналіз власним пайплайном */
+  ZENROWS_REASONS: ['title_status_missing', 'photos_unavailable', 'photos_low_quality', 'odometer_unreadable', 'critical_auction_metadata_missing'],
   FETCH_TIMEOUT_MS: 12000,
   TOTAL_BUDGET_MS: 25000,
   /* ліміти скачування фото */
@@ -62,7 +86,8 @@ async function fetchText(url, opts) {
     });
     const body = await r.text();
     const blocked = r.status === 403 || r.status === 429 || r.status === 503
-      || /just a moment|cf-chl|cloudflare|captcha|incapsula|attention required/i.test(body.slice(0, 4000));
+      /* маркери challenge-сторінки, НЕ голе слово cloudflare (буває у CDN-скриптах) */
+      || /just a moment|cf-chl|cf-browser-verification|captcha|incapsula|attention required|enable javascript and cookies/i.test(body.slice(0, 4000));
     return { status: r.status, body, blocked };
   } finally { clearTimeout(t); }
 }
@@ -174,6 +199,39 @@ export async function downloadLotPhotos(urls, opts = {}, cfg = AUCTION_CONFIG) {
    Провайдери source-specific (шаблони URL і внутрішній пошук архівів);
    зовнішній search API, якщо колись зʼявиться, стає ще одним провайдером
    і на пайплайн не впливає */
+/* безкоштовний пошуковий discovery: кандидати з БУДЬ-ЯКОГО публічного
+   домену, аби точний VIN стояв у URL. Endpoint часом віддає антибот 202:
+   тоді просто нуль кандидатів, драбина йде далі шаблонами джерел */
+async function searchDiscovery(vin, opts, cfg) {
+  const V = String(vin || '').toUpperCase();
+  const d = { source: 'search', step: 'discovery', url: cfg.SEARCH_ENDPOINT(V), status: null, blocked: false, found: false, ms: 0 };
+  const ts = Date.now();
+  const out = [];
+  try {
+    const r = await fetchText(cfg.SEARCH_ENDPOINT(V), opts);
+    d.status = r.status;
+    d.blocked = r.blocked;
+    if (!r.blocked && r.status === 200) {
+      const seen = new Set();
+      for (const m of r.body.matchAll(/uddg=([^&"]+)/g)) {
+        let u;
+        try { u = decodeURIComponent(m[1]); } catch (e) { continue; }
+        if (!/^https?:\/\//.test(u) || /duckduckgo/.test(u) || !u.toUpperCase().includes(V)) continue;
+        let host;
+        try { host = new URL(u).hostname; } catch (e) { continue; }
+        if (seen.has(host)) continue;
+        seen.add(host);
+        out.push({ source: 'search:' + host, url: u });
+        if (out.length >= cfg.SEARCH_MAX_CANDIDATES) break;
+      }
+      d.found = out.length > 0;
+    }
+  } catch (e) { d.status = 'error'; d.error = String(e.message || e).slice(0, 60); }
+  d.ms = Date.now() - ts;
+  console.log('[auction] source=search step=discovery status=' + d.status, d.blocked ? 'BLOCKED' : ('candidates=' + out.length), d.ms + 'ms');
+  return { candidates: out, diag: d };
+}
+
 export async function discoverVinCandidates(vin, opts = {}, cfg = AUCTION_CONFIG) {
   const V = String(vin || '').toUpperCase();
   const out = [];
@@ -220,17 +278,36 @@ export async function discoverVinCandidates(vin, opts = {}, cfg = AUCTION_CONFIG
       d.blocked ? 'BLOCKED' : d.outcome, d.ms + 'ms');
     diag.push(d);
   }
-  return { candidates: out, diagnostics: diag, discovery_ms: Date.now() - t0 };
+  /* пошуковий discovery: кандидати не обмежені трьома доменами */
+  const sd = await searchDiscovery(V, opts, cfg);
+  diag.push(sd.diag);
+  /* безкоштовні дзеркала за шаблоном марка/модель (без VIN-хардкоду) стоять
+     ПЕРШИМИ: їхні фото лежать на відкритому CDN (cs.copart.com), тоді як
+     фото інших дзеркал часто за тим самим антиботом, що й лот */
+  const head = [];
+  for (const m of cfg.MIRRORS) {
+    const u = m.url(V, opts.nhtsa);
+    if (u) head.push({ source: m.name, url: u });
+  }
+  const merged = [...head, ...out];
+  for (const c of sd.candidates) {
+    if (!merged.some(x => x.url === c.url)) merged.push(c);
+  }
+  return { candidates: merged, diagnostics: diag, discovery_ms: Date.now() - t0 };
 }
 
 /* паспорт джерела: аукціонний дім і дата продажу з тексту лота */
-export function extractLotMeta(html) {
+export function extractLotMeta(html, url) {
   const plain = String(html || '').replace(/<[^>]+>/g, ' ');
-  const house = /\bIAAI\b|Insurance Auto Auctions/i.test(plain) ? 'IAAI'
+  const house = /\bIAAI\b|Иааи|Insurance Auto Auctions/i.test(plain) ? 'IAAI'
     : (/\bCopart\b/i.test(plain) ? 'Copart' : null);
   const date = (plain.match(/Auction ended[^.]*?((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})/i)
     || plain.match(/\b(\d{2}[./]\d{2}[./]\d{4})\b/) || [])[1] || null;
-  return { auction_house: house, sale_date: date };
+  const odometer_mi = parseInt(((plain.match(/(\d[\d\s,.]{2,9})\s*(?:mi|миль|міль)\b/i) || [])[1] || '').replace(/[^\d]/g, ''), 10) || null;
+  /* ідентичність події: source + lot id; лот беремо з URL або тексту */
+  const lot_id = ((String(url || '').match(/(\d{7,9})/) || [])[1]
+    || (plain.match(/Lot[:\s#]{0,4}(\d{7,9})/i) || [])[1] || null);
+  return { auction_house: house, sale_date: date, odometer_mi, lot_id };
 }
 
 /* ---------- оркестратор ----------
@@ -261,27 +338,48 @@ export async function findAuctionRecord(vin, nhtsa, opts = {}, cfg = AUCTION_CON
       if (!r.blocked && r.status === 200) {
         const identity = verifyLotIdentity({ url: cand.url, html: r.body }, vin, nhtsa);
         d.identity = identity.matched ? (identity.confidence || 'high') : identity.reason;
-        /* сторінка лота відповіла, але це не наш запис: джерело чесно "нема" */
+        /* сторінка відповіла, але це не наш запис: джерело чесно "нема".
+           Для кандидатів довільних доменів ідентичність це ЄДИНИЙ гейт */
         outcomes[cand.source] = identity.matched ? 'found' : 'not_found';
         if (identity.matched) {
           d.found = true;
           const photoUrls = [...new Set([...r.body.matchAll(/https?:\/\/[^"'\s>]+\.(?:jpe?g|png|webp)/gi)]
-            .map(m => m[0]).filter(u => u.toUpperCase().includes(String(vin).toUpperCase()) || /(copart|iaai|bid\.car|bidfax|poctra)/i.test(u)))];
+            .map(m => m[0]).filter(u => (u.toUpperCase().includes(String(vin).toUpperCase()) || /(copart|iaai|bid\.car|bidfax|poctra)/i.test(u)) && !/logo|icon|favicon|sprite|flag|thumb/i.test(u)))];
           d.ms = Date.now() - ts;
           diagnostics.push(d);
           console.log('[auction] source=' + cand.source, 'step=lot', 'status=200 found identity=' + d.identity, d.ms + 'ms');
           /* ранній вихід законний ЛИШЕ при found */
-          return {
+          const rec = {
             status: 'found',
             source: cand.source,
             lot_url: cand.url,
             identity,
-            meta: extractLotMeta(r.body),
+            meta: extractLotMeta(r.body, cand.url),
             photo_urls: photoUrls.slice(0, cfg.MAX_PHOTOS),
             sources_checked: sourcesChecked(outcomes, cfg),
             diagnostics,
             total_ms: Date.now() - t0,
           };
+          /* безкоштовних фото недостатньо: photos_low_quality дозволяє один
+             платний добір із багатшого джерела. При достатніх фото платний
+             виклик ЗАБОРОНЕНИЙ: зони і подушки читає vision-аналіз */
+          if (rec.photo_urls.length < cfg.ZENROWS_MIN_FREE_PHOTOS && opts.allowPaid !== false && process.env.ZENROWS_API_KEY) {
+            const alt = disco.candidates.find(c => c.url !== cand.url && (c.source === 'bid.cars' || /bid\.cars/.test(c.url)));
+            if (alt) {
+              const reason = rec.photo_urls.length ? 'photos_low_quality' : 'photos_unavailable';
+              const z = await zenrowsFetch(alt.url, { missing_reason: reason, missing_fact_required: true }, opts, cfg);
+              if (!z.skipped && z.status === 200) {
+                const id2 = verifyLotIdentity({ url: alt.url, html: z.body }, vin, nhtsa);
+                if (id2.matched) {
+                  const more = [...new Set([...z.body.matchAll(/https?:\/\/[^"'\s>]+\.(?:jpe?g|png|webp)/gi)]
+                    .map(m => m[0]).filter(u => /(copart|iaai|bid\.car)/i.test(u) && !/logo|icon|favicon|sprite|flag|thumb/i.test(u)))];
+                  rec.photo_urls = [...new Set([...rec.photo_urls, ...more])].slice(0, cfg.MAX_PHOTOS);
+                  rec.paid = { provider: 'zenrows', reason, calls: z.calls, credits: z.credits };
+                }
+              }
+            }
+          }
+          return rec;
         }
       }
     } catch (e) {
@@ -295,6 +393,35 @@ export async function findAuctionRecord(vin, nhtsa, opts = {}, cfg = AUCTION_CON
     diagnostics.push(d);
   }
 
+  /* Остання сходинка: ZenRows. Запис ОЧІКУВАНО існує (discovery дав
+     кандидатів з точним VIN), безкоштовні способи вичерпані, фото і факти
+     інакше не отримати: photos_unavailable. Один найперспективніший URL */
+  if (disco.candidates.length && opts.allowPaid !== false && process.env.ZENROWS_API_KEY) {
+    const best = disco.candidates.find(c => c.source === 'bid.cars' || /bid\.cars/.test(c.url)) || disco.candidates[0];
+    const z = await zenrowsFetch(best.url, { missing_reason: 'photos_unavailable', missing_fact_required: true }, opts, cfg);
+    if (!z.skipped && z.status === 200) {
+      const identity = verifyLotIdentity({ url: best.url, html: z.body }, vin, nhtsa);
+      if (identity.matched) {
+        const photoUrls = [...new Set([...z.body.matchAll(/https?:\/\/[^"'\s>]+\.(?:jpe?g|png|webp)/gi)]
+          .map(m => m[0]).filter(u => (u.toUpperCase().includes(String(vin).toUpperCase()) || /(copart|iaai|bid\.car|bidfax|poctra)/i.test(u)) && !/logo|icon|favicon|sprite|flag|thumb/i.test(u)))];
+        outcomes[best.source] = 'found';
+        return {
+          status: 'found',
+          source: best.source,
+          lot_url: best.url,
+          identity,
+          meta: extractLotMeta(z.body, best.url),
+          photo_urls: photoUrls.slice(0, cfg.MAX_PHOTOS),
+          paid: { provider: 'zenrows', reason: 'photos_unavailable', calls: z.calls, credits: z.credits },
+          sources_checked: sourcesChecked(outcomes, cfg),
+          diagnostics,
+          total_ms: Date.now() - t0,
+        };
+      }
+      console.log('[zenrows] сторінка отримана, але ідентичність не пройдена:', identity.reason);
+    }
+  }
+
   const checked = sourcesChecked(outcomes, cfg);
   const allAnsweredNo = checked.length > 0 && checked.every(c => c.status === 'not_found');
   return {
@@ -304,6 +431,46 @@ export async function findAuctionRecord(vin, nhtsa, opts = {}, cfg = AUCTION_CON
     diagnostics,
     total_ms: Date.now() - t0,
   };
+}
+
+/* ---------- ZenRows: СТРОГО останній fallback ----------
+   Подвійна умова перед викликом: missing_reason із ЗАКРИТОГО білого списку
+   І missing_fact_required === true. Відсутність поля сама по собі не привід;
+   need_damage_labels заборонена при якісних фото (їх аналізує vision).
+   Один найперспективніший URL, не віялом. Ключ ЛИШЕ з env, ніколи не
+   логується. Free plan: платний тариф не підключається */
+export async function zenrowsFetch(targetUrl, justification, opts = {}, cfg = AUCTION_CONFIG) {
+  const key = process.env.ZENROWS_API_KEY;
+  if (!key) return { skipped: 'no_api_key' };
+  if (!justification || justification.missing_fact_required !== true
+    || !cfg.ZENROWS_REASONS.includes(justification.missing_reason)) {
+    return { skipped: 'justification_rejected' };
+  }
+  const fetchImpl = opts.zenrowsFetchImpl || fetch;
+  const call = async params => {
+    const api = 'https://api.zenrows.com/v1/?apikey=' + encodeURIComponent(key)
+      + '&url=' + encodeURIComponent(targetUrl) + params;
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 90000);
+    try {
+      const r = await fetchImpl(api, { signal: ctl.signal });
+      const body = await r.text();
+      return { status: r.status, body, cost: r.headers?.get?.('x-request-cost') || null };
+    } catch (e) {
+      return { status: 'error', body: '', error: String(e.message || e).slice(0, 60) };
+    } finally { clearTimeout(t); }
+  };
+  let calls = 1;
+  let r = await call('');
+  let credits = r.cost ? Number(r.cost) : 1;
+  if (r.status !== 200 || /just a moment|cf-chl/i.test(String(r.body).slice(0, 3000))) {
+    calls++;
+    r = await call('&js_render=true&premium_proxy=true');
+    credits += r.cost ? Number(r.cost) : 25;
+  }
+  console.log('[zenrows] reason=' + justification.missing_reason, 'url=' + String(targetUrl).slice(0, 80),
+    'status=' + r.status, 'calls=' + calls, 'credits~=' + credits);
+  return { status: r.status, body: r.body, calls, credits };
 }
 
 /* аудит опитування для score_breakdown_v2 і майбутнього блоку осей:

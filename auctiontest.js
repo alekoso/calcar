@@ -152,14 +152,40 @@ function makeFetch(map) {
   if (A.shouldRecheck({ status: 'absent', checked_at: new Date(now - 10 * 86400000).toISOString() }, now)) errs.push('свіжий absent перепровіряється до TTL');
   if (!A.shouldRecheck({ status: 'absent', checked_at: new Date(now - 40 * 86400000).toISOString() }, now)) errs.push('старий absent не перепровіряється після TTL');
 
-  /* 6. discovery не виходить за білий список джерел */
+  /* 6. discovery: пошук додає кандидатів БУДЬ-ЯКОГО домену з точним VIN,
+     ідентичність фільтрує їх пізніше; json_lot_url з чужим доменом лота
+     все одно відсіюється патерном джерела */
   const disco = await quiet(() => A.discoverVinCandidates(VIN, { fetchImpl: makeFetch([
     [/vin-lot/, { body: JSON.stringify({ results: 1, url: 'https://evil.example.com/lot/' + VIN }) }],
+    [/duckduckgo/, { body: '<a href="/l/?uddg=' + encodeURIComponent('https://newmirror.example/lot/' + VIN) + '">x</a>' }],
   ]) }));
-  if (disco.candidates.length) errs.push('discovery випустив кандидата поза білим списком: ' + JSON.stringify(disco.candidates));
+  if (!disco.candidates.some(c => /newmirror\.example/.test(c.url))) errs.push('пошуковий кандидат нового домену загублений');
+  if (disco.candidates.some(c => /evil\.example/.test(c.url))) errs.push('чужий домен лота з json джерела пройшов');
+
+  /* 7. ZenRows: подвійна умова і закритий білий список */
+  const OLD_KEY = process.env.ZENROWS_API_KEY;
+  process.env.ZENROWS_API_KEY = 'test-key-not-real';
+  let zCalls = 0;
+  const zenFetch = async () => { zCalls++; return { status: 200, headers: { get: () => '25' }, text: async () => LOT_HTML }; };
+  let z = await quiet(() => A.zenrowsFetch(LOT_URL, { missing_reason: 'photos_unavailable', missing_fact_required: false }, { zenrowsFetchImpl: zenFetch }));
+  if (z.skipped !== 'justification_rejected') errs.push('ZenRows пустив виклик без missing_fact_required');
+  z = await quiet(() => A.zenrowsFetch(LOT_URL, { missing_reason: 'sale_price_missing', missing_fact_required: true }, { zenrowsFetchImpl: zenFetch }));
+  if (z.skipped !== 'justification_rejected') errs.push('ZenRows пустив причину поза білим списком');
+  z = await quiet(() => A.zenrowsFetch(LOT_URL, { missing_reason: 'need_damage_labels', missing_fact_required: true }, { zenrowsFetchImpl: zenFetch }));
+  if (z.skipped !== 'justification_rejected') errs.push('ZenRows пустив need_damage_labels');
+  z = await quiet(() => A.zenrowsFetch(LOT_URL, { missing_reason: 'photos_unavailable', missing_fact_required: true }, { zenrowsFetchImpl: zenFetch }));
+  if (z.skipped || z.status !== 200) errs.push('ZenRows відхилив валідне виправдання: ' + (z.skipped || z.status));
+  if (!(z.credits >= 1)) errs.push('ZenRows не звітує credits');
+  delete process.env.ZENROWS_API_KEY;
+  z = await quiet(() => A.zenrowsFetch(LOT_URL, { missing_reason: 'photos_unavailable', missing_fact_required: true }, { zenrowsFetchImpl: zenFetch }));
+  if (z.skipped !== 'no_api_key') errs.push('без ключа ZenRows не пропущений');
+  if (OLD_KEY) process.env.ZENROWS_API_KEY = OLD_KEY;
+  const allBlk = makeFetch([[/./, { status: 403, body: 'Just a moment cloudflare' }]]);
+  const noPaid = await quiet(() => A.findAuctionRecord(VIN, NHTSA, { fetchImpl: allBlk, allowPaid: false }));
+  if (noPaid.status !== 'unknown') errs.push('без платної сходинки блок не дав unknown: ' + noPaid.status);
 
   if (errs.length) { console.log('FAILED:', errs); process.exit(1); }
-  console.log('повний шлях на мок-транспорті · строга ідентичність (зони, марка/модель, рік) · absent проти unreachable · ліміти фото · TTL кешу · білий список');
+  console.log('повний шлях · ідентичність · absent проти unreachable · ліміти фото · TTL кешу · пошуковий discovery · ZenRows подвійна умова');
   console.log('AUCTION TEST PASSED');
   fs.unlinkSync(tmp);
 })().catch(e => { console.log('FAILED:', e.stack || e.message); process.exit(1); });

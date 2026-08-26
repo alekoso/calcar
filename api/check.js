@@ -402,6 +402,30 @@ async function readAuctionCache(vin) {
     return Array.isArray(rows) && rows[0] ? rows[0] : null;
   } catch (e) { return null; }
 }
+/* аукціонна подія: ключ source + lot_id, у VIN подій може бути кілька.
+   До виконання міграції власником запис мовчки не відбувається */
+async function writeAuctionEvent(vin, rec) {
+  const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!base || !key || !vin || !rec || !rec.source) return;
+  try {
+    await fetch(base.replace(/\/$/, '') + '/rest/v1/auction_events?on_conflict=source,lot_id', {
+      method: 'POST',
+      headers: {
+        apikey: key, authorization: 'Bearer ' + key,
+        'content-type': 'application/json', prefer: 'resolution=merge-duplicates,return=minimal',
+      },
+      body: JSON.stringify({
+        source: rec.source,
+        lot_id: String(rec.meta?.lot_id || rec.lot_url || ''),
+        vin,
+        lot_url: rec.lot_url || null,
+        record: { photo_urls: rec.photo_urls || [], identity: rec.identity || null, meta: rec.meta || null, sources_checked: rec.sources_checked || [] },
+        checked_at: new Date().toISOString(),
+      }),
+    });
+  } catch (e) { /* persistence не критичний */ }
+}
+
 async function writeAuctionCache(vin, row) {
   const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!base || !key || !vin) return;
@@ -621,6 +645,7 @@ ${auction && auction.photos.length ? `
 - confirmed_ok для AIRBAGS_DEPLOYED лише зі ЗМІСТОВНИМ підтвердженням відновлення SRS: діагностика без помилок, документи ремонту РАЗОМ із перевіркою. "Нормальний салон на фото" це НЕ підтвердження SRS.
 - РОЗБІЖНОСТІ ПРОДАВЦЯ (слова проти офіційних даних: "другий власник" при чотирьох тощо) живуть у discrepancies і в purchase_decision: матеріальна суперечність продавця йде ПЕРШИМ пунктом main_concerns і питанням у questions_for_seller. У score_facts їх НЕ класифікуй: самі по собі вони технічну чи історичну оцінку авто не погіршують.
 - evidence: масив {source: seller_claim|current_photos|historical_listing|us_auction|registry|document, ref: конкретний запис (listing_3, photo_7, auction_event_1) де можливо, description: коротке доказове речення}. Одна знахідка може мати скільки завгодно доказів.
+- VISION ПО АУКЦІОННИХ ФОТО: зони пошкоджень, подушки та інші візуально визначувані факти з АУКЦІОННИХ кадрів фіксуй evidence із source us_auction і ref auction_photo_N (кадри нумеруються в порядку подачі). НЕ змішуй із current_photos: аукціонна сторінка пройшла перевірку точного VIN, її зображення успадковують звʼязок із цією подією; нинішні фото це лише current-state. Правила скромності діють і тут: салон на аукціонних кадрах не показаний, подушки unknown; зона не видна, unknown; "структура не видна" НЕ означає "структура ціла".
 - Для MODIFICATION_TECHNICAL_CONCERN додатково: serious_intervention true, якщо є хоч одне серйозне втручання (прошивка чи наддув, вихлоп із видаленням каталізаторів, інше втручання в силовий агрегат); maintenance_evidence true, лише якщо в матеріалах РЕАЛЬНО є підтвердження обслуговування чи діагностики (сервісні записи, логи, документи). Нема даних = false, не вигадуй.
 - "signals": {"seller_claims_us_import": true лише при ЯВНІЙ заяві продавця про пригін зі США ("пригнана зі США", "авто з Америки"). Непевність = false}.
 - Аукціонні маркування на фото (наліпки, штрих-коди Copart/IAAI, run-номер на лобовому) фіксуй ЛИШЕ спостереженням в info_notes. Тригером застосовності аукціону вони НЕ є і на стелю не впливають.
@@ -732,7 +757,7 @@ export default async function handler(req, res) {
                може зʼявитись НОВА аукціонна подія: discovery повторюємо і
                дивимось лише на кандидатів з ІНШИМИ сторінками */
             try {
-              const disco = await discoverVinCandidates(listing.vin, { totalBudgetMs: 8000 });
+              const disco = await discoverVinCandidates(listing.vin, { totalBudgetMs: 8000, nhtsa });
               const fresh = disco.candidates.filter(c => normalizeListingUrl(c.url) !== normalizeListingUrl(cached.lot_url));
               if (fresh.length) {
                 console.log('[auction] новий кандидат поза кешем:', fresh[0].url.slice(0, 90));
@@ -742,7 +767,7 @@ export default async function handler(req, res) {
           }
           console.log('[auction] cache=hit', cached.status, listing.vin);
         } else {
-          const rec = await findAuctionRecord(listing.vin, nhtsa, { totalBudgetMs: 20000 });
+          const rec = await findAuctionRecord(listing.vin, nhtsa, { totalBudgetMs: 20000, nhtsa });
           auctionSearch = {
             status: rec.status, reason: rec.reason || null, source: rec.source || null,
             lot_url: rec.lot_url || null, total_ms: rec.total_ms, cache: 'miss',
@@ -755,6 +780,10 @@ export default async function handler(req, res) {
             auction = { url: rec.lot_url, photos: (rec.photo_urls || []).slice(0, 8), text: passport, from_search: true };
             auctionSearch.house = rec.meta?.auction_house || null;
             auctionSearch.sale_date = rec.meta?.sale_date || null;
+            auctionSearch.paid = rec.paid || null;
+            auctionSearch.odometer_mi = rec.meta?.odometer_mi || null;
+            /* подія постійна за source+lot; vin-кеш лишається для сумісності */
+            await writeAuctionEvent(listing.vin, rec);
             await writeAuctionCache(listing.vin, { status: 'found', source: rec.source, lot_url: rec.lot_url, record: { photo_urls: rec.photo_urls || [], identity: rec.identity, meta: rec.meta || null, sources_checked: rec.sources_checked || [] } });
           } else if (rec.status === 'absent') {
             await writeAuctionCache(listing.vin, { status: 'absent', source: null, lot_url: null, record: { sources_checked: rec.sources_checked || [] } });
@@ -777,7 +806,7 @@ export default async function handler(req, res) {
       { type: 'text', text: 'ФОТО З ОГОЛОШЕННЯ (стан зараз). Це ПОВНИЙ набір фото цього авто, включно з салоном і деталями: не пиши, що фото салону немає, якщо воно серед переданих. Якщо якийсь кадр очевидно належить ІНШОМУ авто (інша модель, інший колір, інший кузов), просто проігноруй його і не згадуй у звіті:' },
       ...photoUrls.map((u, i) => img(u, i < 12 ? 'high' : 'low')),
       ...(auctionPhotos.length
-        ? [{ type: 'text', text: 'ФОТО З АУКЦІОНУ США (до ремонту, архів):' }, ...auctionPhotos.map(u => img(u, 'high'))]
+        ? [{ type: 'text', text: 'ФОТО З АУКЦІОНУ США (до ремонту, архів). Нумерація: auction_photo_1..auction_photo_' + auctionPhotos.length + ' у порядку подачі:' }, ...auctionPhotos.map(u => img(u, 'high'))]
         : []),
       { type: 'text', text: PROMPT(listing, nhtsa, auction, langDirective, decisionStyle) },
     ];
@@ -900,6 +929,10 @@ export default async function handler(req, res) {
       breakdown.retrieval_requests = auctionSearch && Array.isArray(auctionSearch.sources) ? auctionSearch.sources.length : 0;
       breakdown.retrieval_cost_usd = 0;
       breakdown.retrieval_cache_hit = !!(auctionSearch && auctionSearch.cache === 'hit');
+      breakdown.retrieval_zenrows = auctionSearch && auctionSearch.paid
+        ? { reason: auctionSearch.paid.reason, calls: auctionSearch.paid.calls, credits: auctionSearch.paid.credits }
+        : null;
+      if (auctionSearch && auctionSearch.paid) breakdown.retrieval_provider = 'direct_fetch+zenrows';
       /* аудит опитування: дані для майбутнього блоку осей
          ("перевірено: ..., запис не знайдено") */
       breakdown.sources_checked = auctionSearch ? (auctionSearch.sources_checked || []) : null;
