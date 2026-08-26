@@ -562,10 +562,14 @@ export async function zenrowsFetch(targetUrl, justification, opts = {}, cfg = AU
       return { status: 'error', body: '', error: String(e.message || e).slice(0, 60) };
     } finally { clearTimeout(t); }
   };
+  /* SPA-джерела (bid.cars) без js_render віддають порожній каркас: для них
+     ОДИН запит одразу з рендером. Решта: дешевий базовий, ескалація лише за
+     потреби. Так одна платна сходинка дає повну сторінку */
+  const spa = /bid\.cars|bidfax|poctra/i.test(String(targetUrl));
   let calls = 1;
-  let r = await call('');
-  let credits = r.cost ? Number(r.cost) : 1;
-  if (r.status !== 200 || /just a moment|cf-chl/i.test(String(r.body).slice(0, 3000))) {
+  let r = spa ? await call('&js_render=true&premium_proxy=true') : await call('');
+  let credits = r.cost ? Number(r.cost) : (spa ? 25 : 1);
+  if (!spa && (r.status !== 200 || /just a moment|cf-chl/i.test(String(r.body).slice(0, 3000)))) {
     calls++;
     r = await call('&js_render=true&premium_proxy=true');
     credits += r.cost ? Number(r.cost) : 25;
