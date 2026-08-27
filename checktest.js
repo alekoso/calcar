@@ -156,6 +156,10 @@ const REPORTS = [
   if (!api.includes('РОЗДІЛЕННЯ СУТНОСТЕЙ')) errs.push('check.js: нема правила розділення сутностей');
   if (!api.includes('"seller_serviced": true')) errs.push('check.js: схема без seller_serviced');
   if (!api.includes('нейтральні історичні записи самі по собі цей блок НЕ створюють')) errs.push('check.js: нема гейта історичного блоку');
+  if (!api.includes('КЛЮЧОВИХ РИЗИКІВ САМЕ ЦЬОГО ЕКЗЕМПЛЯРА')) errs.push('check.js: risks не обмежені екземпляром');
+  if (!api.includes('Вік, пробіг і відома болячка моделі САМІ ПО СОБІ недостатні')) errs.push('check.js: болячки моделі не відсічені від risks');
+  if (!api.includes('ані перевірку, ані питання продавцю')) errs.push('check.js: дисципліна не поширена на must_check і питання');
+  if (!api.includes('технічну недоступність архіву чи фото НЕ згадуй НІДЕ')) errs.push('check.js: недоступність архіву ще згадується у звіті');
   /* 8. словники: нові рядки */
   for (const d of ['i18n/ru.js', 'i18n/en.js']) {
     const dict = fs.readFileSync(d, 'utf8');
