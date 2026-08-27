@@ -645,7 +645,7 @@ export function sanitizeEquipment(list) {
 export function selectEquipmentClaims(items) {
   const PRIORITY = [
     /burmester|harman|bang|bowers|b&o|meridian|levinson|bose|акустик|аудіо|аудио|sound/i,
-    /пакет|package|m sport|amg|s-?line|r-?line|denali|стилістик/i,
+    /пакет|package|m ?sport|m ?style|amg|s-?line|r-?line|denali|стилістик|стилистик/i,
     /адаптивн|дистрон|distronic|круїз|круиз|асистент|ассистент|pilot/i,
     /hud|head-?up|проекц/i,
     /пневмо|air ?suspension|airmatic/i,
