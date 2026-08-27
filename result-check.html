@@ -775,6 +775,15 @@
     <div class="card-body"><div id="risksList"></div></div>
   </div>
 
+  <!-- фото зараз -->
+  <div class="card" id="photoCard" style="display:none">
+    <div class="card-head">
+      <h2>Поточний стан за фото оголошення</h2>
+      <span class="badge blue">AI-аналіз фото</span>
+    </div>
+    <div class="card-body"><div class="flags" id="photoFindings"></div></div>
+  </div>
+
   <!-- історія пошкоджень -->
   <div class="card" id="usCard" style="display:none">
     <div class="card-head">
@@ -788,15 +797,6 @@
       <div class="flags" id="usFindings" style="margin-top:12px"></div>
       <div class="srcline" id="usSrc" style="margin-top:12px"></div>
     </div>
-  </div>
-
-  <!-- фото зараз -->
-  <div class="card" id="photoCard" style="display:none">
-    <div class="card-head">
-      <h2>Поточний стан за фото оголошення</h2>
-      <span class="badge blue">AI-аналіз фото</span>
-    </div>
-    <div class="card-body"><div class="flags" id="photoFindings"></div></div>
   </div>
 
   <!-- розбіжності -->
@@ -1280,8 +1280,10 @@ function boot2(D){
   /* ---- історія: рядки з паузами володіння ---- */
   if (Array.isArray(D.history) && D.history.length) {
     $('histCard').style.display = '';
+    /* connector між подіями малюється ЗАВЖДИ (крім останньої), підпис
+       інтервалу опційний: невідому дату не вигадуємо заради лінії */
     $('histList').innerHTML = D.history.map((h, i) =>
-      (i > 0 && h.gap ? '<div class="hgap">' + esc(h.gap) + '</div>' : '')
+      (i > 0 ? '<div class="hgap">' + (h.gap ? esc(h.gap) : '') + '</div>' : '')
       + '<div class="hrow"><span class="hd">' + esc(h.date) + '</span><span>' + esc(h.event) + '</span></div>'
     ).join('')
     + (D.history_note ? '<div class="dmg-note hnote">' + esc(D.history_note) + '</div>' : '');

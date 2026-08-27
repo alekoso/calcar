@@ -284,6 +284,39 @@ const REPORTS = [
     /* болячки: позначка про заявлене обслуговування */
     if (!page.includes('seller_serviced === true')) errs.push('нема позначки заявленого обслуговування');
   }
+  /* 6б. регресія історичних фото + historical_visual + timeline */
+  {
+    /* провенанс-виняток: usa_photos самої площадки проходять, generic ні */
+    if (!api.includes("auction.from_ria && /riastatic\\.com\\/photos\\/auto\\/usa\\//.test(u)")) errs.push('check.js: usa_photos RIA не проходять провенанс (регресія 49c1b55)');
+    if (!api.includes("auction_photos_provenance")) errs.push('check.js: нема провенансу фото в _meta');
+    if (!api.includes('auction.photos_sent')) errs.push('check.js: промпт бреше про кількість переданих кадрів');
+    /* historical_visual: схема, семантика, санітизація, порядок до decision */
+    if (!api.includes('"historical_visual":')) errs.push('check.js: схема без historical_visual');
+    if (!api.includes('НІКОЛИ не дорівнює "структура ціла"')) errs.push('check.js: нема семантики no_obvious_severe_signs');
+    if (!api.includes('НЕ "SRS справна"')) errs.push('check.js: нема семантики no_deployment_visible');
+    if (!api.includes('purchase_decision ЗОБОВʼЯЗАНИЙ враховувати historical_visual')) errs.push('check.js: decision не бачить historical_visual');
+    const sanHv = grab(api, 'sanitizeHistoricalVisual');
+    if (!sanHv) errs.push('нема sanitizeHistoricalVisual');
+    else {
+      const sh = new Function(sanHv + '\nreturn sanitizeHistoricalVisual;')();
+      /* без переданих кадрів поле не існує */
+      if (sh({ visible_severity: 'severe' }, 0) !== null) errs.push('historical_visual без кадрів вижив');
+      /* невалідні enum падають в indeterminate, зайве ріжеться */
+      const r = sh({ visible_damage_zones: ['капот', 7, '  бампер  '], visible_severity: 'huge', structural_visual_status: 'structure_ok', srs_visual_status: 'fine', summary: 'видно удар', evidence: [{ source: 'us_auction', ref: 'auction_photo_1', description: 'зімʼятий капот' }, { bad: 1 }] }, 3);
+      if (r.visible_severity !== 'indeterminate' || r.structural_visual_status !== 'indeterminate' || r.srs_visual_status !== 'indeterminate') errs.push('невалідні enum не занулені: ' + JSON.stringify(r));
+      if (r.visible_damage_zones.length !== 2 || r.evidence.length !== 1) errs.push('сміття у зонах/evidence не відсіяне');
+      const ok = sh({ visible_damage_zones: ['капот'], visible_severity: 'moderate', structural_visual_status: 'no_obvious_severe_signs', srs_visual_status: 'not_visible', summary: 's', evidence: [] }, 2);
+      if (ok.visible_severity !== 'moderate' || ok.structural_visual_status !== 'no_obvious_severe_signs') errs.push('валідний assessment попсований');
+    }
+    /* seller_text: structured JSON-LD пріоритет, маркери fallback */
+    if (!api.includes("d['@type'] === 'Vehicle' && typeof d.description === 'string'")) errs.push('check.js: seller_text без JSON-LD межі');
+    if (!api.includes("'Що перевірити перед покупкою'")) errs.push('check.js: fallback без стоп-маркера площадки');
+    /* UI: поточний стан вище історії, connector завжди */
+    const pg = fs.readFileSync('result-check.html', 'utf8');
+    if (!(pg.indexOf('id="photoCard"') < pg.indexOf('id="usCard"'))) errs.push('блок поточних фото не вище історичного');
+    if (!pg.includes("(i > 0 ? '<div class=\"hgap\">' + (h.gap ? esc(h.gap) : '') + '</div>' : '')")) errs.push('timeline connector залежить від підпису інтервалу');
+  }
+
   /* 7. сервер: seller_text, діагностика, дисципліна ризиків, розділення сутностей */
   if (!api.includes('seller_text: listing.seller_text')) errs.push('check.js: seller_text не йде у _meta');
   if (!api.includes('history_photos_unavailable')) errs.push('check.js: нема структурованої діагностики фото');

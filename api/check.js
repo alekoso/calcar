@@ -251,15 +251,27 @@ function extractListing(html, url) {
     { from: title.slice(0, 40), to: ['Опис від продавця'], cap: 3000 },
   ]);
 
-  /* оригінальний опис продавця окремо: у звіті показується за кнопкою.
-     Без фолбека на всю сторінку: нема маркера, нема опису */
+  /* оригінальний опис продавця: ЛИШЕ користувацький текст, без
+     автогенерованих секцій площадки (кузов, "Що перевірити перед
+     покупкою", техдані). Пріоритет: structured JSON-LD Vehicle.description
+     (точна межа від самої площадки); текстові маркери лише fallback.
+     Якщо межу визначити не можна, краще коротший опис, ніж сміття */
   let sellerText = null;
-  {
+  for (const m of html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/gi)) {
+    try {
+      const d = JSON.parse(m[1]);
+      if (d && d['@type'] === 'Vehicle' && typeof d.description === 'string' && d.description.trim().length > 20) {
+        sellerText = d.description.trim().slice(0, 3000);
+        break;
+      }
+    } catch (e) { /* не валідний JSON-LD: пропускаємо */ }
+  }
+  if (!sellerText) {
     const mk = 'Опис від продавця';
     const i = text.indexOf(mk);
     if (i !== -1) {
       let end = Math.min(text.length, i + 4000);
-      for (const stop of ['Дізнайтесь більше', 'Оголошення створене', 'Перевірено AUTO.RIA']) {
+      for (const stop of ['Дізнайтесь більше', 'Оголошення створене', 'Перевірено AUTO.RIA', 'Що перевірити перед покупкою', 'Что проверить перед покупкой']) {
         const j = text.indexOf(stop, i + mk.length);
         if (j !== -1 && j < end) end = j;
       }
@@ -587,6 +599,31 @@ export function pickEvenIndexes(n, k) {
   return [...new Set(idx)];
 }
 
+/* ---------- 4в3. Історичний візуальний аналіз: детермінована валідація ----------
+   Структурований assessment історичних кадрів. Жорстка семантика:
+   no_obvious_severe_signs НІКОЛИ не означає "структура ціла",
+   no_deployment_visible не означає справну SRS. Без переданих кадрів
+   поле не існує. На Score не впливає: лише wording, звіт і decision */
+export function sanitizeHistoricalVisual(hv, photosSent) {
+  if (!photosSent || !hv || typeof hv !== 'object' || Array.isArray(hv)) return null;
+  const SEV = ['minor', 'moderate', 'severe', 'indeterminate'];
+  const STR = ['no_obvious_severe_signs', 'possible', 'visible_damage', 'indeterminate'];
+  const SRS = ['deployed_visible', 'no_deployment_visible', 'not_visible', 'indeterminate'];
+  const clean = v => (typeof v === 'string' && v.trim()) ? v.trim().replace(/\u2014/g, ',') : null;
+  return {
+    visible_damage_zones: (Array.isArray(hv.visible_damage_zones) ? hv.visible_damage_zones : []).map(clean).filter(Boolean).map(z => z.slice(0, 60)).slice(0, 10),
+    visible_severity: SEV.includes(hv.visible_severity) ? hv.visible_severity : 'indeterminate',
+    structural_visual_status: STR.includes(hv.structural_visual_status) ? hv.structural_visual_status : 'indeterminate',
+    srs_visual_status: SRS.includes(hv.srs_visual_status) ? hv.srs_visual_status : 'indeterminate',
+    summary: clean(hv.summary) ? clean(hv.summary).slice(0, 600) : null,
+    evidence: (Array.isArray(hv.evidence) ? hv.evidence : [])
+      .filter(e => e && typeof e === 'object')
+      .map(e => ({ source: clean(e.source), ref: clean(e.ref), description: clean(e.description) ? clean(e.description).slice(0, 200) : null }))
+      .filter(e => e.source)
+      .slice(0, 6),
+  };
+}
+
 /* ---------- 4г. Комплектація: детермінована валідація і верифікація ----------
    Модель пропонує знахідки, код вирішує, що виживає. Рівно чотири рівні
    достовірності, рівня "ймовірно" не існує. Візуальне підтвердження без
@@ -769,14 +806,21 @@ ${JSON.stringify({ title: l.title, vin: l.vin, plate: l.plate, price: l.price, c
 ${l.text}
 
 Декодування VIN від NHTSA: ${nhtsa ? JSON.stringify(nhtsa) : 'недоступне'}
-${auction && auction.photos.length ? `
-ФОТО З АУКЦІОНУ США ДОСТУПНІ (${auction.photos.length} кадрів, зроблені ДО ремонту, коли авто продавали пошкодженим).${auction.text ? '\nТекст архіву аукціону:\n' + auction.text.slice(0, 2500) : ''}
+${auction && auction.photos_sent ? `
+ІСТОРИЧНІ ФОТО ПОШКОДЖЕНОГО СТАНУ ДОСТУПНІ (${auction.photos_sent} кадрів, зроблені ДО ремонту, коли авто продавали пошкодженим).${auction.text ? '\nТекст архіву аукціону:\n' + auction.text.slice(0, 2500) : ''}
 ЦЕ НАЙЦІННІШЕ ДЖЕРЕЛО ЗВІТУ, і воно у тебе Є: писати "аукціонні фото недоступні" тепер прямо заборонено. Обовʼязково:
 - по аукціонних фото визнач РЕАЛЬНИЙ обсяг пошкоджень: які деталі биті, чи зачеплені подушки, лонжерони, підвіска
 - звір це з тим, як продавець описує пошкодження і ремонт: занижує, чесний чи перебільшує
 - порівняй зону удару "до" з нинішніми фото "після": збіг відтінку, зазори, якість відновлення
 - verdict тверджень продавця про пошкодження і ремонт тепер спирається на аукціонні фото, а не на "недоступно"
-` : auction && auction.blocked ? `Архів аукціону США існує (посилання на сторінці), але його сервер не пустив нас автоматично.
+
+ІСТОРИЧНИЙ ВІЗУАЛЬНИЙ АНАЛІЗ ("historical_visual"): заповнюй ЛИШЕ коли історичні кадри реально передані. Оцінюй те, що РЕАЛЬНО видно САМЕ на цих кадрах, а не типовий сценарій ДТП:
+- visible_damage_zones: зони з ВИДИМИМ пошкодженням.
+- visible_severity за видимим обсягом: minor (косметика) | moderate (помітний удар, деформовані навісні елементи) | severe (очевидно тяжка деформація) | indeterminate.
+- structural_visual_status: "no_obvious_severe_signs" означає ЛИШЕ "на доступних кадрах нема явних візуальних ознак тяжкої деформації силової структури" і НІКОЛИ не дорівнює "структура ціла". "visible_damage" лише при видимій деформації силових елементів. Ракурс не дозволяє судити: "indeterminate".
+- srs_visual_status: "no_deployment_visible" означає лише "спрацювання не видно на доступних кадрах", НЕ "SRS справна". Салон у кадр не потрапив: "not_visible".
+- summary: 2-3 речення про побачене, з розділенням "що видно" і "що лишається невідомим". evidence з ref auction_photo_N.
+` : auction && (auction.blocked || (auction.photos || []).length) ? `Архів чи історичні матеріали існують, але кадри автоматично недоступні.
 ЖОРСТКЕ ПРАВИЛО: технічну недоступність архіву чи фото НЕ згадуй НІДЕ у звіті, включно з auction.summary: ані "сервер не пустив", ані "не вдалося завантажити", ані "матеріали недоступні". Користувач бачить лише те, що знайдено; факт недоступності живе тільки в службових логах. auction.summary будуй з наявних фактів (запис про ДТП, дані площадки, слова продавця) без жодного речення про доступ. Роби висновки з того, що маєш: запис про ДТП у США сам по собі є фактом, і оцінювати треба ризик неякісного відновлення, а не відсутність фото.` : 'Архіву аукціону США у сторінці немає.'}
 
 БЛОК ІСТОРІЇ ПОШКОДЖЕНЬ ("auction"): у звіті це розділ "Історія пошкоджень і фото з минулого", і він ГЛОБАЛЬНИЙ, не лише про США. "found": true СТАВ ЛИШЕ коли для авто реально знайдена подія, повʼязана з пошкодженням, ДТП чи відновленням (аукціон пошкоджених авто, запис про ДТП, історичні фото пошкодженого стану). Звичайна реєстраційна історія, зміна власників, минулі оголошення без пошкоджень та інші нейтральні історичні записи самі по собі цей блок НЕ створюють: тоді "found": false, "summary": null, "findings": порожній масив, і жодних текстів на кшталт "записів не знайдено" у summary. Американський контекст (США, IAAI, Copart) згадуй усередині блоку ЛИШЕ коли подія справді американська; для подій з інших країн називай їхнє джерело.
@@ -868,11 +912,14 @@ METADATA EXACT-LOT (надійний historical, джерело ${auctionMeta.so
 
 "verdict.grade": buy (брати, істотних проблем не знайдено), inspect (можна брати після конкретних перевірок), caution (є серйозні розбіжності, торг або обережність), avoid (знайдені факти прямо суперечать оголошенню або ризик надто високий). Оцінюй відносно ринку вживаних авто: сліди експлуатації це норма, а не привід для avoid. Але приховування фактів продавцем (знайдене ДТП при "без ДТП") завжди мінімум caution.
 
+ІСТОРИЧНИЙ ВІЗУАЛ І РІШЕННЯ: purchase_decision ЗОБОВʼЯЗАНИЙ враховувати historical_visual РАЗОМ з фактами історії, поточними фото, заявами продавця, пробігом і болячками моделі, і РОЗРІЗНЯТИ три різні ситуації: (1) видимі ознаки тяжкого/структурного пошкодження; (2) явних тяжких структурних ознак на доступних кадрах НЕ видно; (3) прихована структура, геометрія і SRS лишаються неперевіреними. Друга і третя співіснують: тоді формулюй "на історичному фото видно помітний удар спереду; явних ознак тяжкої деформації силової структури чи зони салону на доступному ракурсі нема, але приховані елементи, геометрію і SRS за цим фото підтвердити не можна". НЕ пиши так, ніби тяжке пошкодження вже знайдене, якщо visual evidence його не показує; і НЕ називай удар мінімальним, якщо на кадрах видно суттєве пошкодження.
+
 ${DECISION_RULES}${decisionStyle === 'a' ? DECISION_FEWSHOT : ''}
 Відповідай ЛИШЕ валідним JSON без markdown, точно за схемою:
 {
  "vehicle": {"title":"Марка Модель Рік","year":2018,"fuel":"petrol|diesel|hybrid|electric","engine":"4.4 л бензин V8, 462 к.с. (або null)","transmission":"...","drive":"...","trim":"версія або null","mileage_note":"129 000 км"},
  "auction": {"found":true,"summary":"2-4 речення: що сталося з авто в США за архівом, реальний обсяг пошкоджень по фото, чи чесно продавець його описує","findings":[{"status":"ok|warn|bad|unknown","text":"порівняння до/після, 1 речення"}]},
+ "historical_visual": {"visible_damage_zones":["капот","передній бампер"],"visible_severity":"minor|moderate|severe|indeterminate","structural_visual_status":"no_obvious_severe_signs|possible|visible_damage|indeterminate","srs_visual_status":"deployed_visible|no_deployment_visible|not_visible|indeterminate","summary":"2-3 речення: що реально видно і що лишається невідомим","evidence":[{"source":"us_auction","ref":"auction_photo_1","description":"зім'ятий капот"}]},
  "risks":[{"title":"назва ризику","level":"high|med|low","note":"1-2 речення: чому це головна стаття витрат чи ризику саме тут","action":"конкретна перевірка до покупки, 1 рядок"}],
  "equipment_v2":[{"name":"вентиляція передніх сидінь","category":"comfort|interior|multimedia|assist|exterior|performance","confidence_level":"vehicle_data|seller_and_visual|visual|seller, або null лише для суто історичної","highlight":false,"retrofit":false,"retrofit_basis":null,"historical_claim":false,"evidence":[{"source":"vehicle_data|current_photos|seller_claim|historical","ref":"photo_7 чи vin_decode чи назва історичного джерела","sign":"конкретна ознака на кадрі чи коротка цитата джерела"}]}],
  "discrepancies":[{"severity":"high|med|low","title":"коротка назва розбіжності","detail":"2-3 речення: що стверджується, що знайдено, звідки","sources":["опис продавця","перевірка площадки","фото","VIN"]}],
@@ -1038,9 +1085,15 @@ export default async function handler(req, res) {
        кожному недоступному кадрі). Такі кадри лишаються в record, а зони і
        подушки для них дає exact-lot metadata */
     const visionLoadable = u => !/mercury\.bid|pluto\.bid|bid\.cars|bidfax|poctra|cf-chl/i.test(String(u));
+    /* ВИНЯТОК ПРОВЕНАНСУ (виправлення регресії 49c1b55): usa_photos,
+       збережені САМОЮ площадкою у гілці /photos/auto/usa/ сторінки цього
+       VIN, привʼязані до exact події платформою: це явна технічна
+       привʼязка, VIN у імені файлу їм не потрібен. Generic-дзеркала
+       (americamotors) як і раніше мусять мати VIN/lot у URL */
     const auctionPhotos = (auction?.photos || [])
-      .filter(u => photoHasProvenance(u, listing.vin, auctionLotId) && visionLoadable(u))
+      .filter(u => ((auction.from_ria && /riastatic\.com\/photos\/auto\/usa\//.test(u)) || photoHasProvenance(u, listing.vin, auctionLotId)) && visionLoadable(u))
       .slice(0, 8);
+    if (auction) auction.photos_sent = auctionPhotos.length;
     if (auction && !auctionPhotos.length) {
       /* структуроване діагностичне повідомлення для Runtime Logs:
          без секретів, HTML і великих payload */
@@ -1197,6 +1250,12 @@ export default async function handler(req, res) {
         '| cap', breakdown.coverage_cap, '| lim', breakdown.limiting_factors.join(',') || 'none');
     } catch (e) { console.log('[check] score_v2 failed:', e.message); }
 
+    /* історичний візуал: валідація. Виник у ТОМУ Ж виклику, що й
+       purchase_decision, тому рішення бачило кадри до формування */
+    const hvClean = sanitizeHistoricalVisual(parsed.historical_visual, auctionPhotos.length);
+    if (hvClean) parsed.historical_visual = hvClean;
+    else delete parsed.historical_visual;
+
     const cleanDecision = sanitizePurchaseDecision(parsed.purchase_decision, parsed.score_v2_preview);
     if (cleanDecision) parsed.purchase_decision = cleanDecision;
     else delete parsed.purchase_decision;
@@ -1269,6 +1328,9 @@ export default async function handler(req, res) {
       seller_text: listing.seller_text || null,
       auction_url: listing.auction_url || null,
       auction_photos: auctionPhotos,
+      auction_photos_provenance: auction && auctionPhotos.length
+        ? (auction.from_ria ? 'autoria_history' : auction.from_search ? 'auction_search' : 'external_archive')
+        : null,
       auction_search: auctionSearch,
       history_facts: listing.history_facts || null,
       /* паспорт джерела для інтерфейсу: без посилань назовні */
