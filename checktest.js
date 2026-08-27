@@ -217,6 +217,10 @@ const REPORTS = [
     if (!api.includes('КНОПКИ ДОКАЗУЮТЬ КНОПКИ')) errs.push('check.js: нема правила про органи керування');
     if (!api.includes('Рівня "ймовірно" НЕ існує')) errs.push('check.js: нема заборони проміжного рівня');
     if (!api.includes('"equipment_v2":[{')) errs.push('check.js: схема без equipment_v2');
+    /* semantic cleanup: софт-стани, не підсилювати понад доказ, без дублів шапки */
+    if (!api.includes('софтверні і конфігураційні стани опціями не є')) errs.push('check.js: софт-стани не виключені з комплектації');
+    if (!api.includes('НЕ ПІДСИЛЮЙ ВИСНОВОК ПОНАД ДОКАЗ')) errs.push('check.js: нема правила про підсилення висновку');
+    if (!api.includes('в equipment_v2 не дублюй')) errs.push('check.js: базові характеристики шапки не виключені');
     if (!api.includes('elapsedEq > 190000')) errs.push('check.js: верифікатор без бюджету часу');
     if (!api.includes('.slice(0, 6)')) errs.push('check.js: claims не обмежені шістьома');
     if (!api.includes('equipment_verifier: eqVerifier')) errs.push('check.js: діагностика верифікатора не в _meta');
