@@ -433,6 +433,13 @@
 
 
   /* фінальний висновок: рішення шарами */
+  /* комплектація v2: рядки опція + бейдж рівня, групи, головне зверху */
+  .eq-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:7px 0;border-bottom:1px solid var(--line)}
+  .eq-row:last-child{border-bottom:none}
+  .eq-name{font-size:13.5px;color:var(--text)}
+  .eq-head-sm{font-size:12.5px;font-weight:600;color:var(--muted);margin:14px 0 2px}
+  .eq-main .eq-head-sm:first-child{margin-top:0}
+
   /* identity-рядок картки авто: VIN і номер з копіюванням, опис продавця */
   .id-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:0 20px;padding:10px 0 14px;border-top:1px solid var(--line)}
   .id-line{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
@@ -1224,19 +1231,62 @@ function boot2(D){
   if (discs.length) $('discCount').textContent = discs.length;
   else $('discCount').style.display = 'none';
 
-  /* ---- комплектація з джерелами ---- */
-  const eq = D.equipment || {};
-  const EQ_GROUPS = [
-    ['vin',    'green', t('Підтверджено за VIN')],
-    ['photo',  'blue',  t('Видно на фото')],
-    ['seller', 'amber', t('Зі слів продавця')],
-  ];
-  const eqHtml = EQ_GROUPS
-    .filter(g => Array.isArray(eq[g[0]]) && eq[g[0]].length)
-    .map(g => '<div class="eq-group"><div class="eq-head"><span class="badge ' + g[1] + '">' + esc(g[2]) + '</span></div>'
-      + '<div class="eq-chips">' + eq[g[0]].map(o => '<span>' + esc(o) + '</span>').join('') + '</div></div>')
-    .join('');
-  if (eqHtml) { $('eqCard').style.display = ''; $('eqList').innerHTML = eqHtml; }
+  /* ---- комплектація v2: головне зверху, повний список за кнопкою,
+     бейдж рівня достовірності біля кожної опції, retrofit окремою секцією.
+     Джерело (кадр + ознака) лежить у title як метадані. Старі звіти з
+     equipment {vin,photo,seller} рендеряться легасі-гілкою ---- */
+  const eqV2 = Array.isArray(D.equipment_v2) ? D.equipment_v2.filter(o => o && o.name && o.confidence_level) : [];
+  if (eqV2.length) {
+    const LVL_BADGE = {
+      vehicle_data: ['green', t('Підтверджено даними авто')],
+      seller_and_visual: ['blue', t('Продавець вказав і видно на фото')],
+      visual: ['blue', t('Видно на фото')],
+      seller: ['amber', t('Зі слів продавця')],
+    };
+    const rowHtml = o => {
+      const b = LVL_BADGE[o.confidence_level];
+      if (!b) return '';
+      const meta = (o.evidence || []).map(e => [e.ref, e.sign].filter(Boolean).join(': ')).filter(Boolean).join(' · ');
+      return '<div class="eq-row"' + (meta ? ' title="' + esc(meta) + '"' : '') + '><span class="eq-name">' + esc(o.name) + '</span><span class="badge ' + b[0] + '">' + esc(b[1]) + '</span></div>';
+    };
+    const mainItems = eqV2.filter(o => o.highlight && !o.retrofit).slice(0, 8);
+    const CATS = [['comfort', t('Комфорт')], ['interior', t('Салон')], ['multimedia', t('Мультимедіа')], ['assist', t('Асистенти')], ['exterior', t('Екстерʼєр')], ['performance', 'Performance']];
+    let eqTop = '';
+    if (mainItems.length) eqTop = '<div class="eq-main"><div class="eq-head-sm">' + esc(t('Головне в комплектації')) + '</div>' + mainItems.map(rowHtml).join('') + '</div>';
+    let eqFullHtml = '';
+    for (const [ck, ct] of CATS) {
+      const items = eqV2.filter(o => o.category === ck && !o.retrofit);
+      if (!items.length) continue;
+      eqFullHtml += '<div class="eq-group"><div class="eq-head-sm">' + esc(ct) + '</div>' + items.map(rowHtml).join('') + '</div>';
+    }
+    const retro = eqV2.filter(o => o.retrofit);
+    if (retro.length) eqFullHtml += '<div class="eq-group"><div class="eq-head-sm">' + esc(t('Встановлено пізніше / переобладнання')) + '</div>' + retro.map(rowHtml).join('') + '</div>';
+    let html = eqTop;
+    if (eqFullHtml) html += '<button class="pd-more" id="eqAllBtn" type="button">' + esc(t('Показати всю комплектацію')) + '</button><div id="eqFull" style="display:none">' + eqFullHtml + '</div>';
+    if (html) {
+      $('eqCard').style.display = '';
+      $('eqList').innerHTML = html;
+      const eqBtn = document.getElementById('eqAllBtn');
+      if (eqBtn) eqBtn.onclick = () => {
+        const open = $('eqFull').style.display !== 'none';
+        $('eqFull').style.display = open ? 'none' : '';
+        eqBtn.textContent = open ? t('Показати всю комплектацію') : t('Згорнути комплектацію');
+      };
+    }
+  } else {
+    const eq = D.equipment || {};
+    const EQ_GROUPS = [
+      ['vin',    'green', t('Підтверджено за VIN')],
+      ['photo',  'blue',  t('Видно на фото')],
+      ['seller', 'amber', t('Зі слів продавця')],
+    ];
+    const eqHtml = EQ_GROUPS
+      .filter(g => Array.isArray(eq[g[0]]) && eq[g[0]].length)
+      .map(g => '<div class="eq-group"><div class="eq-head"><span class="badge ' + g[1] + '">' + esc(g[2]) + '</span></div>'
+        + '<div class="eq-chips">' + eq[g[0]].map(o => '<span>' + esc(o) + '</span>').join('') + '</div></div>')
+      .join('');
+    if (eqHtml) { $('eqCard').style.display = ''; $('eqList').innerHTML = eqHtml; }
+  }
 
   /* ---- історія: рядки з паузами володіння ---- */
   if (Array.isArray(D.history) && D.history.length) {

@@ -121,6 +121,93 @@ const REPORTS = [
     }
   }
 
+  /* 6а. комплектація v2: детерміновані функції, чотири рівні, верифікатор */
+  {
+    const sanFn = grab(api, 'sanitizeEquipment');
+    const selFn = grab(api, 'selectEquipmentClaims');
+    const appFn = grab(api, 'applyEquipmentVerifier');
+    if (!sanFn || !selFn || !appFn) errs.push('функції комплектації не знайдені в api/check.js');
+    else {
+      const lib = new Function(sanFn + '\n' + selFn + '\n' + appFn + '\nreturn { sanitizeEquipment, selectEquipmentClaims, applyEquipmentVerifier };')();
+      const ev = (source, ref, sign) => ({ source, ref, sign });
+      const mk = o => Object.assign({ name: 'x', category: 'comfort', confidence_level: 'visual', highlight: false, retrofit: false, retrofit_basis: null, historical_claim: false, evidence: [] }, o);
+      /* visual без кадру і ознаки: якщо є заява продавця, стає seller; без неї зникає */
+      let r = lib.sanitizeEquipment([mk({ name: 'HUD', evidence: [] })]);
+      if (r.length) errs.push('visual без evidence вижив');
+      r = lib.sanitizeEquipment([mk({ name: 'HUD', evidence: [ev('seller_claim', null, 'проектор')] })]);
+      if (r.length !== 1 || r[0].confidence_level !== 'seller') errs.push('visual без кадру із заявою не став seller: ' + JSON.stringify(r));
+      /* seller_and_visual без візуального evidence: seller */
+      r = lib.sanitizeEquipment([mk({ confidence_level: 'seller_and_visual', evidence: [ev('seller_claim', null, 'вказано')] })]);
+      if (r.length !== 1 || r[0].confidence_level !== 'seller') errs.push('s_a_v без кадру не понижений до seller');
+      /* повний visual виживає */
+      r = lib.sanitizeEquipment([mk({ name: 'Панорамний дах', evidence: [ev('current_photos', 'photo_3', 'скло даху на кадрі згори')] })]);
+      if (r.length !== 1 || r[0].confidence_level !== 'visual') errs.push('валідний visual не вижив');
+      /* рівня "ймовірно" не існує */
+      r = lib.sanitizeEquipment([mk({ confidence_level: 'probable', evidence: [ev('current_photos', 'photo_1', 'щось')] })]);
+      if (r.length) errs.push('невідомий рівень не відкинутий');
+      /* retrofit лише з підставою */
+      r = lib.sanitizeEquipment([mk({ retrofit: true, evidence: [ev('current_photos', 'photo_1', 'фари')] })]);
+      if (r[0].retrofit !== false) errs.push('retrofit без підстави не скинутий');
+      r = lib.sanitizeEquipment([mk({ retrofit: true, retrofit_basis: 'продавець прямо вказав переобладнання', evidence: [ev('current_photos', 'photo_1', 'фари')] })]);
+      if (r[0].retrofit !== true) errs.push('retrofit з підставою загублений');
+      /* суто історична: зберігається без рівня */
+      r = lib.sanitizeEquipment([mk({ confidence_level: null, historical_claim: true, evidence: [ev('historical', 'auction_2023', 'у картці лота')] })]);
+      if (r.length !== 1 || r[0].confidence_level !== null) errs.push('historical_claim без рівня загублена');
+      /* highlight максимум 8 */
+      r = lib.sanitizeEquipment(Array.from({ length: 12 }, (_, i) => mk({ name: 'opt' + i, highlight: true, evidence: [ev('current_photos', 'photo_1', 'ознака')] })));
+      if (r.filter(x => x.highlight).length !== 8) errs.push('highlight не обмежений вісьмома');
+      /* відбір claims: лише важливі візуальні, максимум 6, brand перший */
+      const many = [
+        mk({ name: 'Килимки', evidence: [ev('current_photos', 'photo_1', 'килимки')] }),
+        mk({ name: 'Harman Kardon аудіо', evidence: [ev('current_photos', 'photo_2', 'логотип на решітці')] }),
+        mk({ name: 'Адаптивний круїз', evidence: [ev('current_photos', 'photo_3', 'важіль')] }),
+        mk({ name: 'HUD проекція', evidence: [ev('current_photos', 'photo_4', 'лінза')] }),
+        mk({ name: 'Пневмопідвіска', confidence_level: 'vehicle_data', evidence: [ev('vehicle_data', 'vin_decode', 'у декодуванні')] }),
+      ];
+      const claims = lib.selectEquipmentClaims(lib.sanitizeEquipment(many));
+      if (claims.some(c => c.name === 'Килимки')) errs.push('неважлива знахідка потрапила у перевірку');
+      if (claims.some(c => c.confidence_level === 'vehicle_data')) errs.push('vehicle_data потрапив у перевірку');
+      if (claims[0].name !== 'Harman Kardon аудіо') errs.push('брендове аудіо не перше у перевірці');
+      /* вердикти: s_a_v -> seller, visual -> геть, vehicle_data недоторканий */
+      const items = lib.sanitizeEquipment([
+        mk({ name: 'Burmester', confidence_level: 'seller_and_visual', evidence: [ev('seller_claim', null, 'бурмістер у описі'), ev('current_photos', 'photo_5', 'логотип')] }),
+        mk({ name: 'HUD', evidence: [ev('current_photos', 'photo_6', 'лінза на торпедо')] }),
+        mk({ name: 'Панорама', confidence_level: 'vehicle_data', evidence: [ev('vehicle_data', 'vin_decode', 'sunroof у декодуванні')] }),
+      ]);
+      const after = lib.applyEquipmentVerifier(items, [
+        { name: 'Burmester', verdict: 'not_confirmed' },
+        { name: 'HUD', verdict: 'not_confirmed' },
+        { name: 'Панорама', verdict: 'not_confirmed' },
+      ]);
+      const burm = after.find(x => x.name === 'Burmester');
+      if (!burm || burm.confidence_level !== 'seller') errs.push('s_a_v не пройшов, але не став seller');
+      if (burm && burm.evidence.some(e => e.source === 'current_photos')) errs.push('візуальний evidence лишився після провалу');
+      if (after.some(x => x.name === 'HUD')) errs.push('visual, що не пройшов, не видалений');
+      const pan = after.find(x => x.name === 'Панорама');
+      if (!pan || pan.confidence_level !== 'vehicle_data') errs.push('vehicle_data понижений перевіркою');
+    }
+    /* сторожі промпта і хендлера */
+    if (!api.includes('ATTENTION MAP')) errs.push('check.js: нема attention map у промпті');
+    if (!api.includes('дистронік це адаптивний круїз')) errs.push('check.js: нема нормалізації народних назв');
+    if (!api.includes('КНОПКИ ДОКАЗУЮТЬ КНОПКИ')) errs.push('check.js: нема правила про органи керування');
+    if (!api.includes('Рівня "ймовірно" НЕ існує')) errs.push('check.js: нема заборони проміжного рівня');
+    if (!api.includes('"equipment_v2":[{')) errs.push('check.js: схема без equipment_v2');
+    if (!api.includes('elapsedEq > 190000')) errs.push('check.js: верифікатор без бюджету часу');
+    if (!api.includes('.slice(0, 6)')) errs.push('check.js: claims не обмежені шістьома');
+    if (!api.includes('equipment_verifier: eqVerifier')) errs.push('check.js: діагностика верифікатора не в _meta');
+    /* сторінка: новий рендер + легасі фолбек */
+    const page2 = fs.readFileSync('result-check.html', 'utf8');
+    for (const el of ['equipment_v2', 'Головне в комплектації', 'Показати всю комплектацію', 'Підтверджено даними авто', 'Продавець вказав і видно на фото', 'Встановлено пізніше / переобладнання', 'Підтверджено за VIN']) {
+      if (!page2.includes(el)) errs.push('result-check.html: нема ' + el);
+    }
+    for (const d of ['i18n/ru.js', 'i18n/en.js']) {
+      const dict = fs.readFileSync(d, 'utf8');
+      for (const k of ['Головне в комплектації', 'Показати всю комплектацію', 'Згорнути комплектацію', 'Підтверджено даними авто', 'Продавець вказав і видно на фото', 'Встановлено пізніше / переобладнання', 'Комфорт', 'Мультимедіа', 'Асистенти', 'Екстерʼєр']) {
+        if (!dict.includes("'" + k + "'")) errs.push('нема ключа "' + k + '" у ' + d);
+      }
+    }
+  }
+
   /* 6. правки звіту Check: порядок блоків, identity, вердикт, історія, бейдж */
   {
     const page = fs.readFileSync('result-check.html', 'utf8');

@@ -573,6 +573,120 @@ export function sanitizePurchaseDecision(pd, v2) {
   return out;
 }
 
+/* ---------- 4г. Комплектація: детермінована валідація і верифікація ----------
+   Модель пропонує знахідки, код вирішує, що виживає. Рівно чотири рівні
+   достовірності, рівня "ймовірно" не існує. Візуальне підтвердження без
+   кадру і конкретної ознаки не існує. Філософія: краще пропустити опцію,
+   ніж впевнено додати неіснуючу */
+export function sanitizeEquipment(list) {
+  if (!Array.isArray(list)) return [];
+  const LEVELS = ['vehicle_data', 'seller_and_visual', 'visual', 'seller'];
+  const CATS = ['comfort', 'interior', 'multimedia', 'assist', 'exterior', 'performance'];
+  const clean = v => (typeof v === 'string' && v.trim()) ? v.trim().replace(/\u2014/g, ',') : null;
+  const seen = new Set();
+  const out = [];
+  for (const raw of list) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+    const name = clean(raw.name) && clean(raw.name).slice(0, 80);
+    if (!name) continue;
+    const key = name.toLowerCase().replace(/\s+/g, ' ');
+    if (seen.has(key)) continue;
+    const evidence = (Array.isArray(raw.evidence) ? raw.evidence : [])
+      .filter(e => e && typeof e === 'object')
+      .map(e => ({
+        source: clean(e.source) ? clean(e.source).slice(0, 30) : null,
+        ref: clean(e.ref) ? clean(e.ref).slice(0, 60) : null,
+        sign: clean(e.sign) ? clean(e.sign).slice(0, 200) : null,
+      }))
+      .filter(e => e.source)
+      .slice(0, 4);
+    const visualEv = evidence.some(e => e.source === 'current_photos' && e.ref && e.sign);
+    const sellerEv = evidence.some(e => e.source === 'seller_claim');
+    const dataEv = evidence.some(e => e.source === 'vehicle_data' && e.sign);
+    const histEv = evidence.some(e => e.source === 'historical');
+    let level = LEVELS.includes(raw.confidence_level) ? raw.confidence_level : null;
+    if (!level) {
+      /* суто історична заява: зберігається в даних, не показується */
+      if (!(raw.historical_claim === true && histEv)) continue;
+    } else if (level === 'visual') {
+      /* візуальне без кадру і ознаки не показується як візуальне;
+         заява продавця, якщо вона є, лишається рівнем seller */
+      if (!visualEv) { if (sellerEv) level = 'seller'; else continue; }
+    } else if (level === 'seller_and_visual') {
+      if (!visualEv) { if (sellerEv) level = 'seller'; else continue; }
+      else if (!sellerEv) level = 'visual';
+    } else if (level === 'vehicle_data') {
+      if (!dataEv) continue;
+    } else if (level === 'seller') {
+      if (!sellerEv) continue;
+    }
+    const basis = clean(raw.retrofit_basis) ? clean(raw.retrofit_basis).slice(0, 200) : null;
+    const retrofit = raw.retrofit === true && !!basis;
+    out.push({
+      name,
+      category: CATS.includes(raw.category) ? raw.category : 'comfort',
+      confidence_level: level,
+      highlight: raw.highlight === true && !!level,
+      retrofit,
+      retrofit_basis: retrofit ? basis : null,
+      historical_claim: raw.historical_claim === true,
+      evidence,
+    });
+    seen.add(key);
+    if (out.length >= 40) break;
+  }
+  let h = 0;
+  for (const it of out) if (it.highlight && ++h > 8) it.highlight = false;
+  return out;
+}
+
+/* кандидати на скептичну перевірку: лише важливі і брендові візуальні
+   знахідки, максимум 6. vehicle_data і seller не перевіряються взагалі */
+export function selectEquipmentClaims(items) {
+  const PRIORITY = [
+    /burmester|harman|bang|bowers|b&o|meridian|levinson|bose|акустик|аудіо|аудио|sound/i,
+    /пакет|package|m sport|amg|s-?line|r-?line|denali|стилістик/i,
+    /адаптивн|дистрон|distronic|круїз|круиз|асистент|ассистент|pilot/i,
+    /hud|head-?up|проекц/i,
+    /пневмо|air ?suspension|airmatic/i,
+    /камер|360|кругов/i,
+  ];
+  const scored = [];
+  (Array.isArray(items) ? items : []).forEach((it, idx) => {
+    if (it.confidence_level !== 'visual' && it.confidence_level !== 'seller_and_visual') return;
+    for (let p = 0; p < PRIORITY.length; p++) {
+      if (PRIORITY[p].test(it.name)) { scored.push({ it, p, idx }); break; }
+    }
+  });
+  scored.sort((a, b) => a.p - b.p || a.idx - b.idx);
+  return scored.slice(0, 6).map(x => x.it);
+}
+
+/* детерміноване застосування вердиктів перевіряльника:
+   seller_and_visual не пройшов = seller (якщо заява продавця існує);
+   visual без іншого джерела не пройшов = видаляється;
+   vehicle_data і seller перевіркою не понижуються */
+export function applyEquipmentVerifier(items, verdicts) {
+  if (!Array.isArray(items)) return [];
+  if (!Array.isArray(verdicts)) return items;
+  const bad = new Set(verdicts
+    .filter(v => v && v.verdict === 'not_confirmed' && typeof v.name === 'string')
+    .map(v => v.name.trim().toLowerCase().replace(/\s+/g, ' ')));
+  if (!bad.size) return items;
+  const out = [];
+  for (const it of items) {
+    if (!bad.has(it.name.trim().toLowerCase().replace(/\s+/g, ' '))) { out.push(it); continue; }
+    if (it.confidence_level === 'seller_and_visual') {
+      const rest = it.evidence.filter(e => e.source !== 'current_photos');
+      if (rest.some(e => e.source === 'seller_claim')) out.push({ ...it, confidence_level: 'seller', evidence: rest });
+    } else if (it.confidence_level !== 'visual') {
+      out.push(it);
+    }
+    /* visual, що не пройшов: видалено */
+  }
+  return out;
+}
+
 /* ---------- 5. AI-розбір ---------- */
 /* стиль фінального висновку: 'a' із прикладами міркувань власника (few-shot),
    'b' лише словесний опис стилю. Перемикається тілом запиту decision_style
@@ -671,7 +785,7 @@ ${auction && auction.photos.length ? `
 - Не заповнюй блоки заради кількості. Краще 2 влучні розбіжності, ніж 6 порожніх. Порожній масив завжди кращий за наповнювач.
 - Пробіг "1 тис. км" у записі аукціону США може означати милі або фіксацію на момент продажу: не роби з одиниць виміру катастрофу, але звір хронологію на логічність.
 
-ТВЕРДЖЕННЯ ПРОДАВЦЯ перевіряй, але НЕ виводь окремим списком. Результат перевірки клади туди, де він доречний: суперечність із фактами = у discrepancies; заявлена опція = у equipment.seller або equipment.photo, якщо видно на фото; твердження про обсяг ремонту після США = у auction.findings. Констатації "не вдалося перевірити" без цінності для рішення взагалі не пиши.
+ТВЕРДЖЕННЯ ПРОДАВЦЯ перевіряй, але НЕ виводь окремим списком. Результат перевірки клади туди, де він доречний: суперечність із фактами = у discrepancies; заявлена опція = в equipment_v2 з рівнем seller чи seller_and_visual; твердження про обсяг ремонту після США = у auction.findings. Констатації "не вдалося перевірити" без цінності для рішення взагалі не пиши.
 
 ШАПКА = ФАКТИ. Усі поля "vehicle" це короткі технічні факти без коментарів, застережень і слів про відсутні дані:
 - "engine": "4.4 л бензин V8, 462 к.с." або "електро, 77 кВт·год". НІКОЛИ не пиши "довідково", "в декодуванні не вказано", "ймовірно". Невідоме = null, а не речення про невідомість.
@@ -685,7 +799,16 @@ ${auction && auction.photos.length ? `
 
 РОЗДІЛЕННЯ СУТНОСТЕЙ: "model_notes.issues" це ЛИШЕ типові болячки моделі, двигуна, коробки цієї версії. "risks" це ЛИШЕ про цей конкретний екземпляр. Заявлений продавцем ремонт НЕ створює новий запис ані в issues, ані в risks: якщо вузол є слабким місцем моделі і продавець заявляє, що він уже обслужений, постав у відповідному пункті issues поле "seller_serviced": true (інтерфейс покаже позначку "продавець заявляє, що вузол уже обслужений"), і це знижує актуальність ризику.
 
-"equipment": комплектація з зазначенням джерела кожної групи. "vin": лише те, що РЕАЛЬНО назване в декодуванні VIN. "photo": опції, які ВИДНО на фото оголошення (Burmester чи інша акустика по решітках, панорамний дах, вентиляція за перфорацією сидінь, камери 360, HUD, моніторами позаду, підсвітка тощо): пиши тільки впевнено видиме. "seller": важливі опції зі слів продавця, яких нема ні у VIN, ні на фото. Порожні масиви дозволені, вигадувати заборонено.
+КОМПЛЕКТАЦІЯ ("equipment_v2"): максимально повне визначення ПІДТВЕРДЖУВАНОЇ комплектації. Філософія: краще пропустити одну опцію, ніж впевнено додати неіснуючу. Пайплайн усередині ЦЬОГО Ж аналізу, без окремих проходів:
+1) ATTENTION MAP: спершу сформуй подумки коротку карту характерних для цієї марки, моделі, покоління, року і версії опцій та місць, де зазвичай видно їх ознаки (логотип на решітці динаміка, кнопки вентиляції на консолі, проектор HUD на торпедо, камери в дзеркалах і решітці радіатора, шторки, память сидінь). Карта каже, КУДИ дивитись; наявність опції в карті НЕ доказ її присутності; впевнені знахідки поза картою теж фіксуй.
+2) ТЕКСТ ПРОДАВЦЯ: розбери, що заявлено, з нормалізацією народних назв (дистронік це адаптивний круїз, бурмістер це Burmester, панорама це панорамний дах, вебасто це автономний підігрів). Заява продавця це окреме джерело і НІЧОГО не підтверджує автоматично.
+3) ВІЗУАЛЬНИЙ ПРОХІД по фото оголошення: кожне візуальне підтвердження ЗОБОВʼЯЗАНЕ мати evidence з конкретним кадром (ref photo_N) і конкретною ознакою (sign: "логотип Harman Kardon на решітці динаміка передніх дверей", "кнопки вентиляції на центральній консолі"). Без ознаки на кадрі опція візуально НЕ підтверджена.
+- РІВНІ ДОСТОВІРНОСТІ, рівно чотири: vehicle_data (VIN-декод, техдані), seller_and_visual (продавець вказав І видно на фото), visual (видно на фото), seller (лише зі слів продавця). Рівня "ймовірно" НЕ існує. Візуальне твердження без достатнього візуального evidence не отримує visual чи seller_and_visual; явно заявлена продавцем опція при цьому лишається seller.
+- ПОМИЛКА ІДЕНТИФІКАЦІЇ ГІРША ЗА ПРОПУСК: при сумніві в бренді чи пакеті пиши клас опції без бренда ("преміум-аудіо"); бренд лише при читабельному логотипі чи прямій ознаці. КНОПКИ ДОКАЗУЮТЬ КНОПКИ: для функцій, видимих лише органами керування, формулюй наявність органів керування ("кнопки вентиляції сидінь"), не працездатність функції. Заводське походження по зовнішньому вигляду НЕ стверджуй: "M Sport стилістика", не "заводський пакет M Sport".
+- RETROFIT: retrofit true ЛИШЕ з прямою підставою, записаною в retrofit_basis: явно вказано продавцем чи історією, підтверджено structured data, або однозначна несумісність елемента із заводською конфігурацією чи model year (рестайлінгова оптика на дорестайлінговому кузові). Не можеш довести походження: опиши видимий елемент без твердження, що його встановили пізніше, retrofit false. Тон нейтральний, без оцінок і без "варто перевірити".
+- ІСТОРИЧНІ ДЖЕРЕЛА (минулі оголошення, аукціонна картка з наявного контексту): це НЕ слова поточного продавця, рівень seller їм не давай. Опція лише з історичного джерела: historical_claim true, confidence_level null (зберігається в даних, не показується). Якщо поточні фото її підтверджують: рівень visual чи seller_and_visual за поточним оголошенням, historical_claim лиши true.
+- "highlight": true у 5-8 найзначущіших для вибору опцій (преміум-аудіо, HUD, камери кругового огляду, вентиляція, пневмопідвіска, адаптивний круїз, панорама, значущі пакети). Клімат, електродзеркала, Bluetooth highlight не отримують.
+- ВІДСУТНІ опції не перелічуй. Надійність, вартість ремонту і рекомендації перевірок сюди не пиши: блок відповідає лише "що встановлено". Вигадувати заборонено, порожній масив дозволений.
 
 "verdict.score": чесна оцінка пропозиції від 0 до 10 з одним знаком після коми. Якорі: 8.5+ чисте авто без питань за адекватною ціною; 7.0-8.4 добре, лишились дрібні перевірки; 5.5-6.9 брати можна лише після серйозних перевірок і торгу; 4.0-5.4 серйозні ризики чи ознаки обману; нижче 4 краще відмовитись. Не завищуй: знайдена брехня продавця чи приховане серйозне ДТП тягне оцінку вниз сильніше за все.
 
@@ -734,7 +857,7 @@ ${DECISION_RULES}${decisionStyle === 'a' ? DECISION_FEWSHOT : ''}
  "vehicle": {"title":"Марка Модель Рік","year":2018,"fuel":"petrol|diesel|hybrid|electric","engine":"4.4 л бензин V8, 462 к.с. (або null)","transmission":"...","drive":"...","trim":"версія або null","mileage_note":"129 000 км"},
  "auction": {"found":true,"summary":"2-4 речення: що сталося з авто в США за архівом, реальний обсяг пошкоджень по фото, чи чесно продавець його описує","findings":[{"status":"ok|warn|bad|unknown","text":"порівняння до/після, 1 речення"}]},
  "risks":[{"title":"назва ризику","level":"high|med|low","note":"1-2 речення: чому це головна стаття витрат чи ризику саме тут","action":"конкретна перевірка до покупки, 1 рядок"}],
- "equipment":{"vin":["опція з декодування VIN"],"photo":["опція, яку видно на фото"],"seller":["опція зі слів продавця"]},
+ "equipment_v2":[{"name":"вентиляція передніх сидінь","category":"comfort|interior|multimedia|assist|exterior|performance","confidence_level":"vehicle_data|seller_and_visual|visual|seller, або null лише для суто історичної","highlight":false,"retrofit":false,"retrofit_basis":null,"historical_claim":false,"evidence":[{"source":"vehicle_data|current_photos|seller_claim|historical","ref":"photo_7 чи vin_decode чи назва історичного джерела","sign":"конкретна ознака на кадрі чи коротка цитата джерела"}]}],
  "discrepancies":[{"severity":"high|med|low","title":"коротка назва розбіжності","detail":"2-3 речення: що стверджується, що знайдено, звідки","sources":["опис продавця","перевірка площадки","фото","VIN"]}],
  "history":[{"date":"MM.YYYY або YYYY","event":"1 рядок: подія з історії авто","gap":"тривалість від попередньої події ('2 роки 3 місяці') або null"}],
  "history_note":"1 рядок ЛИШЕ якщо патерн незвичний (наприклад 3 переоформлення за 5 місяців), без спекуляцій про причини; якщо історія звичайна: null",
@@ -912,7 +1035,7 @@ export default async function handler(req, res) {
     }
     const img = (u, detail) => ({ type: 'image_url', image_url: { url: u, detail } });
     const content = [
-      { type: 'text', text: 'ФОТО З ОГОЛОШЕННЯ (стан зараз). Це ПОВНИЙ набір фото цього авто, включно з салоном і деталями: не пиши, що фото салону немає, якщо воно серед переданих. Якщо якийсь кадр очевидно належить ІНШОМУ авто (інша модель, інший колір, інший кузов), просто проігноруй його і не згадуй у звіті:' },
+      { type: 'text', text: 'ФОТО З ОГОЛОШЕННЯ (стан зараз). Нумерація: photo_1..photo_' + photoUrls.length + ' у порядку подачі, на неї посилаються evidence ref. Це ПОВНИЙ набір фото цього авто, включно з салоном і деталями: не пиши, що фото салону немає, якщо воно серед переданих. Якщо якийсь кадр очевидно належить ІНШОМУ авто (інша модель, інший колір, інший кузов), просто проігноруй його і не згадуй у звіті:' },
       ...photoUrls.map((u, i) => img(u, i < 12 ? 'high' : 'low')),
       ...(auctionPhotos.length
         ? [{ type: 'text', text: 'ФОТО З АУКЦІОНУ США (до ремонту, архів). Нумерація: auction_photo_1..auction_photo_' + auctionPhotos.length + ' у порядку подачі:' }, ...auctionPhotos.map(u => img(u, 'high'))]
@@ -1059,6 +1182,57 @@ export default async function handler(req, res) {
     if (cleanDecision) parsed.purchase_decision = cleanDecision;
     else delete parsed.purchase_decision;
 
+    /* ---- комплектація: детермінована валідація + скептична перевірка ----
+       Максимум ОДИН додатковий виклик, максимум 6 claims, лише важливі і
+       брендові візуальні знахідки. Мета виклику: СПРОСТУВАТИ. Результат
+       застосовує код за жорсткими правилами. Бюджет часу жорсткий:
+       комплектація ніколи не стає причиною таймауту Check */
+    let eqVerifier = { status: 'skipped', reason: 'no_claims' };
+    try {
+      parsed.equipment_v2 = sanitizeEquipment(parsed.equipment_v2);
+      const claims = selectEquipmentClaims(parsed.equipment_v2);
+      const elapsedEq = Date.now() - t0;
+      if (!claims.length) {
+        eqVerifier = { status: 'skipped', reason: 'no_claims' };
+      } else if (elapsedEq > 190000) {
+        eqVerifier = { status: 'skipped', reason: 'time_budget', elapsed_ms: elapsedEq };
+      } else {
+        const tv = Date.now();
+        const refIdx = r => { const m = /photo_(\d+)/.exec(String(r || '')); return m ? parseInt(m[1], 10) - 1 : -1; };
+        const frames = [...new Set(claims
+          .flatMap(c => c.evidence.filter(e => e.source === 'current_photos').map(e => refIdx(e.ref)))
+          .filter(i => i >= 0 && i < photoUrls.length))].slice(0, 8);
+        const vContent = [{
+          type: 'text',
+          text: 'Ти скептичний перевіряльник комплектації авто. Нижче кадри з тією ж нумерацією photo_N, що в основному аналізі, і візуальні заяви. Твоє завдання СПРОСТУВАТИ кожну: verdict confirmed ЛИШЕ якщо названа ознака справді чітко видима на названому кадрі; будь-який сумнів це not_confirmed. Відповідай ЛИШЕ валідним JSON {"verdicts":[{"name":"точна назва зі списку","verdict":"confirmed|not_confirmed"}]}.\nЗаяви:\n'
+            + claims.map(c => '- ' + c.name + ' :: ' + c.evidence.filter(e => e.source === 'current_photos').map(e => (e.ref || '') + ', ' + (e.sign || '')).join('; ')).join('\n'),
+        }];
+        for (const i of frames) {
+          vContent.push({ type: 'text', text: 'photo_' + (i + 1) + ':' });
+          vContent.push(img(photoUrls[i], 'high'));
+        }
+        const vd = await callModel(modelBody(vContent, false), Math.max(15000, Math.min(50000, 280000 - (Date.now() - t0))));
+        let verdicts = null;
+        try { verdicts = JSON.parse((vd.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim()).verdicts; } catch (e2) { /* невалідна відповідь: пропускаємо */ }
+        if (Array.isArray(verdicts)) {
+          const before = parsed.equipment_v2.length;
+          parsed.equipment_v2 = applyEquipmentVerifier(parsed.equipment_v2, verdicts);
+          eqVerifier = {
+            status: 'done', checked: claims.length, frames: frames.length,
+            not_confirmed: verdicts.filter(v => v && v.verdict === 'not_confirmed').length,
+            removed: before - parsed.equipment_v2.length, ms: Date.now() - tv,
+            tokens: vd.usage || null,
+          };
+        } else {
+          eqVerifier = { status: 'skipped', reason: 'bad_response', ms: Date.now() - tv };
+        }
+      }
+    } catch (e) {
+      eqVerifier = { status: 'skipped', reason: 'error' };
+      console.log('[equipment] верифікатор впав, пропущено:', e.message);
+    }
+    console.log('[equipment]', JSON.stringify({ items: (parsed.equipment_v2 || []).length, verifier: eqVerifier }));
+
     parsed._meta = {
       kind: 'check',
       lang,
@@ -1081,6 +1255,7 @@ export default async function handler(req, res) {
         ? { house: auctionSearch.house || null, date: auctionSearch.sale_date || null }
         : null,
       snapshot,
+      equipment_verifier: eqVerifier,
       analyzed_at: new Date().toISOString(),
     };
     return res.status(200).json(parsed);
