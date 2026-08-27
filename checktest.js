@@ -226,12 +226,18 @@ const REPORTS = [
     if (!api.includes('equipment_verifier: eqVerifier')) errs.push('check.js: діагностика верифікатора не в _meta');
     /* сторінка: новий рендер + легасі фолбек */
     const page2 = fs.readFileSync('result-check.html', 'utf8');
-    for (const el of ['equipment_v2', 'Головне в комплектації', 'Показати всю комплектацію', 'Підтверджено даними авто', 'Продавець вказав і видно на фото', 'Встановлено пізніше / переобладнання', 'Підтверджено за VIN']) {
+    for (const el of ['equipment_v2', 'class="eq-chip"', "t('Підтверджено')", "t('Дані авто')", 'Встановлено пізніше / переобладнання', 'Підтверджено за VIN']) {
       if (!page2.includes(el)) errs.push('result-check.html: нема ' + el);
     }
+    /* компактність: без повнорядкових опцій, retrofit не дублюється, опис продавця без кнопки */
+    if (page2.includes('class="eq-row"')) errs.push('повнорядкові опції комплектації лишились');
+    if (!page2.includes("!o.retrofit).sort(byNotable)")) errs.push('retrofit не виключений із source-груп');
+    if (page2.includes('id="descBtn"') || page2.includes('id="sellerDesc"')) errs.push('кнопка опису продавця лишилась в UI');
+    if (page2.includes('cursor:help')) errs.push('щит досі з cursor:help (курсор-знак питання)');
+    if (page2.includes('background:var(--surface-2);font-size:12.5px;font-weight:600')) errs.push('sec-meta досі з сірою заливкою');
     for (const d of ['i18n/ru.js', 'i18n/en.js']) {
       const dict = fs.readFileSync(d, 'utf8');
-      for (const k of ['Головне в комплектації', 'Показати всю комплектацію', 'Згорнути комплектацію', 'Підтверджено даними авто', 'Продавець вказав і видно на фото', 'Встановлено пізніше / переобладнання', 'Комфорт', 'Мультимедіа', 'Асистенти', 'Екстерʼєр']) {
+      for (const k of ['Підтверджено', 'Дані авто', 'Встановлено пізніше / переобладнання']) {
         if (!dict.includes("'" + k + "'")) errs.push('нема ключа "' + k + '" у ' + d);
       }
     }
@@ -244,7 +250,7 @@ const REPORTS = [
     const iEq = page.indexOf('id="eqCard"'), iVd = page.indexOf('id="verdictCard"'), iRk = page.indexOf('id="risksCard"');
     if (!(iEq > -1 && iVd > -1 && iEq < iVd && iVd < iRk)) errs.push('порядок блоків: eqCard мусить стояти перед verdictCard і risksCard');
     /* identity-рядок і опис продавця */
-    for (const el of ['id="titleChips"', 'class="copy-btn"', 'id="descBtn"', 'id="sellerDesc"']) {
+    for (const el of ['id="titleChips"', 'class="copy-btn"']) {
       if (!page.includes(el)) errs.push('result-check.html: нема ' + el);
     }
     if (page.includes('id="carMeta"')) errs.push('старий carMeta лишився');
@@ -292,7 +298,7 @@ const REPORTS = [
   /* 8. словники: нові рядки */
   for (const d of ['i18n/ru.js', 'i18n/en.js']) {
     const dict = fs.readFileSync(d, 'utf8');
-    for (const k of ['Історія пошкоджень і фото з минулого', 'Опис від продавця', 'Копіювати', 'Скопійовано', 'Відкрити джерело', 'Фото з минулого', 'продавець заявляє, що вузол уже обслужений', 'Наша оцінка авто на основі даних, які вдалося перевірити.', 'Критичні ризики можуть сильніше впливати на підсумкову оцінку.', 'Що спитати до огляду']) {
+    for (const k of ['Історія пошкоджень і фото з минулого', 'Копіювати', 'Скопійовано', 'Відкрити джерело', 'Фото з минулого', 'продавець заявляє, що вузол уже обслужений', 'Наша оцінка авто на основі даних, які вдалося перевірити.', 'Критичні ризики можуть сильніше впливати на підсумкову оцінку.', 'Що спитати до огляду']) {
       if (!dict.includes("'" + k + "'")) errs.push('нема ключа "' + k + '" у ' + d);
     }
   }

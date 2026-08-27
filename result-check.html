@@ -251,8 +251,8 @@
 
   /* ---- зовнішнє оголошення: маленька кнопка біля назви авто ---- */
   .ext-link{
-    display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;flex:0 0 auto;
-    border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink);
+    display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;flex:0 0 auto;
+    border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink);
     transition:background .15s;align-self:center;
   }
   .ext-link svg{width:13px;height:13px}
@@ -292,7 +292,7 @@
   .card-body{padding:20px}
   .hint{font-size:12.5px;color:var(--muted)}
   /* вторинні підписи шапок секцій: єдиний компонент, спокійна pill */
-  .sec-meta{margin-left:auto;display:inline-flex;align-items:center;padding:3px 10px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2);font-size:12.5px;font-weight:600;color:var(--text);white-space:nowrap}
+  .sec-meta{margin-left:auto;display:inline-flex;align-items:center;padding:3px 10px;border:1px solid var(--line);border-radius:12px;background:var(--card);font-size:12.5px;font-weight:600;color:var(--text);white-space:nowrap}
   @media (max-width:760px){.sec-meta{white-space:normal}}
 
   .badge{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:20px;letter-spacing:.2px}
@@ -345,7 +345,7 @@
   @media (max-width:760px){.spec-rows{grid-template-columns:1fr}}
   /* identity-чіпи біля назви: нейтральні, глобальні, без стилізації під номерний знак */
   #titleChips{display:inline-flex;gap:8px;flex-wrap:wrap;min-width:0}
-  .id-chip{display:inline-flex;align-items:baseline;gap:7px;padding:4px 10px;border:1px solid var(--line);border-radius:9px;background:var(--surface-2);font-size:12.5px;min-width:0}
+  .id-chip{display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 11px;border:1px solid var(--line);border-radius:9px;background:var(--card);font-size:12.5px;min-width:0}
   .id-chip .id-l{font-weight:600;color:var(--ink)}
   .id-chip .id-v{font-weight:500;color:var(--text);letter-spacing:.3px;overflow-wrap:anywhere}
 
@@ -381,6 +381,9 @@
   .eq-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
   .eq-chips{display:flex;flex-wrap:wrap;gap:6px}
   .eq-chips span{font-size:12.5px;background:var(--bg);border:1px solid var(--line);border-radius:16px;padding:4px 11px}
+  /* комплектація v2: компактні білі chips у source-групах */
+  .eq-src{font-size:12.5px;font-weight:600;color:var(--ink);margin-bottom:8px}
+  .eq-chip{display:inline-flex;font-size:13px;font-weight:500;color:var(--text);background:var(--card);border:1px solid var(--line);border-radius:9px;padding:5px 11px}
 
   /* переклад звіту */
   /* стани сторінки: скелетон до готовності даних, звіт одним перемиканням */
@@ -445,22 +448,11 @@
 
 
   /* фінальний висновок: рішення шарами */
-  /* комплектація v2: рядки опція + бейдж рівня, групи, головне зверху */
-  .eq-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:7px 0;border-bottom:1px solid var(--line)}
-  .eq-row:last-child{border-bottom:none}
-  .eq-name{font-size:13.5px;color:var(--text)}
-  .eq-head-sm{font-size:12.5px;font-weight:600;color:var(--muted);margin:14px 0 2px}
-  .eq-main .eq-head-sm:first-child{margin-top:0}
-
   /* identity-рядок картки авто: VIN і номер з копіюванням, опис продавця */
-  .id-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:0 20px;padding:8px 0 12px}
   .copy-btn{border:none;background:none;cursor:pointer;padding:2px;color:var(--muted);display:inline-flex;align-items:center}
   .copy-btn:hover{color:var(--ink)}
   .copy-btn.done{color:var(--green)}
-  .id-desc-btn{margin-left:auto;border:1px solid var(--line);background:var(--card);border-radius:16px;padding:5px 12px;font-size:12.5px;font-weight:600;color:var(--muted);cursor:pointer}
-  .id-desc-btn:hover{color:var(--ink)}
-  .seller-desc{margin:0 20px 16px;padding:12px 14px;background:var(--surface-2);border-radius:10px;font-size:13.5px;line-height:1.6;color:var(--text);white-space:pre-line}
-  .score-shield{display:inline-flex;align-items:center;margin-left:6px;color:var(--muted);cursor:help;position:relative;outline:none}
+  .score-shield{display:inline-flex;align-items:center;margin-left:6px;color:var(--muted);cursor:pointer;position:relative;outline:none}
   .score-shield:hover,.score-shield:focus{color:var(--ink)}
   .score-tip{display:none;position:absolute;top:calc(100% + 10px);right:-6px;z-index:70;width:260px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 28px rgba(20,22,25,.16);padding:12px 14px;text-align:left;cursor:default}
   .score-tip.open{display:block}
@@ -744,10 +736,6 @@
       <span id="titleChips"></span>
     </div>
     <div class="spec-rows" id="specGrid"></div>
-    <div class="id-row" id="idRow" style="display:none">
-      <button class="id-desc-btn" id="descBtn" type="button">Опис від продавця</button>
-    </div>
-    <div class="seller-desc" id="sellerDesc" style="display:none"></div>
   </div>
 
   <!-- комплектація -->
@@ -1093,14 +1081,6 @@ function boot2(D){
       }).catch(() => {});
     });
   }
-  if (M.seller_text) {
-    $('idRow').style.display = '';
-    $('sellerDesc').textContent = M.seller_text;
-    $('descBtn').onclick = () => {
-      const open = $('sellerDesc').style.display !== 'none';
-      $('sellerDesc').style.display = open ? 'none' : '';
-    };
-  }
   if (M.url) { const l = $('srcLink'); l.href = M.url; l.style.display = ''; }
 
   /* ---- вердикт: бейдж оцінки в шапці картки, як ризик-скор в Import ---- */
@@ -1254,48 +1234,34 @@ function boot2(D){
   if (discs.length) $('discCount').textContent = discs.length;
   else $('discCount').style.display = 'none';
 
-  /* ---- комплектація v2: головне зверху, повний список за кнопкою,
-     бейдж рівня достовірності біля кожної опції, retrofit окремою секцією.
-     Джерело (кадр + ознака) лежить у title як метадані. Старі звіти з
-     equipment {vin,photo,seller} рендеряться легасі-гілкою ---- */
+  /* ---- комплектація v2: компактні chips, згруповані за джерелом.
+     retrofit має пріоритет показу і живе ЛИШЕ у своїй секції, вдруге у
+     source-групі не зʼявляється. highlight у даних лишається і задає
+     тільки порядок усередині групи. Дані, Vision, sanitizer і verifier
+     не змінюються, лише подача. Джерело (кадр + ознака) в title.
+     Старі звіти з equipment {vin,photo,seller} рендеряться легасі-гілкою ---- */
   const eqV2 = Array.isArray(D.equipment_v2) ? D.equipment_v2.filter(o => o && o.name && o.confidence_level) : [];
   if (eqV2.length) {
-    const LVL_BADGE = {
-      vehicle_data: ['green', t('Підтверджено даними авто')],
-      seller_and_visual: ['blue', t('Продавець вказав і видно на фото')],
-      visual: ['blue', t('Видно на фото')],
-      seller: ['amber', t('Зі слів продавця')],
-    };
-    const rowHtml = o => {
-      const b = LVL_BADGE[o.confidence_level];
-      if (!b) return '';
+    const chipHtml = o => {
       const meta = (o.evidence || []).map(e => [e.ref, e.sign].filter(Boolean).join(': ')).filter(Boolean).join(' · ');
-      return '<div class="eq-row"' + (meta ? ' title="' + esc(meta) + '"' : '') + '><span class="eq-name">' + esc(o.name) + '</span><span class="badge ' + b[0] + '">' + esc(b[1]) + '</span></div>';
+      return '<span class="eq-chip"' + (meta ? ' title="' + esc(meta) + '"' : '') + '>' + esc(o.name) + '</span>';
     };
-    const mainItems = eqV2.filter(o => o.highlight && !o.retrofit).slice(0, 8);
-    const CATS = [['comfort', t('Комфорт')], ['interior', t('Салон')], ['multimedia', t('Мультимедіа')], ['assist', t('Асистенти')], ['exterior', t('Екстерʼєр')], ['performance', 'Performance']];
-    let eqTop = '';
-    if (mainItems.length) eqTop = '<div class="eq-main"><div class="eq-head-sm">' + esc(t('Головне в комплектації')) + '</div>' + mainItems.map(rowHtml).join('') + '</div>';
-    let eqFullHtml = '';
-    for (const [ck, ct] of CATS) {
-      const items = eqV2.filter(o => o.category === ck && !o.retrofit);
+    const byNotable = (a, b) => (b.highlight === true) - (a.highlight === true);
+    const EQ_SRC_GROUPS = [
+      ['seller_and_visual', t('Підтверджено')],
+      ['visual', t('Видно на фото')],
+      ['vehicle_data', t('Дані авто')],
+      ['seller', t('Зі слів продавця')],
+    ];
+    let eqHtml2 = '';
+    for (const [key, titleG] of EQ_SRC_GROUPS) {
+      const items = eqV2.filter(o => o.confidence_level === key && !o.retrofit).sort(byNotable);
       if (!items.length) continue;
-      eqFullHtml += '<div class="eq-group"><div class="eq-head-sm">' + esc(ct) + '</div>' + items.map(rowHtml).join('') + '</div>';
+      eqHtml2 += '<div class="eq-group"><div class="eq-src">' + esc(titleG) + '</div><div class="eq-chips">' + items.map(chipHtml).join('') + '</div></div>';
     }
-    const retro = eqV2.filter(o => o.retrofit);
-    if (retro.length) eqFullHtml += '<div class="eq-group"><div class="eq-head-sm">' + esc(t('Встановлено пізніше / переобладнання')) + '</div>' + retro.map(rowHtml).join('') + '</div>';
-    let html = eqTop;
-    if (eqFullHtml) html += '<button class="pd-more" id="eqAllBtn" type="button">' + esc(t('Показати всю комплектацію')) + '</button><div id="eqFull" style="display:none">' + eqFullHtml + '</div>';
-    if (html) {
-      $('eqCard').style.display = '';
-      $('eqList').innerHTML = html;
-      const eqBtn = document.getElementById('eqAllBtn');
-      if (eqBtn) eqBtn.onclick = () => {
-        const open = $('eqFull').style.display !== 'none';
-        $('eqFull').style.display = open ? 'none' : '';
-        eqBtn.textContent = open ? t('Показати всю комплектацію') : t('Згорнути комплектацію');
-      };
-    }
+    const retro = eqV2.filter(o => o.retrofit).sort(byNotable);
+    if (retro.length) eqHtml2 += '<div class="eq-group"><div class="eq-src">' + esc(t('Встановлено пізніше / переобладнання')) + '</div><div class="eq-chips">' + retro.map(chipHtml).join('') + '</div></div>';
+    if (eqHtml2) { $('eqCard').style.display = ''; $('eqList').innerHTML = eqHtml2; }
   } else {
     const eq = D.equipment || {};
     const EQ_GROUPS = [
