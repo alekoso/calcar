@@ -244,10 +244,23 @@ const REPORTS = [
     const iEq = page.indexOf('id="eqCard"'), iVd = page.indexOf('id="verdictCard"'), iRk = page.indexOf('id="risksCard"');
     if (!(iEq > -1 && iVd > -1 && iEq < iVd && iVd < iRk)) errs.push('порядок блоків: eqCard мусить стояти перед verdictCard і risksCard');
     /* identity-рядок і опис продавця */
-    for (const el of ['id="idRow"', 'id="idLine"', 'class="copy-btn"', 'id="descBtn"', 'id="sellerDesc"']) {
+    for (const el of ['id="titleChips"', 'class="copy-btn"', 'id="descBtn"', 'id="sellerDesc"']) {
       if (!page.includes(el)) errs.push('result-check.html: нема ' + el);
     }
     if (page.includes('id="carMeta"')) errs.push('старий carMeta лишився');
+    /* UI polish: збалансована сітка, чіпи, без AI-плашки, toggle чату, tooltip */
+    if (!page.includes('Math.ceil(spec.length / 2)')) errs.push('сітка характеристик не балансується');
+    if (page.includes('AI-перевірка оголошення')) errs.push('плашка AI лишилась');
+    if (page.includes('id="idLine"')) errs.push('нижній identity-рядок лишився');
+    if (!page.includes('class="id-chip"')) errs.push('нема identity-чіпів біля назви');
+    if (!page.includes("contains('open') ? close() : open()")) errs.push('чат не перемикається повторним кліком');
+    if (!page.includes('id="scoreTip"') || !page.includes('Критичні ризики можуть сильніше впливати')) errs.push('нема premium tooltip щита');
+    if (/score-shield[^>]*title=/.test(page)) errs.push('щит досі з browser-title');
+    if (page.includes("t('після перевірок')")) errs.push('grade-бейдж біля оцінки лишився');
+    if (page.includes('id="vHint"')) errs.push('рядок-підпис під оцінкою лишився');
+    const metaCount = (page.match(/class="sec-meta"/g) || []).length;
+    if (metaCount < 7) errs.push('sec-meta pill не скрізь: ' + metaCount);
+    if (page.includes('class="hint" style="margin-left:auto"')) errs.push('старий сірий hint у шапках лишився');
     /* вердикт: плашки і списків нема, видима частина обмежена */
     if (page.includes('id="pdRec"') || page.includes('id="pdLists"')) errs.push('плашка або списки лишились у вердикті');
     if (!page.includes('450')) errs.push('нема ліміту видимої частини');
@@ -261,7 +274,7 @@ const REPORTS = [
     if (!page.includes("M.auction_search.lot_url : null")) errs.push('кнопка джерела не обмежена verified-сторінкою');
     /* бейдж: колір строго за балом, щит із тултіпом */
     if (!page.includes("sc >= 7.5 ? 'ok' : sc >= 5.5 ? 'warn' : 'bad'")) errs.push('пороги кольору бейджа не 7.5/5.5');
-    if (!page.includes('score-shield') || !page.includes('CalCar Score: оцінка за нашим алгоритмом')) errs.push('нема щита CalCar з тултіпом');
+    if (!page.includes('score-shield') || !page.includes('id="scoreTip"')) errs.push('нема щита CalCar з тултіпом');
     /* болячки: позначка про заявлене обслуговування */
     if (!page.includes('seller_serviced === true')) errs.push('нема позначки заявленого обслуговування');
   }
@@ -279,7 +292,7 @@ const REPORTS = [
   /* 8. словники: нові рядки */
   for (const d of ['i18n/ru.js', 'i18n/en.js']) {
     const dict = fs.readFileSync(d, 'utf8');
-    for (const k of ['Історія пошкоджень і фото з минулого', 'Опис від продавця', 'Копіювати', 'Скопійовано', 'Відкрити джерело', 'Фото з минулого', 'продавець заявляє, що вузол уже обслужений', 'CalCar Score: оцінка за нашим алгоритмом на основі даних, які вдалося перевірити', 'Що спитати до огляду']) {
+    for (const k of ['Історія пошкоджень і фото з минулого', 'Опис від продавця', 'Копіювати', 'Скопійовано', 'Відкрити джерело', 'Фото з минулого', 'продавець заявляє, що вузол уже обслужений', 'Наша оцінка авто на основі даних, які вдалося перевірити.', 'Критичні ризики можуть сильніше впливати на підсумкову оцінку.', 'Що спитати до огляду']) {
       if (!dict.includes("'" + k + "'")) errs.push('нема ключа "' + k + '" у ' + d);
     }
   }

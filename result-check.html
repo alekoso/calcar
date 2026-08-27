@@ -291,6 +291,9 @@
   .card-head h2{font-size:16px;font-weight:700}
   .card-body{padding:20px}
   .hint{font-size:12.5px;color:var(--muted)}
+  /* вторинні підписи шапок секцій: єдиний компонент, спокійна pill */
+  .sec-meta{margin-left:auto;display:inline-flex;align-items:center;padding:3px 10px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2);font-size:12.5px;font-weight:600;color:var(--text);white-space:nowrap}
+  @media (max-width:760px){.sec-meta{white-space:normal}}
 
   .badge{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:20px;letter-spacing:.2px}
   .badge.green{background:var(--green-soft);color:var(--green)}
@@ -333,14 +336,18 @@
   /* характеристики: label і value в ОДНОМУ рядку, дві колонки на desktop.
      Довге value переноситься всередині свого рядка, не ламаючи сусідню
      колонку. Без вертикальних рамок: лише тонкі горизонтальні розділювачі */
-  .spec-rows{display:grid;grid-template-columns:1fr 1fr;column-gap:44px;padding:8px 20px 2px}
+  .spec-rows{display:grid;grid-template-columns:1fr 1fr;column-gap:44px;padding:10px 20px 8px}
   .spec-col{min-width:0}
-  .spec-row{display:flex;align-items:baseline;gap:16px;padding:9px 0;border-bottom:1px solid var(--line)}
-  .spec-col .spec-row:last-child{border-bottom:none}
+  .spec-row{display:flex;align-items:baseline;gap:16px;padding:6px 0}
   .spec-l{flex:0 0 92px;font-size:13.5px;font-weight:600;color:var(--ink)}
   .spec-v{flex:1;min-width:0;font-size:13.5px;font-weight:500;color:var(--text);overflow-wrap:break-word}
   .spec-v.price{font-weight:700;color:var(--brand-ink)}
-  @media (max-width:760px){.spec-rows{grid-template-columns:1fr}.spec-col .spec-row:last-child{border-bottom:1px solid var(--line)}.spec-col:last-child .spec-row:last-child{border-bottom:none}}
+  @media (max-width:760px){.spec-rows{grid-template-columns:1fr}}
+  /* identity-чіпи біля назви: нейтральні, глобальні, без стилізації під номерний знак */
+  #titleChips{display:inline-flex;gap:8px;flex-wrap:wrap;min-width:0}
+  .id-chip{display:inline-flex;align-items:baseline;gap:7px;padding:4px 10px;border:1px solid var(--line);border-radius:9px;background:var(--surface-2);font-size:12.5px;min-width:0}
+  .id-chip .id-l{font-weight:600;color:var(--ink)}
+  .id-chip .id-v{font-weight:500;color:var(--text);letter-spacing:.3px;overflow-wrap:anywhere}
 
   /* ---- вердикт ---- */
   /* оцінка: той самий бейдж, що ризик-скор в Import */
@@ -446,18 +453,20 @@
   .eq-main .eq-head-sm:first-child{margin-top:0}
 
   /* identity-рядок картки авто: VIN і номер з копіюванням, опис продавця */
-  .id-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:10px 20px 0;padding:10px 0 14px;border-top:1px solid var(--line)}
-  .id-line{display:flex;align-items:center;gap:28px;flex-wrap:wrap;font-size:13.5px}
-  .id-item{display:inline-flex;align-items:baseline;gap:8px;min-width:0}
-  .id-l{font-weight:600;color:var(--ink)}
-  .id-v{font-weight:500;color:var(--text);letter-spacing:.4px;overflow-wrap:anywhere}
+  .id-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:0 20px;padding:8px 0 12px}
   .copy-btn{border:none;background:none;cursor:pointer;padding:2px;color:var(--muted);display:inline-flex;align-items:center}
   .copy-btn:hover{color:var(--ink)}
   .copy-btn.done{color:var(--green)}
   .id-desc-btn{margin-left:auto;border:1px solid var(--line);background:var(--card);border-radius:16px;padding:5px 12px;font-size:12.5px;font-weight:600;color:var(--muted);cursor:pointer}
   .id-desc-btn:hover{color:var(--ink)}
   .seller-desc{margin:0 20px 16px;padding:12px 14px;background:var(--surface-2);border-radius:10px;font-size:13.5px;line-height:1.6;color:var(--text);white-space:pre-line}
-  .score-shield{display:inline-flex;align-items:center;margin-left:6px;color:var(--muted);cursor:help}
+  .score-shield{display:inline-flex;align-items:center;margin-left:6px;color:var(--muted);cursor:help;position:relative;outline:none}
+  .score-shield:hover,.score-shield:focus{color:var(--ink)}
+  .score-tip{display:none;position:absolute;top:calc(100% + 10px);right:-6px;z-index:70;width:260px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 28px rgba(20,22,25,.16);padding:12px 14px;text-align:left;cursor:default}
+  .score-tip.open{display:block}
+  .score-tip b{display:block;font-size:13px;font-weight:700;color:var(--ink);margin-bottom:4px}
+  .score-tip span{display:block;font-size:12.5px;line-height:1.5;color:var(--text);font-weight:400}
+  .score-tip span + span{margin-top:6px;color:var(--muted)}
   .src-open{display:inline-flex;align-items:center;margin-left:10px;border:1px solid var(--line);border-radius:14px;padding:3px 10px;font-size:12px;font-weight:600;color:var(--muted);text-decoration:none}
   .src-open:hover{color:var(--ink)}
 
@@ -732,12 +741,11 @@
       <a class="ext-link" id="srcLink" href="#" target="_blank" rel="noopener" style="display:none" title="Відкрити вихідне оголошення">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>
       </a>
-      <span class="badge blue">AI-перевірка оголошення</span>
+      <span id="titleChips"></span>
     </div>
     <div class="spec-rows" id="specGrid"></div>
     <div class="id-row" id="idRow" style="display:none">
-      <div class="id-line" id="idLine"></div>
-      <button class="id-desc-btn" id="descBtn" type="button" style="display:none">Опис від продавця</button>
+      <button class="id-desc-btn" id="descBtn" type="button">Опис від продавця</button>
     </div>
     <div class="seller-desc" id="sellerDesc" style="display:none"></div>
   </div>
@@ -746,7 +754,7 @@
   <div class="card" id="eqCard" style="display:none">
     <div class="card-head">
       <h2>Комплектація</h2>
-      <span class="hint" style="margin-left:auto">З зазначенням джерела</span>
+      <span class="sec-meta">З зазначенням джерела</span>
     </div>
     <div class="card-body"><div id="eqList"></div></div>
   </div>
@@ -755,7 +763,7 @@
   <div class="card" id="verdictCard" style="display:none">
     <div class="card-head">
       <h2>Чи варто брати</h2>
-      <span class="risk-badge" id="scoreBadge" style="display:none"><span class="dot ok" id="scoreDot"></span>Оцінка: <b id="scoreVal">–</b> <span class="risk-label" id="scoreLabel"></span><span class="score-shield" title="CalCar Score: оцінка за нашим алгоритмом на основі даних, які вдалося перевірити"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></span></span>
+      <span class="risk-badge" id="scoreBadge" style="display:none"><span class="dot ok" id="scoreDot"></span>Оцінка: <b id="scoreVal">–</b> <span class="risk-label" id="scoreLabel"></span><span class="score-shield" id="scoreShield" tabindex="0" role="button" aria-label="CalCar Score"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg><span class="score-tip" id="scoreTip"><b>CalCar Score</b><span>Наша оцінка авто на основі даних, які вдалося перевірити.</span><span>Критичні ризики можуть сильніше впливати на підсумкову оцінку.</span></span></span></span>
     </div>
     <div class="card-body">
       <div id="pdBlock" style="display:none">
@@ -767,7 +775,6 @@
         <div class="pd-reasoning" id="pdReasoning" style="display:none"></div>
       </div>
       <div class="v-text" id="vText"></div>
-      <div class="hint" id="vHint" style="margin-top:10px">Оцінка враховує історію авто, потенційну вартість помилки та невизначеність доступних даних. Рішення завжди за вами</div>
     </div>
   </div>
 
@@ -775,7 +782,7 @@
   <div class="card" id="risksCard" style="display:none">
     <div class="card-head">
       <h2>Ключові ризики</h2>
-      <span class="hint" style="margin-left:auto">Що може коштувати найбільше</span>
+      <span class="sec-meta">Що може коштувати найбільше</span>
     </div>
     <div class="card-body"><div id="risksList"></div></div>
   </div>
@@ -809,7 +816,7 @@
     <div class="card-head">
       <h2>Розбіжності між джерелами</h2>
       <span class="badge red" id="discCount"></span>
-      <span class="hint" style="margin-left:auto">Де слова продавця не сходяться з даними чи фото</span>
+      <span class="sec-meta">Де слова продавця не сходяться з даними чи фото</span>
     </div>
     <div class="card-body"><div id="discList"></div></div>
   </div>
@@ -819,7 +826,7 @@
   <div class="card" id="histCard" style="display:none">
     <div class="card-head">
       <h2>Історія авто</h2>
-      <span class="hint" style="margin-left:auto">За відкритими даними площадки і реєстрів</span>
+      <span class="sec-meta">За відкритими даними площадки і реєстрів</span>
     </div>
     <div class="card-body"><div id="histList"></div></div>
   </div>
@@ -828,7 +835,7 @@
   <div class="card" id="issuesCard" style="display:none">
     <div class="card-head">
       <h2>Типові слабкі місця цієї версії</h2>
-      <span class="hint" style="margin-left:auto">З урахуванням двигуна та пробігу</span>
+      <span class="sec-meta">З урахуванням двигуна та пробігу</span>
     </div>
     <div class="card-body"><div id="issuesList"></div></div>
   </div>
@@ -837,7 +844,7 @@
   <div class="card" id="qCard" style="display:none">
     <div class="card-head">
       <h2>Питання продавцю</h2>
-      <span class="hint" style="margin-left:auto">Що спитати до огляду</span>
+      <span class="sec-meta">Що спитати до огляду</span>
     </div>
     <div class="card-body"><div id="qList"></div></div>
   </div>
@@ -846,7 +853,7 @@
   <div class="card" id="chkCard" style="display:none">
     <div class="card-head">
       <h2>Що зробити перед купівлею</h2>
-      <span class="hint" style="margin-left:auto">Конкретно для цього авто</span>
+      <span class="sec-meta">Конкретно для цього авто</span>
     </div>
     <div class="card-body">
       <div id="chkList"></div>
@@ -1061,19 +1068,22 @@ function boot2(D){
   if (v.transmission) spec.push([t('Коробка'), clean(v.transmission)]);
   if (v.drive) spec.push([t('Привід'), clean(v.drive)]);
   if (v.trim) spec.push([t('Версія'), clean(v.trim)]);
+  const FUEL = { petrol: t('Бензин'), diesel: t('Дизель'), hybrid: t('Гібрид'), electric: t('Електро') };
+  if (v.fuel && FUEL[v.fuel]) spec.push([t('Паливо'), FUEL[v.fuel]]);
   const specRow = r => '<div class="spec-row"><span class="spec-l">' + esc(r[0]) + '</span><span class="spec-v' + (r[2] ? ' ' + r[2] : '') + '">' + esc(r[1]) + '</span></div>';
-  const specCut = spec.length > 4 ? 4 : Math.ceil(spec.length / 2);
+  /* збалансовані колонки: 5=3+2, 6=3+3, 7=4+3, 8=4+4 */
+  const specCut = Math.ceil(spec.length / 2);
   $('specGrid').innerHTML = '<div class="spec-col">' + spec.slice(0, specCut).map(specRow).join('') + '</div>'
     + (spec.length > specCut ? '<div class="spec-col">' + spec.slice(specCut).map(specRow).join('') + '</div>' : '');
-  /* identity-рядок: VIN і номер із кнопками копіювання, опис продавця за кнопкою */
+  /* identity-чіпи біля назви: нейтральні VIN і номер із копіюванням */
   const copySvg = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+  const chip = (l, val) => '<span class="id-chip"><span class="id-l">' + esc(l) + '</span><span class="id-v">' + esc(val) + '</span><button class="copy-btn" type="button" data-copy="' + esc(val) + '" title="' + esc(t('Копіювати')) + '" aria-label="' + esc(t('Копіювати')) + '">' + copySvg + '</button></span>';
   const idBits = [];
-  if (M.vin) idBits.push('<span class="id-item"><span class="id-l">VIN</span><span class="id-v">' + esc(M.vin) + '</span><button class="copy-btn" type="button" data-copy="' + esc(M.vin) + '" title="' + esc(t('Копіювати')) + '" aria-label="' + esc(t('Копіювати')) + '">' + copySvg + '</button></span>');
-  if (M.plate) idBits.push('<span class="id-item"><span class="id-l">' + esc(t('Номер')) + '</span><span class="id-v">' + esc(M.plate) + '</span><button class="copy-btn" type="button" data-copy="' + esc(M.plate) + '" title="' + esc(t('Копіювати')) + '" aria-label="' + esc(t('Копіювати')) + '">' + copySvg + '</button></span>');
-  if (idBits.length || M.seller_text) {
-    $('idRow').style.display = '';
-    $('idLine').innerHTML = idBits.join('');
-    $('idLine').addEventListener('click', e => {
+  if (M.vin) idBits.push(chip('VIN', M.vin));
+  if (M.plate) idBits.push(chip(t('Номер'), M.plate));
+  if (idBits.length) {
+    $('titleChips').innerHTML = idBits.join('');
+    $('titleChips').addEventListener('click', e => {
       const b = e.target.closest('.copy-btn');
       if (!b) return;
       navigator.clipboard.writeText(b.dataset.copy).then(() => {
@@ -1084,7 +1094,7 @@ function boot2(D){
     });
   }
   if (M.seller_text) {
-    $('descBtn').style.display = '';
+    $('idRow').style.display = '';
     $('sellerDesc').textContent = M.seller_text;
     $('descBtn').onclick = () => {
       const open = $('sellerDesc').style.display !== 'none';
@@ -1150,7 +1160,6 @@ function boot2(D){
       $('scoreDot').className = 'dot unknown';
       $('scoreVal').textContent = '';
       $('scoreLabel').textContent = t('Недостатньо даних для оцінки');
-      $('vHint').textContent = t('Наша оцінка на основі даних, які вдалося перевірити');
     }
     const v2 = (bd2 && bd2.score_available === false) ? null
       : (typeof D.score_v2_preview === 'number' ? D.score_v2_preview : null);
@@ -1158,20 +1167,23 @@ function boot2(D){
     const sc = v2 !== null ? v2
       : (typeof vd.score === 'number' ? Math.round(Math.max(0, Math.min(10, vd.score)) * 10) / 10 : null);
     if (sc !== null) {
-      /* оцінка авто: вище = краще. Клас і підпис із grade формули, коли він є */
-      const GR = { buy: ['ok', t('варто розглядати')], inspect: ['warn', t('після перевірок')], caution: ['warn', t('підвищений ризик')], avoid: ['bad', t('високий ризик')] };
-      const gm = v2 !== null && GR[g2] ? GR[g2] : null;
-      /* колір строго за балом: 7.5+ зелений, 5.5+ янтарний, нижче червоний */
+      /* оцінка авто: вище = краще, колір строго за балом. Пояснення живе
+         в tooltip щита, окремого grade-бейджа і підпису знизу нема */
       const cls = sc >= 7.5 ? 'ok' : sc >= 5.5 ? 'warn' : 'bad';
-      const lbl = gm ? gm[1] : (sc >= 8 ? t('варто розглядати') : sc >= 6 ? t('після перевірок') : sc >= 4 ? t('підвищений ризик') : t('високий ризик'));
-      if (v2 !== null) $('vHint').textContent = t('Наша оцінка на основі даних, які вдалося перевірити');
       $('scoreBadge').style.display = '';
       $('scoreDot').className = 'dot ' + cls;
       $('scoreVal').textContent = sc.toFixed(1) + ' / 10';
-      const sl = $('scoreLabel');
-      sl.textContent = lbl;
-      sl.style.background = cls === 'ok' ? 'var(--green-soft)' : cls === 'warn' ? 'var(--amber-soft)' : 'var(--red-soft)';
-      sl.style.color = cls === 'ok' ? 'var(--green)' : cls === 'warn' ? 'var(--amber)' : 'var(--red)';
+      $('scoreLabel').style.display = 'none';
+    }
+    /* tooltip щита: hover/focus на desktop, tap на mobile, закриття кліком поза */
+    const shield = $('scoreShield'), tip = $('scoreTip');
+    if (shield && tip) {
+      shield.addEventListener('mouseenter', () => tip.classList.add('open'));
+      shield.addEventListener('mouseleave', () => tip.classList.remove('open'));
+      shield.addEventListener('focus', () => tip.classList.add('open'));
+      shield.addEventListener('blur', () => tip.classList.remove('open'));
+      shield.addEventListener('click', e => { e.stopPropagation(); tip.classList.toggle('open'); });
+      document.addEventListener('click', e => { if (!shield.contains(e.target)) tip.classList.remove('open'); });
     }
   }
 
@@ -1949,7 +1961,8 @@ function chatInit(){
     }
   });
   $('chatFab').addEventListener('click', open);
-  $('chatTopBtn').addEventListener('click', open);
+  /* верхня кнопка це перемикач: відкрито + клік = закрити */
+  $('chatTopBtn').addEventListener('click', () => $('chatPanel').classList.contains('open') ? close() : open());
   $('chatClose').addEventListener('click', close);
   $('chatOverlay').addEventListener('click', close);
 
