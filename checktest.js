@@ -121,6 +121,31 @@ const REPORTS = [
     }
   }
 
+  /* 6а0. рівномірна вибірка кадрів для Vision */
+  {
+    const pickFn = grab(api, 'pickEvenIndexes');
+    if (!pickFn) errs.push('pickEvenIndexes не знайдена');
+    else {
+      const pick = new Function(pickFn + '\nreturn pickEvenIndexes;')();
+      /* менше або рівно ліміту: всі кадри */
+      if (JSON.stringify(pick(5, 24)) !== JSON.stringify([0, 1, 2, 3, 4])) errs.push('вибірка n<=k не бере всі');
+      /* 40 кадрів: рівно 24, унікальні, від першого до останнього, монотонні */
+      const p40 = pick(40, 24);
+      if (p40.length !== 24) errs.push('вибірка 40->24 дала ' + p40.length);
+      if (p40[0] !== 0 || p40[p40.length - 1] !== 39) errs.push('вибірка не покриває краї галереї');
+      if (new Set(p40).size !== p40.length) errs.push('дублікати індексів');
+      if (p40.some((v, i) => i > 0 && v <= p40[i - 1])) errs.push('вибірка не монотонна');
+      /* не перші 24 підряд: хвіст галереї представлений */
+      if (p40.every(v => v < 24)) errs.push('вибірка досі бере лише початок галереї');
+      /* high-слоти рівномірні: 24->12 покриває початок і кінець набору */
+      const h = pick(24, 12);
+      if (h.length !== 12 || h[0] !== 0 || h[h.length - 1] !== 23) errs.push('high-слоти не рівномірні: ' + JSON.stringify(h));
+    }
+    if (api.includes('listing.photos.slice(0, 24)')) errs.push('лишився slice(0,24) для Vision');
+    if (api.includes("i < 12 ? 'high'")) errs.push('high досі дістається першим 12 підряд');
+    if (!api.includes('photo_selection: { total:')) errs.push('нема аудиту вибірки в _meta');
+  }
+
   /* 6а. комплектація v2: детерміновані функції, чотири рівні, верифікатор */
   {
     const sanFn = grab(api, 'sanitizeEquipment');

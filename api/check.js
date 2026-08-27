@@ -573,6 +573,20 @@ export function sanitizePurchaseDecision(pd, v2) {
   return out;
 }
 
+/* ---------- 4б2. Рівномірна вибірка кадрів для Vision ----------
+   Перші 24 підряд відрізали салон: у галереях оголошень екстерʼєр іде
+   першим, а торпедо, консоль і сидіння лежать у хвості. Тому і кадри
+   (максимум 24), і high-слоти (максимум 12) розподіляються детерміновано
+   і рівномірно по всьому діапазону від першого до останнього. Без
+   AI-класифікації, hash-ів і схожості: спершу проста рівномірна вибірка */
+export function pickEvenIndexes(n, k) {
+  if (!Number.isFinite(n) || n <= 0) return [];
+  if (n <= k) return Array.from({ length: n }, (_, i) => i);
+  const idx = [];
+  for (let i = 0; i < k; i++) idx.push(Math.round(i * (n - 1) / (k - 1)));
+  return [...new Set(idx)];
+}
+
 /* ---------- 4г. Комплектація: детермінована валідація і верифікація ----------
    Модель пропонує знахідки, код вирішує, що виживає. Рівно чотири рівні
    достовірності, рівня "ймовірно" не існує. Візуальне підтвердження без
@@ -1005,7 +1019,9 @@ export default async function handler(req, res) {
     /* Бюджет фото. 40 кадрів у високій деталізації не встигають за ліміт часу,
        тому: ключові кадри високою деталізацією, решта низькою. Модель все одно
        бачить весь набір (салон, деталі), але запит лишається в межах часу. */
-    const photoUrls = listing.photos.slice(0, 24);
+    const photoIdx = pickEvenIndexes(listing.photos.length, 24);
+    const photoUrls = photoIdx.map(i => listing.photos[i]);
+    const highSet = new Set(pickEvenIndexes(photoUrls.length, 12));
     /* image-level provenance: у Vision ЛИШЕ кадри, чия належність exact lot
        доведена URL (VIN або lot_id). Generic-галерея (americamotors cs.copart
        без VIN) виключається: вона змішує різні авто. AmericaMotors лишається
@@ -1036,7 +1052,7 @@ export default async function handler(req, res) {
     const img = (u, detail) => ({ type: 'image_url', image_url: { url: u, detail } });
     const content = [
       { type: 'text', text: 'ФОТО З ОГОЛОШЕННЯ (стан зараз). Нумерація: photo_1..photo_' + photoUrls.length + ' у порядку подачі, на неї посилаються evidence ref. Це ПОВНИЙ набір фото цього авто, включно з салоном і деталями: не пиши, що фото салону немає, якщо воно серед переданих. Якщо якийсь кадр очевидно належить ІНШОМУ авто (інша модель, інший колір, інший кузов), просто проігноруй його і не згадуй у звіті:' },
-      ...photoUrls.map((u, i) => img(u, i < 12 ? 'high' : 'low')),
+      ...photoUrls.map((u, i) => img(u, highSet.has(i) ? 'high' : 'low')),
       ...(auctionPhotos.length
         ? [{ type: 'text', text: 'ФОТО З АУКЦІОНУ США (до ремонту, архів). Нумерація: auction_photo_1..auction_photo_' + auctionPhotos.length + ' у порядку подачі:' }, ...auctionPhotos.map(u => img(u, 'high'))]
         : []),
@@ -1245,6 +1261,8 @@ export default async function handler(req, res) {
       currency: listing.currency,
       odometer_km: listing.odometer_km,
       photos: listing.photos.slice(0, 60),
+      /* аудит вибірки кадрів для Vision: індекси галереї і high-слоти */
+      photo_selection: { total: listing.photos.length, picked: photoIdx, high: photoIdx.filter((_, i) => highSet.has(i)) },
       seller_text: listing.seller_text || null,
       auction_url: listing.auction_url || null,
       auction_photos: auctionPhotos,
