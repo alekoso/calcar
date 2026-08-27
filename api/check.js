@@ -251,9 +251,27 @@ function extractListing(html, url) {
     { from: title.slice(0, 40), to: ['Опис від продавця'], cap: 3000 },
   ]);
 
+  /* оригінальний опис продавця окремо: у звіті показується за кнопкою.
+     Без фолбека на всю сторінку: нема маркера, нема опису */
+  let sellerText = null;
+  {
+    const mk = 'Опис від продавця';
+    const i = text.indexOf(mk);
+    if (i !== -1) {
+      let end = Math.min(text.length, i + 4000);
+      for (const stop of ['Дізнайтесь більше', 'Оголошення створене', 'Перевірено AUTO.RIA']) {
+        const j = text.indexOf(stop, i + mk.length);
+        if (j !== -1 && j < end) end = j;
+      }
+      const seg = text.slice(i + mk.length, end).trim();
+      if (seg.length > 20) sellerText = seg.slice(0, 3000);
+    }
+  }
+
   return {
     domain, country: isRia ? 'UA' : null,
     title: title.slice(0, 200), vin, plate,
+    seller_text: sellerText,
     price, currency, odometer_km: odometerKm, year, make, model,
     photos, text: aiText,
     /* кадри "до ремонту" з аукціону США, збережені самою RIA */
@@ -633,6 +651,8 @@ ${auction && auction.photos.length ? `
 ` : auction && auction.blocked ? `Архів аукціону США існує (посилання на сторінці), але його сервер не пустив нас автоматично.
 ЖОРСТКЕ ПРАВИЛО: згадай цю обставину РІВНО ОДИН РАЗ, в auction.summary, одним реченням. У verdict, risks, discrepancies, photo_findings, checklist і будь-де ще ЗАБОРОНЕНО писати "без доступних аукціонних фото", "фото аукціону недоступні" і подібні звороти. Роби висновки з того, що маєш: запис про ДТП у США сам по собі є фактом, і оцінювати треба ризик неякісного відновлення, а не відсутність фото.` : 'Архіву аукціону США у сторінці немає.'}
 
+БЛОК ІСТОРІЇ ПОШКОДЖЕНЬ ("auction"): у звіті це розділ "Історія пошкоджень і фото з минулого", і він ГЛОБАЛЬНИЙ, не лише про США. "found": true СТАВ ЛИШЕ коли для авто реально знайдена подія, повʼязана з пошкодженням, ДТП чи відновленням (аукціон пошкоджених авто, запис про ДТП, історичні фото пошкодженого стану). Звичайна реєстраційна історія, зміна власників, минулі оголошення без пошкоджень та інші нейтральні історичні записи самі по собі цей блок НЕ створюють: тоді "found": false, "summary": null, "findings": порожній масив, і жодних текстів на кшталт "записів не знайдено" у summary. Американський контекст (США, IAAI, Copart) згадуй усередині блоку ЛИШЕ коли подія справді американська; для подій з інших країн називай їхнє джерело.
+
 РОЗБІЖНІСТЬ ІСНУЄ ЛИШЕ КОЛИ: джерело А стверджує X, а джерело Б стверджує несумісне з X значення Y, і ти називаєш обидва джерела та обидва значення. Відсутність інформації, "не розкрито", "не вдалося перевірити" РОЗБІЖНІСТЮ НЕ Є і в discrepancies не потрапляє ніколи. Якщо справжніх суперечностей немає, повертай порожній масив: блок просто не покажеться, і це правильно.
 
 ГОЛОВНА МЕХАНІКА: розбіжності між джерелами. Порівнюй:
@@ -660,6 +680,10 @@ ${auction && auction.photos.length ? `
 "photo_findings": ЛИШЕ про НИНІШНІ фото з оголошення (не аукціонні: для них є auction.findings). СПОЧАТКУ те, що РЕАЛЬНО ПОМІЧЕНО: різниця відтінку фарби, шагрень, нерівні зазори, свіжий герметик, нештатні деталі, знос салону проти пробігу. Кожна знахідка = окремий пункт зі status warn або bad. Якщо підозрілого нічого немає: ОДИН пункт "ok" ("на доступних фото явних слідів ремонту не видно") плюс МАКСИМУМ один пункт "unknown" із найважливішим обмеженням (наприклад, немає фото салону). ЗАБОРОНЕНО три пункти поспіль про те, чого не видно.
 
 "risks": 2-5 КЛЮЧОВИХ РИЗИКІВ. Це відповідь на питання "що в цьому авто може коштувати найбільших грошей чи проблем". Обовʼязково розрізняй: ЗНАЙДЕНА проблема (є доказ у даних чи на фото) проти ПОТЕНЦІЙНОГО ризику моделі (двигун дорогий у ремонті, але несправність не встановлена). Для складних чи преміальних авто з дешевою ціною чесно пояснюй, ЧОМУ вони дешеві: дорогий сервіс, ресурс агрегатів, витрати володіння. Для авто після ДТП у США один із ризиків майже завжди якість відновлення. Кожен ризик КОМПАКТНИЙ: title; level (high = висока ціна помилки, med, low); note МАКСИМУМ 2 речення (чому це головна стаття витрат саме тут, без есе); action одним рядком, що починається з переліку конкретних вузлів чи дій ("лонжерони, підрамник, SRS та ремені", а не загальне "діагностика на СТО").
+
+ДИСЦИПЛІНА РИЗИКІВ: виконаний ремонт, обслуговування чи модифікація САМІ ПО СОБІ не є ризиком і НЕ створюють рекомендацію "перевірити", навіть для важливих вузлів. Ризик чи перевірка зʼявляються ЛИШЕ за конкретної підстави: симптом проблеми, знайдена суперечність, видимий дефект, помилка системи, свідчення неякісної чи незавершеної роботи, або серйозне минуле пошкодження з непідтвердженими наслідками. Замінена система охолодження без ознак проблеми, нові фари, вихлоп, проставки, CarPlay і подібні зміни: це факти обслуговування і комплектації (history, equipment), НЕ risks, НЕ must_check, НЕ checklist.
+
+РОЗДІЛЕННЯ СУТНОСТЕЙ: "model_notes.issues" це ЛИШЕ типові болячки моделі, двигуна, коробки цієї версії. "risks" це ЛИШЕ про цей конкретний екземпляр. Заявлений продавцем ремонт НЕ створює новий запис ані в issues, ані в risks: якщо вузол є слабким місцем моделі і продавець заявляє, що він уже обслужений, постав у відповідному пункті issues поле "seller_serviced": true (інтерфейс покаже позначку "продавець заявляє, що вузол уже обслужений"), і це знижує актуальність ризику.
 
 "equipment": комплектація з зазначенням джерела кожної групи. "vin": лише те, що РЕАЛЬНО назване в декодуванні VIN. "photo": опції, які ВИДНО на фото оголошення (Burmester чи інша акустика по решітках, панорамний дах, вентиляція за перфорацією сидінь, камери 360, HUD, моніторами позаду, підсвітка тощо): пиши тільки впевнено видиме. "seller": важливі опції зі слів продавця, яких нема ні у VIN, ні на фото. Порожні масиви дозволені, вигадувати заборонено.
 
@@ -716,7 +740,7 @@ ${DECISION_RULES}${decisionStyle === 'a' ? DECISION_FEWSHOT : ''}
  "history_note":"1 рядок ЛИШЕ якщо патерн незвичний (наприклад 3 переоформлення за 5 місяців), без спекуляцій про причини; якщо історія звичайна: null",
  "photo_findings":[{"status":"ok|warn|bad|unknown","text":"знахідка по фото, 1 речення"}],
  "data_notes":"сміття чи суперечності в даних площадки, 1-2 речення, або null",
- "model_notes":{"issues":[{"unit":"вузол/двигун","title":"назва проблеми","detail":"1-2 речення","severity":"low|med|high"}]},
+ "model_notes":{"issues":[{"unit":"вузол/двигун","title":"назва проблеми","detail":"1-2 речення","severity":"low|med|high","seller_serviced":false}]},
  "checklist":["конкретна перевірка при огляді, 1 рядок", "..."],
  "purchase_decision":{"recommendation":"buy|go_see|negotiate|skip","headline":"рішення одним рядком","summary_short":"чому: 3-4 речення, до 400 символів","reasoning":"повне міркування, 2-4 абзаци","why_consider":["..."],"main_concerns":["..."],"must_check":["..."],"questions_for_seller":["..."],"value_context":"про ціну словами","missing_but_important":["..."]},
  "score_facts":{"findings":[{"type":"STRUCTURAL_DAMAGE","event_id":"accident_2020","severity":"high","repair_status":"unknown","serious_intervention":false,"maintenance_evidence":false,"evidence":[{"source":"us_auction","ref":"auction_event_1","description":"на аукціонних фото деформований лівий лонжерон"}]}],"signals":{"seller_claims_us_import":false},"info_notes":["вільна замітка без впливу на бал"]},
@@ -875,8 +899,16 @@ export default async function handler(req, res) {
     const auctionPhotos = (auction?.photos || [])
       .filter(u => photoHasProvenance(u, listing.vin, auctionLotId) && visionLoadable(u))
       .slice(0, 8);
-    if ((auction?.photos || []).length && !auctionPhotos.length) {
-      console.log('[auction]', auction.photos.length, 'аукційних фото не йдуть у Vision (провенанс або недоступність), зони/подушки з metadata');
+    if (auction && !auctionPhotos.length) {
+      /* структуроване діагностичне повідомлення для Runtime Logs:
+         без секретів, HTML і великих payload */
+      console.log('[diag]', JSON.stringify({
+        evt: 'history_photos_unavailable',
+        source: (auctionSearch && auctionSearch.source) || (auction.from_ria ? 'ria_usa_photos' : auction.from_search ? 'auction_search' : 'external_archive'),
+        step: 'display_photos',
+        reason: (auction.photos || []).length ? 'provenance_or_unloadable' : 'no_photo_urls',
+        vin: listing.vin || null,
+      }));
     }
     const img = (u, detail) => ({ type: 'image_url', image_url: { url: u, detail } });
     const content = [
@@ -1039,6 +1071,7 @@ export default async function handler(req, res) {
       currency: listing.currency,
       odometer_km: listing.odometer_km,
       photos: listing.photos.slice(0, 60),
+      seller_text: listing.seller_text || null,
       auction_url: listing.auction_url || null,
       auction_photos: auctionPhotos,
       auction_search: auctionSearch,

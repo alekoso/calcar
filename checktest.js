@@ -121,7 +121,50 @@ const REPORTS = [
     }
   }
 
+  /* 6. правки звіту Check: порядок блоків, identity, вердикт, історія, бейдж */
+  {
+    const page = fs.readFileSync('result-check.html', 'utf8');
+    /* порядок: комплектація одразу під картку авто, перед вердиктом і ризиками */
+    const iEq = page.indexOf('id="eqCard"'), iVd = page.indexOf('id="verdictCard"'), iRk = page.indexOf('id="risksCard"');
+    if (!(iEq > -1 && iVd > -1 && iEq < iVd && iVd < iRk)) errs.push('порядок блоків: eqCard мусить стояти перед verdictCard і risksCard');
+    /* identity-рядок і опис продавця */
+    for (const el of ['id="idRow"', 'id="idLine"', 'class="copy-btn"', 'id="descBtn"', 'id="sellerDesc"']) {
+      if (!page.includes(el)) errs.push('result-check.html: нема ' + el);
+    }
+    if (page.includes('id="carMeta"')) errs.push('старий carMeta лишився');
+    /* вердикт: плашки і списків нема, видима частина обмежена */
+    if (page.includes('id="pdRec"') || page.includes('id="pdLists"')) errs.push('плашка або списки лишились у вердикті');
+    if (!page.includes('450')) errs.push('нема ліміту видимої частини');
+    if (!page.includes('questions_for_seller')) errs.push('питання продавцю зникли зі сторінки');
+    if (!page.includes('id="qCard"')) errs.push('нема окремого блоку питань продавцю');
+    /* історичний блок: глобальна назва, без failure-текстів і сирих URL */
+    if (!page.includes('Історія пошкоджень і фото з минулого')) errs.push('нема нової назви історичного блоку');
+    if (page.includes('Авто в США: до ремонту і зараз')) errs.push('стара назва блоку лишилась');
+    if (page.includes('Фото з архіву не вдалося завантажити')) errs.push('failure-текст про фото лишився');
+    if (!page.includes('au.found === true')) errs.push('блок історії не звіряється з found');
+    if (!page.includes("M.auction_search.lot_url : null")) errs.push('кнопка джерела не обмежена verified-сторінкою');
+    /* бейдж: колір строго за балом, щит із тултіпом */
+    if (!page.includes("sc >= 7.5 ? 'ok' : sc >= 5.5 ? 'warn' : 'bad'")) errs.push('пороги кольору бейджа не 7.5/5.5');
+    if (!page.includes('score-shield') || !page.includes('CalCar Score: оцінка за нашим алгоритмом')) errs.push('нема щита CalCar з тултіпом');
+    /* болячки: позначка про заявлене обслуговування */
+    if (!page.includes('seller_serviced === true')) errs.push('нема позначки заявленого обслуговування');
+  }
+  /* 7. сервер: seller_text, діагностика, дисципліна ризиків, розділення сутностей */
+  if (!api.includes('seller_text: listing.seller_text')) errs.push('check.js: seller_text не йде у _meta');
+  if (!api.includes('history_photos_unavailable')) errs.push('check.js: нема структурованої діагностики фото');
+  if (!api.includes('ДИСЦИПЛІНА РИЗИКІВ')) errs.push('check.js: нема правила дисципліни ризиків');
+  if (!api.includes('РОЗДІЛЕННЯ СУТНОСТЕЙ')) errs.push('check.js: нема правила розділення сутностей');
+  if (!api.includes('"seller_serviced": true')) errs.push('check.js: схема без seller_serviced');
+  if (!api.includes('нейтральні історичні записи самі по собі цей блок НЕ створюють')) errs.push('check.js: нема гейта історичного блоку');
+  /* 8. словники: нові рядки */
+  for (const d of ['i18n/ru.js', 'i18n/en.js']) {
+    const dict = fs.readFileSync(d, 'utf8');
+    for (const k of ['Історія пошкоджень і фото з минулого', 'Опис від продавця', 'Копіювати', 'Скопійовано', 'Відкрити джерело', 'Фото з минулого', 'продавець заявляє, що вузол уже обслужений', 'CalCar Score: оцінка за нашим алгоритмом на основі даних, які вдалося перевірити', 'Що спитати до огляду']) {
+      if (!dict.includes("'" + k + "'")) errs.push('нема ключа "' + k + '" у ' + d);
+    }
+  }
+
   if (errs.length) { console.log('FAILED:', errs); process.exit(1); }
-  console.log('нормалізація одна · збіг за URL і за VIN · значущий query не клеїться · гість без перевірки · повтор свідомий, insert');
+  console.log('нормалізація одна · збіг за URL і за VIN · значущий query не клеїться · гість без перевірки · повтор свідомий, insert · правки звіту');
   console.log('CHECK DUP TEST PASSED');
 })().catch(e => { console.log('FAILED:', e.stack || e.message); process.exit(1); });

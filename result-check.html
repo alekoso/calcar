@@ -433,6 +433,21 @@
 
 
   /* фінальний висновок: рішення шарами */
+  /* identity-рядок картки авто: VIN і номер з копіюванням, опис продавця */
+  .id-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:0 20px;padding:10px 0 14px;border-top:1px solid var(--line)}
+  .id-line{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+  .id-item{display:inline-flex;align-items:center;gap:6px}
+  .id-sep{color:var(--faint)}
+  .copy-btn{border:none;background:none;cursor:pointer;padding:2px;color:var(--muted);display:inline-flex;align-items:center}
+  .copy-btn:hover{color:var(--ink)}
+  .copy-btn.done{color:var(--green)}
+  .id-desc-btn{margin-left:auto;border:1px solid var(--line);background:var(--card);border-radius:16px;padding:5px 12px;font-size:12.5px;font-weight:600;color:var(--muted);cursor:pointer}
+  .id-desc-btn:hover{color:var(--ink)}
+  .seller-desc{margin:0 20px 16px;padding:12px 14px;background:var(--surface-2);border-radius:10px;font-size:13.5px;line-height:1.6;color:var(--text);white-space:pre-line}
+  .score-shield{display:inline-flex;align-items:center;margin-left:6px;color:var(--muted);cursor:help}
+  .src-open{display:inline-flex;align-items:center;margin-left:10px;border:1px solid var(--line);border-radius:14px;padding:3px 10px;font-size:12px;font-weight:600;color:var(--muted);text-decoration:none}
+  .src-open:hover{color:var(--ink)}
+
   .pd-top{display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:8px}
   .pd-rec{flex-shrink:0;font-size:12px;font-weight:700;letter-spacing:.3px;border-radius:14px;padding:4px 12px}
   .pd-rec.ok{background:var(--green-soft);color:var(--green)}
@@ -446,7 +461,8 @@
   .pd-sec ul{margin:0;padding-left:18px}
   .pd-sec li{font-size:13.5px;line-height:1.55;margin-bottom:4px}
   .pd-more{border:none;background:none;cursor:pointer;padding:0;margin-top:14px;font-size:13.5px;font-weight:600;color:var(--brand-ink);text-decoration:underline}
-  .pd-reasoning{margin-top:12px;font-size:14px;line-height:1.65;color:var(--text);white-space:pre-wrap}
+  .pd-reasoning{margin-top:12px;font-size:14px;line-height:1.65;color:var(--text)}
+  .pd-reasoning p{margin:0 0 10px}
   .srcline{font-size:12.5px;color:var(--muted);word-break:break-all}
   .srcline a{color:var(--brand-ink)}
   .lightbox{position:fixed;inset:0;background:rgba(10,18,28,.88);z-index:200;display:none;align-items:center;justify-content:center;cursor:zoom-out}
@@ -706,23 +722,34 @@
       <span class="badge blue">AI-перевірка оголошення</span>
     </div>
     <div class="spec-grid" id="specGrid"></div>
-    <div class="lot-meta" id="carMeta"></div>
+    <div class="id-row" id="idRow" style="display:none">
+      <div class="id-line" id="idLine"></div>
+      <button class="id-desc-btn" id="descBtn" type="button" style="display:none">Опис від продавця</button>
+    </div>
+    <div class="seller-desc" id="sellerDesc" style="display:none"></div>
+  </div>
+
+  <!-- комплектація -->
+  <div class="card" id="eqCard" style="display:none">
+    <div class="card-head">
+      <h2>Комплектація</h2>
+      <span class="hint" style="margin-left:auto">З зазначенням джерела</span>
+    </div>
+    <div class="card-body"><div id="eqList"></div></div>
   </div>
 
   <!-- вердикт -->
   <div class="card" id="verdictCard" style="display:none">
     <div class="card-head">
       <h2>Чи варто брати</h2>
-      <span class="risk-badge" id="scoreBadge" style="display:none"><span class="dot ok" id="scoreDot"></span>Оцінка: <b id="scoreVal">–</b> <span class="risk-label" id="scoreLabel"></span></span>
+      <span class="risk-badge" id="scoreBadge" style="display:none"><span class="dot ok" id="scoreDot"></span>Оцінка: <b id="scoreVal">–</b> <span class="risk-label" id="scoreLabel"></span><span class="score-shield" title="CalCar Score: оцінка за нашим алгоритмом на основі даних, які вдалося перевірити"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></span></span>
     </div>
     <div class="card-body">
       <div id="pdBlock" style="display:none">
         <div class="pd-top">
-          <span class="pd-rec" id="pdRec"></span>
           <div class="pd-headline" id="pdHeadline"></div>
         </div>
-        <p class="pd-short" id="pdShort"></p>
-        <div id="pdLists"></div>
+        <div id="pdShort"></div>
         <button class="pd-more" id="pdMoreBtn" type="button">Читати повний розбір</button>
         <div class="pd-reasoning" id="pdReasoning" style="display:none"></div>
       </div>
@@ -740,12 +767,11 @@
     <div class="card-body"><div id="risksList"></div></div>
   </div>
 
-  <!-- США: до ремонту і зараз -->
+  <!-- історія пошкоджень -->
   <div class="card" id="usCard" style="display:none">
     <div class="card-head">
-      <h2>Авто в США: до ремонту і зараз</h2>
+      <h2>Історія пошкоджень і фото з минулого</h2>
       <span class="badge blue">AI-аналіз фото</span>
-      <span class="hint" style="margin-left:auto">Фото з аукціону до ремонту</span>
     </div>
     <div class="ba-label" id="baBefore" style="display:none"><span class="dot bad"></span>До ремонту (аукціон США)</div>
     <div class="photo-strip" id="auctionStrip" style="display:none"></div>
@@ -763,15 +789,6 @@
       <span class="badge blue">AI-аналіз фото</span>
     </div>
     <div class="card-body"><div class="flags" id="photoFindings"></div></div>
-  </div>
-
-  <!-- комплектація -->
-  <div class="card" id="eqCard" style="display:none">
-    <div class="card-head">
-      <h2>Комплектація</h2>
-      <span class="hint" style="margin-left:auto">З зазначенням джерела</span>
-    </div>
-    <div class="card-body"><div id="eqList"></div></div>
   </div>
 
   <!-- розбіжності -->
@@ -801,6 +818,15 @@
       <span class="hint" style="margin-left:auto">З урахуванням двигуна та пробігу</span>
     </div>
     <div class="card-body"><div id="issuesList"></div></div>
+  </div>
+
+  <!-- питання продавцю -->
+  <div class="card" id="qCard" style="display:none">
+    <div class="card-head">
+      <h2>Питання продавцю</h2>
+      <span class="hint" style="margin-left:auto">Що спитати до огляду</span>
+    </div>
+    <div class="card-body"><div id="qList"></div></div>
   </div>
 
   <!-- фінал: що зробити перед купівлею -->
@@ -1021,9 +1047,32 @@ function boot2(D){
   if (v.drive) spec.push([clean(v.drive), t('Привід')]);
   if (v.trim) spec.push([clean(v.trim), t('Версія')]);
   $('specGrid').innerHTML = spec.map(r => '<div><b>' + esc(r[0]) + '</b><span>' + esc(r[1]) + '</span></div>').join('');
-  $('carMeta').innerHTML =
-    (M.vin ? '<span>VIN: <b class="vin-line">' + esc(M.vin) + '</b></span>' : '')
-    + (M.plate ? '<span>' + t('Номер') + ': <b>' + esc(M.plate) + '</b></span>' : '');
+  /* identity-рядок: VIN і номер із кнопками копіювання, опис продавця за кнопкою */
+  const copySvg = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+  const idBits = [];
+  if (M.vin) idBits.push('<span class="id-item">VIN <b class="vin-line">' + esc(M.vin) + '</b><button class="copy-btn" type="button" data-copy="' + esc(M.vin) + '" title="' + esc(t('Копіювати')) + '" aria-label="' + esc(t('Копіювати')) + '">' + copySvg + '</button></span>');
+  if (M.plate) idBits.push('<span class="id-item">' + esc(t('Номер')) + ' <b>' + esc(M.plate) + '</b><button class="copy-btn" type="button" data-copy="' + esc(M.plate) + '" title="' + esc(t('Копіювати')) + '" aria-label="' + esc(t('Копіювати')) + '">' + copySvg + '</button></span>');
+  if (idBits.length || M.seller_text) {
+    $('idRow').style.display = '';
+    $('idLine').innerHTML = idBits.join('<span class="id-sep">·</span>');
+    $('idLine').addEventListener('click', e => {
+      const b = e.target.closest('.copy-btn');
+      if (!b) return;
+      navigator.clipboard.writeText(b.dataset.copy).then(() => {
+        b.classList.add('done');
+        b.title = t('Скопійовано');
+        setTimeout(() => { b.classList.remove('done'); b.title = t('Копіювати'); }, 1600);
+      }).catch(() => {});
+    });
+  }
+  if (M.seller_text) {
+    $('descBtn').style.display = '';
+    $('sellerDesc').textContent = M.seller_text;
+    $('descBtn').onclick = () => {
+      const open = $('sellerDesc').style.display !== 'none';
+      $('sellerDesc').style.display = open ? 'none' : '';
+    };
+  }
   if (M.url) { const l = $('srcLink'); l.href = M.url; l.style.display = ''; }
 
   /* ---- вердикт: бейдж оцінки в шапці картки, як ризик-скор в Import ---- */
@@ -1032,37 +1081,36 @@ function boot2(D){
   if (pd && pd.headline) {
     /* нове рішення шарами; старий verdict.summary лишається фолбеком нижче */
     $('verdictCard').style.display = '';
-    const REC = {
-      buy: ['ok', t('Брати')],
-      go_see: ['go', t('Їхати дивитись')],
-      negotiate: ['warn', t('Торгуватись')],
-      skip: ['bad', t('Пропустити')],
-    };
-    const rc = REC[pd.recommendation] || REC.go_see;
+    /* рішення несе сам заголовок, окремої плашки немає */
     $('pdBlock').style.display = '';
     $('vText').style.display = 'none';
-    $('pdRec').className = 'pd-rec ' + rc[0];
-    $('pdRec').textContent = rc[1];
     $('pdHeadline').textContent = clean(pd.headline);
-    $('pdShort').textContent = clean(pd.summary_short || '');
-    const SECS = [
-      ['why_consider', t('Чому варто розглядати')],
-      ['main_concerns', t('Головні застереження')],
-      ['must_check', t('Перевірити обовʼязково')],
-      ['questions_for_seller', t('Питання продавцю')],
-    ];
-    let lists = '';
-    for (const [key, title] of SECS) {
-      const items = Array.isArray(pd[key]) ? pd[key].filter(x => typeof x === 'string' && x.trim()) : [];
-      if (!items.length) continue;
-      lists += '<div class="pd-sec"><b>' + esc(title) + '</b><ul>' + items.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul></div>';
+    /* видима частина: максимум ~450 символів, до двох коротких абзаців */
+    const visRaw = clean(pd.summary_short || '');
+    const vis = visRaw.length > 450
+      ? (visRaw.slice(0, 450).replace(/[^.!?]*$/, '').trim() || visRaw.slice(0, 450).trim())
+      : visRaw;
+    let paras = vis ? [vis] : [];
+    if (vis.length > 240) {
+      const sents = vis.match(/[^.!?]+[.!?]+["»)]?\s*/g);
+      if (sents && sents.length >= 2) {
+        let acc = '', k = 0;
+        while (k < sents.length - 1 && (acc + sents[k]).length < vis.length / 2) acc += sents[k++];
+        if (!acc) acc = sents[k++];
+        const rest = sents.slice(k).join('').trim();
+        if (acc.trim() && rest) paras = [acc.trim(), rest];
+      }
     }
-    if (pd.value_context) lists += '<div class="pd-sec"><b>' + esc(t('Про ціну')) + '</b><p class="pd-short" style="margin:0">' + esc(pd.value_context) + '</p></div>';
+    $('pdShort').innerHTML = paras.map(p => '<p class="pd-short">' + esc(p) + '</p>').join('');
+    /* повний розбір за кнопкою: reasoning + ціна + чого не перевірили */
+    let fullHtml = pd.reasoning
+      ? clean(pd.reasoning).split(/\n+/).map(p => p.trim()).filter(Boolean).map(p => '<p>' + esc(p) + '</p>').join('')
+      : '';
+    if (pd.value_context) fullHtml += '<div class="pd-sec"><b>' + esc(t('Про ціну')) + '</b><p class="pd-short" style="margin:0">' + esc(pd.value_context) + '</p></div>';
     const miss = Array.isArray(pd.missing_but_important) ? pd.missing_but_important.filter(x => typeof x === 'string' && x.trim()) : [];
-    if (miss.length) lists += '<div class="pd-sec"><b>' + esc(t('Чого ми не перевірили')) + '</b><ul>' + miss.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul></div>';
-    $('pdLists').innerHTML = lists;
-    if (pd.reasoning) {
-      $('pdReasoning').textContent = clean(pd.reasoning);
+    if (miss.length) fullHtml += '<div class="pd-sec"><b>' + esc(t('Чого ми не перевірили')) + '</b><ul>' + miss.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul></div>';
+    if (fullHtml) {
+      $('pdReasoning').innerHTML = fullHtml;
       $('pdMoreBtn').onclick = () => {
         const open = $('pdReasoning').style.display !== 'none';
         $('pdReasoning').style.display = open ? 'none' : '';
@@ -1095,7 +1143,8 @@ function boot2(D){
       /* оцінка авто: вище = краще. Клас і підпис із grade формули, коли він є */
       const GR = { buy: ['ok', t('варто розглядати')], inspect: ['warn', t('після перевірок')], caution: ['warn', t('підвищений ризик')], avoid: ['bad', t('високий ризик')] };
       const gm = v2 !== null && GR[g2] ? GR[g2] : null;
-      const cls = gm ? gm[0] : (sc >= 7.5 ? 'ok' : sc >= 5 ? 'warn' : 'bad');
+      /* колір строго за балом: 7.5+ зелений, 5.5+ янтарний, нижче червоний */
+      const cls = sc >= 7.5 ? 'ok' : sc >= 5.5 ? 'warn' : 'bad';
       const lbl = gm ? gm[1] : (sc >= 8 ? t('варто розглядати') : sc >= 6 ? t('після перевірок') : sc >= 4 ? t('підвищений ризик') : t('високий ризик'));
       if (v2 !== null) $('vHint').textContent = t('Наша оцінка на основі даних, які вдалося перевірити');
       $('scoreBadge').style.display = '';
@@ -1119,13 +1168,23 @@ function boot2(D){
       + '</div>';
   });
 
-  /* ---- США: до ремонту і зараз ---- */
+  /* ---- історія пошкоджень і фото з минулого ----
+     Блок глобальний і зʼявляється ЛИШЕ коли знайдена подія пошкодження/ДТП/
+     відновлення або історичні фото такої події. Нейтральна історія
+     (реєстрації, власники) блок не створює. Фото нема: ані порожньої галереї,
+     ані повідомлень про невдачу, ані сирих URL */
   const au = D.auction || {};
   const auPh = httpsOnly(M.auction_photos);
-  if (au.summary || auPh.length || (Array.isArray(au.findings) && au.findings.length)) {
+  const damageStory = (au.found === true || auPh.length > 0)
+    && (au.summary || auPh.length || (Array.isArray(au.findings) && au.findings.length));
+  if (damageStory) {
     $('usCard').style.display = '';
+    const am = M.auction_meta || {};
+    /* американський контекст лише коли історія справді американська */
+    const isUS = !!(am.house || (M.auction_search && M.auction_search.status === 'found') || (M.auction_url && /bidfax|copart|iaai|bid\.cars|poctra/i.test(M.auction_url)) || (auPh.length && auPh.every(u => /riastatic\.com\/photos\/auto\/usa\//.test(u))));
     if (auPh.length) {
       $('baBefore').style.display = '';
+      $('baBefore').innerHTML = '<span class="dot bad"></span>' + esc(isUS ? t('До ремонту (аукціон США)') : t('Фото з минулого'));
       $('auctionStrip').style.display = '';
       $('auctionStrip').innerHTML = auPh.map(u => '<img loading="lazy" src="' + esc(u) + '" alt="">').join('');
     }
@@ -1134,15 +1193,15 @@ function boot2(D){
       $('usFindings').innerHTML = au.findings.map(f =>
         '<div class="flag"><span class="dot ' + st(f.status) + '"></span><span>' + esc(f.text) + '</span></div>').join('');
     }
-    const am = M.auction_meta || {};
+    const srcParts = [];
     if (am.house || am.date) {
-      /* паспорт джерела за зразком позначок комплектації: без посилань назовні */
-      $('usSrc').innerHTML = '<span class="badge blue">'
-        + esc(t('Дані аукціону') + (am.house ? ' · ' + am.house : '') + (am.date ? ' · ' + am.date : '')) + '</span>';
-    } else if (M.auction_url) {
-      const noPh = !auPh.length ? t('Фото з архіву не вдалося завантажити автоматично, відкрий архів за посиланням.') + ' ' : '';
-      $('usSrc').innerHTML = noPh + t('Архів аукціону') + ': <a href="' + esc(M.auction_url) + '" target="_blank" rel="noopener">' + esc(M.auction_url) + '</a>';
+      /* паспорт джерела за зразком позначок комплектації */
+      srcParts.push('<span class="badge blue">' + esc(t('Дані аукціону') + (am.house ? ' · ' + am.house : '') + (am.date ? ' · ' + am.date : '')) + '</span>');
     }
+    /* компактна кнопка джерела лише для verified-сторінки (пройшла перевірку VIN) */
+    const lotUrl = M.auction_search && M.auction_search.status === 'found' ? M.auction_search.lot_url : null;
+    if (lotUrl) srcParts.push('<a class="src-open" href="' + esc(lotUrl) + '" target="_blank" rel="noopener">' + esc(t('Відкрити джерело')) + '</a>');
+    if (srcParts.length) $('usSrc').innerHTML = srcParts.join(' ');
   }
 
   /* ---- фото зараз ---- */
@@ -1192,8 +1251,16 @@ function boot2(D){
   /* ---- болячки: без бейджа ризику, це довідка про модель ---- */
   fill('issuesCard', 'issuesList', D.model_notes?.issues, i =>
     '<div class="issue"><div class="issue-t"><b>' + esc(i.title) + '</b>'
-    + (i.unit ? '<span class="u">' + esc(i.unit) + '</span>' : '') + '</div>'
+    + (i.unit ? '<span class="u">' + esc(i.unit) + '</span>' : '')
+    + (i.seller_serviced === true ? '<span class="badge amber">' + esc(t('продавець заявляє, що вузол уже обслужений')) + '</span>' : '') + '</div>'
     + '<p>' + esc(i.detail) + '</p></div>');
+
+  /* питання продавцю: компактний блок у нижній частині звіту */
+  const qs = pd && Array.isArray(pd.questions_for_seller) ? pd.questions_for_seller.filter(x => typeof x === 'string' && x.trim()) : [];
+  if (qs.length) {
+    $('qCard').style.display = '';
+    $('qList').innerHTML = qs.map(q => '<div class="chk"><i></i><span>' + esc(q) + '</span></div>').join('');
+  }
 
   fill('chkCard', 'chkList', D.checklist, c => '<div class="chk"><i></i><span>' + esc(c) + '</span></div>');
 }

@@ -66,7 +66,7 @@ const VALID = {
 
   /* 6. рендер: шари, фолбек без порожніх секцій, рядки в словниках */
   const page = fs.readFileSync('result-check.html', 'utf8');
-  for (const el of ['id="pdBlock"', 'id="pdHeadline"', 'id="pdShort"', 'id="pdLists"', 'id="pdMoreBtn"', 'id="pdReasoning"']) {
+  for (const el of ['id="pdBlock"', 'id="pdHeadline"', 'id="pdShort"', 'id="pdMoreBtn"', 'id="pdReasoning"']) {
     if (!page.includes(el)) errs.push('result-check.html: нема ' + el);
   }
   if (!page.includes("if (pd && pd.headline)")) errs.push('result-check.html: нема гілки нового рішення');
@@ -78,7 +78,7 @@ const VALID = {
   if (!page.includes('Наша оцінка на основі даних, які вдалося перевірити')) errs.push('result-check.html: нема підпису про дані');
   for (const d of ['i18n/ru.js', 'i18n/en.js']) {
     const dict = fs.readFileSync(d, 'utf8');
-    for (const k of ['Їхати дивитись', 'Читати повний розбір', 'Перевірити обовʼязково', 'Питання продавцю', 'Чого ми не перевірили', 'Наша оцінка на основі даних, які вдалося перевірити']) {
+    for (const k of ['Читати повний розбір', 'Питання продавцю', 'Чого ми не перевірили', 'Наша оцінка на основі даних, які вдалося перевірити']) {
       if (!dict.includes("'" + k + "'")) errs.push('нема ключа "' + k + '" у ' + d);
     }
   }
