@@ -251,11 +251,11 @@
 
   /* ---- зовнішнє оголошення: маленька кнопка біля назви авто ---- */
   .ext-link{
-    display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;flex:0 0 auto;
-    border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);
+    display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;flex:0 0 auto;
+    border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink);
     transition:background .15s;align-self:center;
   }
-  .ext-link svg{width:14px;height:14px}
+  .ext-link svg{width:13px;height:13px}
   .ext-link:hover{background:var(--surface-2)}
 
   /* ---- спільний компонент інформаційних секцій (еталон: Import) ---- */
@@ -330,12 +330,17 @@
   .photo-strip img{height:86px;border-radius:8px;flex:0 0 auto;cursor:zoom-in;display:block}
   .lot-title{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 20px 4px}
   .lot-title h1{font-size:22px;font-weight:800}
-  .spec-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;padding:12px 20px 4px}
-  .spec-grid div b{display:block;font-size:14px;font-weight:700}
-  .spec-grid div span{font-size:12px;color:var(--muted)}
-  .lot-meta{padding:8px 20px 16px;display:flex;gap:20px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
-  .lot-meta b{color:var(--text);font-weight:600}
-  .vin-line{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:13px;letter-spacing:.8px;font-weight:700;color:var(--text)}
+  /* характеристики: label і value в ОДНОМУ рядку, дві колонки на desktop.
+     Довге value переноситься всередині свого рядка, не ламаючи сусідню
+     колонку. Без вертикальних рамок: лише тонкі горизонтальні розділювачі */
+  .spec-rows{display:grid;grid-template-columns:1fr 1fr;column-gap:44px;padding:8px 20px 2px}
+  .spec-col{min-width:0}
+  .spec-row{display:flex;align-items:baseline;gap:16px;padding:9px 0;border-bottom:1px solid var(--line)}
+  .spec-col .spec-row:last-child{border-bottom:none}
+  .spec-l{flex:0 0 92px;font-size:13.5px;font-weight:600;color:var(--ink)}
+  .spec-v{flex:1;min-width:0;font-size:13.5px;font-weight:500;color:var(--text);overflow-wrap:break-word}
+  .spec-v.price{font-weight:700;color:var(--brand-ink)}
+  @media (max-width:760px){.spec-rows{grid-template-columns:1fr}.spec-col .spec-row:last-child{border-bottom:1px solid var(--line)}.spec-col:last-child .spec-row:last-child{border-bottom:none}}
 
   /* ---- вердикт ---- */
   /* оцінка: той самий бейдж, що ризик-скор в Import */
@@ -441,10 +446,11 @@
   .eq-main .eq-head-sm:first-child{margin-top:0}
 
   /* identity-рядок картки авто: VIN і номер з копіюванням, опис продавця */
-  .id-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:0 20px;padding:10px 0 14px;border-top:1px solid var(--line)}
-  .id-line{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
-  .id-item{display:inline-flex;align-items:center;gap:6px}
-  .id-sep{color:var(--faint)}
+  .id-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:10px 20px 0;padding:10px 0 14px;border-top:1px solid var(--line)}
+  .id-line{display:flex;align-items:center;gap:28px;flex-wrap:wrap;font-size:13.5px}
+  .id-item{display:inline-flex;align-items:baseline;gap:8px;min-width:0}
+  .id-l{font-weight:600;color:var(--ink)}
+  .id-v{font-weight:500;color:var(--text);letter-spacing:.4px;overflow-wrap:anywhere}
   .copy-btn{border:none;background:none;cursor:pointer;padding:2px;color:var(--muted);display:inline-flex;align-items:center}
   .copy-btn:hover{color:var(--ink)}
   .copy-btn.done{color:var(--green)}
@@ -728,7 +734,7 @@
       </a>
       <span class="badge blue">AI-перевірка оголошення</span>
     </div>
-    <div class="spec-grid" id="specGrid"></div>
+    <div class="spec-rows" id="specGrid"></div>
     <div class="id-row" id="idRow" style="display:none">
       <div class="id-line" id="idLine"></div>
       <button class="id-desc-btn" id="descBtn" type="button" style="display:none">Опис від продавця</button>
@@ -1045,23 +1051,28 @@ function boot2(D){
     $('photoStrip').style.display = '';
     $('photoStrip').innerHTML = ph.map(u => '<img loading="lazy" src="' + esc(u) + '" alt="">').join('');
   }
+  /* характеристики: label і value в одному рядку. Дані і порядок ті самі,
+     змінюється лише подача. 6 полів: 4+2, менше: порівну */
   const spec = [];
-  if (M.price) spec.push([nf(M.price) + ' ' + (M.currency || ''), t('Ціна')]);
-  if (v.mileage_note) spec.push([clean(v.mileage_note), t('Пробіг')]);
-  else if (M.odometer_km) spec.push([nf(M.odometer_km) + ' ' + t('км'), t('Пробіг')]);
-  if (v.engine) spec.push([clean(v.engine), t('Двигун')]);
-  if (v.transmission) spec.push([clean(v.transmission), t('Коробка')]);
-  if (v.drive) spec.push([clean(v.drive), t('Привід')]);
-  if (v.trim) spec.push([clean(v.trim), t('Версія')]);
-  $('specGrid').innerHTML = spec.map(r => '<div><b>' + esc(r[0]) + '</b><span>' + esc(r[1]) + '</span></div>').join('');
+  if (M.price) spec.push([t('Ціна'), nf(M.price) + ' ' + (M.currency || ''), 'price']);
+  if (v.mileage_note) spec.push([t('Пробіг'), clean(v.mileage_note)]);
+  else if (M.odometer_km) spec.push([t('Пробіг'), nf(M.odometer_km) + ' ' + t('км')]);
+  if (v.engine) spec.push([t('Двигун'), clean(v.engine)]);
+  if (v.transmission) spec.push([t('Коробка'), clean(v.transmission)]);
+  if (v.drive) spec.push([t('Привід'), clean(v.drive)]);
+  if (v.trim) spec.push([t('Версія'), clean(v.trim)]);
+  const specRow = r => '<div class="spec-row"><span class="spec-l">' + esc(r[0]) + '</span><span class="spec-v' + (r[2] ? ' ' + r[2] : '') + '">' + esc(r[1]) + '</span></div>';
+  const specCut = spec.length > 4 ? 4 : Math.ceil(spec.length / 2);
+  $('specGrid').innerHTML = '<div class="spec-col">' + spec.slice(0, specCut).map(specRow).join('') + '</div>'
+    + (spec.length > specCut ? '<div class="spec-col">' + spec.slice(specCut).map(specRow).join('') + '</div>' : '');
   /* identity-рядок: VIN і номер із кнопками копіювання, опис продавця за кнопкою */
   const copySvg = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
   const idBits = [];
-  if (M.vin) idBits.push('<span class="id-item">VIN <b class="vin-line">' + esc(M.vin) + '</b><button class="copy-btn" type="button" data-copy="' + esc(M.vin) + '" title="' + esc(t('Копіювати')) + '" aria-label="' + esc(t('Копіювати')) + '">' + copySvg + '</button></span>');
-  if (M.plate) idBits.push('<span class="id-item">' + esc(t('Номер')) + ' <b>' + esc(M.plate) + '</b><button class="copy-btn" type="button" data-copy="' + esc(M.plate) + '" title="' + esc(t('Копіювати')) + '" aria-label="' + esc(t('Копіювати')) + '">' + copySvg + '</button></span>');
+  if (M.vin) idBits.push('<span class="id-item"><span class="id-l">VIN</span><span class="id-v">' + esc(M.vin) + '</span><button class="copy-btn" type="button" data-copy="' + esc(M.vin) + '" title="' + esc(t('Копіювати')) + '" aria-label="' + esc(t('Копіювати')) + '">' + copySvg + '</button></span>');
+  if (M.plate) idBits.push('<span class="id-item"><span class="id-l">' + esc(t('Номер')) + '</span><span class="id-v">' + esc(M.plate) + '</span><button class="copy-btn" type="button" data-copy="' + esc(M.plate) + '" title="' + esc(t('Копіювати')) + '" aria-label="' + esc(t('Копіювати')) + '">' + copySvg + '</button></span>');
   if (idBits.length || M.seller_text) {
     $('idRow').style.display = '';
-    $('idLine').innerHTML = idBits.join('<span class="id-sep">·</span>');
+    $('idLine').innerHTML = idBits.join('');
     $('idLine').addEventListener('click', e => {
       const b = e.target.closest('.copy-btn');
       if (!b) return;
