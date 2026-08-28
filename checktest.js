@@ -353,6 +353,27 @@ const REPORTS = [
       if (!after.length || after[0].confidence_level !== 'listing_data') errs.push('провалений visual+listing не впав у listing_data');
       if (after[0].provenance.some(p => p.type === 'visual')) errs.push('visual provenance лишився після провалу');
     }
+    /* retrofit: незвичність не доказ; назва не ширша за доказ; рамка помічника */
+    if (!api.includes('ЗАБОРОНЕНО ставити retrofit лише тому')) errs.push('check.js: нема заборони retrofit за незвичністю');
+    if (!api.includes('Заводські опціональні пакети існують (M Sport на BMW 530e')) errs.push('check.js: нема правила про заводські пакети');
+    if (!api.includes('vehicle-specific доказом ПІЗНІШОЇ установки')) errs.push('check.js: retrofit без вимоги прямого доказу');
+    if (api.includes('однозначна несумісність елемента із заводською конфігурацією')) errs.push('check.js: стара "несумісність" лишилась підставою retrofit');
+    if (!api.includes('НАЗВА НЕ ШИРША ЗА ДОКАЗ')) errs.push('check.js: нема правила назви за доказом');
+    if (!api.includes('НЕ "преміальна аудіосистема Bowers & Wilkins"')) errs.push('check.js: нема прикладу вузької назви B&W');
+    {
+      const chatApi2 = fs.readFileSync('api/chat.js', 'utf8');
+      if (!chatApi2.includes('НЕ починай відповідь безумовним "так, система є"')) errs.push('chat.js: помічник підвищує visual до підтвердженої системи');
+      if (!chatApi2.includes('це підробка чи лише накладки: цього ми теж не знаємо')) errs.push('chat.js: нема заборони на "підробку"');
+    }
+    /* explicit retrofit-доказ як і раніше допустимий (санітайзер) */
+    {
+      const sanFn3 = grab(api, 'sanitizeEquipment');
+      const lib3 = new Function(sanFn3 + '\nreturn sanitizeEquipment;')();
+      const it = lib3([{ name: 'Фаркоп', category: 'exterior', confidence_level: null, retrofit: true, retrofit_basis: 'продавець прямо вказав, що фаркоп встановлений минулого року', evidence: [{ source: 'seller_claim', ref: null, sign: 'встановив фаркоп' }] }]);
+      if (!it.length || it[0].retrofit !== true) errs.push('явний retrofit-доказ продавця не пройшов');
+      const it2 = lib3([{ name: 'Спойлер', category: 'exterior', confidence_level: null, retrofit: true, retrofit_basis: null, evidence: [{ source: 'current_photos', ref: 'photo_2', sign: 'спойлер' }] }]);
+      if (it2[0].retrofit !== false) errs.push('retrofit без підстави не скинутий');
+    }
     /* сторожі: адаптер, промпт, тексти, чат */
     if (!api.includes('listing_equipment: listingEquipment.slice(0, 60)')) errs.push('нема marketplace-адаптера');
     if (!api.includes('split(/\\s+•\\s+/)')) errs.push('адаптер не терпить подвійні пробіли сепаратора');
