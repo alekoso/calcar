@@ -344,7 +344,7 @@ const REPORTS = [
     if (page.includes('Авто в США: до ремонту і зараз')) errs.push('стара назва блоку лишилась');
     if (page.includes('Фото з архіву не вдалося завантажити')) errs.push('failure-текст про фото лишився');
     if (!page.includes('au.found === true')) errs.push('блок історії не звіряється з found');
-    if (!page.includes("M.auction_search.lot_url : null")) errs.push('кнопка джерела не обмежена verified-сторінкою');
+    if (!page.includes('id="usSrcBtn"') || !page.includes('|| M.auction_url || null')) errs.push('нема переходу до першоджерела в шапці історичного блоку');
     /* бейдж: колір строго за балом, щит із тултіпом */
     if (!page.includes("sc >= 7.5 ? 'ok' : sc >= 5.5 ? 'warn' : 'bad'")) errs.push('пороги кольору бейджа не 7.5/5.5');
     if (!page.includes('score-shield') || !page.includes('id="scoreTip"')) errs.push('нема щита CalCar з тултіпом');
@@ -482,7 +482,20 @@ const REPORTS = [
     /* сторінка: людські ref у tooltip комплектації, premium-зірка */
     const pg4 = fs.readFileSync('result-check.html', 'utf8');
     if (!pg4.includes('humanRef')) errs.push('tooltip комплектації показує технічні id');
-    if (!pg4.includes('stop-color="#7C3AED"') || !pg4.includes('position:absolute;top:-7px')) errs.push('зірка не premium-маркер поверх кута');
+    if (!pg4.includes('stop-color="#7C3AED"') || !pg4.includes('.eq-star{position:absolute;top:-9px;right:7px')) errs.push('зірка не standalone-маркер на верхньому ребрі');
+    if (/\.eq-star\{[^}]*(background:|border-radius|border:)/.test(pg4)) errs.push('зірка знову в колі/капсулі');
+    if (!pg4.includes('.eq-chip.hv{padding-right:30px}')) errs.push('назва може перекриватись маркером');
+    /* без першої особи */
+    if (!api.includes('БЕЗ ПЕРШОЇ ОСОБИ')) errs.push('нема заборони першої особи в рішенні');
+    if (api.includes('прямо "я б шукав інше авто"')) errs.push('ТОН досі диктує першу особу');
+    if (!api.includes('їхнє "я бы" не переймай')) errs.push('few-shot граматика не відсічена');
+    if (!fs.readFileSync('api/chat.js', 'utf8').includes('БЕЗ ПЕРШОЇ ОСОБИ')) errs.push('чат без правила першої особи');
+    /* timeline: одна вісь для будь-якої точності дати */
+    if (!pg4.includes('flex:0 0 96px;text-align:center')) errs.push('дати не центровані на осі');
+    if (!pg4.includes('left:48px;top:-8px;bottom:-8px;width:2px;transform:translateX(-50%)')) errs.push('вісь timeline не одна');
+    /* loading: спільна content-колонка */
+    if (!page.includes('class="ld-body"')) errs.push('loading без спільної content-колонки');
+    if (/ld-sub\{[^}]*margin[^}]*34px/.test(page)) errs.push('subtitle досі з ручним лівим відступом');
     if (pg4.includes("t('Цінна опція') + '. '")) errs.push('tooltip зірки досі довгий');
     /* чат: правила номерів кадрів і ціни */
     const chat4 = fs.readFileSync('api/chat.js', 'utf8');

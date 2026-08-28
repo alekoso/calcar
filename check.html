@@ -350,16 +350,19 @@
      не віддає, канал прогресу відкладений свідомо) */
   .ld{margin-top:14px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 18px;display:none;text-align:left}
   .ld.on{display:block}
-  .ld-row{padding:6px 0}
-  .ld-head{display:flex;align-items:center;gap:12px}
-  .ld-ico{width:22px;height:22px;flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid var(--line);font-size:12px;color:transparent}
+  /* структура "indicator column | content column": title і subtitle живуть
+     в одній content-колонці, тому лівий край у них ПІКСЕЛЬ-В-ПІКСЕЛЬ один
+     для всіх стадій, підписів і мов, без порядкових margin-підгонок */
+  .ld-row{display:flex;align-items:flex-start;gap:12px;padding:6px 0}
+  .ld-ico{width:22px;height:22px;flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid var(--line);font-size:12px;color:transparent;margin-top:-1px}
   .ld-row.done .ld-ico{background:var(--brand);border-color:var(--brand);color:var(--ink);font-weight:800}
   .ld-row.active .ld-ico{border:none}
+  .ld-body{flex:1;min-width:0}
   .ld-t{font-size:14px;font-weight:600;color:var(--faint)}
   .ld-row.active .ld-t{color:var(--ink)}
   .ld-row.passed .ld-t{color:var(--muted)}
   .ld-row.done .ld-t{color:var(--text)}
-  .ld-sub{font-size:12.5px;color:var(--muted);margin:3px 0 0 34px;display:none;transition:opacity .3s}
+  .ld-sub{font-size:12.5px;color:var(--muted);margin-top:3px;display:none}
   .ld-row.active .ld-sub{display:block}
   .ld-note{margin-top:10px;font-size:12.5px;color:var(--muted);display:none}
   .ld-note.on{display:block}
@@ -555,7 +558,7 @@ function loadingStart() {
   console.log('[check-load]', rid, 'start');
   const box = document.getElementById('loadBox');
   box.innerHTML = LOAD_STAGES.map((st, i) =>
-    '<div class="ld-row" data-i="' + i + '"><div class="ld-head"><span class="ld-ico">✓</span><span class="ld-t">' + esc(t(st.title)) + '</span></div><div class="ld-sub"></div></div>'
+    '<div class="ld-row" data-i="' + i + '"><span class="ld-ico">✓</span><div class="ld-body"><div class="ld-t">' + esc(t(st.title)) + '</div><div class="ld-sub"></div></div></div>'
   ).join('') + '<div class="ld-note" id="ldNote">' + esc(t('Аналіз займає трохи більше часу. Деякі автомобілі потребують додаткових перевірок.')) + '</div>';
   box.className = 'ld on';
   ld = { rid, stage: -1, subIdx: 0, timers: [], rot: null, done: false };

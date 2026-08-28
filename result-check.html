@@ -380,15 +380,21 @@
   .eq-group:first-child{border-top:none;padding-top:0}
   .eq-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
   .eq-chips{display:flex;flex-wrap:wrap;gap:6px}
-  .eq-chips span{font-size:12.5px;background:var(--bg);border:1px solid var(--line);border-radius:16px;padding:4px 11px}
+  /* легасі-чипи старих звітів: лише безкласові span, щоб не фарбувати
+     нові .eq-chip і маркер .eq-star у капсулу */
+  .eq-chips span:not([class]){font-size:12.5px;background:var(--bg);border:1px solid var(--line);border-radius:16px;padding:4px 11px}
   /* комплектація v2: компактні білі chips у source-групах */
   .eq-src{font-size:12.5px;font-weight:600;color:var(--ink);margin-bottom:8px}
   .eq-chip{position:relative;display:inline-flex;align-items:center;font-size:13px;font-weight:500;color:var(--text);background:var(--card);border:1px solid var(--line);border-radius:9px;padding:5px 11px}
   /* premium-маркер цінної опції: сидить поверх правого верхнього кута chip,
      трохи виходить за межу; без капсули, фону і постійної анімації.
      Racing Lime тут свідомо не використовується */
-  .eq-star{position:absolute;top:-7px;right:-6px;line-height:0;cursor:default}
-  .eq-chip.hv{padding-right:15px}
+  /* premium-маркер: маленька standalone зірка без кола, капсули і фону.
+     Половина над верхнім ребром chip, однакова позиція на всіх hv-чипах;
+     padding-right гарантує, що назва ніколи не перекривається і не
+     обрізається ellipsis-ом заради маркера */
+  .eq-star{position:absolute;top:-9px;right:7px;line-height:0;cursor:default;filter:drop-shadow(0 1px 2px rgba(150,60,200,.22))}
+  .eq-chip.hv{padding-right:30px}
   /* міжчипові відступи більші, щоб маркер не наїжджав на сусідів і рядки */
   .eq-chips{gap:8px 12px}
   .eq-chips{margin-top:2px}
@@ -434,10 +440,15 @@
   .sev-low{background:var(--surface-2);color:var(--muted)}
 
   /* ---- історія: чисті рядки, без кругів ---- */
-  .hrow{display:flex;gap:14px;padding:9px 0;font-size:14px;line-height:1.5}
-  .hrow .hd{flex:0 0 92px;font-weight:700;font-variant-numeric:tabular-nums}
-  .hgap{display:flex;align-items:center;gap:10px;padding:2px 0 2px 24px;color:var(--faint);font-size:12px}
-  .hgap::before{content:'';width:2px;height:16px;background:var(--line-strong);border-radius:2px;margin-right:2px}
+  /* timeline: одна вертикальна вісь X=48px (центр колонки дат фіксованої
+     ширини 96px). Дата будь-якої точності (2025, 12.2025, повна) центрована
+     на осі і своїм фоном розриває лінію; текст подій починається з однієї
+     позиції, partial-дата layout не змінює */
+  .hrow{display:flex;gap:14px;padding:9px 0;font-size:14px;line-height:1.5;position:relative}
+  .hrow .hd{flex:0 0 96px;text-align:center;font-weight:700;font-variant-numeric:tabular-nums;background:var(--card);position:relative;z-index:1;align-self:flex-start}
+  .hrow > span:not(.hd){flex:1;min-width:0}
+  .hgap{position:relative;min-height:18px;display:flex;align-items:center;padding:1px 0 1px 110px;color:var(--faint);font-size:12px}
+  .hgap::before{content:'';position:absolute;left:48px;top:-8px;bottom:-8px;width:2px;transform:translateX(-50%);background:var(--line-strong);border-radius:2px}
   .hnote{margin-top:12px}
 
   /* фінальні дії */
@@ -467,8 +478,6 @@
   .score-tip b{display:block;font-size:13px;font-weight:700;color:var(--ink);margin-bottom:4px}
   .score-tip span{display:block;font-size:12.5px;line-height:1.5;color:var(--text);font-weight:400}
   .score-tip span + span{margin-top:6px;color:var(--muted)}
-  .src-open{display:inline-flex;align-items:center;margin-left:10px;border:1px solid var(--line);border-radius:14px;padding:3px 10px;font-size:12px;font-weight:600;color:var(--muted);text-decoration:none}
-  .src-open:hover{color:var(--ink)}
 
   .pd-top{display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:8px}
   .pd-rec{flex-shrink:0;font-size:12px;font-weight:700;letter-spacing:.3px;border-radius:14px;padding:4px 12px}
@@ -796,6 +805,9 @@
   <div class="card" id="usCard" style="display:none">
     <div class="card-head">
       <h2>Історія пошкоджень і фото з минулого</h2>
+      <a class="ext-link" id="usSrcBtn" href="#" target="_blank" rel="noopener" style="display:none" title="Відкрити джерело">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>
+      </a>
       <span class="badge blue">AI-аналіз фото</span>
     </div>
     <div class="ba-label" id="baBefore" style="display:none"><span class="dot bad"></span>До ремонту (аукціон США)</div>
@@ -1211,15 +1223,23 @@ function boot2(D){
       $('usFindings').innerHTML = au.findings.map(f =>
         '<div class="flag"><span class="dot ' + st(f.status) + '"></span><span>' + esc(f.text) + '</span></div>').join('');
     }
-    const srcParts = [];
     if (am.house || am.date) {
       /* паспорт джерела за зразком позначок комплектації */
-      srcParts.push('<span class="badge blue">' + esc(t('Дані аукціону') + (am.house ? ' · ' + am.house : '') + (am.date ? ' · ' + am.date : '')) + '</span>');
+      $('usSrc').innerHTML = '<span class="badge blue">' + esc(t('Дані аукціону') + (am.house ? ' · ' + am.house : '') + (am.date ? ' · ' + am.date : '')) + '</span>';
     }
-    /* компактна кнопка джерела лише для verified-сторінки (пройшла перевірку VIN) */
-    const lotUrl = M.auction_search && M.auction_search.status === 'found' ? M.auction_search.lot_url : null;
-    if (lotUrl) srcParts.push('<a class="src-open" href="' + esc(lotUrl) + '" target="_blank" rel="noopener">' + esc(t('Відкрити джерело')) + '</a>');
-    if (srcParts.length) $('usSrc').innerHTML = srcParts.join(' ');
+    /* перехід до першоджерела запису в шапці блоку: фактичний source_url
+       (сторінка запису, не CDN-картинка), спільний ext-link компонент.
+       Без hardcode конкретного архіву: імʼя береться з hostname */
+    const srcUrl = (M.auction_search && M.auction_search.status === 'found' && M.auction_search.lot_url) || M.auction_url || null;
+    if (srcUrl && /^https?:\/\//.test(srcUrl)) {
+      const sb = $('usSrcBtn');
+      sb.href = srcUrl;
+      sb.style.display = '';
+      try {
+        const host = new URL(srcUrl).hostname.replace(/^www\./, '');
+        sb.title = t('Відкрити джерело') + ' · ' + host;
+      } catch (e) { sb.title = t('Відкрити джерело'); }
+    }
   }
 
   /* ---- фото зараз ---- */
@@ -1262,7 +1282,7 @@ function boot2(D){
       /* SVG-градієнт violet -> magenta -> warm gold: рендериться надійно
          всюди, на відміну від background-clip:text */
       const star = o.value_tier === 'high_value'
-        ? '<span class="eq-star" title="' + esc(t('Цінна опція')) + '"><svg width="13" height="13" viewBox="0 0 24 24"><defs><linearGradient id="hvGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7C3AED"/><stop offset=".5" stop-color="#C026D3"/><stop offset="1" stop-color="#E8A33D"/></linearGradient></defs><path fill="url(#hvGrad)" d="M12 2l2.9 6.2 6.6.8-4.9 4.6 1.3 6.6L12 17l-5.9 3.2 1.3-6.6L2.5 9l6.6-.8z"/></svg></span>'
+        ? '<span class="eq-star" title="' + esc(t('Цінна опція')) + '"><svg width="16" height="16" viewBox="0 0 24 24"><defs><linearGradient id="hvGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7C3AED"/><stop offset=".5" stop-color="#C026D3"/><stop offset="1" stop-color="#E8A33D"/></linearGradient></defs><path fill="url(#hvGrad)" d="M12 2l2.9 6.2 6.6.8-4.9 4.6 1.3 6.6L12 17l-5.9 3.2 1.3-6.6L2.5 9l6.6-.8z"/></svg></span>'
         : '';
       return '<span class="eq-chip' + (star ? ' hv' : '') + '"' + (meta ? ' title="' + esc(meta) + '"' : '') + '>' + esc(o.name) + star + '</span>';
     };
