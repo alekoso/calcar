@@ -113,6 +113,36 @@ const REPORTS = [
   if (!api.includes('identity_confirmed: nhtsaMeaningful || hf.registry_present')) errs.push('check.js: ідентичність залежить лише від NHTSA');
   if (!api.includes('hf.ria_auction_record === true')) errs.push('check.js: аукціонний запис площадки не рахується');
 
+  /* 4б. екран очікування Check: 4 стадії, чесні галочки, retry, лог */
+  {
+    if (!page.includes('LOAD_STAGES') || (page.match(/\{ title: '/g) || []).length !== 4) errs.push('стадій очікування не рівно 4');
+    /* галочка done ставиться ЛИШЕ у loadingFinish (фінальна відповідь) */
+    if ((page.match(/'ld-row done'/g) || []).length !== 1) errs.push('done-стан ставиться поза фінальним добігом');
+    /* ротація підписів у межах 15-25 с */
+    const rot = /setInterval\(rotateSub, (\d+)\)/.exec(page);
+    if (!rot || +rot[1] < 15000 || +rot[1] > 25000) errs.push('ротація підписів поза 15-25 с');
+    /* без відсотків і фальш-прогресбара */
+    if (/progress-bar|ld-bar/i.test(page)) errs.push('зʼявились відсотки чи прогрес-бар');
+    /* lifecycle-лог із rid, без логу кожного рендера */
+    for (const ev of ["'start'", "'stage'", "'complete'", "'error'"]) {
+      if (!page.includes("console.log('[check-load]', rid, " + ev)) errs.push('нема lifecycle-логу ' + ev);
+    }
+    /* довгий аналіз: нейтральний текст без обіцянок секунд */
+    if (!page.includes('Аналіз займає трохи більше часу')) errs.push('нема нейтрального тексту довгого аналізу');
+    if (/ще кілька секунд/.test(page)) errs.push('обіцянка "ще кілька секунд" присутня');
+    /* retry при помилці */
+    if (!page.includes('id="ldRetry"') || !page.includes('Спробувати ще раз')) errs.push('нема retry при помилці');
+    /* добіг швидкий: кроки добігу <= 250 мс */
+    const fin = /}, i \* (\d+)\)/.exec(page);
+    if (!fin || +fin[1] > 250) errs.push('добіг фіналу повільний або відсутній');
+    for (const d of ['i18n/ru.js', 'i18n/en.js']) {
+      const dict = fs.readFileSync(d, 'utf8');
+      for (const k of ['Аналізуємо автомобіль', 'Перевіряємо історію', 'Аналізуємо фотографії', 'Формуємо висновок', 'перевіряємо кузов', 'Спробувати ще раз', 'Аналіз займає трохи більше часу. Деякі автомобілі потребують додаткових перевірок.']) {
+        if (!dict.includes("'" + k + "'")) errs.push('нема ключа "' + k + '" у ' + d);
+      }
+    }
+  }
+
   /* 5. словники */
   for (const d of ['i18n/ru.js', 'i18n/en.js']) {
     const dict = fs.readFileSync(d, 'utf8');

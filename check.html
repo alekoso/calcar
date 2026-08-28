@@ -344,6 +344,29 @@
   }
   .hf-row input[type=text]:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(184,242,61,.18)}
   /* статус зʼявляється лише під час роботи, тому не тримаємо під нього місце */
+  /* екран очікування: 4 спокійні стадії, без відсотків і фальшивого прогрес-бара.
+     Хореографія стадій іде за часом, але галочка "готово" зʼявляється ЛИШЕ
+     при фінальній успішній відповіді (реальних проміжних подій бекенд поки
+     не віддає, канал прогресу відкладений свідомо) */
+  .ld{margin-top:14px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 18px;display:none;text-align:left}
+  .ld.on{display:block}
+  .ld-row{padding:6px 0}
+  .ld-head{display:flex;align-items:center;gap:12px}
+  .ld-ico{width:22px;height:22px;flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid var(--line);font-size:12px;color:transparent}
+  .ld-row.done .ld-ico{background:var(--brand);border-color:var(--brand);color:var(--ink);font-weight:800}
+  .ld-row.active .ld-ico{border:none}
+  .ld-t{font-size:14px;font-weight:600;color:var(--faint)}
+  .ld-row.active .ld-t{color:var(--ink)}
+  .ld-row.passed .ld-t{color:var(--muted)}
+  .ld-row.done .ld-t{color:var(--text)}
+  .ld-sub{font-size:12.5px;color:var(--muted);margin:3px 0 0 34px;display:none;transition:opacity .3s}
+  .ld-row.active .ld-sub{display:block}
+  .ld-note{margin-top:10px;font-size:12.5px;color:var(--muted);display:none}
+  .ld-note.on{display:block}
+  .ld-err{font-size:13.5px;color:var(--red)}
+  .ld-err a{color:var(--brand-ink);font-weight:600}
+  @media (max-width:560px){.ld{padding:12px 14px}}
+
   .hf-status{font-size:13.5px;color:var(--muted);margin-top:10px;display:none}
   .hf-status.on{display:block}
   .hero-form .btn-primary{height:52px;padding:0 26px;font-size:15px;font-weight:800;border-radius:12px;min-width:158px}
@@ -424,6 +447,7 @@
         <button class="btn-primary" id="goBtn" type="button">Перевірити</button>
       </div>
       <div class="hf-status" id="status"></div>
+      <div class="ld" id="loadBox"></div>
       <div class="hf-note">
         <span><b>Безкоштовна перевірка</b></span>
         <span>VIN знайдемо самі</span>
@@ -508,14 +532,88 @@ const statusEl = document.getElementById('status');
 
 /* перевірка триває до 2 хвилин: показуємо, що саме відбувається, інакше
    виглядає як зависання */
-const STEPS = [
-  'Читаю сторінку оголошення…',
-  'Витягую VIN, ціну, пробіг і фото…',
-  'Декодую VIN і збираю історію авто…',
-  'Звіряю слова продавця з даними та фото…',
-  'Складаю звіт…',
+/* ---- екран очікування: 4 користувацькі стадії ----
+   Це НЕ технічний лог. Хореографія переходів іде за типовим часом етапів,
+   ротація підписів усередині стадії кожні ~18 с, без неперевірених
+   результатів. Галочка "готово" ставиться лише при фінальній успішній
+   відповіді (швидкий добіг ~0.7 с, без штучної затримки звіту) */
+const LOAD_STAGES = [
+  { title: 'Аналізуємо автомобіль', subs: ['читаємо оголошення', 'шукаємо VIN і характеристики', 'збираємо дані сторінки'] },
+  { title: 'Перевіряємо історію', subs: ['звіряємо записи і реєстри', 'шукаємо минулі продажі', 'зіставляємо дані'] },
+  { title: 'Аналізуємо фотографії', subs: ['перевіряємо кузов', 'вивчаємо салон', 'роздивляємось деталі'] },
+  { title: 'Формуємо висновок', subs: ['зважуємо знахідки', 'готуємо звіт'] },
 ];
-let timer = null;
+/* старти стадій у мс: хореографія під типовий Check ~2-3 хв */
+const LOAD_STAGE_AT = [0, 12000, 45000, 110000];
+const LOAD_LONG_AT = 170000;
+let ld = null;
+
+function loadingStart() {
+  const rid = 'chk_' + Math.random().toString(36).slice(2, 10);
+  console.log('[check-load]', rid, 'start');
+  const box = document.getElementById('loadBox');
+  box.innerHTML = LOAD_STAGES.map((st, i) =>
+    '<div class="ld-row" data-i="' + i + '"><div class="ld-head"><span class="ld-ico">✓</span><span class="ld-t">' + esc(t(st.title)) + '</span></div><div class="ld-sub"></div></div>'
+  ).join('') + '<div class="ld-note" id="ldNote">' + esc(t('Аналіз займає трохи більше часу. Деякі автомобілі потребують додаткових перевірок.')) + '</div>';
+  box.className = 'ld on';
+  ld = { rid, stage: -1, subIdx: 0, timers: [], rot: null, done: false };
+  const setStage = i => {
+    if (!ld || ld.done) return;
+    console.log('[check-load]', rid, 'stage', i + 1, LOAD_STAGES[i].title);
+    box.querySelectorAll('.ld-row').forEach((row, j) => {
+      row.className = 'ld-row' + (j < i ? ' passed' : j === i ? ' active' : '');
+      if (j === i) row.querySelector('.ld-ico').innerHTML = '<span class="spin"></span>';
+      else if (j < i) row.querySelector('.ld-ico').textContent = '·';
+      else row.querySelector('.ld-ico').textContent = '✓';
+    });
+    ld.stage = i;
+    ld.subIdx = 0;
+    rotateSub();
+  };
+  const rotateSub = () => {
+    if (!ld || ld.done || ld.stage < 0) return;
+    const st = LOAD_STAGES[ld.stage];
+    const sub = box.querySelector('.ld-row[data-i="' + ld.stage + '"] .ld-sub');
+    if (sub) sub.textContent = t(st.subs[ld.subIdx % st.subs.length]);
+    ld.subIdx++;
+  };
+  setStage(0);
+  for (let i = 1; i < LOAD_STAGES.length; i++) ld.timers.push(setTimeout(() => setStage(i), LOAD_STAGE_AT[i]));
+  ld.rot = setInterval(rotateSub, 18000);
+  /* довше за звичайне: нейтральний текст, без обіцянок дедлайну */
+  ld.timers.push(setTimeout(() => { if (ld && !ld.done) document.getElementById('ldNote').className = 'ld-note on'; }, LOAD_LONG_AT));
+  return rid;
+}
+
+function loadingStop() {
+  if (!ld) return;
+  ld.done = true;
+  ld.timers.forEach(clearTimeout);
+  clearInterval(ld.rot);
+}
+
+/* фінальна успішна відповідь: ЄДИНЕ місце, де стадії отримують галочку.
+   Добіг швидкий (~0.7 с сумарно), звіт штучно не затримується */
+function loadingFinish(rid) {
+  loadingStop();
+  const box = document.getElementById('loadBox');
+  const rows = [...box.querySelectorAll('.ld-row')];
+  return new Promise(resolve => {
+    rows.forEach((row, i) => setTimeout(() => {
+      row.className = 'ld-row done';
+      row.querySelector('.ld-ico').textContent = '✓';
+      if (i === rows.length - 1) { console.log('[check-load]', rid, 'complete'); setTimeout(resolve, 150); }
+    }, i * 160));
+  });
+}
+
+function loadingError(rid, msg) {
+  loadingStop();
+  console.log('[check-load]', rid, 'error', msg);
+  const box = document.getElementById('loadBox');
+  box.innerHTML = '<div class="ld-err">' + esc(msg) + ' <a href="#" id="ldRetry">' + esc(t('Спробувати ще раз')) + '</a></div>';
+  document.getElementById('ldRetry').onclick = ev => { ev.preventDefault(); run(); };
+}
 
 function setStatus(text, isErr) {
   statusEl.className = 'hf-status on' + (isErr ? ' err' : '');
@@ -619,9 +717,8 @@ async function run() {
     }
   }
 
-  let i = 0;
-  setStatus(t(STEPS[0]));
-  timer = setInterval(() => { i = Math.min(i + 1, STEPS.length - 1); setStatus(t(STEPS[i])); }, 18000);
+  statusEl.className = 'hf-status';
+  const rid = loadingStart();
 
   try {
     const r = await fetch('/api/check', {
@@ -632,6 +729,7 @@ async function run() {
     const data = await safeJson(r);
     if (!r.ok || data.error) throw new Error(data.error || t('Помилка сервера'));
 
+    const finPromise = loadingFinish(rid);
     sessionStorage.setItem('calcarCheck', JSON.stringify(data));
     /* прибираємо id попереднього звіту: інакше автозбереження перезапише чужий рядок */
     sessionStorage.removeItem('calcarCheckId');
@@ -661,11 +759,11 @@ async function run() {
       }
     } catch (e) { /* збереження не блокує показ результату */ }
 
+    await finPromise;
     location.href = dest;
   } catch (e) {
-    setStatus(e.message || t('Щось пішло не так, спробуй ще раз'), true);
+    loadingError(rid, e.message || t('Щось пішло не так, спробуй ще раз'));
   } finally {
-    clearInterval(timer);
     btn.disabled = false;
   }
 }
