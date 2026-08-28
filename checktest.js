@@ -293,7 +293,7 @@ const REPORTS = [
     if (!api.includes('equipment_verifier: eqVerifier')) errs.push('check.js: діагностика верифікатора не в _meta');
     /* сторінка: новий рендер + легасі фолбек */
     const page2 = fs.readFileSync('result-check.html', 'utf8');
-    for (const el of ['equipment_v2', 'class="eq-chip"', "t('Підтверджено')", "t('Дані авто')", 'Встановлено пізніше / переобладнання', 'Підтверджено за VIN']) {
+    for (const el of ['equipment_v2', 'class="eq-chip', "t('Підтверджено')", "t('Дані авто')", 'Встановлено пізніше / переобладнання', 'Підтверджено за VIN']) {
       if (!page2.includes(el)) errs.push('result-check.html: нема ' + el);
     }
     /* компактність: без повнорядкових опцій, retrofit не дублюється, опис продавця без кнопки */
@@ -482,7 +482,7 @@ const REPORTS = [
     /* сторінка: людські ref у tooltip комплектації, premium-зірка */
     const pg4 = fs.readFileSync('result-check.html', 'utf8');
     if (!pg4.includes('humanRef')) errs.push('tooltip комплектації показує технічні id');
-    if (!pg4.includes('linear-gradient(135deg,#7C3AED') || !pg4.includes('position:absolute;top:-9px')) errs.push('зірка не premium-маркер поверх кута');
+    if (!pg4.includes('stop-color="#7C3AED"') || !pg4.includes('position:absolute;top:-7px')) errs.push('зірка не premium-маркер поверх кута');
     if (pg4.includes("t('Цінна опція') + '. '")) errs.push('tooltip зірки досі довгий');
     /* чат: правила номерів кадрів і ціни */
     const chat4 = fs.readFileSync('api/chat.js', 'utf8');

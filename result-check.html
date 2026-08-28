@@ -387,7 +387,8 @@
   /* premium-маркер цінної опції: сидить поверх правого верхнього кута chip,
      трохи виходить за межу; без капсули, фону і постійної анімації.
      Racing Lime тут свідомо не використовується */
-  .eq-star{position:absolute;top:-9px;right:-7px;font-size:15px;line-height:1;background:linear-gradient(135deg,#7C3AED 0%,#C026D3 48%,#E8A33D 100%);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 3px rgba(192,38,211,.35));cursor:default}
+  .eq-star{position:absolute;top:-7px;right:-6px;line-height:0;cursor:default}
+  .eq-chip.hv{padding-right:15px}
   /* міжчипові відступи більші, щоб маркер не наїжджав на сусідів і рядки */
   .eq-chips{gap:8px 12px}
   .eq-chips{margin-top:2px}
@@ -1258,10 +1259,12 @@ function boot2(D){
       .replace(/\bphoto_(\d+)\b/g, (m, n) => t('фото оголошення №') + (((pm.listing || [])[n - 1] != null) ? pm.listing[n - 1] + 1 : n));
     const chipHtml = o => {
       const meta = (o.evidence || []).map(e => [e.ref ? humanRef(e.ref) : null, e.sign].filter(Boolean).join(': ')).filter(Boolean).join(' · ');
+      /* SVG-градієнт violet -> magenta -> warm gold: рендериться надійно
+         всюди, на відміну від background-clip:text */
       const star = o.value_tier === 'high_value'
-        ? '<span class="eq-star" title="' + esc(t('Цінна опція')) + '">★</span>'
+        ? '<span class="eq-star" title="' + esc(t('Цінна опція')) + '"><svg width="13" height="13" viewBox="0 0 24 24"><defs><linearGradient id="hvGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7C3AED"/><stop offset=".5" stop-color="#C026D3"/><stop offset="1" stop-color="#E8A33D"/></linearGradient></defs><path fill="url(#hvGrad)" d="M12 2l2.9 6.2 6.6.8-4.9 4.6 1.3 6.6L12 17l-5.9 3.2 1.3-6.6L2.5 9l6.6-.8z"/></svg></span>'
         : '';
-      return '<span class="eq-chip"' + (meta ? ' title="' + esc(meta) + '"' : '') + '>' + esc(o.name) + star + '</span>';
+      return '<span class="eq-chip' + (star ? ' hv' : '') + '"' + (meta ? ' title="' + esc(meta) + '"' : '') + '>' + esc(o.name) + star + '</span>';
     };
     const byNotable = (a, b) => (b.highlight === true) - (a.highlight === true);
     const EQ_SRC_GROUPS = [
