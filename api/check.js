@@ -1004,15 +1004,19 @@ async function writeKnowledge(parsed, listing, snapshotId, meta) {
   }, opts));
   /* PostgREST при помилці віддає ОБʼЄКТ, не масив: ітерація по ньому
      валила весь хук. Тут завжди масив, помилка йде в лог зі своїм кроком */
+  const stepErrs = [];
   const jarr = async (r, step) => {
     const j = await r.json().catch(() => null);
     if (Array.isArray(j)) return j;
-    if (!r.ok || j) console.log('[knowledge]', step, 'HTTP', r.status, JSON.stringify(j || {}).slice(0, 160));
+    if (!r.ok || j) {
+      console.log('[knowledge]', step, 'HTTP', r.status, JSON.stringify(j || {}).slice(0, 160));
+      stepErrs.push(step + ':' + r.status);
+    }
     return [];
   };
   /* значення in.(...) беруться в лапки: пробіли і коми інакше ламають фільтр */
   const inList = vals => 'in.(' + vals.map(v => encodeURIComponent('"' + String(v).replace(/"/g, '') + '"')).join(',') + ')';
-  const postCheck = async (p, r) => { if (!r.ok) console.log('[knowledge]', p, 'HTTP', r.status, (await r.text().catch(() => '')).slice(0, 160)); return r; };
+  const postCheck = async (p, r) => { if (!r.ok) { console.log('[knowledge]', p, 'HTTP', r.status, (await r.text().catch(() => '')).slice(0, 160)); stepErrs.push(p + ':' + r.status); } return r; };
   const eqRows = buildEquipmentObservations(parsed, listing, snapshotId).filter(validateEquipmentObservation);
   const issueRows = buildIssueObservations(parsed, listing, snapshotId);
   const covRows = buildCoverageRows(parsed, listing, snapshotId, meta);
@@ -1096,7 +1100,7 @@ async function writeKnowledge(parsed, listing, snapshotId, meta) {
   if (covRows.length) await postCheck('coverage_insert', await api('observation_coverage?on_conflict=snapshot_id,source_type', {
     method: 'POST', headers: { prefer: 'resolution=ignore-duplicates' }, body: JSON.stringify(covRows),
   }));
-  return 'saved eq=' + eqSaved + ' ev=' + evSaved + ' issues=' + issueRows.length + ' cov=' + covRows.length;
+  return 'saved eq=' + eqSaved + ' ev=' + evSaved + ' issues=' + issueRows.length + ' cov=' + covRows.length + (stepErrs.length ? ' errs=' + stepErrs.join(',') : '');
 }
 
 /* ---------- 5. AI-розбір ---------- */
@@ -1748,12 +1752,15 @@ export default async function handler(req, res) {
       equipment_verifier: eqVerifier,
       analyzed_at: new Date().toISOString(),
     };
-    /* шар знань: спостереження цього Check. Ніколи не ламає відповідь */
+    /* шар знань: спостереження цього Check. Ніколи не ламає відповідь.
+       Результат кроку йде в _meta.knowledge як діагностика */
     try {
       const kn = await writeKnowledge(parsed, listing, snapshot.id, parsed._meta);
       console.log('[knowledge]', kn);
+      parsed._meta.knowledge = kn;
     } catch (e) {
       console.log('[knowledge] хук впав, Check не зачеплений:', e.message);
+      parsed._meta.knowledge = 'hook_error: ' + String(e.message).slice(0, 120);
     }
 
     return res.status(200).json(parsed);
