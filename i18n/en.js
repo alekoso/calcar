@@ -104,7 +104,7 @@ window.CALCAR_DICT = {
     'Підтверджено': 'Confirmed',
     'Дані авто': 'Vehicle data',
     'Дані оголошення': 'Listing data',
-    'Цінна опція': 'Valuable option',
+    'Преміальна опція': 'Premium option',
     'фото оголошення №': 'listing photo #',
     'архівне фото №': 'archive photo #',
     'читаємо дані оголошення': 'reading the listing data',

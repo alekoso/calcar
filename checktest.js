@@ -419,11 +419,11 @@ const REPORTS = [
     if (!chatApi.includes('не посилайся на why_consider')) errs.push('chat.js: why_consider не виключений як доказ');
     const pg3 = fs.readFileSync('result-check.html', 'utf8');
     if (!pg3.includes("['listing_data', t('Дані оголошення')]")) errs.push('нема групи Дані оголошення');
-    if (!pg3.includes('eq-star')) errs.push('нема зірки high_value');
+    if (!pg3.includes('.eq-chip.hv')) errs.push('нема premium-позначення high_value');
     if (!pg3.includes("factory_status: o.factory_status")) errs.push('чат не отримує структуровану комплектацію');
     for (const d of ['i18n/ru.js', 'i18n/en.js']) {
       const dict = fs.readFileSync(d, 'utf8');
-      for (const k of ['Дані оголошення', 'Цінна опція']) {
+      for (const k of ['Дані оголошення', 'Преміальна опція']) {
         if (!dict.includes("'" + k + "'")) errs.push('нема ключа "' + k + '" у ' + d);
       }
     }
@@ -482,9 +482,11 @@ const REPORTS = [
     /* сторінка: людські ref у tooltip комплектації, premium-зірка */
     const pg4 = fs.readFileSync('result-check.html', 'utf8');
     if (!pg4.includes('humanRef')) errs.push('tooltip комплектації показує технічні id');
-    if (!pg4.includes('stop-color="#7C3AED"') || !pg4.includes('.eq-star{position:absolute;top:-9px;right:7px')) errs.push('зірка не standalone-маркер на верхньому ребрі');
-    if (/\.eq-star\{[^}]*(background:|border-radius|border:)/.test(pg4)) errs.push('зірка знову в колі/капсулі');
-    if (!pg4.includes('.eq-chip.hv{padding-right:30px}')) errs.push('назва може перекриватись маркером');
+    if (pg4.includes('eq-star') || pg4.includes('hvGrad')) errs.push('зірка не видалена повністю');
+    if (!pg4.includes('.eq-chip.hv{border-color:transparent;background:linear-gradient(var(--card),var(--card)) padding-box')) errs.push('premium-опція без градієнтної рамки');
+    if (/\.eq-chip\.hv\{[^}]*(padding(?!-box)|width|height|margin)/.test(pg4)) errs.push('premium-chip змінює геометрію');
+    if (!pg4.includes("t('Преміальна опція')")) errs.push('tooltip не Преміальна опція');
+    if (pg4.includes("t('Цінна опція')")) errs.push('старий tooltip лишився');
     /* без першої особи */
     if (!api.includes('БЕЗ ПЕРШОЇ ОСОБИ')) errs.push('нема заборони першої особи в рішенні');
     if (api.includes('прямо "я б шукав інше авто"')) errs.push('ТОН досі диктує першу особу');
@@ -496,7 +498,7 @@ const REPORTS = [
     /* loading: спільна content-колонка */
     if (!page.includes('class="ld-body"')) errs.push('loading без спільної content-колонки');
     if (/ld-sub\{[^}]*margin[^}]*34px/.test(page)) errs.push('subtitle досі з ручним лівим відступом');
-    if (pg4.includes("t('Цінна опція') + '. '")) errs.push('tooltip зірки досі довгий');
+
     /* чат: правила номерів кадрів і ціни */
     const chat4 = fs.readFileSync('api/chat.js', 'utf8');
     if (!chat4.includes('context._meta.photo_map')) errs.push('чат не мапить номери кадрів');
@@ -512,6 +514,29 @@ const REPORTS = [
         if (!dict.includes("'" + k + "'")) errs.push('нема ключа "' + k + '" у ' + d);
       }
     }
+  }
+
+  /* 6г. regression-фікси: пробіг scope, списки кадрів */
+  {
+    const odoFn = grab(api, 'odometerFromPage');
+    if (!odoFn) errs.push('нема odometerFromPage');
+    else {
+      const odo = new Function(odoFn + '\nreturn odometerFromPage;')();
+      /* historical 24k у тексті ПЕРЕД current 49k: current не з історії */
+      const textHist = 'Заголовок оголошення. Історія авто за VIN. 28.01.2025 Продавалось на AUTO.RIA Продавець вказав пробіг 24 тис. Далі текст.';
+      const r1 = odo('', textHist);
+      if (r1.value === 24000) errs.push('історична точка класифікована як current');
+      /* structured-поле картки має пріоритет */
+      const r2 = odo('{"content":"49 тис. км"}', textHist);
+      if (r2.value !== 49000 || r2.source !== 'structured_card') errs.push('structured пробіг не пріоритетний: ' + JSON.stringify(r2));
+      /* current у сегменті до історії читається */
+      const r3 = odo('', 'Пробіг 49 тис. км. Опис. Історія авто за VIN. Продавець вказав пробіг 24 тис.');
+      if (r3.value !== 49000) errs.push('current до блоку історії не знайдений: ' + JSON.stringify(r3));
+    }
+    if (!api.includes('ПРОБІГ, SEMANTIC SCOPE')) errs.push('нема семантики scope пробігу');
+    if (!api.includes('current проти current')) errs.push('справжній детектор розбіжності зник');
+    if (!api.includes('СПИСКИ використаних кадрів не перелічуй ВЗАГАЛІ')) errs.push('нема заборони списків кадрів');
+    if (!fs.readFileSync('api/chat.js', 'utf8').includes('списки всіх використаних кадрів')) errs.push('чат перелічує кадри');
   }
 
   /* 6б. регресія історичних фото + historical_visual + timeline */
