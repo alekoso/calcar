@@ -1002,6 +1002,17 @@ async function writeKnowledge(parsed, listing, snapshotId, meta) {
   const api = (path, opts) => fetch(base.replace(/\/$/, '') + '/rest/v1/' + path, Object.assign({
     headers: Object.assign({ apikey: key, authorization: 'Bearer ' + key, 'content-type': 'application/json' }, (opts && opts.headers) || {}),
   }, opts));
+  /* PostgREST при помилці віддає ОБʼЄКТ, не масив: ітерація по ньому
+     валила весь хук. Тут завжди масив, помилка йде в лог зі своїм кроком */
+  const jarr = async (r, step) => {
+    const j = await r.json().catch(() => null);
+    if (Array.isArray(j)) return j;
+    if (!r.ok || j) console.log('[knowledge]', step, 'HTTP', r.status, JSON.stringify(j || {}).slice(0, 160));
+    return [];
+  };
+  /* значення in.(...) беруться в лапки: пробіли і коми інакше ламають фільтр */
+  const inList = vals => 'in.(' + vals.map(v => encodeURIComponent('"' + String(v).replace(/"/g, '') + '"')).join(',') + ')';
+  const postCheck = async (p, r) => { if (!r.ok) console.log('[knowledge]', p, 'HTTP', r.status, (await r.text().catch(() => '')).slice(0, 160)); return r; };
   const eqRows = buildEquipmentObservations(parsed, listing, snapshotId).filter(validateEquipmentObservation);
   const issueRows = buildIssueObservations(parsed, listing, snapshotId);
   const covRows = buildCoverageRows(parsed, listing, snapshotId, meta);
@@ -1011,8 +1022,8 @@ async function writeKnowledge(parsed, listing, snapshotId, meta) {
   const aliasMap = {};
   if (eqRows.length) {
     const norms = [...new Set(eqRows.map(r => normalizeOptionAlias(r.option_name)))];
-    const got = await api('option_alias?alias_norm=in.(' + norms.map(encodeURIComponent).join(',') + ')&select=alias_norm,option_id');
-    for (const row of (await got.json().catch(() => [])) || []) aliasMap[row.alias_norm] = row.option_id;
+    const got = await api('option_alias?alias_norm=' + inList(norms) + '&select=alias_norm,option_id');
+    for (const row of await jarr(got, 'alias_get')) aliasMap[row.alias_norm] = row.option_id;
     const missing = eqRows.filter(r => !aliasMap[normalizeOptionAlias(r.option_name)]);
     if (missing.length) {
       const uniq = new Map();
@@ -1022,15 +1033,15 @@ async function writeKnowledge(parsed, listing, snapshotId, meta) {
         headers: { prefer: 'resolution=ignore-duplicates,return=representation' },
         body: JSON.stringify([...uniq.values()].map(r => ({ canonical_name: r.option_name, category: ['comfort','interior','multimedia','assist','exterior','performance','safety'].includes(r.option_category) ? r.option_category : 'other' }))),
       });
-      const created = (await ins.json().catch(() => [])) || [];
-      const reread = await api('option_dict?canonical_name=in.(' + [...uniq.values()].map(r => encodeURIComponent(r.option_name)).join(',') + ')&select=option_id,canonical_name');
-      for (const row of [...created, ...((await reread.json().catch(() => [])) || [])]) {
+      const created = await jarr(ins, 'option_insert');
+      const reread = await api('option_dict?canonical_name=' + inList([...uniq.values()].map(r => r.option_name)) + '&select=option_id,canonical_name');
+      for (const row of [...created, ...await jarr(reread, 'option_reread')]) {
         aliasMap[normalizeOptionAlias(row.canonical_name)] = row.option_id;
       }
-      await api('option_alias?on_conflict=alias_norm', {
+      await postCheck('alias_insert', await api('option_alias?on_conflict=alias_norm', {
         method: 'POST', headers: { prefer: 'resolution=ignore-duplicates' },
         body: JSON.stringify([...uniq.keys()].filter(nrm => aliasMap[nrm]).map(nrm => ({ alias_norm: nrm, alias: uniq.get(nrm).option_name, lang: null, option_id: aliasMap[nrm] }))),
-      });
+      }));
     }
   }
 
@@ -1038,17 +1049,17 @@ async function writeKnowledge(parsed, listing, snapshotId, meta) {
   let eqSaved = 0, evSaved = 0;
   const eqValid = eqRows.filter(r => aliasMap[normalizeOptionAlias(r.option_name)]);
   if (eqValid.length) {
-    await api('equipment_observation?on_conflict=vin,snapshot_id,option_id', {
+    await postCheck('eq_obs_insert', await api('equipment_observation?on_conflict=vin,snapshot_id,option_id', {
       method: 'POST', headers: { prefer: 'resolution=ignore-duplicates' },
       body: JSON.stringify(eqValid.map(r => {
         const o = { ...r.observation, option_id: aliasMap[normalizeOptionAlias(r.option_name)] };
         delete o.drive;
         return o;
       })),
-    });
+    }));
     const ids = await api('equipment_observation?snapshot_id=eq.' + snapshotId + '&select=id,option_id');
     const idMap = {};
-    for (const row of (await ids.json().catch(() => [])) || []) idMap[row.option_id] = row.id;
+    for (const row of await jarr(ids, 'eq_obs_ids')) idMap[row.option_id] = row.id;
     const evRows = [];
     for (const r of eqValid) {
       const oid = idMap[aliasMap[normalizeOptionAlias(r.option_name)]];
@@ -1056,35 +1067,35 @@ async function writeKnowledge(parsed, listing, snapshotId, meta) {
       for (const e of r.evidence) evRows.push({ observation_id: oid, ...e });
     }
     eqSaved = eqValid.length; evSaved = evRows.length;
-    if (evRows.length) await api('equipment_observation_evidence?on_conflict=observation_id,evidence_key', {
+    if (evRows.length) await postCheck('eq_ev_insert', await api('equipment_observation_evidence?on_conflict=observation_id,evidence_key', {
       method: 'POST', headers: { prefer: 'resolution=ignore-duplicates' }, body: JSON.stringify(evRows),
-    });
+    }));
   }
 
   /* 3. знахідки машини */
   if (issueRows.length) {
-    await api('issue_observation?on_conflict=vin,snapshot_id,event_key', {
+    await postCheck('iss_obs_insert', await api('issue_observation?on_conflict=vin,snapshot_id,event_key', {
       method: 'POST', headers: { prefer: 'resolution=ignore-duplicates' },
       body: JSON.stringify(issueRows.map(r => r.observation)),
-    });
+    }));
     const ids = await api('issue_observation?snapshot_id=eq.' + snapshotId + '&select=id,event_key');
     const idMap = {};
-    for (const row of (await ids.json().catch(() => [])) || []) idMap[row.event_key] = row.id;
+    for (const row of await jarr(ids, 'iss_obs_ids')) idMap[row.event_key] = row.id;
     const evRows = [];
     for (const r of issueRows) {
       const oid = idMap[r.observation.event_key];
       if (!oid) continue;
       for (const e of r.evidence) evRows.push({ observation_id: oid, ...e });
     }
-    if (evRows.length) await api('issue_observation_evidence?on_conflict=observation_id,evidence_key', {
+    if (evRows.length) await postCheck('iss_ev_insert', await api('issue_observation_evidence?on_conflict=observation_id,evidence_key', {
       method: 'POST', headers: { prefer: 'resolution=ignore-duplicates' }, body: JSON.stringify(evRows),
-    });
+    }));
   }
 
   /* 4. покриття */
-  if (covRows.length) await api('observation_coverage?on_conflict=snapshot_id,source_type', {
+  if (covRows.length) await postCheck('coverage_insert', await api('observation_coverage?on_conflict=snapshot_id,source_type', {
     method: 'POST', headers: { prefer: 'resolution=ignore-duplicates' }, body: JSON.stringify(covRows),
-  });
+  }));
   return 'saved eq=' + eqSaved + ' ev=' + evSaved + ' issues=' + issueRows.length + ' cov=' + covRows.length;
 }
 
