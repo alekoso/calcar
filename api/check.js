@@ -288,12 +288,20 @@ function extractListing(html, url) {
   const listingEquipment = [];
   if (isRia) {
     const seenOpt = new Set();
-    for (const m of html.matchAll(/"id":"desc[A-Za-z]+Value"[\s\S]{0,400}?"content":"([^"]{2,400})"/g)) {
+    for (const m of html.matchAll(/"id":"desc([A-Za-z]+)Value"[\s\S]{0,400}?"content":"([^"]{2,400})"/g)) {
       /* значення-списки через " • " це опції; одиночні значення це
-         теххарактеристики (колір, коробка) і опціями не є */
-      const parts = m[1].split(' • ').map(x => x.trim()).filter(Boolean);
+         теххарактеристики (колір, коробка) і опціями не є. Сепаратор
+         площадки буває з одним чи двома пробілами */
+      const groupId = m[1];
+      const parts = m[2].split(/\s+•\s+/).map(x => x.trim()).filter(Boolean);
       if (parts.length < 2) continue;
-      for (const p of parts) {
+      for (let p of parts) {
+        /* числові значення (витрати, кількість дверей) і тип кузова
+           це не опції комплектації */
+        if (/^\d/.test(p) || /\d+[.,]\d+/.test(p)) continue;
+        if (/^(Седан|Купе|Універсал|Хетчбек|Позашляховик|Ліфтбек|Мінівен|Пікап|Кабріолет|Родстер)$/i.test(p)) continue;
+        /* позиції подушок без контексту групи безглузді */
+        if (/^airbag/i.test(groupId)) p = 'Подушка безпеки: ' + p;
         const key = p.toLowerCase();
         if (!seenOpt.has(key)) { seenOpt.add(key); listingEquipment.push(p.slice(0, 60)); }
       }

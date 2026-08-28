@@ -355,6 +355,8 @@ const REPORTS = [
     }
     /* сторожі: адаптер, промпт, тексти, чат */
     if (!api.includes('listing_equipment: listingEquipment.slice(0, 60)')) errs.push('нема marketplace-адаптера');
+    if (!api.includes('split(/\\s+•\\s+/)')) errs.push('адаптер не терпить подвійні пробіли сепаратора');
+    if (!api.includes("if (/^\\d/.test(p)")) errs.push('адаптер не фільтрує числові значення');
     if (!api.includes('source listing_data: структуровані поля площадки')) errs.push('промпт без секції listing_data');
     if (!api.includes('НІКОЛИ не підвищує достовірність опцій')) errs.push('нема правила чесного wording');
     if (!api.includes('"value_tier":"standard|notable|high_value"')) errs.push('схема без value_tier');
