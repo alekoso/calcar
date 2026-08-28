@@ -82,10 +82,11 @@ function computeDerivedStats(equipmentObs, issueObs, coverage) {
   const issueStats = [...issueRows.values()].map(r => ({
     make: r.make, model: r.model, generation: r.generation,
     model_year: r.model_year, engine: r.engine, trim: r.trim, drivetrain: r.drivetrain,
+    /* лише сирі лічильники: prevalence болячок не рахується, поки нема
+       issue-specific coverage (хибний знаменник гірший за відсутній) */
     issue_key: r.issue_key,
     vehicles_affected: r.affected.size,
     vehicles_verified: r.verified.size,
-    vehicles_total: (coveredByModel.get([r.make, r.model, r.generation || ''].join('')) || new Set()).size,
   })).sort((a, b) => (a.make + a.model + a.issue_key).localeCompare(b.make + b.model + b.issue_key));
 
   return { optionStats, issueStats };

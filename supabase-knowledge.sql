@@ -166,7 +166,8 @@ create table if not exists public.model_option_catalog (
   retrieved_at timestamptz not null,
   applicability text,
   confidence  text check (confidence in ('high','medium','low')),
-  evidence_excerpt text,
+  -- seed-факт без збереженого конкретного доказу в каталог не потрапляє
+  evidence_excerpt text not null,
   unique (make, model, generation, option_id, source_url)
 );
 alter table public.model_option_catalog enable row level security;
@@ -175,8 +176,10 @@ create index if not exists moc_model on public.model_option_catalog (make, model
 create table if not exists public.model_issue_catalog (
   id uuid primary key default gen_random_uuid(),
   make text not null, model text not null, generation text not null,
-  -- той самий семантичний ключ проблеми, що і в issue_observation.issue_key
-  issue_key text,
+  -- канонічний семантичний ключ болячки (той самий, що і в
+  -- issue_observation.issue_key, де він поки nullable); запис каталогу
+  -- без ключа не створюється
+  issue_key text not null,
   title text not null,
   detail text,
   applies_to jsonb not null default '{}',
@@ -188,7 +191,8 @@ create table if not exists public.model_issue_catalog (
   retrieved_at timestamptz not null,
   applicability text,
   confidence text check (confidence in ('high','medium','low')),
-  evidence_excerpt text,
+  -- seed-факт без збереженого конкретного доказу в каталог не потрапляє
+  evidence_excerpt text not null,
   unique (make, model, generation, title, source_url)
 );
 alter table public.model_issue_catalog enable row level security;
@@ -220,11 +224,12 @@ create table if not exists public.derived_issue_stats (
   make text not null, model text not null, generation text,
   model_year smallint, engine text, trim text, drivetrain text,
   issue_key text not null,
-  -- спостережені випадки (включно з unverified) і окремо verified:
-  -- сирі unverified seller statements не змішуються з підтвердженими
+  -- ЛИШЕ сирі лічильники спостережень: спостережені випадки (включно з
+  -- unverified) і окремо verified. Знаменника частоти тут СВІДОМО нема:
+  -- issue-specific coverage ще не існує, тому prevalence по болячках не
+  -- обчислюється до появи окремого issue-coverage шару
   vehicles_affected integer not null default 0,
   vehicles_verified integer not null default 0,
-  vehicles_total    integer not null default 0,
   recomputed_at timestamptz not null default now()
 );
 alter table public.derived_issue_stats enable row level security;
