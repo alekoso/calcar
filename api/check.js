@@ -893,14 +893,15 @@ export function buildEquipmentObservations(parsed, listing, snapshotId) {
        не буває (довідного джерела відсутності в пайплайні нема) */
     const onlyHistorical = evidence.every(e => e.source_type === 'historical');
     const state = onlyHistorical ? 'UNKNOWN' : 'PRESENT';
-    const conf = it.confidence_level === 'vehicle_data' || it.confidence_level === 'seller_and_visual' ? 'high'
-      : it.confidence_level === 'visual' || it.confidence_level === 'listing_data' ? 'medium' : 'low';
     out.push({
       option_name: String(it.name).slice(0, 80),
       option_category: it.category || 'other',
       observation: {
         vin: listing.vin, snapshot_id: snapshotId, check_id: null,
-        state, confidence: it.confidence_level ? conf : null,
+        /* source НЕ дорівнює confidence: display-група виводиться з джерел,
+           тому виводити з неї впевненість це та сама заборонена підміна.
+           Реального independent confidence у Check-знахідці нема: null */
+        state, confidence: null,
         retrofit: it.retrofit === true,
         make: listing.make || null, model: listing.model || null, generation: listing.generation || null,
         model_year: listing.year || null,

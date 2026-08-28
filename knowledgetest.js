@@ -76,6 +76,12 @@ if (fns.some(x => !x)) {
   const absOk = { observation: { state: 'ABSENT' }, evidence: [{ source_type: 'document' }] };
   if (!lib.validateEquipmentObservation(absOk)) errs.push('ABSENT від документа хибно відхилений');
 
+  /* source не дорівнює confidence: без реального independent рівня = null */
+  if (runA.some(r => r.observation.confidence !== null)) errs.push('confidence виведений із source/display-групи, а не null');
+  {
+    const beSrc = grab(api, 'buildEquipmentObservations');
+    if (/confidence_level === 'vehicle_data'.*'high'|'seller_and_visual' \? 'high'/.test(beSrc)) errs.push('мапінг display-рівня в confidence лишився');
+  }
   /* retrofit прапорець їде в спостереження; false не означає factory */
   if (bw.observation.retrofit !== false) errs.push('retrofit загублений');
   /* ринки розділені: listing_market з оголошення, factory_market не вгадується */
