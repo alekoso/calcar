@@ -71,10 +71,12 @@ function computeDerivedStats(equipmentObs, issueObs, coverage) {
         issueRows.set(key, {
           make: o.make || '', model: o.model || '', generation: o.generation || null,
           model_year: my == null ? null : my, engine: null, trim: null, drivetrain: null,
-          issue_key: o.issue_key, affected: new Set(),
+          issue_key: o.issue_key, affected: new Set(), verified: new Set(),
         });
       }
       issueRows.get(key).affected.add(o.vin);
+      /* unverified seller statements не змішуються з підтвердженими */
+      if (o.verification_status === 'verified') issueRows.get(key).verified.add(o.vin);
     }
   }
   const issueStats = [...issueRows.values()].map(r => ({
@@ -82,6 +84,7 @@ function computeDerivedStats(equipmentObs, issueObs, coverage) {
     model_year: r.model_year, engine: r.engine, trim: r.trim, drivetrain: r.drivetrain,
     issue_key: r.issue_key,
     vehicles_affected: r.affected.size,
+    vehicles_verified: r.verified.size,
     vehicles_total: (coveredByModel.get([r.make, r.model, r.generation || ''].join('')) || new Set()).size,
   })).sort((a, b) => (a.make + a.model + a.issue_key).localeCompare(b.make + b.model + b.issue_key));
 
@@ -115,7 +118,7 @@ async function main() {
     process.exit(1);
   }
   const eq = await fetchAll('equipment_observation', 'vin,option_id,state,make,model,generation,model_year');
-  const iss = await fetchAll('issue_observation', 'vin,issue_key,make,model,generation,model_year');
+  const iss = await fetchAll('issue_observation', 'vin,issue_key,make,model,generation,model_year,verification_status');
   const cov = await fetchAll('observation_coverage', 'vin,source_type');
   const { optionStats, issueStats } = computeDerivedStats(eq, iss, cov);
   console.log('спостережень: eq', eq.length, '| issues', iss.length, '| coverage', cov.length);

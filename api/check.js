@@ -922,8 +922,15 @@ export function validateEquipmentObservation(row) {
 
 const ISSUE_TYPE_BY_SOURCE = { historical: 'historical_record', visual: 'visible_defect', document: 'document', seller_text: 'seller_statement', vehicle_data: 'inspection_record', listing_data: 'historical_record' };
 
+/* issue_observation це шар ТЕХНІЧНИХ/експлуатаційних проблем конкретної
+   машини, які потенційно стосуються Model Issue Intelligence. ДТП, damage
+   events, реєстрації, пробіги і звичайні історичні події сюди НЕ пишуться:
+   вони живуть у Vehicle Graph шарах (vehicle_snapshots, auction_events,
+   history) і в derived-агрегатах болячок не беруть участі */
+const TECHNICAL_ISSUE_TYPES = ['SRS_FAULT', 'SERIOUS_POWERTRAIN_FAULT', 'CRITICAL_WARNING_LIGHTS', 'MODIFICATION_TECHNICAL_CONCERN'];
+
 export function buildIssueObservations(parsed, listing, snapshotId) {
-  /* ЛИШЕ vehicle-specific знахідки з конкретним первинним доказом.
+  /* ЛИШЕ vehicle-specific ТЕХНІЧНІ знахідки з конкретним первинним доказом.
      model_notes (типові слабкі місця версії), risks і reasoning сюди не
      читаються ВЗАГАЛІ: заборона архітектурна, не фільтр */
   const out = [];
@@ -939,6 +946,9 @@ export function buildIssueObservations(parsed, listing, snapshotId) {
   const SRC = { us_auction: 'historical', historical_listing: 'historical', registry: 'historical', current_photos: 'visual', document: 'document', seller_claim: 'seller_text' };
   for (const fnd of findings) {
     if (!fnd || !fnd.type || !fnd.event_id) continue;
+    /* damage/history події (ДТП, затоплення, скрутки) лишаються в
+       auction/history шарах, не в model issue intelligence */
+    if (!TECHNICAL_ISSUE_TYPES.includes(fnd.type)) continue;
     const evidence = (Array.isArray(fnd.evidence) ? fnd.evidence : [])
       .filter(e => e && SRC[e.source] && (e.ref || e.description))
       .map(e => {
@@ -958,22 +968,6 @@ export function buildIssueObservations(parsed, listing, snapshotId) {
         detail: (evidence[0].description || '').slice(0, 300) || null,
       }),
       evidence,
-    });
-  }
-  /* офіційний запис про ДТП із держ/історичного блоку площадки */
-  const hf = listing.history_facts || {};
-  if (hf.accident_recorded === true) {
-    const ev = { source_type: 'historical', source_ref: 'ria_history_block', source_url: null, description: (hf.accident_note || 'Зафіксовано ДТП').slice(0, 200), confidence: null };
-    ev.evidence_key = evidenceKey(ev);
-    out.push({
-      observation: Object.assign(base(), {
-        issue_type: 'historical_record',
-        event_key: 'platform_accident_record',
-        issue_key: 'ACCIDENT_RECORDED',
-        title: 'Зафіксовано ДТП (запис площадки)',
-        detail: (hf.accident_note || '').slice(0, 300) || null,
-      }),
-      evidence: [ev],
     });
   }
   return out;

@@ -24,6 +24,7 @@ if (fns.some(x => !x)) {
   const lib = new Function(
     "const KNOWLEDGE_SOURCE_MAP = { factory_data: 'vehicle_data', visual: 'visual', listing_data: 'listing_data', seller: 'seller_text', historical: 'historical', document: 'document' };\n"
     + "const ISSUE_TYPE_BY_SOURCE = { historical: 'historical_record', visual: 'visible_defect', document: 'document', seller_text: 'seller_statement', vehicle_data: 'inspection_record', listing_data: 'historical_record' };\n"
+    + "const TECHNICAL_ISSUE_TYPES = ['SRS_FAULT', 'SERIOUS_POWERTRAIN_FAULT', 'CRITICAL_WARNING_LIGHTS', 'MODIFICATION_TECHNICAL_CONCERN'];\n"
     + fns.join('\n')
     + '\nreturn { normalizeOptionAlias, evidenceKey, absentAllowed, buildEquipmentObservations, validateEquipmentObservation, buildIssueObservations, buildCoverageRows };')();
 
@@ -38,6 +39,7 @@ if (fns.some(x => !x)) {
     score_facts: {
       findings: [
         { type: 'AIRBAGS_DEPLOYED', event_id: 'accident_2024', evidence: [{ source: 'us_auction', ref: 'auction_metadata', description: 'Airbag: Driver' }] },
+        { type: 'SRS_FAULT', event_id: 'current_srs_fault', evidence: [{ source: 'current_photos', ref: 'photo_9', description: 'лампа SRS на панелі' }] },
         { type: 'FLOOD', event_id: 'flood_x', evidence: [] },
       ],
     },
@@ -79,11 +81,15 @@ if (fns.some(x => !x)) {
   /* ринки розділені: listing_market з оголошення, factory_market не вгадується */
   if (bw.observation.listing_market !== 'UA' || bw.observation.factory_market !== null) errs.push('ринки не розділені або factory вгаданий');
 
-  /* issue_observation: лише vehicle-specific з первинним доказом */
+  /* issue_observation: лише ТЕХНІЧНІ vehicle-specific знахідки з доказом.
+     ДТП/damage/history події лишаються у Vehicle Graph шарах */
   const issues = lib.buildIssueObservations(parsed, listing, 'snap1');
-  if (!issues.find(i => i.observation.event_key === 'accident_2024' && i.observation.issue_key === 'AIRBAGS_DEPLOYED')) errs.push('знахідка з доказом загублена');
+  if (!issues.find(i => i.observation.event_key === 'current_srs_fault' && i.observation.issue_key === 'SRS_FAULT')) errs.push('технічна знахідка з доказом загублена');
+  if (issues.find(i => i.observation.issue_key === 'AIRBAGS_DEPLOYED')) errs.push('damage-подія (ДТП) потрапила в issue_observation');
   if (issues.find(i => i.observation.issue_key === 'FLOOD')) errs.push('знахідка БЕЗ первинного доказу пройшла');
-  if (!issues.find(i => i.observation.event_key === 'platform_accident_record')) errs.push('запис ДТП площадки загублений');
+  if (issues.find(i => i.observation.event_key === 'platform_accident_record' || i.observation.issue_key === 'ACCIDENT_RECORDED')) errs.push('запис ДТП площадки пише в issue_observation');
+  const biSrc0 = grab(api, 'buildIssueObservations');
+  if (/accident_recorded/.test(biSrc0)) errs.push('хук досі читає accident_recorded для issues');
   /* типові слабкі місця моделі не потрапляють ніколи */
   const blob = JSON.stringify(issues);
   if (blob.includes('Течі помпи') || blob.includes('B48')) errs.push('model_notes потрапили в issue_observation');
@@ -112,8 +118,9 @@ if (fns.some(x => !x)) {
     { vin: 'V2', option_id: 'o1', state: 'UNKNOWN', make: 'BMW', model: '5', generation: 'G30', model_year: 2019 },
   ];
   const iss = [
-    { vin: 'V1', issue_key: 'ACCIDENT_RECORDED', make: 'BMW', model: '5', generation: 'G30', model_year: 2018 },
-    { vin: 'V1', issue_key: 'ACCIDENT_RECORDED', make: 'BMW', model: '5', generation: 'G30', model_year: 2018 },
+    { vin: 'V1', issue_key: 'SRS_FAULT', make: 'BMW', model: '5', generation: 'G30', model_year: 2018, verification_status: 'unverified' },
+    { vin: 'V1', issue_key: 'SRS_FAULT', make: 'BMW', model: '5', generation: 'G30', model_year: 2018, verification_status: 'unverified' },
+    { vin: 'V2', issue_key: 'SRS_FAULT', make: 'BMW', model: '5', generation: 'G30', model_year: 2019, verification_status: 'verified' },
   ];
   const cov = [{ vin: 'V1', source_type: 'visual' }, { vin: 'V2', source_type: 'visual' }];
   const a = computeDerivedStats(eq, iss, cov);
@@ -124,7 +131,9 @@ if (fns.some(x => !x)) {
   if (gen && gen.vehicles_unknown !== 1) errs.push('unknown по унікальних VIN зламаний');
   if (gen && gen.vehicles_covered !== 2) errs.push('знаменник coverage не 2: ' + (gen && gen.vehicles_covered));
   const genI = a.issueStats.find(r => r.model_year === null);
-  if (!genI || genI.vehicles_affected !== 1) errs.push('issue prevalence не по унікальних VIN');
+  if (!genI || genI.vehicles_affected !== 2) errs.push('issue prevalence не по унікальних VIN: ' + (genI && genI.vehicles_affected));
+  /* unverified не змішуються з verified: verified рахується окремо */
+  if (!genI || genI.vehicles_verified !== 1) errs.push('verified не відокремлені від unverified: ' + (genI && genI.vehicles_verified));
   /* "знесли кеш і перерахували": той самий вхід дає ті самі цифри */
   const c = computeDerivedStats(JSON.parse(JSON.stringify(eq)), JSON.parse(JSON.stringify(iss)), JSON.parse(JSON.stringify(cov)));
   if (JSON.stringify(c) !== JSON.stringify(a)) errs.push('перерахунок з нуля дає інші цифри');
@@ -142,6 +151,8 @@ if (fns.some(x => !x)) {
   if (!sql.includes('unique (observation_id, evidence_key)')) errs.push('нема ідемпотентності evidence');
   if (!sql.includes('visual_never_complete')) errs.push('нема CHECK: visual не може бути complete');
   if (!sql.includes('issue_key')) errs.push('нема семантичного issue_key');
+  if (!sql.includes('vehicles_verified')) errs.push('derived_issue_stats не розрізняє verified');
+  if (!api.includes('TECHNICAL_ISSUE_TYPES')) errs.push('хук без whitelist технічних типів');
   if (!sql.includes('listing_market') || !sql.includes('factory_market')) errs.push('ринки не розділені у схемі');
   if (!sql.includes("source_url  text not null")) errs.push('каталог допускає факт без source_url');
   /* хук не ламає Check і не оновлює derived */
