@@ -131,9 +131,11 @@ if (fns.some(x => !x)) {
   if (gen && gen.vehicles_unknown !== 1) errs.push('unknown по унікальних VIN зламаний');
   if (gen && gen.vehicles_covered !== 2) errs.push('знаменник coverage не 2: ' + (gen && gen.vehicles_covered));
   const genI = a.issueStats.find(r => r.model_year === null);
-  if (!genI || genI.vehicles_affected !== 2) errs.push('issue prevalence не по унікальних VIN: ' + (genI && genI.vehicles_affected));
+  if (!genI || genI.vehicles_affected !== 2) errs.push('issue лічильник не по унікальних VIN: ' + (genI && genI.vehicles_affected));
   /* unverified не змішуються з verified: verified рахується окремо */
   if (!genI || genI.vehicles_verified !== 1) errs.push('verified не відокремлені від unverified: ' + (genI && genI.vehicles_verified));
+  /* хибного знаменника частоти болячки нема до issue-coverage шару */
+  if (genI && 'vehicles_total' in genI) errs.push('derived_issue_stats має хибний знаменник vehicles_total');
   /* "знесли кеш і перерахували": той самий вхід дає ті самі цифри */
   const c = computeDerivedStats(JSON.parse(JSON.stringify(eq)), JSON.parse(JSON.stringify(iss)), JSON.parse(JSON.stringify(cov)));
   if (JSON.stringify(c) !== JSON.stringify(a)) errs.push('перерахунок з нуля дає інші цифри');
@@ -152,6 +154,25 @@ if (fns.some(x => !x)) {
   if (!sql.includes('visual_never_complete')) errs.push('нема CHECK: visual не може бути complete');
   if (!sql.includes('issue_key')) errs.push('нема семантичного issue_key');
   if (!sql.includes('vehicles_verified')) errs.push('derived_issue_stats не розрізняє verified');
+  {
+    const disBlock = sql.slice(sql.indexOf('derived_issue_stats'));
+    if (disBlock.includes('vehicles_total')) errs.push('derived_issue_stats досі має vehicles_total');
+    const rcSrc = fs.readFileSync('knowledge-recompute.js', 'utf8');
+    if (rcSrc.includes('vehicles_total')) errs.push('recompute досі рахує vehicles_total для болячок');
+  }
+  if ((sql.match(/evidence_excerpt text not null/g) || []).length !== 2) errs.push('evidence_excerpt у каталогах не NOT NULL');
+  {
+    const micBlock = sql.slice(sql.indexOf('model_issue_catalog'), sql.indexOf('derived_option_stats'));
+    if (!micBlock.includes('issue_key text not null')) errs.push('model_issue_catalog.issue_key не NOT NULL');
+  }
+  {
+    const ioBlock = sql.slice(sql.indexOf('public.issue_observation ('), sql.indexOf('issue_observation_evidence'));
+    if (!ioBlock.includes('issue_key   text,')) errs.push('issue_observation.issue_key має лишатись nullable');
+  }
+  {
+    const seedSrc2 = fs.readFileSync('knowledge-seed.js', 'utf8');
+    if (!seedSrc2.includes('!fct.issue_key) continue')) errs.push('seed пише болячку без issue_key');
+  }
   if (!api.includes('TECHNICAL_ISSUE_TYPES')) errs.push('хук без whitelist технічних типів');
   if (!sql.includes('listing_market') || !sql.includes('factory_market')) errs.push('ринки не розділені у схемі');
   if (!sql.includes("source_url  text not null")) errs.push('каталог допускає факт без source_url');

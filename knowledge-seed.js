@@ -144,12 +144,14 @@ async function seedModel(model) {
               }]),
             });
           } else {
-            if (!fct.title) continue;
+            /* канонічний issue_key обовʼязковий: без нього запис каталогу
+               не створюється (NOT NULL у схемі) */
+            if (!fct.title || !fct.issue_key) continue;
             await api('model_issue_catalog?on_conflict=make,model,generation,title,source_url', {
               method: 'POST', headers: { prefer: 'resolution=ignore-duplicates' },
               body: JSON.stringify([{
                 make: model.make, model: model.model, generation: model.generation,
-                issue_key: fct.issue_key ? String(fct.issue_key).slice(0, 60) : null,
+                issue_key: String(fct.issue_key).slice(0, 60),
                 title: String(fct.title).slice(0, 160),
                 detail: fct.detail ? String(fct.detail).slice(0, 500) : null,
                 applies_to: fct.applies_to || {},
