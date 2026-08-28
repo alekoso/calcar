@@ -999,9 +999,15 @@ export function buildCoverageRows(parsed, listing, snapshotId, meta) {
 async function writeKnowledge(parsed, listing, snapshotId, meta) {
   const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!base || !key || !snapshotId || !listing.vin) return 'skipped';
-  const api = (path, opts) => fetch(base.replace(/\/$/, '') + '/rest/v1/' + path, Object.assign({
-    headers: Object.assign({ apikey: key, authorization: 'Bearer ' + key, 'content-type': 'application/json' }, (opts && opts.headers) || {}),
-  }, opts));
+  /* headers мерджаться ПІСЛЯ spread opts: інакше opts.headers (prefer)
+     затирав auth-заголовки і всі POST діставали 401 */
+  const api = (path, opts) => {
+    opts = opts || {};
+    return fetch(base.replace(/\/$/, '') + '/rest/v1/' + path, {
+      ...opts,
+      headers: Object.assign({ apikey: key, authorization: 'Bearer ' + key, 'content-type': 'application/json' }, opts.headers || {}),
+    });
+  };
   /* PostgREST при помилці віддає ОБʼЄКТ, не масив: ітерація по ньому
      валила весь хук. Тут завжди масив, помилка йде в лог зі своїм кроком */
   const stepErrs = [];

@@ -93,11 +93,13 @@ function computeDerivedStats(equipmentObs, issueObs, coverage) {
 }
 
 async function api(path, opts) {
-  const r = await fetch(ENV_BASE.replace(/\/$/, '') + '/rest/v1/' + path, Object.assign({
+  opts = opts || {};
+  const r = await fetch(ENV_BASE.replace(/\/$/, '') + '/rest/v1/' + path, {
+    ...opts,
     headers: Object.assign({
       apikey: ENV_KEY, authorization: 'Bearer ' + ENV_KEY, 'content-type': 'application/json',
-    }, (opts && opts.headers) || {}),
-  }, opts));
+    }, opts.headers || {}),
+  });
   if (!r.ok && r.status !== 404) throw new Error(path.split('?')[0] + ': HTTP ' + r.status);
   return r;
 }

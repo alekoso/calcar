@@ -74,9 +74,11 @@ async function extractFacts(model, pageText, sourceUrl, kind) {
 }
 
 async function api(path, opts) {
-  return fetch(ENV_BASE.replace(/\/$/, '') + '/rest/v1/' + path, Object.assign({
-    headers: Object.assign({ apikey: ENV_KEY, authorization: 'Bearer ' + ENV_KEY, 'content-type': 'application/json' }, (opts && opts.headers) || {}),
-  }, opts));
+  opts = opts || {};
+  return fetch(ENV_BASE.replace(/\/$/, '') + '/rest/v1/' + path, {
+    ...opts,
+    headers: Object.assign({ apikey: ENV_KEY, authorization: 'Bearer ' + ENV_KEY, 'content-type': 'application/json' }, opts.headers || {}),
+  });
 }
 
 async function resolveOption(name, category) {

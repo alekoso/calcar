@@ -180,6 +180,10 @@ if (fns.some(x => !x)) {
   if (!api.includes("console.log('[knowledge] хук впав, Check не зачеплений:'")) errs.push('хук без ізоляції помилок');
   if (!api.includes('Array.isArray(j) ? j :') && !api.includes('if (Array.isArray(j)) return j;')) errs.push('хук ітерує PostgREST-помилку як масив');
   if (!api.includes("const inList = vals =>")) errs.push('in.() без лапок: пробіли ламають фільтр');
+  /* headers після spread opts: opts.headers не сміє затирати auth */
+  for (const [fname, src] of [['api/check.js', api], ['knowledge-recompute.js', fs.readFileSync('knowledge-recompute.js', 'utf8')], ['knowledge-seed.js', fs.readFileSync('knowledge-seed.js', 'utf8')]]) {
+    if (/Object\.assign\(\{\s*headers:[\s\S]{0,200}?\},\s*opts\)\)/.test(src)) errs.push(fname + ': opts затирає auth-заголовки (401 на POST)');
+  }
   if (/derived_option_stats|derived_issue_stats/.test(api)) errs.push('Check чіпає derived-кеш напряму');
   const seedSrc = fs.readFileSync('knowledge-seed.js', 'utf8');
   if (!seedSrc.includes('fct.evidence_excerpt) continue')) errs.push('seed пише факт без excerpt-підстави');
