@@ -423,7 +423,79 @@ const REPORTS = [
     if (!pg3.includes("factory_status: o.factory_status")) errs.push('чат не отримує структуровану комплектацію');
     for (const d of ['i18n/ru.js', 'i18n/en.js']) {
       const dict = fs.readFileSync(d, 'utf8');
-      for (const k of ['Дані оголошення', 'Цінна опція', 'Виявлена по фото', 'Вказана в оголошенні']) {
+      for (const k of ['Дані оголошення', 'Цінна опція']) {
+        if (!dict.includes("'" + k + "'")) errs.push('нема ключа "' + k + '" у ' + d);
+      }
+    }
+  }
+
+  /* 6в. пакет перед бетою: нейтральне походження, price_context, плівка,
+     людські номери кадрів, тюнінг у рішенні */
+  {
+    /* US origin нейтральний, без риторики */
+    if (!api.includes('ПОХОДЖЕННЯ НЕЙТРАЛЬНЕ')) errs.push('нема правила нейтрального походження');
+    if (!api.includes('не відкидав авто лише через американське минуле')) errs.push('нема заборони риторичних фраз');
+    /* ціна лише зі structured evidence, adapter generic */
+    if (!api.includes('ЦІНОВІ ВИСНОВКИ ЛИШЕ ЗІ STRUCTURED PRICE EVIDENCE')) errs.push('нема заборони власних ринкових вердиктів');
+    if (!api.includes("source_type: 'marketplace', source_name: 'AUTO.RIA'")) errs.push('adapter не віддає normalized price_context');
+    /* downstream (промпт-правила рішення) не містить marketplace-умов */
+    const decisionZone = api.slice(api.indexOf('ЦІНОВІ ВИСНОВКИ'), api.indexOf('СУТТЄВИЙ ТЮНІНГ'));
+    if (/if.{0,12}AUTO\.RIA|АУТО\.РІА/i.test(decisionZone)) errs.push('decision-правила привʼязані до конкретного маркетплейса');
+    if (!api.includes('НЕ додаються до ринкової вартості автомобіля автоматично')) errs.push('витрати продавця додаються до вартості');
+    /* тюнінг: provenance-aware, два напрями, без вигаданої потужності */
+    if (!api.includes('СУТТЄВИЙ ТЮНІНГ СИЛОВОЇ ЧАСТИНИ')) errs.push('нема правила тюнінгу');
+    if (!api.includes('не подавай як незалежно виміряний факт')) errs.push('заявлена потужність стає фактом');
+    if (!api.includes('ДВА ОКРЕМІ напрями аналізу')) errs.push('висновок зводиться лише до ДТП');
+    if (!api.includes('наявну логіку MODIFICATION_TECHNICAL_CONCERN')) errs.push('будується паралельна система тюнінгу');
+    /* body_wrap: узгоджені seller+visual достатні, обмеження видимості */
+    const bwFn = grab(api, 'sanitizeBodyWrap');
+    if (!bwFn) errs.push('нема sanitizeBodyWrap');
+    else {
+      const bw = new Function(bwFn + '\nreturn sanitizeBodyWrap;')();
+      const ok1 = bw({ present: true, scope: 'full', sources: ['seller', 'visual', 'historical'], inspection_visibility: 'limited' });
+      if (!ok1 || ok1.present !== true || ok1.scope !== 'full' || ok1.sources.length !== 3) errs.push('узгоджена плівка не структурована');
+      const ok2 = bw({ present: true, scope: 'мабуть', sources: ['visual', 'сміття'], inspection_visibility: 'х' });
+      if (ok2.scope !== 'unknown' || ok2.sources.length !== 1 || ok2.inspection_visibility !== 'limited') errs.push('невалідні поля плівки не занулені');
+      if (bw({ present: false }).present !== false) errs.push('present:false загублений');
+      if (bw(null) !== null) errs.push('відсутність плівки не null');
+    }
+    if (!api.includes('НЕ обнуляй visually_consistent цілком')) errs.push('плівка обнуляє всю візуальну перевірку');
+    if (!api.includes('у score_facts її не класифікуй')) errs.push('плівка може стати штрафом Score');
+    /* людські номери кадрів: реальні позиції галереї, службові поля недоторкані */
+    const lpFn = grab(api, 'localizePhotoRefs');
+    if (!lpFn) errs.push('нема localizePhotoRefs');
+    else {
+      const lp = new Function("const PHOTO_LABELS = { ua: { listing: 'фото оголошення №', archive: 'архівне фото №' } };\n" + lpFn + '\nreturn localizePhotoRefs;')();
+      const doc = {
+        verdict: { summary: 'На photo_2 видно кузов, на auction_photo_1 удар.' },
+        risks: [{ note: 'див. photo_3' }],
+        score_facts: { findings: [{ evidence: [{ ref: 'photo_2' }] }] },
+        equipment_v2: [{ evidence: [{ ref: 'photo_2' }] }],
+      };
+      lp(doc, [4, 7, 9], [5], { listing: 'фото оголошення №', archive: 'архівне фото №' });
+      if (doc.verdict.summary !== 'На фото оголошення №8 видно кузов, на архівне фото №6 удар.') errs.push('номер не відповідає позиції галереї: ' + doc.verdict.summary);
+      if (doc.risks[0].note !== 'див. фото оголошення №10') errs.push('risks не локалізовані');
+      if (doc.score_facts.findings[0].evidence[0].ref !== 'photo_2') errs.push('службовий ref у score_facts зіпсований');
+      if (doc.equipment_v2[0].evidence[0].ref !== 'photo_2') errs.push('службовий ref у equipment зіпсований');
+    }
+    if (!api.includes('photo_map: { listing: photoIdx')) errs.push('нема photo_map у _meta');
+    /* сторінка: людські ref у tooltip комплектації, premium-зірка */
+    const pg4 = fs.readFileSync('result-check.html', 'utf8');
+    if (!pg4.includes('humanRef')) errs.push('tooltip комплектації показує технічні id');
+    if (!pg4.includes('linear-gradient(135deg,#7C3AED') || !pg4.includes('position:absolute;top:-9px')) errs.push('зірка не premium-маркер поверх кута');
+    if (pg4.includes("t('Цінна опція') + '. '")) errs.push('tooltip зірки досі довгий');
+    /* чат: правила номерів кадрів і ціни */
+    const chat4 = fs.readFileSync('api/chat.js', 'utf8');
+    if (!chat4.includes('context._meta.photo_map')) errs.push('чат не мапить номери кадрів');
+    if (!chat4.includes('без price_context чесно кажи')) errs.push('чат дає ринковий вердикт без evidence');
+    /* loading: без неіснуючих функцій */
+    if (page.includes('минулі продажі') || page.includes('попередні оголошення')) errs.push('loading обіцяє пошук минулих продажів');
+    for (const sub of ['відбираємо інформативні ракурси', 'рахуємо Оцінку CalCar', 'перевіряємо ДТП та історичні записи']) {
+      if (!page.includes(sub)) errs.push('нема підпису стадії: ' + sub);
+    }
+    for (const d of ['i18n/ru.js', 'i18n/en.js']) {
+      const dict = fs.readFileSync(d, 'utf8');
+      for (const k of ['фото оголошення №', 'архівне фото №', 'відбираємо інформативні ракурси', 'рахуємо Оцінку CalCar']) {
         if (!dict.includes("'" + k + "'")) errs.push('нема ключа "' + k + '" у ' + d);
       }
     }

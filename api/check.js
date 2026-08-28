@@ -288,6 +288,24 @@ function extractListing(html, url) {
     if (g && g[1].trim()) generation = g[1].trim().slice(0, 20);
   }
 
+  /* нормалізований ціновий контекст ПЛОЩАДКИ: generic обʼєкт, downstream
+     імені маркетплейса не знає. position рахує ДЕТЕРМІНОВАНИЙ поріг ±7%
+     від середньої ціни площадки по порівнянних (structured-дані сторінки),
+     без LLM і без наших "знань ринку". Нема даних: unknown */
+  let priceContext = null;
+  if (isRia) {
+    const ap = /"averagePrice":(\d{3,9})/.exec(html);
+    if (ap) {
+      const avg = parseInt(ap[1], 10);
+      let position = 'unknown';
+      if (price && avg > 0) {
+        const d = (price - avg) / avg;
+        position = d < -0.07 ? 'below_average' : d > 0.07 ? 'above_average' : 'average';
+      }
+      priceContext = { position, source_type: 'marketplace', source_name: 'AUTO.RIA', average_price: avg, listing_price: price || null, currency: currency || 'USD' };
+    }
+  }
+
   /* marketplace adapter: структуровані опції площадки з embedded-даних
      ВЖЕ завантаженої сторінки. Нормалізований плоский список іде в
      загальний Equipment-пайплайн із source listing_data; downstream від
@@ -321,6 +339,7 @@ function extractListing(html, url) {
     title: title.slice(0, 200), vin, plate,
     seller_text: sellerText,
     generation,
+    price_context: priceContext,
     listing_equipment: listingEquipment.slice(0, 60),
     price, currency, odometer_km: odometerKm, year, make, model,
     photos, text: aiText,
@@ -668,6 +687,59 @@ export function pickDiverseFrames(types, k = 24, maxHigh = 12) {
   const rank = i => HIGH_PRI.indexOf(norm(types[i]));
   const high = picked.slice().sort((a, b) => rank(a) - rank(b) || a - b).slice(0, maxHigh);
   return { picked, high: new Set(high) };
+}
+
+/* ---------- 4в2б. Плівка кузова: детермінована валідація ----------
+   Узгоджені seller+visual дають present:true. Плівка не штраф і не дефект,
+   лише обмеження видимості частини перевірки (inspection_visibility) */
+export function sanitizeBodyWrap(bw) {
+  if (!bw || typeof bw !== 'object' || Array.isArray(bw)) return null;
+  if (bw.present !== true) return bw.present === false ? { present: false } : null;
+  const SRC = ['seller', 'visual', 'historical', 'listing_data', 'document'];
+  return {
+    present: true,
+    scope: ['full', 'partial', 'unknown'].includes(bw.scope) ? bw.scope : 'unknown',
+    sources: (Array.isArray(bw.sources) ? bw.sources : []).filter(x => SRC.includes(x)).slice(0, 5),
+    inspection_visibility: bw.inspection_visibility === 'normal' ? 'normal' : 'limited',
+  };
+}
+
+/* ---------- 4в2в. Людські номери кадрів у текстах для користувача ----------
+   Внутрішні id (photo_N, auction_photo_N) лишаються в evidence, structured
+   data, логах і AI-контексті, але користувач їх не бачить. N у підписі
+   відповідає РЕАЛЬНІЙ позиції кадру у вихідній галереї (photo_map з
+   вибірки селектора), а не індексу відправленого набору */
+const PHOTO_LABELS = {
+  ua: { listing: 'фото оголошення №', archive: 'архівне фото №' },
+  ru: { listing: 'фото объявления №', archive: 'архивное фото №' },
+  en: { listing: 'listing photo #', archive: 'archive photo #' },
+};
+
+export function localizePhotoRefs(node, listingMap, auctionMap, labels) {
+  /* службові структури недоторкані: там живуть технічні ref */
+  const SKIP = new Set(['evidence', 'provenance', 'score_facts', '_meta', 'equipment_v2', 'ref', 'source_ref', 'photo_id', 'evidence_key', 'sources', 'covered_areas']);
+  const human = str => String(str)
+    .replace(/\bauction_photo_(\d+)\b/g, (m, n) => {
+      const gi = Array.isArray(auctionMap) ? auctionMap[+n - 1] : null;
+      return labels.archive + ((gi != null && gi >= 0) ? gi + 1 : +n);
+    })
+    .replace(/\bphoto_(\d+)\b/g, (m, n) => {
+      const gi = Array.isArray(listingMap) ? listingMap[+n - 1] : null;
+      return labels.listing + ((gi != null && gi >= 0) ? gi + 1 : +n);
+    });
+  const walk = o => {
+    if (typeof o === 'string') return human(o);
+    if (Array.isArray(o)) return o.map(walk);
+    if (o && typeof o === 'object') {
+      for (const k of Object.keys(o)) {
+        if (SKIP.has(k)) continue;
+        o[k] = walk(o[k]);
+      }
+      return o;
+    }
+    return o;
+  };
+  return walk(node);
 }
 
 /* ---------- 4в3. Історичний візуальний аналіз: детермінована валідація ----------
@@ -1288,6 +1360,18 @@ METADATA EXACT-LOT (надійний historical, джерело ${auctionMeta.so
 
 "verdict.grade": buy (брати, істотних проблем не знайдено), inspect (можна брати після конкретних перевірок), caution (є серйозні розбіжності, торг або обережність), avoid (знайдені факти прямо суперечать оголошенню або ризик надто високий). Оцінюй відносно ринку вживаних авто: сліди експлуатації це норма, а не привід для avoid. Але приховування фактів продавцем (знайдене ДТП при "без ДТП") завжди мінімум caution.
 
+ПОХОДЖЕННЯ НЕЙТРАЛЬНЕ (загальне правило для всіх ринків і країн): сам факт ввозу з США чи будь-якої іншої країни НЕ є ризиком, НЕ є мінусом, не потребує виправдань і сам по собі не змінює recommendation. Аналізуй конкретну історію конкретної машини: ДТП, характер пошкоджень, SRS, якість відновлення, пробіг, технічні модифікації, поточний стан, ціну. Нейтральний стиль: "Автомобіль ввезений із США після ДТП 2023 року. На архівних фото пошкоджений правий борт і видно спрацьовані бічні шторки", і далі reasoning працює саме з цими фактами. ЗАБОРОНЕНІ риторичні фрази, що сперечаються з уявним користувачем чи продавцем: "це не чиста європейська машина", "я б не відкидав авто лише через американське минуле", "тюнінг не скасовує ДТП" і подібні.
+
+ЦІНОВІ ВИСНОВКИ ЛИШЕ ЗІ STRUCTURED PRICE EVIDENCE${l.price_context ? ' (нижче переданий price_context від площадки)' : ' (price_context ВІДСУТНІЙ)'}:
+${l.price_context ? '- price_context: ' + JSON.stringify(l.price_context) : ''}
+- БЕЗ structured price_context ЗАБОРОНЕНІ впевнені ринкові оцінки ціни: "дорого", "дешево", "вигідно", "завищено", "приваблива ціна", "вимоглива ціна", "нижче ринку", "вище ринку" і аналогічні. Сама ціна, факт ДТП, пробіг, тюнінг чи твої загальні знання ринку ринковим доказом НЕ є: тоді чесно не давай цінового вердикту.
+- З price_context формулюй ВІД ІМЕНІ ПЛОЩАДКИ: "за оцінкою площадки ціна на середньому рівні серед порівнянних пропозицій" (position average), не "CalCar вважає ціну середньою".
+- Заявлені продавцем витрати на Stage, гальма, світло, плівку та інші доробки НЕ додаються до ринкової вартості автомобіля автоматично.
+
+СУТТЄВИЙ ТЮНІНГ СИЛОВОЇ ЧАСТИНИ: заявлені продавцем суттєві модифікації (Stage, прошивка АКПП, downpipe) це нормальний вхід аналізу. Provenance-aware формулювання: "Продавець заявляє Stage 2 і прошивку АКПП", БЕЗ постійного дисклеймера "можливо, продавець бреше". Але точну потужність, момент чи версію прошивки не подавай як незалежно виміряний факт без відповідного доказу. При суттєвому тюнінгу рішення має ДВА ОКРЕМІ напрями аналізу: (1) ДТП, якість відновлення, SRS; (2) модифікована силова частина: діагностика двигуна і АКПП, помилки, якість hardware-модифікацій, хто виконував налаштування і що саме прошито, відповідність заявленої конфігурації фактичній, обслуговування після модифікації. НЕ зводь увесь висновок лише до ДТП і не дублюй однакові рекомендації у трьох різних блоках звіту. Тюнінг сам по собі не робить машину поганою; косметичні модифікації не стають technical risk автоматично; для класифікації використовуй наявну логіку MODIFICATION_TECHNICAL_CONCERN.
+
+ПЛІВКА КУЗОВА ("body_wrap"): якщо заява продавця і visual узгоджуються (кузов виглядає обклеєним, продавець прямо вказує плівку), цього ДОСТАТНЬО для body_wrap present:true, без штучної невизначеності "можливо, перефарбовано". Запис "зміна кольору ТЗ" в історії це додатковий supporting-сигнал, а не єдиний спосіб визначення. Семантика: плівка сама по собі НЕ дефект, НЕ поганий ремонт і НЕ штраф Score (у score_facts її не класифікуй). Але вона обмежує ЧАСТИНУ візуальної перевірки: форму панелей, геометрію, зазори і посадку дверей за фото оцінювати МОЖНА; якість фарбування, переходи, шагрень і стан ЛКП під плівкою оцінювати НЕ можна (inspection_visibility limited). Тому НЕ обнуляй visually_consistent цілком: висновок scoped: "панелі і зазори виглядають рівно" + "якість фарбування під плівкою оцінити не можна, при огляді перевірити кузов під плівкою і доступні ділянки покриття".
+
 КОМПЛЕКТАЦІЯ В ТЕКСТАХ: згенерований текст НІКОЛИ не підвищує достовірність опцій понад їх джерела. visual не перетворюється на "заводську комплектацію" чи "підтверджено по VIN"; замість "багата підтверджена комплектація" при змішаних джерелах пиши чесно: "багате оснащення за фото і даними оголошення". Згадуючи конкретну ВАЖЛИВУ опцію, тримай рівень джерела: "Bowers & Wilkins видно на фото", "адаптивний круїз вказаний в оголошенні", "HUD вказаний в оголошенні і видно на фото". Біля звичайних опцій джерело підписувати не обовʼязково.
 
 ІСТОРИЧНИЙ ВІЗУАЛ І РІШЕННЯ: purchase_decision ЗОБОВʼЯЗАНИЙ враховувати historical_visual РАЗОМ з фактами історії, поточними фото, заявами продавця, пробігом і болячками моделі, і РОЗРІЗНЯТИ три різні ситуації: (1) видимі ознаки тяжкого/структурного пошкодження; (2) явних тяжких структурних ознак на доступних кадрах НЕ видно; (3) прихована структура, геометрія і SRS лишаються неперевіреними. Друга і третя співіснують: тоді формулюй "на історичному фото видно помітний удар спереду; явних ознак тяжкої деформації силової структури чи зони салону на доступному ракурсі нема, але приховані елементи, геометрію і SRS за цим фото підтвердити не можна". НЕ пиши так, ніби тяжке пошкодження вже знайдене, якщо visual evidence його не показує; і НЕ називай удар мінімальним, якщо на кадрах видно суттєве пошкодження.
@@ -1297,6 +1381,7 @@ ${DECISION_RULES}${decisionStyle === 'a' ? DECISION_FEWSHOT : ''}
 {
  "vehicle": {"title":"Марка Модель Рік","year":2018,"fuel":"petrol|diesel|hybrid|electric","engine":"4.4 л бензин V8, 462 к.с. (або null)","transmission":"...","drive":"...","trim":"версія або null","mileage_note":"129 000 км"},
  "auction": {"found":true,"summary":"2-4 речення: що сталося з авто в США за архівом, реальний обсяг пошкоджень по фото, чи чесно продавець його описує","findings":[{"status":"ok|warn|bad|unknown","text":"порівняння до/після, 1 речення"}]},
+ "body_wrap": {"present":false,"scope":"full|partial|unknown","sources":["seller","visual","historical"],"inspection_visibility":"limited|normal"},
  "historical_visual": {"visible_damage_zones":["капот","передній бампер"],"visible_severity":"minor|moderate|severe|indeterminate","structural_visual_status":"no_obvious_severe_signs|possible|visible_damage|indeterminate","srs_visual_status":"deployed_visible|no_deployment_visible|not_visible|indeterminate","summary":"2-3 речення: що реально видно і що лишається невідомим","evidence":[{"source":"us_auction","ref":"auction_photo_1","description":"зім'ятий капот"}]},
  "risks":[{"title":"назва ризику","level":"high|med|low","note":"1-2 речення: чому це головна стаття витрат чи ризику саме тут","action":"конкретна перевірка до покупки, 1 рядок"}],
  "equipment_v2":[{"name":"вентиляція передніх сидінь","category":"comfort|interior|multimedia|assist|exterior|performance","confidence_level":"vehicle_data|seller_and_visual|visual|seller, або null лише для суто історичної","highlight":false,"retrofit":false,"retrofit_basis":null,"historical_claim":false,"value_tier":"standard|notable|high_value","evidence":[{"source":"vehicle_data|current_photos|seller_claim|listing_data|historical","ref":"photo_7 чи vin_decode чи назва історичного джерела","sign":"конкретна ознака на кадрі чи коротка цитата джерела"}]}],
@@ -1678,6 +1763,15 @@ export default async function handler(req, res) {
     if (cleanDecision) parsed.purchase_decision = cleanDecision;
     else delete parsed.purchase_decision;
 
+    /* плівка кузова: структурований факт */
+    const bwClean = sanitizeBodyWrap(parsed.body_wrap);
+    if (bwClean) parsed.body_wrap = bwClean;
+    else delete parsed.body_wrap;
+
+    /* людські номери кадрів у текстах: N = позиція у вихідній галереї */
+    const auctionOrigIdx = auctionPhotos.map(u => (auction && Array.isArray(auction.photos)) ? auction.photos.indexOf(u) : -1);
+    localizePhotoRefs(parsed, photoIdx, auctionOrigIdx, PHOTO_LABELS[lang] || PHOTO_LABELS.ua);
+
     /* ---- комплектація: детермінована валідація + скептична перевірка ----
        Максимум ОДИН додатковий виклик, максимум 6 claims, лише важливі і
        брендові візуальні знахідки. Мета виклику: СПРОСТУВАТИ. Результат
@@ -1746,6 +1840,9 @@ export default async function handler(req, res) {
       seller_text: listing.seller_text || null,
       auction_url: listing.auction_url || null,
       auction_photos: auctionPhotos,
+      /* мапи для UI і чату: технічний id кадру -> позиція у вихідній галереї */
+      photo_map: { listing: photoIdx, auction: auctionPhotos.map(u => (auction && Array.isArray(auction.photos)) ? auction.photos.indexOf(u) : -1) },
+      price_context: listing.price_context || null,
       auction_photos_provenance: auction && auctionPhotos.length
         ? (auction.from_ria ? 'autoria_history' : auction.from_search ? 'auction_search' : 'external_archive')
         : null,
