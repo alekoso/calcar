@@ -222,7 +222,7 @@ function extractListing(html, url) {
     }
     photos = [...seen];
   }
-  photos = photos.slice(0, 40);
+  photos = photos.slice(0, 120);
 
   /* фото аукціону США: RIA зберігає їх у себе, окремою гілкою /photos/auto/usa/.
      Це наше основне джерело кадрів "до ремонту": сам bidfax закритий від
@@ -597,6 +597,37 @@ export function pickEvenIndexes(n, k) {
   const idx = [];
   for (let i = 0; i < k; i++) idx.push(Math.round(i * (n - 1) / (k - 1)));
   return [...new Set(idx)];
+}
+
+/* ---------- 4б3. Детермінований вибір різноманітних кадрів ----------
+   types: масив типів кадрів за індексами галереї (від класифікатора).
+   Round-robin за пріоритетом типів: салон, багажник і задній ряд
+   потрапляють обовʼязково, однакові екстерʼєри не зʼїдають бюджет.
+   high-слоти (максимум maxHigh) дістаються найінформативнішим типам */
+export function pickDiverseFrames(types, k = 24, maxHigh = 12) {
+  const PRI = ['dashboard', 'center_console', 'steering', 'front_seats', 'rear_seats', 'trunk', 'doors', 'roof', 'engine_bay', 'front', 'rear', 'side', 'wheels', 'detail', 'other'];
+  const norm = t => PRI.includes(t) ? t : 'other';
+  const byType = new Map(PRI.map(t => [t, []]));
+  (Array.isArray(types) ? types : []).forEach((t, i) => byType.get(norm(t)).push(i));
+  const n = (Array.isArray(types) ? types : []).length;
+  const picked = [];
+  for (let round = 0; picked.length < Math.min(k, n); round++) {
+    let added = false;
+    for (const t of PRI) {
+      const arr = byType.get(t);
+      if (arr.length > round) {
+        picked.push(arr[round]);
+        added = true;
+        if (picked.length >= Math.min(k, n)) break;
+      }
+    }
+    if (!added) break;
+  }
+  picked.sort((a, b) => a - b);
+  const HIGH_PRI = ['dashboard', 'steering', 'center_console', 'doors', 'front_seats', 'rear_seats', 'trunk', 'front', 'rear', 'side', 'detail', 'engine_bay', 'roof', 'wheels', 'other'];
+  const rank = i => HIGH_PRI.indexOf(norm(types[i]));
+  const high = picked.slice().sort((a, b) => rank(a) - rank(b) || a - b).slice(0, maxHigh);
+  return { picked, high: new Set(high) };
 }
 
 /* ---------- 4в3. Історичний візуальний аналіз: детермінована валідація ----------
@@ -1066,12 +1097,74 @@ export default async function handler(req, res) {
     const LANG_NAME = { ua: 'українською', ru: 'російською', en: 'англійською (English)' };
     const langDirective = 'МОВА ВІДПОВІДІ: усі текстові значення пиши ' + LANG_NAME[lang] + '. Ключі JSON та enum-значення (status, severity, verdict, grade, fuel) залишай латиницею точно за схемою.';
 
-    /* Бюджет фото. 40 кадрів у високій деталізації не встигають за ліміт часу,
-       тому: ключові кадри високою деталізацією, решта низькою. Модель все одно
-       бачить весь набір (салон, деталі), але запит лишається в межах часу. */
-    const photoIdx = pickEvenIndexes(listing.photos.length, 24);
+    const EFFORT = process.env.REASONING_EFFORT || 'high';
+    const modelBody = (c, withEffort = true) => {
+      const b = {
+        model: process.env.OPENAI_MODEL || 'gpt-5.6-terra',
+        max_completion_tokens: 16000,
+        response_format: { type: 'json_object' },
+        messages: [{ role: 'user', content: c }],
+      };
+      if (withEffort && EFFORT !== 'off') b.reasoning_effort = EFFORT;
+      return b;
+    };
+    const callModel = async (body, ms) => {
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), ms);
+      try {
+        const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+          signal: ctl.signal,
+          method: 'POST',
+          headers: { 'content-type': 'application/json', authorization: 'Bearer ' + process.env.OPENAI_API_KEY },
+          body: JSON.stringify(body),
+        });
+        return await resp.json();
+      } finally { clearTimeout(t); }
+    };
+
+    const img = (u, detail) => ({ type: 'image_url', image_url: { url: u, detail } });
+    /* ---- вибірка кадрів ----
+       <=24 кадрів: усі, галерея переглянута повністю, без викликів.
+       >24: ОДИН дешевий content-aware прохід low-detail по ВСІЙ галереї
+       класифікує типи кадрів, детермінований pickDiverseFrames обирає до
+       24 максимально різноманітних (задній ряд, багажник, торпедо,
+       консоль і двері обовʼязково, без купи однакових екстерʼєрів) і
+       роздає high-слоти найінформативнішим. Фейл чи таймаут: рівномірний
+       fallback і чесний gallery_coverage_complete=false */
+    let photoIdx, highSet, galleryCoverageComplete, photoSelectorMeta;
+    if (listing.photos.length <= 24) {
+      photoIdx = listing.photos.map((_, i) => i);
+      highSet = new Set(pickEvenIndexes(photoIdx.length, 12));
+      galleryCoverageComplete = true;
+      photoSelectorMeta = { mode: 'all' };
+    } else {
+      try {
+        const tSel = Date.now();
+        const selContent = [{ type: 'text', text: 'Класифікуй кадри оголошення авто за типом. Відповідай ЛИШЕ валідним JSON {"frames":[{"i":1,"type":"front"}]} з записом для КОЖНОГО кадру. type СТРОГО з переліку: front | rear | side | dashboard | steering | center_console | doors | front_seats | rear_seats | roof | trunk | engine_bay | wheels | detail | other. i це число з підпису i=N перед кадром.' }];
+        listing.photos.forEach((u, i) => { selContent.push({ type: 'text', text: 'i=' + (i + 1) + ':' }); selContent.push(img(u, 'low')); });
+        const sr = await callModel(modelBody(selContent, false), 45000);
+        const frames = JSON.parse((sr.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim()).frames;
+        if (!Array.isArray(frames) || !frames.length) throw new Error('selector: порожня класифікація');
+        const types = new Array(listing.photos.length).fill('other');
+        for (const fr of frames) {
+          const i = parseInt(fr && fr.i, 10) - 1;
+          if (i >= 0 && i < types.length && typeof fr.type === 'string') types[i] = fr.type;
+        }
+        const dv = pickDiverseFrames(types, 24, 12);
+        photoIdx = dv.picked;
+        highSet = new Set(photoIdx.map((gi, pos) => dv.high.has(gi) ? pos : -1).filter(p => p >= 0));
+        galleryCoverageComplete = true;
+        photoSelectorMeta = { mode: 'selector', ms: Date.now() - tSel, tokens: sr.usage || null, types: photoIdx.map(i => types[i]) };
+        console.log('[photos] селектор:', listing.photos.length, '->', photoIdx.length, 'за', Date.now() - tSel, 'мс');
+      } catch (e) {
+        photoIdx = pickEvenIndexes(listing.photos.length, 24);
+        highSet = new Set(pickEvenIndexes(photoIdx.length, 12));
+        galleryCoverageComplete = false;
+        photoSelectorMeta = { mode: 'even_fallback', error: String(e.message || e).slice(0, 80) };
+        console.log('[photos] селектор впав, рівномірний fallback:', e.message);
+      }
+    }
     const photoUrls = photoIdx.map(i => listing.photos[i]);
-    const highSet = new Set(pickEvenIndexes(photoUrls.length, 12));
     /* image-level provenance: у Vision ЛИШЕ кадри, чия належність exact lot
        доведена URL (VIN або lot_id). Generic-галерея (americamotors cs.copart
        без VIN) виключається: вона змішує різні авто. AmericaMotors лишається
@@ -1105,40 +1198,18 @@ export default async function handler(req, res) {
         vin: listing.vin || null,
       }));
     }
-    const img = (u, detail) => ({ type: 'image_url', image_url: { url: u, detail } });
     const content = [
-      { type: 'text', text: 'ФОТО З ОГОЛОШЕННЯ (стан зараз). Нумерація: photo_1..photo_' + photoUrls.length + ' у порядку подачі, на неї посилаються evidence ref. Це ПОВНИЙ набір фото цього авто, включно з салоном і деталями: не пиши, що фото салону немає, якщо воно серед переданих. Якщо якийсь кадр очевидно належить ІНШОМУ авто (інша модель, інший колір, інший кузов), просто проігноруй його і не згадуй у звіті:' },
+      { type: 'text', text: 'ФОТО З ОГОЛОШЕННЯ (стан зараз). Нумерація: photo_1..photo_' + photoUrls.length + ' у порядку подачі, на неї посилаються evidence ref. '
+        + (galleryCoverageComplete
+          ? 'Уся галерея оголошення переглянута (' + listing.photos.length + ' кадрів, передані найінформативніші): якщо якась зона (багажник, задній ряд, салон) відсутня серед кадрів, її справді нема в оголошенні, і про це можна казати прямо.'
+          : 'УВАГА: переглянута лише ЧАСТИНА галереї (' + photoUrls.length + ' з ' + listing.photos.length + ' кадрів). ЗАБОРОНЕНО стверджувати, що якась зона (багажник, задній ряд, салон) "не показана" в оголошенні: відсутність серед переданих кадрів не означає відсутності в галереї.')
+        + ' Якщо якийсь кадр очевидно належить ІНШОМУ авто (інша модель, інший колір, інший кузов), просто проігноруй його і не згадуй у звіті:' },
       ...photoUrls.map((u, i) => img(u, highSet.has(i) ? 'high' : 'low')),
       ...(auctionPhotos.length
         ? [{ type: 'text', text: 'ФОТО З АУКЦІОНУ США (до ремонту, архів). Нумерація: auction_photo_1..auction_photo_' + auctionPhotos.length + ' у порядку подачі:' }, ...auctionPhotos.map(u => img(u, 'high'))]
         : []),
       { type: 'text', text: PROMPT(listing, nhtsa, auction, langDirective, decisionStyle, auctionSearch) },
     ];
-
-    const EFFORT = process.env.REASONING_EFFORT || 'high';
-    const modelBody = (c, withEffort = true) => {
-      const b = {
-        model: process.env.OPENAI_MODEL || 'gpt-5.6-terra',
-        max_completion_tokens: 16000,
-        response_format: { type: 'json_object' },
-        messages: [{ role: 'user', content: c }],
-      };
-      if (withEffort && EFFORT !== 'off') b.reasoning_effort = EFFORT;
-      return b;
-    };
-    const callModel = async (body, ms) => {
-      const ctl = new AbortController();
-      const t = setTimeout(() => ctl.abort(), ms);
-      try {
-        const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-          signal: ctl.signal,
-          method: 'POST',
-          headers: { 'content-type': 'application/json', authorization: 'Bearer ' + process.env.OPENAI_API_KEY },
-          body: JSON.stringify(body),
-        });
-        return await resp.json();
-      } finally { clearTimeout(t); }
-    };
 
     const t0 = Date.now();
     let data = await callModel(modelBody(content), 240000);
@@ -1324,7 +1395,7 @@ export default async function handler(req, res) {
       odometer_km: listing.odometer_km,
       photos: listing.photos.slice(0, 60),
       /* аудит вибірки кадрів для Vision: індекси галереї і high-слоти */
-      photo_selection: { total: listing.photos.length, picked: photoIdx, high: photoIdx.filter((_, i) => highSet.has(i)) },
+      photo_selection: { total: listing.photos.length, picked: photoIdx, high: photoIdx.filter((_, i) => highSet.has(i)), gallery_coverage_complete: galleryCoverageComplete, selector: photoSelectorMeta },
       seller_text: listing.seller_text || null,
       auction_url: listing.auction_url || null,
       auction_photos: auctionPhotos,

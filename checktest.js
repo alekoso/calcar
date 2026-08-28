@@ -146,6 +146,43 @@ const REPORTS = [
     if (!api.includes('photo_selection: { total:')) errs.push('нема аудиту вибірки в _meta');
   }
 
+  /* 6а00. розумна вибірка кадрів: різноманітність, покриття, fallback */
+  {
+    const dvFn = grab(api, 'pickDiverseFrames');
+    if (!dvFn) errs.push('нема pickDiverseFrames');
+    else {
+      const dv = new Function(dvFn + '\nreturn pickDiverseFrames;')();
+      /* 30 екстерʼєрних + по одному салонних: салон, багажник, задній ряд обовʼязково */
+      const types = Array(30).fill('front').concat(['rear_seats', 'trunk', 'dashboard', 'center_console', 'doors', 'rear', 'side']);
+      const r = dv(types, 24, 12);
+      if (r.picked.length !== 24) errs.push('вибірка не 24: ' + r.picked.length);
+      for (const [name, idx] of [['задній ряд', 30], ['багажник', 31], ['торпедо', 32], ['консоль', 33], ['двері', 34]]) {
+        if (!r.picked.includes(idx)) errs.push('різноманітна вибірка загубила: ' + name);
+      }
+      /* однакові екстерʼєри не зʼїдають бюджет: front обмежений раундами */
+      if (r.picked.filter(i => types[i] === 'front').length > 20) errs.push('однакові екстерʼєри зʼїли бюджет');
+      /* high дістається салону, а не першим кадрам */
+      if (!r.high.has(32) || !r.high.has(31)) errs.push('high не дістався торпедо/багажнику');
+      if (r.high.size > 12) errs.push('high понад ліміт');
+      /* менше ніж k: усі */
+      const r2 = dv(['front', 'rear'], 24, 12);
+      if (r2.picked.length !== 2) errs.push('малий набір не взятий цілком');
+    }
+    /* хендлер: <=24 всі без виклику, >24 селектор, fallback чесний */
+    if (!api.includes('listing.photos.length <= 24')) errs.push('нема гілки <=24 без виклику');
+    if (!api.includes("mode: 'even_fallback'")) errs.push('нема рівномірного fallback');
+    if (!api.includes('gallery_coverage_complete: galleryCoverageComplete')) errs.push('нема прапорця покриття галереї в _meta');
+    if (!api.includes('ЗАБОРОНЕНО стверджувати, що якась зона')) errs.push('нема заборони "не показано" при частковому покритті');
+    if (api.includes('Це ПОВНИЙ набір фото цього авто')) errs.push('промпт бреше про повний набір безумовно');
+    if (!api.includes('photos.slice(0, 120)')) errs.push('кап екстракції фото не піднятий');
+    /* перейменування оцінки */
+    const pgS = fs.readFileSync('result-check.html', 'utf8');
+    if (!pgS.includes('Оцінка CalCar:')) errs.push('бейдж не перейменований в Оцінка CalCar');
+    for (const d of ['i18n/ru.js', 'i18n/en.js']) {
+      if (!fs.readFileSync(d, 'utf8').includes("'Оцінка CalCar:'")) errs.push('нема ключа "Оцінка CalCar:" у ' + d);
+    }
+  }
+
   /* 6а. комплектація v2: детерміновані функції, чотири рівні, верифікатор */
   {
     const sanFn = grab(api, 'sanitizeEquipment');

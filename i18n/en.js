@@ -343,6 +343,7 @@ window.CALCAR_DICT = {
   'Не вдалося перекласти, спробуй ще раз': 'Translation failed, try again',
   /* ---- CalCar Check (en, iteration 6) ---- */
   'Оцінка:': 'Score:',
+  'Оцінка CalCar:': 'CalCar Score:',
   'Торги були': 'Auction was on',
   'Торги': 'Auction',
   'Торги завершено': 'Auction closed',
