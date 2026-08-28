@@ -383,7 +383,8 @@
   .eq-chips span{font-size:12.5px;background:var(--bg);border:1px solid var(--line);border-radius:16px;padding:4px 11px}
   /* комплектація v2: компактні білі chips у source-групах */
   .eq-src{font-size:12.5px;font-weight:600;color:var(--ink);margin-bottom:8px}
-  .eq-chip{display:inline-flex;font-size:13px;font-weight:500;color:var(--text);background:var(--card);border:1px solid var(--line);border-radius:9px;padding:5px 11px}
+  .eq-chip{display:inline-flex;align-items:center;font-size:13px;font-weight:500;color:var(--text);background:var(--card);border:1px solid var(--line);border-radius:9px;padding:5px 11px}
+  .eq-star{color:#C9971C;font-size:10.5px;margin-left:5px;line-height:1}
 
   /* переклад звіту */
   /* стани сторінки: скелетон до готовності даних, звіт одним перемиканням */
@@ -1242,15 +1243,24 @@ function boot2(D){
      Старі звіти з equipment {vin,photo,seller} рендеряться легасі-гілкою ---- */
   const eqV2 = Array.isArray(D.equipment_v2) ? D.equipment_v2.filter(o => o && o.name && o.confidence_level) : [];
   if (eqV2.length) {
+    /* зірка high_value означає цінність опції, НЕ достовірність */
+    const EQ_SRC_LINE = {
+      visual: t('Виявлена по фото'), seller_and_visual: t('Виявлена по фото'),
+      listing_data: t('Вказана в оголошенні'), vehicle_data: t('Підтверджена заводськими даними'),
+    };
     const chipHtml = o => {
       const meta = (o.evidence || []).map(e => [e.ref, e.sign].filter(Boolean).join(': ')).filter(Boolean).join(' · ');
-      return '<span class="eq-chip"' + (meta ? ' title="' + esc(meta) + '"' : '') + '>' + esc(o.name) + '</span>';
+      const star = o.value_tier === 'high_value'
+        ? '<span class="eq-star" title="' + esc(t('Цінна опція') + '. ' + t('Помітна опція для цієї моделі.') + (EQ_SRC_LINE[o.confidence_level] ? ' ' + EQ_SRC_LINE[o.confidence_level] + '.' : '')) + '">★</span>'
+        : '';
+      return '<span class="eq-chip"' + (meta ? ' title="' + esc(meta) + '"' : '') + '>' + esc(o.name) + star + '</span>';
     };
     const byNotable = (a, b) => (b.highlight === true) - (a.highlight === true);
     const EQ_SRC_GROUPS = [
       ['seller_and_visual', t('Підтверджено')],
       ['visual', t('Видно на фото')],
       ['vehicle_data', t('Дані авто')],
+      ['listing_data', t('Дані оголошення')],
       ['seller', t('Зі слів продавця')],
     ];
     let eqHtml2 = '';
@@ -1837,7 +1847,12 @@ async function loadOtherReports(){
 function chatCtx(){
   const d = DATA || {};
   return {
-    vehicle: d.vehicle, verdict: d.verdict, purchase_decision: d.purchase_decision || null, risks: d.risks, equipment: d.equipment,
+    vehicle: d.vehicle, verdict: d.verdict, purchase_decision: d.purchase_decision || null, risks: d.risks,
+    /* структурована комплектація з provenance: первинне джерело правди
+       для помічника; легасі-поле лише для старих звітів */
+    equipment: Array.isArray(d.equipment_v2) && d.equipment_v2.length
+      ? d.equipment_v2.map(o => ({ name: o.name, confidence_level: o.confidence_level, provenance: o.provenance || null, factory_status: o.factory_status || null, value_tier: o.value_tier || null, evidence: o.evidence || null, retrofit: o.retrofit || false }))
+      : d.equipment,
     discrepancies: d.discrepancies, history: d.history, history_note: d.history_note,
     photo_findings: d.photo_findings, auction: d.auction,
     model_notes: d.model_notes, checklist: d.checklist, data_notes: d.data_notes,

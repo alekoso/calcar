@@ -252,7 +252,7 @@ const REPORTS = [
     if (!api.includes('ATTENTION MAP')) errs.push('check.js: нема attention map у промпті');
     if (!api.includes('дистронік це адаптивний круїз')) errs.push('check.js: нема нормалізації народних назв');
     if (!api.includes('КНОПКИ ДОКАЗУЮТЬ КНОПКИ')) errs.push('check.js: нема правила про органи керування');
-    if (!api.includes('Рівня "ймовірно" НЕ існує')) errs.push('check.js: нема заборони проміжного рівня');
+    if (!api.includes('рівня "ймовірно" НЕ існує')) errs.push('check.js: нема заборони проміжного рівня');
     if (!api.includes('"equipment_v2":[{')) errs.push('check.js: схема без equipment_v2');
     /* semantic cleanup: софт-стани, не підсилювати понад доказ, без дублів шапки */
     if (!api.includes('софтверні і конфігураційні стани опціями не є')) errs.push('check.js: софт-стани не виключені з комплектації');
@@ -321,6 +321,58 @@ const REPORTS = [
     /* болячки: позначка про заявлене обслуговування */
     if (!page.includes('seller_serviced === true')) errs.push('нема позначки заявленого обслуговування');
   }
+  /* 6а2. provenance, listing_data, value_tier, grounding помічника */
+  {
+    const sanFn2 = grab(api, 'sanitizeEquipment');
+    const appFn2 = grab(api, 'applyEquipmentVerifier');
+    if (sanFn2 && appFn2) {
+      const lib2 = new Function(sanFn2 + '\n' + appFn2 + '\nreturn { sanitizeEquipment, applyEquipmentVerifier };')();
+      const ev = (source, ref, sign) => ({ source, ref, sign });
+      const mk = o => Object.assign({ name: 'x', category: 'comfort', confidence_level: null, highlight: false, retrofit: false, retrofit_basis: null, historical_claim: false, evidence: [] }, o);
+      /* лише listing_data лишається listing_data, НЕ factory */
+      let r = lib2.sanitizeEquipment([mk({ name: 'Камера 360', evidence: [ev('listing_data', 'опції площадки', 'Камера 360')] })], 'autoria');
+      if (r.length !== 1 || r[0].confidence_level !== 'listing_data') errs.push('listing-only не listing_data: ' + JSON.stringify(r));
+      if (r[0].factory_status !== 'unknown') errs.push('listing_data підняв factory_status');
+      if (!r[0].provenance.length || r[0].provenance[0].type !== 'listing_data' || r[0].provenance[0].marketplace !== 'autoria') errs.push('provenance listing_data без marketplace');
+      /* visual + listing = Підтверджено, НЕ vehicle_data; обидва provenance живуть */
+      r = lib2.sanitizeEquipment([mk({ name: 'B&W', evidence: [ev('current_photos', 'photo_5', 'логотип на решітці'), ev('listing_data', 'опції площадки', 'акустика')] })], 'autoria');
+      if (r[0].confidence_level !== 'seller_and_visual') errs.push('visual+listing не Підтверджено: ' + r[0].confidence_level);
+      if (r[0].factory_status !== 'unknown') errs.push('visual+listing став factory');
+      if (r[0].provenance.length !== 2) errs.push('multiple provenance загублені після dedupe');
+      if (r[0].provenance.find(p => p.type === 'visual' && p.photo_id !== 'photo_5')) errs.push('visual provenance без photo_id');
+      /* visual-only лишається visual + factory_status unknown */
+      r = lib2.sanitizeEquipment([mk({ name: 'HUD', evidence: [ev('current_photos', 'photo_3', 'лінза')] })]);
+      if (r[0].confidence_level !== 'visual' || r[0].factory_status !== 'unknown') errs.push('visual-only попсований');
+      /* value_tier: невалідний = standard, не змінює рівень і provenance */
+      r = lib2.sanitizeEquipment([mk({ name: 'A', value_tier: 'mega', evidence: [ev('current_photos', 'photo_1', 'a')] }), mk({ name: 'B', value_tier: 'high_value', evidence: [ev('seller_claim', null, 'b')] })]);
+      if (r[0].value_tier !== 'standard') errs.push('невалідний value_tier не standard');
+      if (r[1].value_tier !== 'high_value' || r[1].confidence_level !== 'seller') errs.push('value_tier змінив рівень/загубився');
+      /* верифікатор: s_a_v(visual+listing) не пройшов -> listing_data, visual provenance геть */
+      const items = lib2.sanitizeEquipment([mk({ name: 'Sound', evidence: [ev('current_photos', 'photo_2', 'решітка'), ev('listing_data', 'опції', 'аудіо')] })], 'autoria');
+      const after = lib2.applyEquipmentVerifier(items, [{ name: 'Sound', verdict: 'not_confirmed' }]);
+      if (!after.length || after[0].confidence_level !== 'listing_data') errs.push('провалений visual+listing не впав у listing_data');
+      if (after[0].provenance.some(p => p.type === 'visual')) errs.push('visual provenance лишився після провалу');
+    }
+    /* сторожі: адаптер, промпт, тексти, чат */
+    if (!api.includes('listing_equipment: listingEquipment.slice(0, 60)')) errs.push('нема marketplace-адаптера');
+    if (!api.includes('source listing_data: структуровані поля площадки')) errs.push('промпт без секції listing_data');
+    if (!api.includes('НІКОЛИ не підвищує достовірність опцій')) errs.push('нема правила чесного wording');
+    if (!api.includes('"value_tier":"standard|notable|high_value"')) errs.push('схема без value_tier');
+    const chatApi = fs.readFileSync('api/chat.js', 'utf8');
+    if (!chatApi.includes('пріоритет у provenance')) errs.push('chat.js: structured provenance не пріоритетний');
+    if (!chatApi.includes('не посилайся на why_consider')) errs.push('chat.js: why_consider не виключений як доказ');
+    const pg3 = fs.readFileSync('result-check.html', 'utf8');
+    if (!pg3.includes("['listing_data', t('Дані оголошення')]")) errs.push('нема групи Дані оголошення');
+    if (!pg3.includes('eq-star')) errs.push('нема зірки high_value');
+    if (!pg3.includes("factory_status: o.factory_status")) errs.push('чат не отримує структуровану комплектацію');
+    for (const d of ['i18n/ru.js', 'i18n/en.js']) {
+      const dict = fs.readFileSync(d, 'utf8');
+      for (const k of ['Дані оголошення', 'Цінна опція', 'Виявлена по фото', 'Вказана в оголошенні']) {
+        if (!dict.includes("'" + k + "'")) errs.push('нема ключа "' + k + '" у ' + d);
+      }
+    }
+  }
+
   /* 6б. регресія історичних фото + historical_visual + timeline */
   {
     /* провенанс-виняток: usa_photos самої площадки проходять, generic ні */

@@ -280,10 +280,31 @@ function extractListing(html, url) {
     }
   }
 
+  /* marketplace adapter: структуровані опції площадки з embedded-даних
+     ВЖЕ завантаженої сторінки. Нормалізований плоский список іде в
+     загальний Equipment-пайплайн із source listing_data; downstream від
+     конкретної площадки не залежить: нема структурованих опцій, пайплайн
+     працює через Vision + seller_text + заводські дані */
+  const listingEquipment = [];
+  if (isRia) {
+    const seenOpt = new Set();
+    for (const m of html.matchAll(/"id":"desc[A-Za-z]+Value"[\s\S]{0,400}?"content":"([^"]{2,400})"/g)) {
+      /* значення-списки через " • " це опції; одиночні значення це
+         теххарактеристики (колір, коробка) і опціями не є */
+      const parts = m[1].split(' • ').map(x => x.trim()).filter(Boolean);
+      if (parts.length < 2) continue;
+      for (const p of parts) {
+        const key = p.toLowerCase();
+        if (!seenOpt.has(key)) { seenOpt.add(key); listingEquipment.push(p.slice(0, 60)); }
+      }
+    }
+  }
+
   return {
     domain, country: isRia ? 'UA' : null,
     title: title.slice(0, 200), vin, plate,
     seller_text: sellerText,
+    listing_equipment: listingEquipment.slice(0, 60),
     price, currency, odometer_km: odometerKm, year, make, model,
     photos, text: aiText,
     /* кадри "до ремонту" з аукціону США, збережені самою RIA */
@@ -660,10 +681,13 @@ export function sanitizeHistoricalVisual(hv, photosSent) {
    достовірності, рівня "ймовірно" не існує. Візуальне підтвердження без
    кадру і конкретної ознаки не існує. Філософія: краще пропустити опцію,
    ніж впевнено додати неіснуючу */
-export function sanitizeEquipment(list) {
+export function sanitizeEquipment(list, marketplace) {
   if (!Array.isArray(list)) return [];
-  const LEVELS = ['vehicle_data', 'seller_and_visual', 'visual', 'seller'];
+  const LEVELS = ['vehicle_data', 'seller_and_visual', 'visual', 'seller', 'listing_data'];
   const CATS = ['comfort', 'interior', 'multimedia', 'assist', 'exterior', 'performance'];
+  const TIERS = ['standard', 'notable', 'high_value'];
+  /* provenance-тип за первинним джерелом; display-група це НЕ evidence */
+  const PMAP = { vehicle_data: 'factory_data', current_photos: 'visual', seller_claim: 'seller', listing_data: 'listing_data', historical: 'historical' };
   const clean = v => (typeof v === 'string' && v.trim()) ? v.trim().replace(/\u2014/g, ',') : null;
   const seen = new Set();
   const out = [];
@@ -673,6 +697,8 @@ export function sanitizeEquipment(list) {
     if (!name) continue;
     const key = name.toLowerCase().replace(/\s+/g, ' ');
     if (seen.has(key)) continue;
+    /* захист від вигаданих рівнів на кшталт "ймовірно" */
+    if (raw.confidence_level != null && !LEVELS.includes(raw.confidence_level)) continue;
     const evidence = (Array.isArray(raw.evidence) ? raw.evidence : [])
       .filter(e => e && typeof e === 'object')
       .map(e => ({
@@ -681,27 +707,33 @@ export function sanitizeEquipment(list) {
         sign: clean(e.sign) ? clean(e.sign).slice(0, 200) : null,
       }))
       .filter(e => e.source)
-      .slice(0, 4);
+      .slice(0, 5);
     const visualEv = evidence.some(e => e.source === 'current_photos' && e.ref && e.sign);
     const sellerEv = evidence.some(e => e.source === 'seller_claim');
     const dataEv = evidence.some(e => e.source === 'vehicle_data' && e.sign);
+    const listEv = evidence.some(e => e.source === 'listing_data');
     const histEv = evidence.some(e => e.source === 'historical');
-    let level = LEVELS.includes(raw.confidence_level) ? raw.confidence_level : null;
-    if (!level) {
-      /* суто історична заява: зберігається в даних, не показується */
-      if (!(raw.historical_claim === true && histEv)) continue;
-    } else if (level === 'visual') {
-      /* візуальне без кадру і ознаки не показується як візуальне;
-         заява продавця, якщо вона є, лишається рівнем seller */
-      if (!visualEv) { if (sellerEv) level = 'seller'; else continue; }
-    } else if (level === 'seller_and_visual') {
-      if (!visualEv) { if (sellerEv) level = 'seller'; else continue; }
-      else if (!sellerEv) level = 'visual';
-    } else if (level === 'vehicle_data') {
-      if (!dataEv) continue;
-    } else if (level === 'seller') {
-      if (!sellerEv) continue;
-    }
+    /* display-рівень ДЕТЕРМІНОВАНО з первинних джерел, не зі слів моделі:
+       factory_data -> Дані авто; visual + listing/seller -> Підтверджено;
+       лише visual -> Видно на фото; лише listing_data -> Дані оголошення;
+       лише seller -> Зі слів продавця. "Підтверджено" НЕ означає
+       "підтверджено по VIN" */
+    let level;
+    if (dataEv) level = 'vehicle_data';
+    else if (visualEv && (sellerEv || listEv)) level = 'seller_and_visual';
+    else if (visualEv) level = 'visual';
+    else if (listEv) level = 'listing_data';
+    else if (sellerEv) level = 'seller';
+    else if (raw.historical_claim === true && histEv) level = null;
+    else continue;
+    const provenance = evidence.filter(e => PMAP[e.source]).map(e => {
+      const p = { type: PMAP[e.source] };
+      if (e.ref) p.ref = e.ref;
+      if (e.sign) p.evidence = e.sign;
+      if (e.source === 'current_photos' && e.ref && /^photo_\d+$/.test(e.ref)) p.photo_id = e.ref;
+      if (e.source === 'listing_data' && marketplace) p.marketplace = marketplace;
+      return p;
+    });
     const basis = clean(raw.retrofit_basis) ? clean(raw.retrofit_basis).slice(0, 200) : null;
     const retrofit = raw.retrofit === true && !!basis;
     out.push({
@@ -712,6 +744,10 @@ export function sanitizeEquipment(list) {
       retrofit,
       retrofit_basis: retrofit ? basis : null,
       historical_claim: raw.historical_claim === true,
+      /* value_tier це цінність, не достовірність: на рівень не впливає */
+      value_tier: TIERS.includes(raw.value_tier) ? raw.value_tier : 'standard',
+      factory_status: dataEv ? 'confirmed' : 'unknown',
+      provenance,
       evidence,
     });
     seen.add(key);
@@ -760,7 +796,9 @@ export function applyEquipmentVerifier(items, verdicts) {
     if (!bad.has(it.name.trim().toLowerCase().replace(/\s+/g, ' '))) { out.push(it); continue; }
     if (it.confidence_level === 'seller_and_visual') {
       const rest = it.evidence.filter(e => e.source !== 'current_photos');
-      if (rest.some(e => e.source === 'seller_claim')) out.push({ ...it, confidence_level: 'seller', evidence: rest });
+      const restProv = (it.provenance || []).filter(p => p.type !== 'visual');
+      if (rest.some(e => e.source === 'seller_claim')) out.push({ ...it, confidence_level: 'seller', evidence: rest, provenance: restProv });
+      else if (rest.some(e => e.source === 'listing_data')) out.push({ ...it, confidence_level: 'listing_data', evidence: rest, provenance: restProv });
     } else if (it.confidence_level !== 'visual') {
       out.push(it);
     }
@@ -837,6 +875,7 @@ ${JSON.stringify({ title: l.title, vin: l.vin, plate: l.plate, price: l.price, c
 ${l.text}
 
 Декодування VIN від NHTSA: ${nhtsa ? JSON.stringify(nhtsa) : 'недоступне'}
+${Array.isArray(l.listing_equipment) && l.listing_equipment.length ? 'СТРУКТУРОВАНІ ОПЦІЇ З ДАНИХ ОГОЛОШЕННЯ (source listing_data: структуровані поля площадки; це НЕ заводські дані і НЕ слова продавця): ' + JSON.stringify(l.listing_equipment) : ''}
 ${auction && auction.photos_sent ? `
 ІСТОРИЧНІ ФОТО ПОШКОДЖЕНОГО СТАНУ ДОСТУПНІ (${auction.photos_sent} кадрів, зроблені ДО ремонту, коли авто продавали пошкодженим).${auction.text ? '\nТекст архіву аукціону:\n' + auction.text.slice(0, 2500) : ''}
 ЦЕ НАЙЦІННІШЕ ДЖЕРЕЛО ЗВІТУ, і воно у тебе Є: писати "аукціонні фото недоступні" тепер прямо заборонено. Обовʼязково:
@@ -892,7 +931,9 @@ ${auction && auction.photos_sent ? `
 1) ATTENTION MAP: спершу сформуй подумки коротку карту характерних для цієї марки, моделі, покоління, року і версії опцій та місць, де зазвичай видно їх ознаки (логотип на решітці динаміка, кнопки вентиляції на консолі, проектор HUD на торпедо, камери в дзеркалах і решітці радіатора, шторки, память сидінь). Карта каже, КУДИ дивитись; наявність опції в карті НЕ доказ її присутності; впевнені знахідки поза картою теж фіксуй.
 2) ТЕКСТ ПРОДАВЦЯ: розбери, що заявлено, з нормалізацією народних назв (дистронік це адаптивний круїз, бурмістер це Burmester, панорама це панорамний дах, вебасто це автономний підігрів). Заява продавця це окреме джерело і НІЧОГО не підтверджує автоматично.
 3) ВІЗУАЛЬНИЙ ПРОХІД по фото оголошення: кожне візуальне підтвердження ЗОБОВʼЯЗАНЕ мати evidence з конкретним кадром (ref photo_N) і конкретною ознакою (sign: "логотип Harman Kardon на решітці динаміка передніх дверей", "кнопки вентиляції на центральній консолі"). Без ознаки на кадрі опція візуально НЕ підтверджена.
-- РІВНІ ДОСТОВІРНОСТІ, рівно чотири: vehicle_data (VIN-декод, техдані), seller_and_visual (продавець вказав І видно на фото), visual (видно на фото), seller (лише зі слів продавця). Рівня "ймовірно" НЕ існує. Візуальне твердження без достатнього візуального evidence не отримує visual чи seller_and_visual; явно заявлена продавцем опція при цьому лишається seller.
+- ДЖЕРЕЛА ОПЦІЙ (evidence source): vehicle_data (заводські/VIN-дані), current_photos (видно на фото), seller_claim (слова продавця), listing_data (структуровані поля оголошення площадки), historical. ОДНА опція з кількох джерел це ОДИН item з КІЛЬКОМА evidence, не дублікати. Рівень достовірності обчислює код із джерел; рівня "ймовірно" НЕ існує. Візуальне твердження без достатнього візуального evidence (кадр + ознака) візуальним не є; явно заявлена продавцем чи площадкою опція при цьому лишається зі своїм джерелом.
+- listing_data це дані ПЛОЩАДКИ, НЕ заводське підтвердження: ніколи не перетворюй їх на "підтверджено по VIN". Опція одночасно в listing_data і на фото: обидва evidence в одному item.
+- "value_tier": standard | notable | high_value для КОЖНОЇ опції, з урахуванням марки, моделі, покоління, року і версії. high_value це помітна upper-tier чи дорога опція саме для цієї моделі (Bowers & Wilkins на відповідній BMW може бути high_value). Це якісна класифікація, НЕ ціна: вартість і вплив на ціну авто не пиши. value_tier НЕ впливає на достовірність і джерела.
 - ПОМИЛКА ІДЕНТИФІКАЦІЇ ГІРША ЗА ПРОПУСК: при сумніві в бренді чи пакеті пиши клас опції без бренда ("преміум-аудіо"); бренд лише при читабельному логотипі чи прямій ознаці. КНОПКИ ДОКАЗУЮТЬ КНОПКИ: для функцій, видимих лише органами керування, формулюй наявність органів керування ("кнопки вентиляції сидінь"), не працездатність функції. Заводське походження по зовнішньому вигляду НЕ стверджуй: "M Sport стилістика", не "заводський пакет M Sport".
 - RETROFIT: retrofit true ЛИШЕ з прямою підставою, записаною в retrofit_basis: явно вказано продавцем чи історією, підтверджено structured data, або однозначна несумісність елемента із заводською конфігурацією чи model year (рестайлінгова оптика на дорестайлінговому кузові). Не можеш довести походження: опиши видимий елемент без твердження, що його встановили пізніше, retrofit false. Тон нейтральний, без оцінок і без "варто перевірити".
 - ІСТОРИЧНІ ДЖЕРЕЛА (минулі оголошення, аукціонна картка з наявного контексту): це НЕ слова поточного продавця, рівень seller їм не давай. Опція лише з історичного джерела: historical_claim true, confidence_level null (зберігається в даних, не показується). Якщо поточні фото її підтверджують: рівень visual чи seller_and_visual за поточним оголошенням, historical_claim лиши true.
@@ -943,6 +984,8 @@ METADATA EXACT-LOT (надійний historical, джерело ${auctionMeta.so
 
 "verdict.grade": buy (брати, істотних проблем не знайдено), inspect (можна брати після конкретних перевірок), caution (є серйозні розбіжності, торг або обережність), avoid (знайдені факти прямо суперечать оголошенню або ризик надто високий). Оцінюй відносно ринку вживаних авто: сліди експлуатації це норма, а не привід для avoid. Але приховування фактів продавцем (знайдене ДТП при "без ДТП") завжди мінімум caution.
 
+КОМПЛЕКТАЦІЯ В ТЕКСТАХ: згенерований текст НІКОЛИ не підвищує достовірність опцій понад їх джерела. visual не перетворюється на "заводську комплектацію" чи "підтверджено по VIN"; замість "багата підтверджена комплектація" при змішаних джерелах пиши чесно: "багате оснащення за фото і даними оголошення". Згадуючи конкретну ВАЖЛИВУ опцію, тримай рівень джерела: "Bowers & Wilkins видно на фото", "адаптивний круїз вказаний в оголошенні", "HUD вказаний в оголошенні і видно на фото". Біля звичайних опцій джерело підписувати не обовʼязково.
+
 ІСТОРИЧНИЙ ВІЗУАЛ І РІШЕННЯ: purchase_decision ЗОБОВʼЯЗАНИЙ враховувати historical_visual РАЗОМ з фактами історії, поточними фото, заявами продавця, пробігом і болячками моделі, і РОЗРІЗНЯТИ три різні ситуації: (1) видимі ознаки тяжкого/структурного пошкодження; (2) явних тяжких структурних ознак на доступних кадрах НЕ видно; (3) прихована структура, геометрія і SRS лишаються неперевіреними. Друга і третя співіснують: тоді формулюй "на історичному фото видно помітний удар спереду; явних ознак тяжкої деформації силової структури чи зони салону на доступному ракурсі нема, але приховані елементи, геометрію і SRS за цим фото підтвердити не можна". НЕ пиши так, ніби тяжке пошкодження вже знайдене, якщо visual evidence його не показує; і НЕ називай удар мінімальним, якщо на кадрах видно суттєве пошкодження.
 
 ${DECISION_RULES}${decisionStyle === 'a' ? DECISION_FEWSHOT : ''}
@@ -952,7 +995,7 @@ ${DECISION_RULES}${decisionStyle === 'a' ? DECISION_FEWSHOT : ''}
  "auction": {"found":true,"summary":"2-4 речення: що сталося з авто в США за архівом, реальний обсяг пошкоджень по фото, чи чесно продавець його описує","findings":[{"status":"ok|warn|bad|unknown","text":"порівняння до/після, 1 речення"}]},
  "historical_visual": {"visible_damage_zones":["капот","передній бампер"],"visible_severity":"minor|moderate|severe|indeterminate","structural_visual_status":"no_obvious_severe_signs|possible|visible_damage|indeterminate","srs_visual_status":"deployed_visible|no_deployment_visible|not_visible|indeterminate","summary":"2-3 речення: що реально видно і що лишається невідомим","evidence":[{"source":"us_auction","ref":"auction_photo_1","description":"зім'ятий капот"}]},
  "risks":[{"title":"назва ризику","level":"high|med|low","note":"1-2 речення: чому це головна стаття витрат чи ризику саме тут","action":"конкретна перевірка до покупки, 1 рядок"}],
- "equipment_v2":[{"name":"вентиляція передніх сидінь","category":"comfort|interior|multimedia|assist|exterior|performance","confidence_level":"vehicle_data|seller_and_visual|visual|seller, або null лише для суто історичної","highlight":false,"retrofit":false,"retrofit_basis":null,"historical_claim":false,"evidence":[{"source":"vehicle_data|current_photos|seller_claim|historical","ref":"photo_7 чи vin_decode чи назва історичного джерела","sign":"конкретна ознака на кадрі чи коротка цитата джерела"}]}],
+ "equipment_v2":[{"name":"вентиляція передніх сидінь","category":"comfort|interior|multimedia|assist|exterior|performance","confidence_level":"vehicle_data|seller_and_visual|visual|seller, або null лише для суто історичної","highlight":false,"retrofit":false,"retrofit_basis":null,"historical_claim":false,"value_tier":"standard|notable|high_value","evidence":[{"source":"vehicle_data|current_photos|seller_claim|listing_data|historical","ref":"photo_7 чи vin_decode чи назва історичного джерела","sign":"конкретна ознака на кадрі чи коротка цитата джерела"}]}],
  "discrepancies":[{"severity":"high|med|low","title":"коротка назва розбіжності","detail":"2-3 речення: що стверджується, що знайдено, звідки","sources":["опис продавця","перевірка площадки","фото","VIN"]}],
  "history":[{"date":"MM.YYYY або YYYY","event":"1 рядок: подія з історії авто","gap":"тривалість від попередньої події ('2 роки 3 місяці') або null"}],
  "history_note":"1 рядок ЛИШЕ якщо патерн незвичний (наприклад 3 переоформлення за 5 місяців), без спекуляцій про причини; якщо історія звичайна: null",
@@ -1338,7 +1381,7 @@ export default async function handler(req, res) {
        комплектація ніколи не стає причиною таймауту Check */
     let eqVerifier = { status: 'skipped', reason: 'no_claims' };
     try {
-      parsed.equipment_v2 = sanitizeEquipment(parsed.equipment_v2);
+      parsed.equipment_v2 = sanitizeEquipment(parsed.equipment_v2, /(^|\.)auto\.ria\.com$/.test(listing.domain || '') ? 'autoria' : (listing.domain || null));
       const claims = selectEquipmentClaims(parsed.equipment_v2);
       const elapsedEq = Date.now() - t0;
       if (!claims.length) {
