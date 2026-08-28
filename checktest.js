@@ -363,6 +363,9 @@ const REPORTS = [
     {
       const chatApi2 = fs.readFileSync('api/chat.js', 'utf8');
       if (!chatApi2.includes('НЕ починай відповідь безумовним "так, система є"')) errs.push('chat.js: помічник підвищує visual до підтвердженої системи');
+      if (!chatApi2.includes('відмітив X за маркуванням/візуальними ознаками')) errs.push('chat.js: рамка досі "визначив систему"');
+      if (!chatApi2.includes('маркування підтверджує маркування, не систему цілком')) errs.push('chat.js: visual evidence семантично підтверджує всю систему');
+      if (chatApi2.includes('тому CalCar визначив X візуально;')) errs.push('chat.js: старе формулювання лишилось');
       if (!chatApi2.includes('це підробка чи лише накладки: цього ми теж не знаємо')) errs.push('chat.js: нема заборони на "підробку"');
     }
     /* explicit retrofit-доказ як і раніше допустимий (санітайзер) */
