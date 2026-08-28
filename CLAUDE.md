@@ -121,6 +121,29 @@ Claude Code має право самостійно вносити звичайн
 
 Не копіювати одну й ту саму сутність у кілька незалежних форматів без потреби.
 
+## Шар накопичення знань
+
+Схема: `supabase-knowledge.sql` (застосовує власник вручну). Що де копиться:
+
+- `option_dict` / `option_alias`: словник опцій (канонічні імена і синоніми).
+- `equipment_observation` (+`_evidence`): спостереження комплектації конкретних
+  VIN із кожного Check; ідемпотентні в межах снапшота, старі снапшоти ніколи
+  не перезаписуються. ABSENT лише від джерела, здатного довести відсутність.
+- `issue_observation` (+`_evidence`): ЛИШЕ vehicle-specific знахідки з
+  первинним доказом (`event_key` = конкретна подія, `issue_key` = семантика
+  проблеми). Типові слабкі місця моделі і generic-ризики сюди не пишуться.
+- `observation_coverage`: чесний знаменник (visual завжди partial;
+  повний перегляд галереї це окремий `gallery_complete`).
+- `model_option_catalog` / `model_issue_catalog`: каталоги моделей, заповнює
+  лише `knowledge-seed.js` (запуск руками), кожен факт із source_url і
+  evidence_excerpt.
+- `derived_option_stats` / `derived_issue_stats`: rebuildable кеш,
+  перераховує `knowledge-recompute.js` (руками/розкладом, НЕ з Check);
+  частоти по унікальних VIN.
+
+Пише спостереження хук у `api/check.js` (writeKnowledge) після успішного
+Check; помилка хука не ламає Check. Тести: `knowledgetest.js`.
+
 ## Стратегічний напрямок
 
 CalCar будується не як локальний український VIN-checker, а як майбутня глобальна automotive intelligence platform.

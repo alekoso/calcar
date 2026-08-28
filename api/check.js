@@ -280,6 +280,14 @@ function extractListing(html, url) {
     }
   }
 
+  /* покоління з structured-поля площадки: заповнюється лише коли надійно
+     відоме, інакше null (не вгадуємо) */
+  let generation = null;
+  if (isRia) {
+    const g = /"id":"basicInfoGenerationBase"[\s\S]{0,300}?"content":"([A-Za-z0-9][A-Za-z0-9\- ]{0,18}?)\s*(?:•|")/.exec(html);
+    if (g && g[1].trim()) generation = g[1].trim().slice(0, 20);
+  }
+
   /* marketplace adapter: структуровані опції площадки з embedded-даних
      ВЖЕ завантаженої сторінки. Нормалізований плоский список іде в
      загальний Equipment-пайплайн із source listing_data; downstream від
@@ -312,6 +320,7 @@ function extractListing(html, url) {
     domain, country: isRia ? 'UA' : null,
     title: title.slice(0, 200), vin, plate,
     seller_text: sellerText,
+    generation,
     listing_equipment: listingEquipment.slice(0, 60),
     price, currency, odometer_km: odometerKm, year, make, model,
     photos, text: aiText,
@@ -374,13 +383,13 @@ async function fetchAuction(url) {
 /* ---------- 4. Знімок у рів даних ---------- */
 async function saveSnapshot(l, url) {
   const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!base || !key) return 'env_missing';
+  if (!base || !key) return { status: 'env_missing', id: null };
   try {
     const r = await fetch(base.replace(/\/$/, '') + '/rest/v1/vehicle_snapshots', {
       method: 'POST',
       headers: {
         apikey: key, authorization: 'Bearer ' + key,
-        'content-type': 'application/json', prefer: 'return=minimal',
+        'content-type': 'application/json', prefer: 'return=representation',
       },
       body: JSON.stringify({
         vin: l.vin, plate: l.plate,
@@ -391,8 +400,10 @@ async function saveSnapshot(l, url) {
         photos: l.photos.slice(0, 20),
       }),
     });
-    return r.ok ? 'saved' : 'error_' + r.status;
-  } catch (e) { return 'error'; }
+    if (!r.ok) return { status: 'error_' + r.status, id: null };
+    const rows = await r.json().catch(() => []);
+    return { status: 'saved', id: Array.isArray(rows) && rows[0] ? rows[0].id : null };
+  } catch (e) { return { status: 'error', id: null }; }
 }
 
 /* ---------- 4б. Історія рову даних для Score v2 ----------
@@ -813,6 +824,274 @@ export function applyEquipmentVerifier(items, verdicts) {
     /* visual, що не пройшов: видалено */
   }
   return out;
+}
+
+/* ---------- 4д. Шар накопичення знань: спостереження з Check ----------
+   Чисті build-функції формують рядки для equipment_observation /
+   issue_observation / observation_coverage, мережею їх пише writeKnowledge.
+   Правила чесності:
+   - ABSENT дозволений ЛИШЕ від джерела, здатного довести відсутність
+     (vehicle_data чи document); Vision, продавець і опції площадки дають
+     PRESENT або UNKNOWN;
+   - суто historical evidence НЕ підтверджує PRESENT для поточного
+     снапшота: стан UNKNOWN;
+   - visual-покриття комплектації завжди partial: повний перегляд галереї
+     не означає повний перелік опцій (він живе в gallery_complete);
+   - у issue_observation йдуть ЛИШЕ vehicle-specific знахідки з конкретним
+     первинним доказом; типові слабкі місця моделі (model_notes), generic-
+     ризики і згенерований reasoning НЕ пишуться ніколи */
+
+export function normalizeOptionAlias(name) {
+  return String(name || '').toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 80);
+}
+
+/* детермінований ключ доказу: без залежностей, djb2 у hex */
+export function evidenceKey(e) {
+  const raw = [e.source_type, e.source_ref, e.source_url, e.description].map(v => v || '').join('|');
+  let h1 = 5381, h2 = 52711;
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw.charCodeAt(i);
+    h1 = ((h1 * 33) ^ c) >>> 0;
+    h2 = ((h2 * 31) ^ c) >>> 0;
+  }
+  return h1.toString(16) + h2.toString(16);
+}
+
+/* ABSENT лише від доказу, здатного довести відсутність */
+export function absentAllowed(evidence) {
+  return (Array.isArray(evidence) ? evidence : []).some(e =>
+    e && (e.source_type === 'vehicle_data' || e.source_type === 'document'));
+}
+
+const KNOWLEDGE_SOURCE_MAP = { factory_data: 'vehicle_data', visual: 'visual', listing_data: 'listing_data', seller: 'seller_text', historical: 'historical', document: 'document' };
+
+export function buildEquipmentObservations(parsed, listing, snapshotId) {
+  const items = Array.isArray(parsed && parsed.equipment_v2) ? parsed.equipment_v2 : [];
+  const v = (parsed && parsed.vehicle) || {};
+  const out = [];
+  for (const it of items) {
+    if (!it || !it.name) continue;
+    const evidence = (Array.isArray(it.provenance) ? it.provenance : [])
+      .filter(p => p && KNOWLEDGE_SOURCE_MAP[p.type])
+      .map(p => {
+        const ev = {
+          source_type: KNOWLEDGE_SOURCE_MAP[p.type],
+          source_ref: p.ref || p.photo_id || null,
+          source_url: null,
+          description: p.evidence || null,
+          /* historical стверджує минуле, не поточний снапшот */
+          claim_state: KNOWLEDGE_SOURCE_MAP[p.type] === 'historical' ? 'UNKNOWN' : 'PRESENT',
+          /* реальний per-evidence рівень у Check відсутній: не вигадуємо
+             його з display-групи, лишаємо null */
+          confidence: null,
+        };
+        ev.evidence_key = evidenceKey(ev);
+        return ev;
+      });
+    if (!evidence.length) continue;
+    /* стан поточного снапшота: суто historical = UNKNOWN, ABSENT з Check
+       не буває (довідного джерела відсутності в пайплайні нема) */
+    const onlyHistorical = evidence.every(e => e.source_type === 'historical');
+    const state = onlyHistorical ? 'UNKNOWN' : 'PRESENT';
+    const conf = it.confidence_level === 'vehicle_data' || it.confidence_level === 'seller_and_visual' ? 'high'
+      : it.confidence_level === 'visual' || it.confidence_level === 'listing_data' ? 'medium' : 'low';
+    out.push({
+      option_name: String(it.name).slice(0, 80),
+      option_category: it.category || 'other',
+      observation: {
+        vin: listing.vin, snapshot_id: snapshotId, check_id: null,
+        state, confidence: it.confidence_level ? conf : null,
+        retrofit: it.retrofit === true,
+        make: listing.make || null, model: listing.model || null, generation: listing.generation || null,
+        model_year: listing.year || null,
+        listing_market: listing.country || null,
+        factory_market: null,
+        engine: v.engine || null, trim: v.trim || null, drive: undefined, drivetrain: v.drive || null,
+      },
+      evidence,
+    });
+  }
+  return out;
+}
+
+export function validateEquipmentObservation(row) {
+  /* захисний шар перед записом: ABSENT без довідного доказу відхиляється */
+  if (row.observation.state === 'ABSENT' && !absentAllowed(row.evidence)) return false;
+  return true;
+}
+
+const ISSUE_TYPE_BY_SOURCE = { historical: 'historical_record', visual: 'visible_defect', document: 'document', seller_text: 'seller_statement', vehicle_data: 'inspection_record', listing_data: 'historical_record' };
+
+export function buildIssueObservations(parsed, listing, snapshotId) {
+  /* ЛИШЕ vehicle-specific знахідки з конкретним первинним доказом.
+     model_notes (типові слабкі місця версії), risks і reasoning сюди не
+     читаються ВЗАГАЛІ: заборона архітектурна, не фільтр */
+  const out = [];
+  const v = (parsed && parsed.vehicle) || {};
+  const base = () => ({
+    vin: listing.vin, snapshot_id: snapshotId, check_id: null,
+    make: listing.make || null, model: listing.model || null, generation: listing.generation || null,
+    model_year: listing.year || null, listing_market: listing.country || null, factory_market: null,
+    engine: v.engine || null, trim: v.trim || null, drivetrain: v.drive || null,
+  });
+  const findings = Array.isArray(parsed && parsed.score_facts && parsed.score_facts.findings)
+    ? parsed.score_facts.findings : [];
+  const SRC = { us_auction: 'historical', historical_listing: 'historical', registry: 'historical', current_photos: 'visual', document: 'document', seller_claim: 'seller_text' };
+  for (const fnd of findings) {
+    if (!fnd || !fnd.type || !fnd.event_id) continue;
+    const evidence = (Array.isArray(fnd.evidence) ? fnd.evidence : [])
+      .filter(e => e && SRC[e.source] && (e.ref || e.description))
+      .map(e => {
+        const ev = { source_type: SRC[e.source], source_ref: e.ref || null, source_url: null, description: e.description || null, confidence: null };
+        ev.evidence_key = evidenceKey(ev);
+        return ev;
+      });
+    /* сам факт присутності у score_facts недостатній: без конкретного
+       первинного доказу спостереження не створюється */
+    if (!evidence.length) continue;
+    out.push({
+      observation: Object.assign(base(), {
+        issue_type: ISSUE_TYPE_BY_SOURCE[evidence[0].source_type] || 'historical_record',
+        event_key: String(fnd.event_id).slice(0, 120),
+        issue_key: String(fnd.type).slice(0, 60),
+        title: String(fnd.type).slice(0, 120),
+        detail: (evidence[0].description || '').slice(0, 300) || null,
+      }),
+      evidence,
+    });
+  }
+  /* офіційний запис про ДТП із держ/історичного блоку площадки */
+  const hf = listing.history_facts || {};
+  if (hf.accident_recorded === true) {
+    const ev = { source_type: 'historical', source_ref: 'ria_history_block', source_url: null, description: (hf.accident_note || 'Зафіксовано ДТП').slice(0, 200), confidence: null };
+    ev.evidence_key = evidenceKey(ev);
+    out.push({
+      observation: Object.assign(base(), {
+        issue_type: 'historical_record',
+        event_key: 'platform_accident_record',
+        issue_key: 'ACCIDENT_RECORDED',
+        title: 'Зафіксовано ДТП (запис площадки)',
+        detail: (hf.accident_note || '').slice(0, 300) || null,
+      }),
+      evidence: [ev],
+    });
+  }
+  return out;
+}
+
+export function buildCoverageRows(parsed, listing, snapshotId, meta) {
+  const rows = [];
+  const ps = (meta && meta.photo_selection) || {};
+  const types = (ps.selector && Array.isArray(ps.selector.types)) ? [...new Set(ps.selector.types)] : [];
+  /* visual для комплектації ЗАВЖДИ partial: повний перегляд галереї не
+     означає повний перелік опцій; факт перегляду всієї галереї окремо */
+  rows.push({
+    vin: listing.vin, snapshot_id: snapshotId, source_type: 'visual',
+    completeness: 'partial',
+    gallery_complete: ps.gallery_coverage_complete === true,
+    covered_areas: types.length ? types : (ps.gallery_coverage_complete ? ['all_frames'] : ['sampled_frames']),
+  });
+  if (Array.isArray(listing.listing_equipment) && listing.listing_equipment.length) {
+    rows.push({ vin: listing.vin, snapshot_id: snapshotId, source_type: 'listing_data', completeness: 'partial', gallery_complete: null, covered_areas: ['structured_options'] });
+  }
+  if (listing.seller_text) {
+    rows.push({ vin: listing.vin, snapshot_id: snapshotId, source_type: 'seller_text', completeness: 'partial', gallery_complete: null, covered_areas: ['seller_description'] });
+  }
+  return rows;
+}
+
+/* мережевий запис: батчами через PostgREST, on_conflict=ignore.
+   Помилка тут НІКОЛИ не ламає Check: лише лог */
+async function writeKnowledge(parsed, listing, snapshotId, meta) {
+  const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!base || !key || !snapshotId || !listing.vin) return 'skipped';
+  const api = (path, opts) => fetch(base.replace(/\/$/, '') + '/rest/v1/' + path, Object.assign({
+    headers: Object.assign({ apikey: key, authorization: 'Bearer ' + key, 'content-type': 'application/json' }, (opts && opts.headers) || {}),
+  }, opts));
+  const eqRows = buildEquipmentObservations(parsed, listing, snapshotId).filter(validateEquipmentObservation);
+  const issueRows = buildIssueObservations(parsed, listing, snapshotId);
+  const covRows = buildCoverageRows(parsed, listing, snapshotId, meta);
+  if (!eqRows.length && !issueRows.length && !covRows.length) return 'empty';
+
+  /* 1. словник опцій: alias -> option_id, відсутні опції створюються */
+  const aliasMap = {};
+  if (eqRows.length) {
+    const norms = [...new Set(eqRows.map(r => normalizeOptionAlias(r.option_name)))];
+    const got = await api('option_alias?alias_norm=in.(' + norms.map(encodeURIComponent).join(',') + ')&select=alias_norm,option_id');
+    for (const row of (await got.json().catch(() => [])) || []) aliasMap[row.alias_norm] = row.option_id;
+    const missing = eqRows.filter(r => !aliasMap[normalizeOptionAlias(r.option_name)]);
+    if (missing.length) {
+      const uniq = new Map();
+      for (const r of missing) uniq.set(normalizeOptionAlias(r.option_name), r);
+      const ins = await api('option_dict?on_conflict=canonical_name', {
+        method: 'POST',
+        headers: { prefer: 'resolution=ignore-duplicates,return=representation' },
+        body: JSON.stringify([...uniq.values()].map(r => ({ canonical_name: r.option_name, category: ['comfort','interior','multimedia','assist','exterior','performance','safety'].includes(r.option_category) ? r.option_category : 'other' }))),
+      });
+      const created = (await ins.json().catch(() => [])) || [];
+      const reread = await api('option_dict?canonical_name=in.(' + [...uniq.values()].map(r => encodeURIComponent(r.option_name)).join(',') + ')&select=option_id,canonical_name');
+      for (const row of [...created, ...((await reread.json().catch(() => [])) || [])]) {
+        aliasMap[normalizeOptionAlias(row.canonical_name)] = row.option_id;
+      }
+      await api('option_alias?on_conflict=alias_norm', {
+        method: 'POST', headers: { prefer: 'resolution=ignore-duplicates' },
+        body: JSON.stringify([...uniq.keys()].filter(nrm => aliasMap[nrm]).map(nrm => ({ alias_norm: nrm, alias: uniq.get(nrm).option_name, lang: null, option_id: aliasMap[nrm] }))),
+      });
+    }
+  }
+
+  /* 2. спостереження комплектації: ідемпотентно, старі не перезаписуються */
+  let eqSaved = 0, evSaved = 0;
+  const eqValid = eqRows.filter(r => aliasMap[normalizeOptionAlias(r.option_name)]);
+  if (eqValid.length) {
+    await api('equipment_observation?on_conflict=vin,snapshot_id,option_id', {
+      method: 'POST', headers: { prefer: 'resolution=ignore-duplicates' },
+      body: JSON.stringify(eqValid.map(r => {
+        const o = { ...r.observation, option_id: aliasMap[normalizeOptionAlias(r.option_name)] };
+        delete o.drive;
+        return o;
+      })),
+    });
+    const ids = await api('equipment_observation?snapshot_id=eq.' + snapshotId + '&select=id,option_id');
+    const idMap = {};
+    for (const row of (await ids.json().catch(() => [])) || []) idMap[row.option_id] = row.id;
+    const evRows = [];
+    for (const r of eqValid) {
+      const oid = idMap[aliasMap[normalizeOptionAlias(r.option_name)]];
+      if (!oid) continue;
+      for (const e of r.evidence) evRows.push({ observation_id: oid, ...e });
+    }
+    eqSaved = eqValid.length; evSaved = evRows.length;
+    if (evRows.length) await api('equipment_observation_evidence?on_conflict=observation_id,evidence_key', {
+      method: 'POST', headers: { prefer: 'resolution=ignore-duplicates' }, body: JSON.stringify(evRows),
+    });
+  }
+
+  /* 3. знахідки машини */
+  if (issueRows.length) {
+    await api('issue_observation?on_conflict=vin,snapshot_id,event_key', {
+      method: 'POST', headers: { prefer: 'resolution=ignore-duplicates' },
+      body: JSON.stringify(issueRows.map(r => r.observation)),
+    });
+    const ids = await api('issue_observation?snapshot_id=eq.' + snapshotId + '&select=id,event_key');
+    const idMap = {};
+    for (const row of (await ids.json().catch(() => [])) || []) idMap[row.event_key] = row.id;
+    const evRows = [];
+    for (const r of issueRows) {
+      const oid = idMap[r.observation.event_key];
+      if (!oid) continue;
+      for (const e of r.evidence) evRows.push({ observation_id: oid, ...e });
+    }
+    if (evRows.length) await api('issue_observation_evidence?on_conflict=observation_id,evidence_key', {
+      method: 'POST', headers: { prefer: 'resolution=ignore-duplicates' }, body: JSON.stringify(evRows),
+    });
+  }
+
+  /* 4. покриття */
+  if (covRows.length) await api('observation_coverage?on_conflict=snapshot_id,source_type', {
+    method: 'POST', headers: { prefer: 'resolution=ignore-duplicates' }, body: JSON.stringify(covRows),
+  });
+  return 'saved eq=' + eqSaved + ' ev=' + evSaved + ' issues=' + issueRows.length + ' cov=' + covRows.length;
 }
 
 /* ---------- 5. AI-розбір ---------- */
@@ -1280,7 +1559,7 @@ export default async function handler(req, res) {
     console.log('[check]', listing.domain,
       '| vin', listing.vin ? 'yes' : 'no',
       '| photos', photoUrls.length,
-      '| snapshot', snapshot,
+      '| snapshot', snapshot.status,
       '| ai', Date.now() - t0, 'ms',
       '| tokens', JSON.stringify(data?.usage || {}));
 
@@ -1460,10 +1739,18 @@ export default async function handler(req, res) {
       auction_meta: auctionSearch && auctionSearch.status === 'found'
         ? { house: auctionSearch.house || null, date: auctionSearch.sale_date || null }
         : null,
-      snapshot,
+      snapshot: snapshot.status,
       equipment_verifier: eqVerifier,
       analyzed_at: new Date().toISOString(),
     };
+    /* шар знань: спостереження цього Check. Ніколи не ламає відповідь */
+    try {
+      const kn = await writeKnowledge(parsed, listing, snapshot.id, parsed._meta);
+      console.log('[knowledge]', kn);
+    } catch (e) {
+      console.log('[knowledge] хук впав, Check не зачеплений:', e.message);
+    }
+
     return res.status(200).json(parsed);
   } catch (e) {
     if (e.name === 'AbortError') {
