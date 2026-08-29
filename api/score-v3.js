@@ -698,7 +698,7 @@ export const DIMENSION_LABELS = {
   history: 'Історія авто',
   mileage: 'Пробіг',
   damage_repair: 'Пошкодження та відновлення',
-  current_condition: 'Поточний стан',
+  current_condition: 'Стан за фото',
   technical: 'Технічні ризики',
 };
 export const RISK_LABELS = {
@@ -782,7 +782,10 @@ export function computeDimensions(input, dc = SCORE_DIMENSIONS_CONFIG) {
     techPen += serious ? dc.TECH_MOD_SERIOUS : dc.TECH_MOD;
     techFactors.push(serious ? 'serious_modification_unverified' : 'technical_modification');
   }
-  const technical = dim(earned('current_photos') || techFactors.length > 0, techPen, techFactors);
+  /* доступна ЛИШЕ коли є конкретний технічний факт по ЦІЙ машині
+     (несправність SRS/powertrain, суттєва модифікація тощо): достатня
+     кількість фото сама по собі технічну вісь НЕ відкриває */
+  const technical = dim(techFactors.length > 0, techPen, techFactors);
 
   return { history, mileage, damage_repair, current_condition, technical };
 }

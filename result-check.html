@@ -459,6 +459,7 @@
   .dim-track{height:4px;border-radius:2px;background:var(--line);overflow:hidden}
   .dim-track i{display:block;height:100%;border-radius:2px;background:var(--ink)}
   .dim-track.na{background:transparent}
+  .dim-limit{color:var(--faint);font-size:12.5px;padding-top:10px;border-top:1px solid var(--line)}
   @media (max-width:480px){
     .dim-row{grid-template-columns:minmax(0,1fr) 64px 34px;gap:10px}
     .dim-lbl{white-space:normal;line-height:1.3;font-size:13px}
@@ -791,6 +792,7 @@
         <span class="dim-risk" id="dimRisk"></span>
       </div>
       <div class="dim-rows" id="dimRows"></div>
+      <div class="dim-limit" id="dimLimit" style="display:none"></div>
     </div>
   </div>
 
@@ -1220,7 +1222,7 @@ function boot2(D){
         $('dimName').textContent = t('Оцінка CalCar:').replace(/:\s*$/, '');
         $('dimVal').textContent = sc.toFixed(1);
         $('dimRisk').textContent = riskLabel;
-        const ORDER = [['history', 'Історія авто'], ['mileage', 'Пробіг'], ['damage_repair', 'Пошкодження та відновлення'], ['current_condition', 'Поточний стан'], ['technical', 'Технічні ризики']];
+        const ORDER = [['history', 'Історія авто'], ['mileage', 'Пробіг'], ['damage_repair', 'Пошкодження та відновлення'], ['current_condition', 'Стан за фото'], ['technical', 'Технічні ризики']];
         $('dimRows').innerHTML = ORDER.map(([k, lbl]) => {
           const d = dims[k] || {};
           const val = d.score_available === true && typeof d.score === 'number' ? d.score : null;
@@ -1228,6 +1230,24 @@ function boot2(D){
             + '<span class="dim-track' + (val === null ? ' na' : '') + '">' + (val !== null ? '<i style="width:' + Math.round(val * 10) + '%"></i>' : '') + '</span>'
             + '<b class="dim-num' + (val === null ? ' na' : '') + '">' + (val === null ? '–' : val.toFixed(1)) + '</b></div>';
         }).join('');
+        const lim = bd2.limiting_factors || [];
+        const capName = lim.find(l => typeof l === 'string' && l.indexOf('hard_cap:') === 0);
+        const CAP_WHY = {
+          FLOOD: 'через затоплення', FIRE: 'через пожежу',
+          ODOMETER_ROLLBACK: 'через скручений пробіг',
+          VIN_IDENTITY_PROBLEM: 'через проблему ідентичності VIN',
+          STRUCTURAL_UNRESOLVED: 'через непідтверджене відновлення після структурного пошкодження',
+          SRS_STRONG_EVIDENCE: 'через ризик SRS',
+        };
+        const limEl = $('dimLimit');
+        if (capName && CAP_WHY[capName.slice(9)]) {
+          const capRow = (bd2.applied_hard_caps || []).find(c => c.name === capName);
+          limEl.textContent = t('Максимум') + ' ' + (capRow ? capRow.value.toFixed(1) : sc.toFixed(1)) + ' ' + t(CAP_WHY[capName.slice(9)]);
+          limEl.style.display = '';
+        } else if (lim.indexOf('coverage') >= 0) {
+          limEl.textContent = t('Оцінку обмежує повнота даних');
+          limEl.style.display = '';
+        }
       }
     }
     /* tooltip щита: hover/focus на desktop, tap на mobile, закриття кліком поза */

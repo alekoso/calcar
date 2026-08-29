@@ -385,11 +385,15 @@ const THIN = {
   if (!b.score_dimensions) errs.push('score_dimensions нема в breakdown');
   const sevCase = accCase({ structural: true, airbags: true, zones: 2 }, 'unknown');
   if (sevCase.final !== 5.5) errs.push('фінал severe-кейса змінився після dimensions: ' + sevCase.final);
-  /* чиста перевірена машина: осі доступні і 10, БЕЗ проблем = 10 це
-     "перевірили і не знайшли", не фейк */
-  for (const k of ['history', 'mileage', 'damage_repair', 'current_condition', 'technical']) {
+  /* чиста перевірена машина: перевірені осі дають чесні 10, а Технічні
+     ризики БЕЗ конкретного технічного evidence недоступні: достатня
+     кількість фото сама по собі цю вісь не відкриває */
+  for (const k of ['history', 'mileage', 'damage_repair', 'current_condition']) {
     const d = b.score_dimensions[k];
     if (!d || d.score_available !== true || d.score !== 10) errs.push('чиста перевірена: вісь ' + k + ' мала бути 10: ' + JSON.stringify(d));
+  }
+  if (b.score_dimensions.technical.score_available !== false || b.score_dimensions.technical.score !== null) {
+    errs.push('фото без технічного evidence: technical мав бути unavailable, а не ' + JSON.stringify(b.score_dimensions.technical));
   }
   /* нема даних != 10/10: непідтверджені домени дають unavailable і null */
   b = score([], { identity_confirmed: true, photos_count: 3, basics_known: true, mileage_known: true, historical_listings_count: 1, mileage_observation_count: 0, auction_record_exists: false });
@@ -408,9 +412,10 @@ const THIN = {
   if (!(confDim.score - rollDim.score >= 3)) errs.push('Mileage: rollback мало відрізняється від конфлікту: ' + rollDim.score + ' vs ' + confDim.score);
   /* історичне ДТП САМО не знижує Поточний стан */
   if (sevDim.current_condition.score !== 10) errs.push('історичне ДТП знизило current_condition: ' + sevDim.current_condition.score);
-  /* generic болячка моделі не знижує Технічні ризики (відкидається на вході) */
+  /* generic болячка моделі не є технічним evidence: відкидається на вході
+     і вісь лишається недоступною, а не оціненою */
   b = score([{ type: 'MODEL_GENERIC_WEAKNESS', event_id: 'g1', evidence: [ev('seller_claim', null, 'слабкі ланцюги у моделі')] }], RICH);
-  if (b.score_dimensions.technical.score !== 10) errs.push('generic болячка знизила technical: ' + b.score_dimensions.technical.score);
+  if (b.score_dimensions.technical.score_available !== false) errs.push('generic болячка відкрила technical: ' + JSON.stringify(b.score_dimensions.technical));
   /* поточні проблеми працюють по своїх осях */
   b = score([F('POOR_REPAIR_VISIBLE', 'pr1'), F('CRITICAL_WARNING_LIGHTS', 'w9', { evidence: [ev('current_photos', 'photo_2', 'горить ABS')] })], RICH);
   if (!(b.score_dimensions.current_condition.score < 10)) errs.push('current_condition не відреагував на видимі проблеми');
@@ -427,6 +432,7 @@ const THIN = {
       if (!DIMENSION_LABELS[d.key] || d.label_ua !== DIMENSION_LABELS[d.key]) errs.push('дайджест: нема UA-мітки для ' + d.key);
     }
     if (!digest.weakest.length) errs.push('дайджест: weakest порожній для severe-кейса');
+    if (digest.dimensions.some(d => d.key === 'technical')) errs.push('дайджест: недоступний technical потрапив у дайджест (AI не має його цитувати)');
     if (!digest.applied_hard_caps.some(c => c.includes('STRUCTURAL'))) errs.push('дайджест: кап не переданий');
   }
   /* недоступна вісь у дайджест не потрапляє взагалі */
@@ -461,12 +467,20 @@ const THIN = {
   /* картка підоцінок: пʼять міток на сторінці і в обох словниках */
   const ruDict = fs.readFileSync('i18n/ru.js', 'utf8');
   const enDict = fs.readFileSync('i18n/en.js', 'utf8');
-  for (const lbl of ['Історія авто', 'Пробіг', 'Пошкодження та відновлення', 'Поточний стан', 'Технічні ризики']) {
+  for (const lbl of ['Історія авто', 'Пробіг', 'Пошкодження та відновлення', 'Стан за фото', 'Технічні ризики']) {
     if (!pageSrc.includes("'" + lbl + "'")) errs.push('result-check: мітка осі відсутня: ' + lbl);
     if (!ruDict.includes("'" + lbl + "'")) errs.push('ru.js: нема перекладу мітки ' + lbl);
     if (!enDict.includes("'" + lbl + "'")) errs.push('en.js: нема перекладу мітки ' + lbl);
   }
   if (!/dimCard/.test(pageSrc) || !/dim-track/.test(pageSrc)) errs.push('result-check: картка підоцінок відсутня');
+  /* рядок обмеження: лише для стелі покриття чи капа, без слова "кап" в UI */
+  if (!/Оцінку обмежує повнота даних/.test(pageSrc)) errs.push('result-check: нема рядка обмеження покриттям');
+  if (!/CAP_WHY/.test(pageSrc) || !/indexOf\('hard_cap:'\) === 0/.test(pageSrc)) errs.push('result-check: нема рядка обмеження капом');
+  if (!/limiting_factors/.test(pageSrc)) errs.push('result-check: рядок обмеження не привʼязаний до limiting_factors');
+  for (const key of ['Стан за фото', 'Оцінку обмежує повнота даних', 'Максимум', 'через затоплення']) {
+    if (!ruDict.includes("'" + key + "'")) errs.push('ru.js: нема перекладу ' + key);
+    if (!enDict.includes("'" + key + "'")) errs.push('en.js: нема перекладу ' + key);
+  }
 
   fs.unlinkSync(tmp);
   if (errs.length) {
