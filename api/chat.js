@@ -177,14 +177,16 @@ export default async function handler(req, res) {
 
     /* цитата зі звіту: сторінка ріже по 500, тут страхувальна межа */
     const quoted = typeof body.quoted_text === 'string' ? body.quoted_text.trim().replace(/\u2014/g, ',').slice(0, 600) : '';
-    /* тіньова оцінка Score v2: чат її повністю ігнорує і не згадує,
-       жодним шляхом: ні через context, ні через інші звіти користувача */
+    /* внутрішні дані Score (активний і тіньовий breakdown): чат їх повністю
+       ігнорує і не згадує, жодним шляхом: ні через context, ні через інші
+       звіти користувача */
     const stripV2 = o => {
       if (!o || typeof o !== 'object' || Array.isArray(o)) return o;
       const c = { ...o };
       delete c.score_facts;
       delete c.score_v2_preview;
       delete c.score_breakdown_v2;
+      delete c.score_breakdown_shadow;
       return c;
     };
     let context = stripV2(body.context || body.report || {});

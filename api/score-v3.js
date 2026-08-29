@@ -1,0 +1,542 @@
+/* CalCar Score v3: перекалібрована детермінована оцінка ЯКОСТІ і
+   vehicle-specific ризику конкретного екземпляра, НЕЗАЛЕЖНО від ціни.
+
+   Ролі ті самі, що у v2: LLM витягує structured evidence, КОД нормалізує,
+   групує, дедуплікує, виводить severity, застосовує repair-модифікатори,
+   рахує штрафи, coverage і капи. LLM не генерує числових штрафів і не
+   керує математично значущим event_id.
+
+   Головні відмінності від v2:
+   - ДТП рахуються на рівні NORMALIZED accident event: одна реальна аварія,
+     знайдена через аукціон + історичні фото + запис площадки + знахідки
+     моделі, це ОДНА подія (deterministic resolver, а не event_id від LLM);
+   - severity (minor|moderate|severe|indeterminate) виводить КОД зі
+     structured evidence (structural, подушки, кількість зон, візуальна
+     тяжкість), не слово моделі;
+   - подушки це вхід severity + обмежений unresolved-SRS concern, а НЕ
+     другий штраф за ту саму аварію і НЕ дефолтний кап 7.0;
+   - coverage міряє ГЛИБИНУ перевірки доменів (checked_absent теж заробляє
+     покриття, not_applicable чесно виключається), впливає лише на верх
+     шкали і ніколи не підвищує raw_quality;
+   - анти-дабл-каунтинг поширений на поточні технічні проблеми
+     (warning light + діагностована несправність = одна underlying проблема);
+   - у Score НЕ входять: ціна, вигідність, комплектація, країна походження,
+     маркетплейс, суперечності продавця як окрема числова вісь, generic
+     болячки моделі без evidence на цій машині, відсутність даних як мінус.
+     unknown != bad; positive_verified_bonus = 0 (гак на майбутнє).
+
+   Версіювання: v2 живе поруч (api/score.js) і НЕ видаляється; активну
+   версію обирає диспетчер у api/check.js (env CALCAR_SCORE_VERSION),
+   rollback це перемикання конфігурації, не revert коміту. */
+
+/* ================= КАЛІБРУЄТЬСЯ: усі числа v3 тут ================= */
+export const SCORE_CONFIG_V3 = {
+  STARTING_SCORE: 10,
+
+  /* ---- coverage: глибина перевірки інформаційних ДОМЕНІВ.
+     Домен заробляє внесок, якщо він applicable і УСПІШНО перевірений:
+     record found АБО checked_absent. source_unreachable і unknown внеску
+     не дають. not_applicable виключається з очікування (внесок earned:
+     непридатний домен не робить дослідження неповним). Coverage впливає
+     лише на СТЕЛЮ (верх шкали) і ніколи не чіпає raw_quality ---- */
+  BASE_CEILING: 8.0,
+  CEILING_MAX: 9.8,
+  COVERAGE_DOMAINS: {
+    identity: 0.2,           /* VIN-декод або держреєстр підтвердили авто */
+    current_photos: 0.2,     /* достатньо поточних кадрів для visual-домену */
+    history_records: 0.35,   /* реєстраційні/платформенні історичні записи */
+    mileage_timeline: 0.35,  /* незалежні датовані точки пробігу */
+    auction_history: 0.5,    /* аукціонна історія: found АБО checked_absent */
+  },
+  PHOTOS_DOMAIN_MIN: 6,      /* поріг ДОМЕНУ фото, не eligibility */
+  MILEAGE_OBS_MIN: 2,
+
+  /* ---- нормалізовані accident events ---- */
+  ACCIDENT_BASE: 0.3,        /* підтверджене ДТП саме по собі: малий базовий вплив,
+                                але помітний на кроці 0.1 навіть при повній стелі */
+  SEVERITY_ADDITIONAL: { minor: 0.2, moderate: 1.0, severe: 2.4, indeterminate: 0 },
+  REPAIR_MULTIPLIER: { confirmed_ok: 0.6, visually_consistent: 0.85, unknown: 1.0, confirmed_bad: 1.0 },
+  /* підтверджений ремонт не стирає severe-історію: мінімальний residual */
+  SEVERE_MIN_RESIDUAL: 1.0,
+
+  /* ---- unresolved safety: подушки розкривались, SRS потребувала
+     відновлення, підтвердження нема. Це НЕ штраф за unknown і НЕ кап ---- */
+  SRS_RESTORATION_UNVERIFIED: 0.6,
+
+  /* ---- поточні і незалежні проблеми (за нормалізовану проблему) ---- */
+  CURRENT_PENALTIES: {
+    SRS_FAULT: 1.5,
+    SERIOUS_POWERTRAIN_FAULT: 1.5,
+    POOR_REPAIR_VISIBLE: 1.0,
+    CRITICAL_WARNING_LIGHTS: 0.8,
+    MILEAGE_CONFLICT_UNEXPLAINED: 0.5,
+    MAJOR_REPAIR_UNVERIFIED: 0.4,
+    MODIFICATION_TECHNICAL_CONCERN: 0.3,
+    FLOOD: 3.0,
+    FIRE: 3.5,
+    ODOMETER_ROLLBACK: 2.5,
+    VIN_IDENTITY_PROBLEM: 4.0,
+  },
+  MODIFICATION_SERIOUS_UNVERIFIED: 0.6,
+
+  /* ---- капи: лише факти, що обʼєктивно обмежують максимум ---- */
+  HARD_CAPS: {
+    VIN_IDENTITY_PROBLEM: 3.5,
+    FLOOD: 4.5,
+    FIRE: 4.5,
+    ODOMETER_ROLLBACK: 4.5,
+  },
+  STRUCTURAL_UNRESOLVED_CAP: 5.5,  /* структурне БЕЗ confirmed_ok ремонту */
+  /* SRS-кап лише за СИЛЬНІШИМ evidence: поточна несправність SRS або
+     confirmed_bad відновлення. Простий unknown капа не отримує */
+  SRS_STRONG_EVIDENCE_CAP: 6.0,
+
+  /* ---- eligibility: глобальний, не marketplace-specific.
+     Identity + базові факти + мінімально достатній vehicle-specific
+     evidence. <6 фото більше НЕ вбиває Score, якщо є інші домени ---- */
+  ELIGIBILITY: {
+    MIN_PHOTOS_STANDALONE: 4, /* фото як єдиний evidence-домен */
+  },
+
+  /* пороги ті самі, що у v2 (до калібрування не змінюються), імена
+     нейтральні: ціна свідомо не входить у Score, тому "buy" некоректний */
+  GRADE_THRESHOLDS: [
+    { min: 8.5, grade: 'excellent' },
+    { min: 7.0, grade: 'good' },
+    { min: 5.5, grade: 'elevated_risk' },
+    { min: 0, grade: 'high_risk' },
+  ],
+
+  /* positive bonuses у v3 СВІДОМО нуль: гак на майбутнє */
+  POSITIVE_VERIFIED_BONUS: 0,
+};
+
+/* типи знахідок, що описують НАСЛІДКИ аварії (входять у accident events) */
+const ACCIDENT_FINDING_TYPES = new Set(['STRUCTURAL_DAMAGE', 'AIRBAGS_DEPLOYED', 'MAJOR_REPAIR_UNVERIFIED']);
+/* незалежні/поточні проблеми */
+const INDEPENDENT_TYPES = new Set(['SRS_FAULT', 'SERIOUS_POWERTRAIN_FAULT', 'POOR_REPAIR_VISIBLE', 'CRITICAL_WARNING_LIGHTS', 'MILEAGE_CONFLICT_UNEXPLAINED', 'MODIFICATION_TECHNICAL_CONCERN', 'FLOOD', 'FIRE', 'ODOMETER_ROLLBACK', 'VIN_IDENTITY_PROBLEM']);
+const EVIDENCE_SOURCES = new Set(['seller_claim', 'current_photos', 'historical_listing', 'us_auction', 'registry', 'document']);
+const REPAIR_STATUSES = new Set(['confirmed_ok', 'visually_consistent', 'unknown', 'confirmed_bad']);
+const REPAIR_RANK = { confirmed_bad: 3, unknown: 2, visually_consistent: 1, confirmed_ok: 0 };
+
+const round1 = x => Math.round((x + Number.EPSILON) * 10) / 10;
+const round2 = x => Math.round((x + Number.EPSILON) * 100) / 100;
+const EPS = 1e-9;
+
+/* та сама строга валідація, що у v2: без валідного evidence і event_id
+   знахідка на бал не впливає */
+function sanitizeFindingsV3(findings) {
+  const ok = [];
+  let dropped = 0;
+  for (const f of Array.isArray(findings) ? findings : []) {
+    const known = f && (ACCIDENT_FINDING_TYPES.has(f.type) || INDEPENDENT_TYPES.has(f.type));
+    if (!f || typeof f !== 'object' || Array.isArray(f) || !known) { dropped++; continue; }
+    const evidence = (Array.isArray(f.evidence) ? f.evidence : [])
+      .filter(e => e && typeof e === 'object' && EVIDENCE_SOURCES.has(e.source)
+        && typeof e.description === 'string' && e.description.trim())
+      .map(e => ({ source: e.source, ref: typeof e.ref === 'string' ? e.ref.slice(0, 60) : null, description: e.description.trim().slice(0, 300) }));
+    if (!evidence.length) { dropped++; continue; }
+    const eid = (typeof f.event_id === 'string' && f.event_id.trim()) || typeof f.event_id === 'number'
+      ? String(f.event_id).trim().slice(0, 60) : null;
+    if (!eid) { dropped++; continue; }
+    ok.push({
+      type: f.type,
+      source_event_id: eid,
+      serious_intervention: f.serious_intervention === true,
+      maintenance_evidence: f.maintenance_evidence === true,
+      repair_status: REPAIR_STATUSES.has(f.repair_status) ? f.repair_status : null,
+      evidence,
+    });
+  }
+  return { ok, dropped };
+}
+
+const yearOf = s => {
+  const m = /20\d\d|19\d\d/.exec(String(s || ''));
+  return m ? parseInt(m[0], 10) : null;
+};
+
+/* аукціонні damage-строки, що НЕ є суттєвою зоною пошкодження */
+const BENIGN_DAMAGE = /normal wear|minor dent|scratch|unknown|none/i;
+const materialZone = v => !!(v && typeof v === 'string' && !BENIGN_DAMAGE.test(v));
+
+/* ---------- нормалізація ДТП: deterministic accident event resolver ----------
+   Один underlying accident, видимий через кілька джерел, стає ОДНОЮ подією.
+   Якорі надійності: аукціонний lot/event id -> дата/рік -> провенанс.
+   Конервативно: різні відомі роки НЕ склеюються */
+export function resolveAccidentEvents(findings, ctx) {
+  const c = ctx || {};
+  const events = [];
+  const auctionMeta = c.auctionMeta || null;
+  const hv = c.historicalVisual || null;
+
+  /* якірна подія аукціону: власний надійний ідентифікатор */
+  let auctionEvent = null;
+  if (auctionMeta || (hv && Array.isArray(hv.evidence) && hv.evidence.length)) {
+    const lotId = auctionMeta && auctionMeta.lot_id ? String(auctionMeta.lot_id) : null;
+    auctionEvent = {
+      normalized_event_id: lotId ? 'auction:' + (auctionMeta.house || 'lot') + ':' + lotId : 'auction:event',
+      source_event_ids: [],
+      merge_basis: [],
+      year: auctionMeta && auctionMeta.sale_date ? yearOf(auctionMeta.sale_date) : null,
+      signals: { structural: false, airbags: false, zones: 0, visual_severity: null },
+      repair_statuses: [],
+      evidence: [],
+    };
+    if (auctionMeta) {
+      auctionEvent.merge_basis.push('auction_record');
+      if (auctionMeta.airbags && auctionMeta.airbags.deployed === true) {
+        auctionEvent.signals.airbags = true;
+        auctionEvent.evidence.push({ source: 'us_auction', ref: 'auction_metadata', description: 'подушки за metadata лота: ' + (auctionMeta.airbags.raw || 'deployed') });
+      }
+      const zones = [auctionMeta.primary_damage, auctionMeta.secondary_damage].filter(materialZone);
+      auctionEvent.signals.zones = Math.max(auctionEvent.signals.zones, zones.length);
+      for (const z of zones) auctionEvent.evidence.push({ source: 'us_auction', ref: 'auction_metadata', description: 'damage за metadata лота: ' + z });
+    }
+    if (hv) {
+      /* historical visual привʼязаний до аукціонних кадрів цього ж лота */
+      auctionEvent.merge_basis.push('historical_photos_same_lot');
+      if (hv.structural_visual_status === 'visible_damage') auctionEvent.signals.structural = true;
+      if (hv.srs_visual_status === 'deployed_visible') auctionEvent.signals.airbags = true;
+      auctionEvent.signals.zones = Math.max(auctionEvent.signals.zones, Array.isArray(hv.visible_damage_zones) ? hv.visible_damage_zones.length : 0);
+      auctionEvent.signals.visual_severity = ['minor', 'moderate', 'severe'].includes(hv.visible_severity) ? hv.visible_severity : null;
+    }
+    events.push(auctionEvent);
+  }
+
+  /* запис площадки про ДТП: окрема подія, ЯКЩО роки відомі і різні;
+     інакше консервативний merge у аукціонну (та сама аварія імпорту) */
+  if (c.accidentRecord && c.accidentRecord.recorded === true) {
+    const recYear = yearOf(c.accidentRecord.note);
+    const target = auctionEvent && (recYear === null || auctionEvent.year === null || recYear === auctionEvent.year)
+      ? auctionEvent : null;
+    if (target) {
+      target.merge_basis.push('platform_record_same_or_unknown_year');
+      target.evidence.push({ source: 'historical_listing', ref: 'platform_history', description: (c.accidentRecord.note || 'зафіксовано ДТП').slice(0, 200) });
+    } else {
+      events.push({
+        normalized_event_id: 'platform:accident' + (recYear ? ':' + recYear : ''),
+        source_event_ids: [], merge_basis: ['platform_record'],
+        year: recYear,
+        signals: { structural: false, airbags: false, zones: 0, visual_severity: null },
+        repair_statuses: [],
+        evidence: [{ source: 'historical_listing', ref: 'platform_history', description: (c.accidentRecord.note || 'зафіксовано ДТП').slice(0, 200) }],
+      });
+    }
+  }
+
+  /* знахідки моделі accident-типів: us_auction-evidence і збіг року йдуть
+     у якірну подію; решта групується консервативно за source_event_id */
+  const byLLMEvent = new Map();
+  for (const f of findings) {
+    if (!ACCIDENT_FINDING_TYPES.has(f.type)) continue;
+    const hasAuctionEvidence = f.evidence.some(e => e.source === 'us_auction');
+    const fYear = yearOf(f.source_event_id) || yearOf(f.evidence.map(e => e.description).join(' '));
+    let target = null;
+    if (auctionEvent && (hasAuctionEvidence || fYear === null || auctionEvent.year === null || fYear === auctionEvent.year)) {
+      target = auctionEvent;
+      target.merge_basis.push(hasAuctionEvidence ? 'us_auction_evidence' : 'same_or_unknown_year');
+    } else {
+      /* без якоря: групування за LLM event_id, але кількість подій
+         підтверджується роками: однакові роки зливаються */
+      for (const ev of byLLMEvent.values()) {
+        if (fYear !== null && ev.year !== null && fYear === ev.year) { target = ev; target.merge_basis.push('same_year'); break; }
+      }
+      if (!target) target = byLLMEvent.get(f.source_event_id) || null;
+      if (!target) {
+        target = {
+          normalized_event_id: 'accident:' + (fYear || f.source_event_id),
+          source_event_ids: [], merge_basis: ['llm_finding_group'],
+          year: fYear,
+          signals: { structural: false, airbags: false, zones: 0, visual_severity: null },
+          repair_statuses: [], evidence: [],
+        };
+        byLLMEvent.set(f.source_event_id, target);
+        events.push(target);
+      }
+    }
+    target.source_event_ids.push(f.source_event_id);
+    target.evidence.push(...f.evidence);
+    if (f.repair_status) target.repair_statuses.push(f.repair_status);
+    if (f.type === 'STRUCTURAL_DAMAGE') target.signals.structural = true;
+    if (f.type === 'AIRBAGS_DEPLOYED') target.signals.airbags = true;
+    if (f.type === 'MAJOR_REPAIR_UNVERIFIED') target.merge_basis.push('major_repair_same_accident');
+  }
+
+  /* події без жодного сигналу і evidence не існують */
+  return events.filter(e => e.evidence.length || e.signals.structural || e.signals.airbags || e.signals.zones > 0);
+}
+
+/* ---------- severity: виводить КОД зі structured evidence ----------
+   LLM не пише "severity=severe"; derivation зберігає severity_basis[].
+   Недостатньо evidence: indeterminate (допустимий стан) */
+export function deriveSeverity(ev) {
+  const basis = [];
+  let severity = 'indeterminate';
+  const bump = (level, why) => {
+    const rank = { indeterminate: 0, minor: 1, moderate: 2, severe: 3 };
+    basis.push(why);
+    if (rank[level] > rank[severity]) severity = level;
+  };
+  if (ev.signals.structural) bump('severe', 'structural_damage');
+  if (ev.signals.visual_severity === 'severe') bump('severe', 'severe_visible_deformation');
+  if (ev.signals.airbags) bump('moderate', 'airbags_deployed');
+  if (ev.signals.zones >= 2) bump('moderate', 'multiple_damage_zones');
+  if (ev.signals.visual_severity === 'moderate') bump('moderate', 'moderate_visible_damage');
+  if (ev.signals.visual_severity === 'minor' && severity === 'indeterminate') bump('minor', 'cosmetic_panels_only');
+  return { severity, basis };
+}
+
+/* ---------- нормалізація поточних проблем: анти-дабл-каунтинг ----------
+   Одна underlying проблема не штрафується двічі за симптом і діагноз:
+   warning light стає evidence діагностованої несправності */
+const WARNING_DOMAINS = [
+  { re: /srs|подушк|airbag|безпек/i, fault: 'SRS_FAULT' },
+  { re: /двигун|двигат|engine|check|трансміс|акпп|коробк/i, fault: 'SERIOUS_POWERTRAIN_FAULT' },
+];
+export function normalizeCurrentProblems(findings) {
+  const problems = [];
+  const faults = findings.filter(f => INDEPENDENT_TYPES.has(f.type) && f.type !== 'CRITICAL_WARNING_LIGHTS');
+  const warnings = findings.filter(f => f.type === 'CRITICAL_WARNING_LIGHTS');
+  for (const f of faults) {
+    problems.push({
+      normalized_problem_id: f.type + ':' + f.source_event_id,
+      type: f.type,
+      source_finding_ids: [f.source_event_id],
+      merge_basis: [],
+      serious_intervention: f.serious_intervention,
+      maintenance_evidence: f.maintenance_evidence,
+      repair_status: f.repair_status,
+      evidence: [...f.evidence],
+    });
+  }
+  for (const w of warnings) {
+    const text = w.evidence.map(e => e.description).join(' ');
+    let merged = false;
+    for (const d of WARNING_DOMAINS) {
+      if (!d.re.test(text)) continue;
+      const host = problems.find(p => p.type === d.fault);
+      if (host) {
+        /* симптом тієї самої underlying проблеми: лише evidence */
+        host.source_finding_ids.push(w.source_event_id);
+        host.merge_basis.push('warning_light_same_underlying_fault');
+        host.evidence.push(...w.evidence);
+        merged = true;
+        break;
+      }
+    }
+    if (!merged) {
+      problems.push({
+        normalized_problem_id: 'CRITICAL_WARNING_LIGHTS:' + w.source_event_id,
+        type: 'CRITICAL_WARNING_LIGHTS',
+        source_finding_ids: [w.source_event_id],
+        merge_basis: [],
+        evidence: [...w.evidence],
+      });
+    }
+  }
+  /* дедуп однакових type+id */
+  const seen = new Map();
+  for (const p of problems) {
+    const key = p.normalized_problem_id;
+    if (seen.has(key)) {
+      const cur = seen.get(key);
+      cur.evidence.push(...p.evidence);
+      cur.merge_basis.push('duplicate_finding');
+    } else seen.set(key, p);
+  }
+  return [...seen.values()];
+}
+
+/* ---------- coverage: домени глибини перевірки ---------- */
+export function buildCoverageV3(inputs, cfg) {
+  const i = inputs && typeof inputs === 'object' ? inputs : {};
+  const n = v => (typeof v === 'number' && isFinite(v) && v > 0 ? v : 0);
+  const identity = i.identity_confirmed !== undefined ? !!i.identity_confirmed : !!i.vin_decoded;
+  const domains = {};
+  const add = (name, applicable, status, earned) => {
+    domains[name] = {
+      applicable,
+      status,
+      contribution: earned ? cfg.COVERAGE_DOMAINS[name] : 0,
+    };
+  };
+  add('identity', true, identity ? 'found' : 'unknown', identity);
+  const photosOk = n(i.photos_count) >= cfg.PHOTOS_DOMAIN_MIN;
+  add('current_photos', true, photosOk ? 'found' : 'unknown', photosOk);
+  const histOk = i.registration_data_exists === true || n(i.historical_listings_count) >= 1;
+  add('history_records', true, histOk ? 'found' : 'unknown', histOk);
+  const milOk = n(i.mileage_observation_count) >= cfg.MILEAGE_OBS_MIN;
+  add('mileage_timeline', true, milOk ? 'found' : 'unknown', milOk);
+  /* аукціонний домен: found АБО checked_absent = перевірено (coverage
+     заробляється за ПЕРЕВІРКУ, не за знайдену проблему);
+     not_applicable виключається з очікування (earned);
+     source_unreachable/unknown внеску не дають */
+  if (i.auction_record_exists) add('auction_history', true, 'found', true);
+  else if (i.auction_applicable === false) add('auction_history', false, 'not_applicable', true);
+  else if (i.auction_us_signal && i.auction_checked) add('auction_history', true, 'checked_absent', true);
+  else if (i.auction_sources_unreachable) add('auction_history', true, 'source_unreachable', false);
+  else add('auction_history', true, 'unknown', false);
+
+  let ceiling = cfg.BASE_CEILING;
+  for (const d of Object.values(domains)) ceiling += d.contribution;
+  return { domains, ceiling: round2(Math.min(cfg.CEILING_MAX, ceiling)) };
+}
+
+/* ---------- eligibility: глобальний, не marketplace-specific ---------- */
+export function checkEligibilityV3(i, cfg = SCORE_CONFIG_V3) {
+  const inp = i && typeof i === 'object' ? i : {};
+  const missing = [];
+  const identity = inp.identity_confirmed !== undefined ? !!inp.identity_confirmed : !!inp.vin_decoded;
+  if (!identity) missing.push('identity');
+  if (inp.basics_known === false) missing.push('basics');
+  /* мінімально достатній vehicle-specific evidence: фото стендалон,
+     АБО будь-який інший заробленый evidence-домен. <6 фото і навіть
+     відсутній current-пробіг Score не вбивають, якщо є інші домени */
+  const n = v => (typeof v === 'number' && isFinite(v) && v > 0 ? v : 0);
+  const hasOtherEvidence = inp.auction_record_exists === true
+    || (inp.auction_us_signal && inp.auction_checked)
+    || inp.registration_data_exists === true
+    || n(inp.historical_listings_count) >= 1
+    || n(inp.mileage_observation_count) >= cfg.MILEAGE_OBS_MIN;
+  if (n(inp.photos_count) < cfg.ELIGIBILITY.MIN_PHOTOS_STANDALONE && !hasOtherEvidence) missing.push('evidence');
+  return { eligible: missing.length === 0, missing };
+}
+
+export function gradeFromScoreV3(score, cfg = SCORE_CONFIG_V3) {
+  for (const t of cfg.GRADE_THRESHOLDS) if (score >= t.min) return t.grade;
+  return cfg.GRADE_THRESHOLDS[cfg.GRADE_THRESHOLDS.length - 1].grade;
+}
+
+/* ---------- головна формула ---------- */
+export function computeScoreV3(input, cfg = SCORE_CONFIG_V3) {
+  const inp = input && typeof input === 'object' ? input : {};
+  const { ok: findings, dropped } = sanitizeFindingsV3(inp.findings);
+  const coverageInputs = inp.coverageInputs || {};
+  const { domains, ceiling } = buildCoverageV3(coverageInputs, cfg);
+  const eligibility = checkEligibilityV3(coverageInputs, cfg);
+
+  /* 1. нормалізовані accident events */
+  const rawEvents = resolveAccidentEvents(findings, {
+    auctionMeta: inp.auctionMeta || null,
+    historicalVisual: inp.historicalVisual || null,
+    accidentRecord: inp.accidentRecord || null,
+  });
+  const accidentEvents = rawEvents.map(ev => {
+    const { severity, basis } = deriveSeverity(ev);
+    /* найгірший repair_status серед злитих знахідок */
+    let repair = null;
+    for (const r of ev.repair_statuses) {
+      if (repair === null || REPAIR_RANK[r] > REPAIR_RANK[repair]) repair = r;
+    }
+    const mult = cfg.REPAIR_MULTIPLIER[repair || 'unknown'];
+    const base = cfg.ACCIDENT_BASE + cfg.SEVERITY_ADDITIONAL[severity];
+    let penalty = round2(base * mult);
+    let residualApplied = false;
+    if (severity === 'severe' && penalty < cfg.SEVERE_MIN_RESIDUAL) {
+      penalty = cfg.SEVERE_MIN_RESIDUAL;   /* ремонт не стирає severe-історію */
+      residualApplied = true;
+    }
+    return {
+      normalized_event_id: ev.normalized_event_id,
+      source_event_ids: [...new Set(ev.source_event_ids)],
+      merge_basis: [...new Set(ev.merge_basis)],
+      accident_base: cfg.ACCIDENT_BASE,
+      derived_severity: severity,
+      severity_basis: basis,
+      severity_additional: cfg.SEVERITY_ADDITIONAL[severity],
+      repair_status: repair,
+      repair_multiplier: mult,
+      minimum_residual_if_applied: residualApplied ? cfg.SEVERE_MIN_RESIDUAL : null,
+      final_event_penalty: penalty,
+      airbags: ev.signals.airbags,
+      structural: ev.signals.structural,
+      evidence: ev.evidence.slice(0, 10),
+    };
+  });
+  const accidentPenalty = accidentEvents.reduce((s, e) => s + e.final_event_penalty, 0);
+
+  /* 2. unresolved safety: подушки без підтвердженого відновлення SRS.
+     Якщо поточна несправність SRS вже штрафується, concern не дублюється */
+  const problems = normalizeCurrentProblems(findings.filter(f => INDEPENDENT_TYPES.has(f.type)));
+  const unresolvedSafety = [];
+  const hasCurrentSrsFault = problems.some(p => p.type === 'SRS_FAULT');
+  for (const ev of accidentEvents) {
+    if (ev.airbags && ev.repair_status !== 'confirmed_ok' && !hasCurrentSrsFault) {
+      unresolvedSafety.push({
+        type: 'SRS_RESTORATION_UNVERIFIED',
+        penalty: cfg.SRS_RESTORATION_UNVERIFIED,
+        event: ev.normalized_event_id,
+        evidence: ev.evidence.filter(e => /подушк|airbag|srs|шторк/i.test(e.description)).slice(0, 3),
+      });
+      break; /* один concern на авто: SRS одна система */
+    }
+  }
+  const safetyPenalty = unresolvedSafety.reduce((s, u) => s + u.penalty, 0);
+
+  /* 3. поточні і незалежні проблеми */
+  const currentPenalties = problems.map(p => {
+    let amount = cfg.CURRENT_PENALTIES[p.type];
+    if (p.type === 'MODIFICATION_TECHNICAL_CONCERN' && p.serious_intervention && !p.maintenance_evidence) {
+      amount = cfg.MODIFICATION_SERIOUS_UNVERIFIED;
+    }
+    /* MAJOR_REPAIR, змерджений в accident event, не штрафується вдруге */
+    return { ...p, penalty: amount };
+  }).filter(p => {
+    if (p.type !== 'MAJOR_REPAIR_UNVERIFIED') return true;
+    const merged = accidentEvents.some(ev => ev.source_event_ids.some(id => p.source_finding_ids.includes(id)));
+    return !merged;
+  });
+  const currentPenalty = currentPenalties.reduce((s, p) => s + p.penalty, 0);
+
+  const rawQuality = round2(cfg.STARTING_SCORE - accidentPenalty - safetyPenalty - currentPenalty);
+
+  /* 4. капи */
+  const caps = [];
+  for (const p of currentPenalties) {
+    if (cfg.HARD_CAPS[p.type] !== undefined) caps.push({ name: 'hard_cap:' + p.type, value: cfg.HARD_CAPS[p.type] });
+  }
+  for (const ev of accidentEvents) {
+    if (ev.structural && ev.repair_status !== 'confirmed_ok') {
+      caps.push({ name: 'hard_cap:STRUCTURAL_UNRESOLVED', value: cfg.STRUCTURAL_UNRESOLVED_CAP });
+    }
+    if (ev.airbags && ev.repair_status === 'confirmed_bad') {
+      caps.push({ name: 'hard_cap:SRS_STRONG_EVIDENCE', value: cfg.SRS_STRONG_EVIDENCE_CAP });
+    }
+  }
+  if (hasCurrentSrsFault) caps.push({ name: 'hard_cap:SRS_STRONG_EVIDENCE', value: cfg.SRS_STRONG_EVIDENCE_CAP });
+
+  /* 5. підсумок */
+  const unclamped = Math.min(rawQuality, ceiling, ...caps.map(c => c.value));
+  const limiting = [];
+  if (unclamped > 0) {
+    if (Math.abs(rawQuality - unclamped) < EPS) limiting.push('quality');
+    if (Math.abs(ceiling - unclamped) < EPS) limiting.push('coverage');
+    for (const c of caps) if (Math.abs(c.value - unclamped) < EPS && !limiting.includes(c.name)) limiting.push(c.name);
+  }
+  /* звичайне математичне округлення до 0.1 (7.24 -> 7.2, 7.25 -> 7.3) */
+  const final = round1(Math.min(10, Math.max(0, unclamped)));
+
+  const base = {
+    score_v: 3,
+    score_version: 'v3',
+    starting_score: cfg.STARTING_SCORE,
+    accident_events: accidentEvents,
+    normalized_current_problems: currentPenalties,
+    unresolved_safety_concerns: unresolvedSafety,
+    raw_quality: rawQuality,
+    coverage: { domains, ceiling },
+    coverage_cap: ceiling,
+    applied_hard_caps: caps,
+    limiting_factors: limiting,
+    dropped_findings: dropped,
+    coverage_inputs: coverageInputs,
+  };
+  if (!eligibility.eligible) {
+    return { ...base, score_available: false, score_unavailable_missing: eligibility.missing, final: null, grade: null,
+      score_limit_reason: 'недостатньо даних для оцінки: ' + eligibility.missing.join(', ') };
+  }
+  return { ...base, score_available: true, final, grade: gradeFromScoreV3(final, cfg),
+    score_limited_by_data: limiting.includes('coverage'),
+    score_limit_reason: limiting.includes('coverage') ? 'оцінка обмежена глибиною перевірки: стеля ' + ceiling : (limiting.filter(l => l.startsWith('hard_cap')).map(l => 'жорсткий кап ' + l.slice(9)).join('; ') || null) };
+}

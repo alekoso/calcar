@@ -1,6 +1,11 @@
 export const config = { maxDuration: 300 };
 
 import { computeScore } from './score.js';
+import { computeScoreV3 } from './score-v3.js';
+
+/* активна версія CalCar Score: перемикається конфігурацією без деплою коду.
+   Rollback на v2 = env CALCAR_SCORE_VERSION=v2, НЕ revert коміту */
+const SCORE_VERSION = process.env.CALCAR_SCORE_VERSION === 'v2' ? 'v2' : 'v3';
 import { findAuctionRecord, shouldRecheck, discoverVinCandidates, photoHasProvenance } from './auction.js';
 
 /* ============================================================
@@ -1696,9 +1701,19 @@ export default async function handler(req, res) {
       return res.status(502).json({ error: 'AI повернув невалідну відповідь, спробуй ще раз' });
     }
 
-    /* ---- CalCar Score v2, тіньовий режим: модель класифікувала знахідки,
-       код визначає доступність джерел із фактів пайплайна, формула рахує.
-       Користувач бачить легасі verdict.score, v2 лише зберігається в data ---- */
+    /* історичний візуал: валідація ДО скорингу, бо v3 читає його
+       structured-поля (structural_visual_status, srs, зони, severity).
+       Виник у ТОМУ Ж виклику, що й purchase_decision, тому рішення
+       бачило кадри до формування */
+    const hvClean = sanitizeHistoricalVisual(parsed.historical_visual, auctionPhotos.length);
+    if (hvClean) parsed.historical_visual = hvClean;
+    else delete parsed.historical_visual;
+
+    /* ---- CalCar Score: модель класифікувала знахідки, код визначає
+       доступність джерел із фактів пайплайна, формула рахує. Рахуються
+       ОБИДВІ версії: активна (SCORE_VERSION) їде в score_breakdown_v2
+       (імʼя поля історичне, всередині score_version), тіньова
+       зберігається поруч для калібрування ---- */
     try {
       const snaps = await readSnapshots(listing.vin, url);
       const hf = listing.history_facts || {};
@@ -1751,7 +1766,31 @@ export default async function handler(req, res) {
         seller_docs_exists: false,
       };
       const findings = Array.isArray(parsed?.score_facts?.findings) ? parsed.score_facts.findings : [];
-      const breakdown = computeScore(findings, coverageInputs);
+      const breakdownV2 = computeScore(findings, coverageInputs);
+      breakdownV2.score_version = 'v2';
+      /* structured-входи v3: metadata точного лота, візуал архівних кадрів,
+         запис площадки про ДТП. Все детерміноване, без слова моделі */
+      const auctionMetaV3 = coverageInputs.auction_record_exists ? {
+        lot_id: (auctionSearch && auctionSearch.lot_id_meta) || null,
+        house: (auctionSearch && auctionSearch.house) || null,
+        sale_date: (auctionSearch && auctionSearch.sale_date) || null,
+        airbags: (auctionSearch && auctionSearch.airbags_meta && typeof auctionSearch.airbags_meta === 'object')
+          ? { deployed: auctionSearch.airbags_meta.deployed === true, raw: auctionSearch.airbags_meta.raw || null }
+          : null,
+        primary_damage: (auctionSearch && auctionSearch.primary_damage) || null,
+        secondary_damage: (auctionSearch && auctionSearch.secondary_damage) || null,
+      } : null;
+      const breakdownV3 = computeScoreV3({
+        findings,
+        coverageInputs,
+        auctionMeta: auctionMetaV3,
+        historicalVisual: parsed.historical_visual || null,
+        accidentRecord: hf.accident_recorded === true
+          ? { recorded: true, note: hf.accident_note || null }
+          : null,
+      });
+      const breakdown = SCORE_VERSION === 'v2' ? breakdownV2 : breakdownV3;
+      const shadow = SCORE_VERSION === 'v2' ? breakdownV3 : breakdownV2;
       /* економіка ретривала: ціна одного Check з аукціонним пошуком.
          Прямий fetch безкоштовний, платний провайдер підставить свою ціну */
       breakdown.retrieval_provider = auctionSearch ? (auctionSearch.cache === 'hit' ? 'cache' : 'direct_fetch') : null;
@@ -1770,16 +1809,11 @@ export default async function handler(req, res) {
       breakdown.accident_record_present = hf.accident_recorded === true;
       breakdown.accident_record_note = hf.accident_note || null;
       parsed.score_v2_preview = breakdown.score_available === false ? null : breakdown.final;
-      parsed.score_breakdown_v2 = breakdown;
-      console.log('[check] score_v2', breakdown.final, '(legacy', (parsed.verdict && parsed.verdict.score) + ')',
-        '| cap', breakdown.coverage_cap, '| lim', breakdown.limiting_factors.join(',') || 'none');
-    } catch (e) { console.log('[check] score_v2 failed:', e.message); }
-
-    /* історичний візуал: валідація. Виник у ТОМУ Ж виклику, що й
-       purchase_decision, тому рішення бачило кадри до формування */
-    const hvClean = sanitizeHistoricalVisual(parsed.historical_visual, auctionPhotos.length);
-    if (hvClean) parsed.historical_visual = hvClean;
-    else delete parsed.historical_visual;
+      parsed.score_breakdown_v2 = breakdown;   /* активна версія; імʼя поля історичне */
+      parsed.score_breakdown_shadow = shadow;  /* неактивна версія: калібрування v2 vs v3 */
+      console.log('[check] score', SCORE_VERSION, breakdown.final, '(shadow', shadow.score_version, shadow.final + ')',
+        '| cap', breakdown.coverage_cap, '| lim', (breakdown.limiting_factors || []).join(',') || 'none');
+    } catch (e) { console.log('[check] score failed:', e.message); }
 
     const cleanDecision = sanitizePurchaseDecision(parsed.purchase_decision, parsed.score_v2_preview);
     if (cleanDecision) parsed.purchase_decision = cleanDecision;
