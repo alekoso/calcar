@@ -422,6 +422,31 @@ const THIN = {
   b = score([F('SERIOUS_POWERTRAIN_FAULT', 'p1'), F('MODIFICATION_TECHNICAL_CONCERN', 'md1', { serious_intervention: true, maintenance_evidence: false })], RICH);
   if (!(b.score_dimensions.technical.score < 10)) errs.push('technical не відреагував на несправність і тюнінг');
 
+  /* ===== 19б. Vision structural gate: possible проти confirmed ===== */
+  const hvPossible = { structural_visual_status: 'indeterminate', possible_structural_damage: true, srs_visual_status: 'deployed_visible', major_deformation_visible: true, visible_damage_zones: ['зона правого порога', 'правые двери'], evidence: [{ source: 'us_auction', description: 'пошкоджена зона зовнішнього порога, внутрішній силовий елемент не видно' }] };
+  /* зовнішній rocker без видимого силового елемента: НЕ structural, БЕЗ капа */
+  b = score([F('AIRBAGS_DEPLOYED', 'acc_x', { evidence: [ev('us_auction', 'auction_photo_1', 'подушки')], repair_status: 'unknown' })], RICH, { historicalVisual: hvPossible, auctionMeta: { lot_id: '7', house: 'IAAI', sale_date: null, airbags: null, primary_damage: null, secondary_damage: null } });
+  const psEvent = b.accident_events[0];
+  if (!psEvent || psEvent.structural !== false) errs.push('possible structural створив structural');
+  if (!psEvent || psEvent.possible_structural !== true) errs.push('possible_structural не прокинувся в подію');
+  if (b.applied_hard_caps.some(c => c.name.includes('STRUCTURAL'))) errs.push('possible structural активував кап 5.5');
+  if (b.accident_events[0].severity_basis.includes('structural_damage')) errs.push('possible structural потрапив у severity_basis як structural');
+  /* possible-флаг НЕ впливає на числовий бал */
+  const noFlag = score([F('AIRBAGS_DEPLOYED', 'acc_x', { evidence: [ev('us_auction', 'auction_photo_1', 'подушки')], repair_status: 'unknown' })], RICH, { historicalVisual: { ...hvPossible, possible_structural_damage: false }, auctionMeta: { lot_id: '7', house: 'IAAI', sale_date: null, airbags: null, primary_damage: null, secondary_damage: null } });
+  if (noFlag.final !== b.final) errs.push('possible_structural_damage змінив бал: ' + b.final + ' vs ' + noFlag.final);
+  /* явно ідентифікований деформований силовий елемент: visible_damage -> кап */
+  const hvStrong = { ...hvPossible, structural_visual_status: 'visible_damage', possible_structural_damage: false };
+  b = score([], RICH, { historicalVisual: hvStrong, auctionMeta: { lot_id: '7', house: 'IAAI', sale_date: null, airbags: null, primary_damage: null, secondary_damage: null } });
+  if (!b.applied_hard_caps.some(c => c.name.includes('STRUCTURAL_UNRESOLVED'))) errs.push('visible_damage не активував structural кап');
+  if (!(b.final <= C.STRUCTURAL_UNRESOLVED_CAP)) errs.push('structural кап не тримає при visible_damage');
+  /* прикметник "severe"/глибока деформація без ідентифікованого елемента: не structural */
+  b = score([], RICH, { historicalVisual: { structural_visual_status: 'indeterminate', visible_severity: 'severe', major_deformation_visible: true, srs_visual_status: 'not_visible', visible_damage_zones: ['борт'], evidence: [{ source: 'us_auction', description: 'сильна деформація боковини' }] }, auctionMeta: { lot_id: '7', house: 'IAAI', sale_date: null, airbags: null, primary_damage: null, secondary_damage: null } });
+  if (b.applied_hard_caps.some(c => c.name.includes('STRUCTURAL'))) errs.push('прикметник тяжкості активував structural кап');
+  /* structural з надійного НЕ-Vision джерела працює як раніше */
+  b = score([F('STRUCTURAL_DAMAGE', 'acc_reg', { evidence: [ev('registry', null, 'запис реєстру: пошкодження лонжерона')], repair_status: 'unknown' })], RICH);
+  if (!b.applied_hard_caps.some(c => c.name.includes('STRUCTURAL_UNRESOLVED'))) errs.push('non-Vision structural перестав давати кап');
+  if (b.accident_events[0].derived_severity !== 'severe') errs.push('non-Vision structural перестав давати severe');
+
   /* ===== 20. дайджест для AI-висновку: точні бекенд-числа ===== */
   const digest = buildScoreDigest(sevCase);
   if (!digest) errs.push('дайджест не побудований');
@@ -480,6 +505,12 @@ const THIN = {
   /* narrative: вісь пробігу подається як ІСТОРІЯ пробігу, не величина */
   if (!/Історія пробігу/.test(checkSrc)) errs.push('check.js: у промпті narrative нема семантики "Історія пробігу"');
   if (!/НЕ величину пробігу|НІКОЛИ не "пробіг отримав/.test(checkSrc)) errs.push('check.js: нема заборони трактувати бал як розмір пробігу');
+  /* Vision structural gate: строгі правила в промпті + страхувальний хід */
+  if (!/STRONG structural evidence/.test(checkSrc)) errs.push('check.js: нема gate STRONG structural evidence у промпті');
+  if (!/possible_structural_damage/.test(checkSrc)) errs.push('check.js: нема сигналу possible_structural_damage');
+  if (!/"сильно пошкоджений поріг"/.test(checkSrc)) errs.push('check.js: нема явного прикладу недостатнього evidence (поріг)');
+  if (!/Потенційно структурна зона удару/.test(checkSrc)) errs.push('check.js: нема детермінованого fallback-ризику possible structural');
+  if (!/possible_structural_damage: hv\.possible_structural_damage === true && hv\.structural_visual_status !== 'visible_damage'/.test(checkSrc)) errs.push('check.js: sanitize не гейтить possible проти visible_damage');
   for (const key of ['Стан за фото', 'Оцінку обмежує повнота даних', 'Максимум', 'через затоплення']) {
     if (!ruDict.includes("'" + key + "'")) errs.push('ru.js: нема перекладу ' + key);
     if (!enDict.includes("'" + key + "'")) errs.push('en.js: нема перекладу ' + key);

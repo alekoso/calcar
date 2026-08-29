@@ -195,7 +195,7 @@ function newEvent(id, year, anchored, basis, confidence) {
     merge_basis: basis ? [...basis] : [],
     merge_confidence: confidence || 'high',
     year,
-    signals: { structural: false, airbags: false, zones: 0, major_deformation: false, wheel_displacement: false, cosmetic_only: false },
+    signals: { structural: false, airbags: false, zones: 0, major_deformation: false, wheel_displacement: false, cosmetic_only: false, possible_structural: false },
     repair_statuses: [],
     evidence: [],
   };
@@ -262,6 +262,7 @@ export function resolveAccidentEvents(findings, ctx) {
       auctionEvent.signals.zones = Math.max(auctionEvent.signals.zones, hvZones.length);
       anchorZoneText += ' ' + hvZones.join(' ');
       /* структуровані ВИДИМІ ознаки, не прикметник моделі */
+      if (hv.possible_structural_damage === true && hv.structural_visual_status !== 'visible_damage') auctionEvent.signals.possible_structural = true;
       if (hv.major_deformation_visible === true) auctionEvent.signals.major_deformation = true;
       if (hv.wheel_displacement_visible === true) auctionEvent.signals.wheel_displacement = true;
       if (hv.cosmetic_only === true) auctionEvent.signals.cosmetic_only = true;
@@ -564,6 +565,8 @@ export function computeScoreV3(input, cfg = SCORE_CONFIG_V3) {
       final_event_penalty: penalty,
       airbags: ev.signals.airbags,
       structural: ev.signals.structural,
+      /* потенційно структурна зона: НЕ підтверджене структурне, без капа */
+      possible_structural: ev.signals.possible_structural === true,
       evidence: ev.evidence.slice(0, 10),
     };
   });

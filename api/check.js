@@ -783,6 +783,9 @@ export function sanitizeHistoricalVisual(hv, photosSent) {
     major_deformation_visible: hv.major_deformation_visible === true,
     wheel_displacement_visible: hv.wheel_displacement_visible === true,
     cosmetic_only: hv.cosmetic_only === true,
+    /* потенційно структурна зона БЕЗ надійно видимого силового елемента:
+       НЕ підтверджене структурне, у Score не входить, живе в risks/must_check */
+    possible_structural_damage: hv.possible_structural_damage === true && hv.structural_visual_status !== 'visible_damage',
     structural_visual_status: STR.includes(hv.structural_visual_status) ? hv.structural_visual_status : 'indeterminate',
     srs_visual_status: SRS.includes(hv.srs_visual_status) ? hv.srs_visual_status : 'indeterminate',
     summary: clean(hv.summary) ? clean(hv.summary).slice(0, 600) : null,
@@ -1291,7 +1294,8 @@ ${auction && auction.photos_sent ? `
 - visible_damage_zones: зони з ВИДИМИМ пошкодженням.
 - visible_severity за видимим обсягом: minor (косметика) | moderate (помітний удар, деформовані навісні елементи) | severe (очевидно тяжка деформація) | indeterminate. Це wording для звіту; тяжкість у формулі рахує код зі структурованих ознак нижче.
 - СТРУКТУРОВАНІ ВИДИМІ ОЗНАКИ (booleans, СТАВ true ЛИШЕ коли ознака реально видима на кадрі): major_deformation_visible (глибока деформація металу: зімʼятий капот/крило/стійка, зміщені панелі кузова, а не подряпини чи тріснутий пластик), wheel_displacement_visible (колесо явно зміщене/вивернуте зі свого положення, видимий обвал підвіски), cosmetic_only (УСІ видимі пошкодження обмежені косметикою навісних панелей: подряпини, дрібні вмʼятини, тріснутий бампер).
-- structural_visual_status: "no_obvious_severe_signs" означає ЛИШЕ "на доступних кадрах нема явних візуальних ознак тяжкої деформації силової структури" і НІКОЛИ не дорівнює "структура ціла". "visible_damage" лише при видимій деформації силових елементів. Ракурс не дозволяє судити: "indeterminate".
+- structural_visual_status: "no_obvious_severe_signs" означає ЛИШЕ "на доступних кадрах нема явних візуальних ознак тяжкої деформації силової структури" і НІКОЛИ не дорівнює "структура ціла". "visible_damage" СТАВ ЛИШЕ за STRONG structural evidence, коли ОДНОЧАСНО: (1) конкретно ідентифікований силовий елемент (внутрішній силовий поріг/sill, стійка A/B/C, лонжерон/frame rail, стакан/strut tower, силова підлога, інший явно названий structural member, або очевидне зміщення геометрії силової частини); (2) цей елемент достатньо видимий на кадрі; (3) видима деформація САМЕ силового елемента, а не сусідньої зовнішньої панелі. НЕДОСТАТНЬО: "сильно пошкоджений поріг", "зімʼята боковина", "сильний удар", "деформація в районі стійки", будь-який прикметник тяжкості без ідентифікованого силового елемента. Ракурс не дозволяє судити або силову частину від зовнішньої панелі відрізнити не можна: "indeterminate".
+- possible_structural_damage (boolean): true, коли пошкодження лежить у ПОТЕНЦІЙНО структурній зоні (зона порога/rocker, зона стійки, передня/задня зона лонжеронів), але надійно відрізнити зовнішню панель від силового елемента за фото не можна. Тоді structural_visual_status = "indeterminate" + possible_structural_damage: true. Цей сигнал НЕ є підтвердженим структурним пошкодженням.
 - srs_visual_status: "no_deployment_visible" означає лише "спрацювання не видно на доступних кадрах", НЕ "SRS справна". Салон у кадр не потрапив: "not_visible".
 - summary: 2-3 речення про побачене, з розділенням "що видно" і "що лишається невідомим". evidence з ref auction_photo_N.
 ` : auction && (auction.blocked || (auction.photos || []).length) ? `Архів чи історичні матеріали існують, але кадри автоматично недоступні.
@@ -1360,6 +1364,7 @@ ${auction && auction.photos_sent ? `
 "score_facts": СЛУЖБОВА класифікація знахідок для коду, на текст звіту НЕ впливає, verdict.score і verdict.grade рахуй як раніше, незалежно від неї. Жорсткі правила класифікації:
 - type СТРОГО з переліку. Підтверджені ризики: STRUCTURAL_DAMAGE, AIRBAGS_DEPLOYED, SRS_FAULT (поточна несправність SRS), FLOOD, FIRE, ODOMETER_ROLLBACK, VIN_IDENTITY_PROBLEM, SERIOUS_POWERTRAIN_FAULT, POOR_REPAIR_VISIBLE, CRITICAL_WARNING_LIGHTS. Відкриті питання: MILEAGE_CONFLICT_UNEXPLAINED, MAJOR_REPAIR_UNVERIFIED, MODIFICATION_TECHNICAL_CONCERN.
 - Підтверджений ризик вимагає ПРЯМОГО доказу. Не підвищуй відкрите питання до підтвердженого ризику припущенням.
+- STRUCTURAL_DAMAGE з ФОТО (Vision) СТАВ ЛИШЕ за STRONG structural evidence: конкретно ідентифікований і достатньо видимий силовий елемент із видимою деформацією САМЕ його (ті самі правила, що для structural_visual_status "visible_damage"), і назви цей елемент в evidence.description. Пошкоджена потенційно структурна зона без надійно видимого силового елемента (зовнішній поріг/rocker, "в районі стійки") STRUCTURAL_DAMAGE НЕ створює: це possible_structural_damage в historical_visual, воно живе в risks і must_check, не в score_facts. Прикметник тяжкості сам по собі доказом не є. STRUCTURAL_DAMAGE з надійного НЕ-Vision джерела (запис реєстру/документа, structured-позначка аукціону типу frame damage) працює як раніше.
 - ОДИНИЦІ ПРОБІГУ: перед будь-яким порівнянням пробігу (аукціон проти історії проти поточного оголошення) приведи значення до ОДНІЄЇ одиниці. Аукціонний одометр США зазвичай у милях (mi), українські оголошення у км: 1 mi = 1.609 km.
 - MILEAGE_CONFLICT_UNEXPLAINED на основі АУКЦІОННОГО одометра дозволений ЛИШЕ коли ОДНОЧАСНО: одиниця аукціонної точки не unknown; її статус actual (не not_actual, не exempt, не unknown); аукціонна точка має надійну дату; порівнювана точка з історії чи оголошення теж має надійну дату; і ПІСЛЯ переведення одиниць пізніша точка справді нижча за ранішу. Якщо статус not_actual, exempt чи unknown, одиниця unknown, або дата хоч однієї точки ненадійна: конфлікт НЕ виставляй, збережи як інформаційний факт в info_notes із вихідним значенням і статусом.
 - Різниця пробігів САМА ПО СОБІ це НЕ ODOMETER_ROLLBACK, а MILEAGE_CONFLICT_UNEXPLAINED. Тюнінг сам по собі НЕ MODIFICATION_TECHNICAL_CONCERN: потрібен конкретний технічний привід. Минуле ДТП саме по собі НЕ POOR_REPAIR_VISIBLE: потрібні видимі сліди поганого ремонту.
@@ -1406,6 +1411,8 @@ ${l.price_context ? '- price_context: ' + JSON.stringify(l.price_context) : ''}
 
 КОМПЛЕКТАЦІЯ В ТЕКСТАХ: згенерований текст НІКОЛИ не підвищує достовірність опцій понад їх джерела. visual не перетворюється на "заводську комплектацію" чи "підтверджено по VIN"; замість "багата підтверджена комплектація" при змішаних джерелах пиши чесно: "багате оснащення за фото і даними оголошення". Згадуючи конкретну ВАЖЛИВУ опцію, тримай рівень джерела: "Bowers & Wilkins видно на фото", "адаптивний круїз вказаний в оголошенні", "HUD вказаний в оголошенні і видно на фото". Біля звичайних опцій джерело підписувати не обовʼязково.
 
+POSSIBLE STRUCTURAL: якщо historical_visual.possible_structural_damage = true, цей факт НЕ губиться: додай його у risks (рівень за загальною сортовкою тяжкості, НЕ автоматично першим: підтверджені flood/скрутка/VIN/structural і сильніші фактори мають вищий пріоритет) і в must_check з формулюванням "пошкодження в потенційно структурній зоні; стан силової частини за доступними фото підтвердити не можна" та конкретною перевіркою силової частини/геометрії на підйомнику. НЕ стверджуй структурне пошкодження як факт.
+
 ІСТОРИЧНИЙ ВІЗУАЛ І РІШЕННЯ: purchase_decision ЗОБОВʼЯЗАНИЙ враховувати historical_visual РАЗОМ з фактами історії, поточними фото, заявами продавця, пробігом і болячками моделі, і РОЗРІЗНЯТИ три різні ситуації: (1) видимі ознаки тяжкого/структурного пошкодження; (2) явних тяжких структурних ознак на доступних кадрах НЕ видно; (3) прихована структура, геометрія і SRS лишаються неперевіреними. Друга і третя співіснують: тоді формулюй "на історичному фото видно помітний удар спереду; явних ознак тяжкої деформації силової структури чи зони салону на доступному ракурсі нема, але приховані елементи, геометрію і SRS за цим фото підтвердити не можна". НЕ пиши так, ніби тяжке пошкодження вже знайдене, якщо visual evidence його не показує; і НЕ називай удар мінімальним, якщо на кадрах видно суттєве пошкодження.
 
 ${DECISION_RULES}${decisionStyle === 'a' ? DECISION_FEWSHOT : ''}
@@ -1414,7 +1421,7 @@ ${DECISION_RULES}${decisionStyle === 'a' ? DECISION_FEWSHOT : ''}
  "vehicle": {"title":"Марка Модель Рік","year":2018,"fuel":"petrol|diesel|hybrid|electric","engine":"4.4 л бензин V8, 462 к.с. (або null)","transmission":"...","drive":"...","trim":"версія або null","mileage_note":"129 000 км"},
  "auction": {"found":true,"summary":"2-4 речення: що сталося з авто в США за архівом, реальний обсяг пошкоджень по фото, чи чесно продавець його описує","findings":[{"status":"ok|warn|bad|unknown","text":"порівняння до/після, 1 речення"}]},
  "body_wrap": {"present":false,"scope":"full|partial|unknown","sources":["seller","visual","historical"],"inspection_visibility":"limited|normal"},
- "historical_visual": {"visible_damage_zones":["капот","передній бампер"],"visible_severity":"minor|moderate|severe|indeterminate","major_deformation_visible":false,"wheel_displacement_visible":false,"cosmetic_only":false,"structural_visual_status":"no_obvious_severe_signs|possible|visible_damage|indeterminate","srs_visual_status":"deployed_visible|no_deployment_visible|not_visible|indeterminate","summary":"2-3 речення: що реально видно і що лишається невідомим","evidence":[{"source":"us_auction","ref":"auction_photo_1","description":"зім'ятий капот"}]},
+ "historical_visual": {"visible_damage_zones":["капот","передній бампер"],"visible_severity":"minor|moderate|severe|indeterminate","major_deformation_visible":false,"wheel_displacement_visible":false,"cosmetic_only":false,"possible_structural_damage":false,"structural_visual_status":"no_obvious_severe_signs|possible|visible_damage|indeterminate","srs_visual_status":"deployed_visible|no_deployment_visible|not_visible|indeterminate","summary":"2-3 речення: що реально видно і що лишається невідомим","evidence":[{"source":"us_auction","ref":"auction_photo_1","description":"зім'ятий капот"}]},
  "risks":[{"title":"назва ризику","level":"high|med|low","note":"1-2 речення: чому це головна стаття витрат чи ризику саме тут","action":"конкретна перевірка до покупки, 1 рядок"}],
  "equipment_v2":[{"name":"вентиляція передніх сидінь","category":"comfort|interior|multimedia|assist|exterior|performance","confidence_level":"vehicle_data|seller_and_visual|visual|seller, або null лише для суто історичної","highlight":false,"retrofit":false,"retrofit_basis":null,"historical_claim":false,"value_tier":"standard|notable|high_value","evidence":[{"source":"vehicle_data|current_photos|seller_claim|listing_data|historical","ref":"photo_7 чи vin_decode чи назва історичного джерела","sign":"конкретна ознака на кадрі чи коротка цитата джерела"}]}],
  "discrepancies":[{"severity":"high|med|low","title":"коротка назва розбіжності","detail":"2-3 речення: що стверджується, що знайдено, звідки","sources":["опис продавця","перевірка площадки","фото","VIN"]}],
@@ -1885,6 +1892,27 @@ ${pd.reasoning}
         }
       } catch (e) { console.log('[check] score narrative failed:', e.message); }
     }
+
+    /* possible structural: якщо модель не поклала його в risks/must_check,
+       код додає сам (У КІНЕЦЬ списку: не автоматично ризик №1, підтверджені
+       сильніші фактори лишаються вище). Твердження факту нема: лише зона */
+    try {
+      if (parsed.historical_visual && parsed.historical_visual.possible_structural_damage === true) {
+        const PS = {
+          ua: { title: 'Потенційно структурна зона удару', note: 'Пошкодження торкалося потенційно структурної зони; стан силової частини за доступними фото підтвердити не можна.', action: 'силова частина і геометрія кузова на підйомнику', check: 'Перевірити силову частину і геометрію кузова: удар був у потенційно структурній зоні, за фото стан силових елементів не підтверджується.' },
+          ru: { title: 'Потенциально структурная зона удара', note: 'Повреждение затрагивало потенциально структурную зону; состояние силовой части по доступным фото подтвердить нельзя.', action: 'силовая часть и геометрия кузова на подъемнике', check: 'Проверить силовую часть и геометрию кузова: удар был в потенциально структурной зоне, по фото состояние силовых элементов не подтверждается.' },
+          en: { title: 'Potentially structural impact zone', note: 'The damage touched a potentially structural zone; the structural members cannot be verified from the available photos.', action: 'structural members and body geometry on a lift', check: 'Check the structural members and body geometry: the impact was in a potentially structural zone and the photos cannot verify the structural parts.' },
+        }[lang] || null;
+        const mentions = t => typeof t === 'string' && /силов|структурн|structural|геометр|geometr/i.test(t);
+        if (PS) {
+          if (Array.isArray(parsed.risks) && !parsed.risks.some(r => r && (mentions(r.title) || mentions(r.note) || mentions(r.action)))) {
+            parsed.risks.push({ title: PS.title, level: 'med', note: PS.note, action: PS.action });
+          }
+          const pdd = parsed.purchase_decision;
+          if (pdd && Array.isArray(pdd.must_check) && !pdd.must_check.some(mentions)) pdd.must_check.push(PS.check);
+        }
+      }
+    } catch (e) { console.log('[check] possible-structural fallback failed:', e.message); }
 
     /* плівка кузова: структурований факт */
     const bwClean = sanitizeBodyWrap(parsed.body_wrap);
