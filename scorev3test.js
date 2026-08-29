@@ -467,7 +467,7 @@ const THIN = {
   /* картка підоцінок: пʼять міток на сторінці і в обох словниках */
   const ruDict = fs.readFileSync('i18n/ru.js', 'utf8');
   const enDict = fs.readFileSync('i18n/en.js', 'utf8');
-  for (const lbl of ['Історія авто', 'Пробіг', 'Пошкодження та відновлення', 'Стан за фото', 'Технічні ризики']) {
+  for (const lbl of ['Історія авто', 'Історія пробігу', 'Пошкодження та відновлення', 'Стан за фото', 'Технічні ризики']) {
     if (!pageSrc.includes("'" + lbl + "'")) errs.push('result-check: мітка осі відсутня: ' + lbl);
     if (!ruDict.includes("'" + lbl + "'")) errs.push('ru.js: нема перекладу мітки ' + lbl);
     if (!enDict.includes("'" + lbl + "'")) errs.push('en.js: нема перекладу мітки ' + lbl);
@@ -477,6 +477,9 @@ const THIN = {
   if (!/Оцінку обмежує повнота даних/.test(pageSrc)) errs.push('result-check: нема рядка обмеження покриттям');
   if (!/CAP_WHY/.test(pageSrc) || !/indexOf\('hard_cap:'\) === 0/.test(pageSrc)) errs.push('result-check: нема рядка обмеження капом');
   if (!/limiting_factors/.test(pageSrc)) errs.push('result-check: рядок обмеження не привʼязаний до limiting_factors');
+  /* narrative: вісь пробігу подається як ІСТОРІЯ пробігу, не величина */
+  if (!/Історія пробігу/.test(checkSrc)) errs.push('check.js: у промпті narrative нема семантики "Історія пробігу"');
+  if (!/НЕ величину пробігу|НІКОЛИ не "пробіг отримав/.test(checkSrc)) errs.push('check.js: нема заборони трактувати бал як розмір пробігу');
   for (const key of ['Стан за фото', 'Оцінку обмежує повнота даних', 'Максимум', 'через затоплення']) {
     if (!ruDict.includes("'" + key + "'")) errs.push('ru.js: нема перекладу ' + key);
     if (!enDict.includes("'" + key + "'")) errs.push('en.js: нема перекладу ' + key);

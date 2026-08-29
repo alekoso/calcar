@@ -1222,7 +1222,7 @@ function boot2(D){
         $('dimName').textContent = t('Оцінка CalCar:').replace(/:\s*$/, '');
         $('dimVal').textContent = sc.toFixed(1);
         $('dimRisk').textContent = riskLabel;
-        const ORDER = [['history', 'Історія авто'], ['mileage', 'Пробіг'], ['damage_repair', 'Пошкодження та відновлення'], ['current_condition', 'Стан за фото'], ['technical', 'Технічні ризики']];
+        const ORDER = [['history', 'Історія авто'], ['mileage', 'Історія пробігу'], ['damage_repair', 'Пошкодження та відновлення'], ['current_condition', 'Стан за фото'], ['technical', 'Технічні ризики']];
         $('dimRows').innerHTML = ORDER.map(([k, lbl]) => {
           const d = dims[k] || {};
           const val = d.score_available === true && typeof d.score === 'number' ? d.score : null;

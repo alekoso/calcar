@@ -102,7 +102,7 @@ const gold = JSON.parse(fs.readFileSync('calibration-gold.json', 'utf8'));
     process.exit(1);
   }
   /* діагностика: підоцінки по gold-набору (пояснювальний шар, у формулу не входить) */
-  console.log('pid      | v3  | Історія | Пробіг | Пошк/відн | Стан за фото | Технічні');
+  console.log('pid      | v3  | Історія | Іст.пробігу | Пошк/відн | Стан за фото | Технічні');
   for (const [pid, r] of Object.entries(res)) {
     if (typeof r.v3.final !== 'number') continue;
     const d = r.v3.score_dimensions || {};

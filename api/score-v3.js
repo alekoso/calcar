@@ -696,7 +696,7 @@ export const SCORE_DIMENSIONS_CONFIG = {
 };
 export const DIMENSION_LABELS = {
   history: 'Історія авто',
-  mileage: 'Пробіг',
+  mileage: 'Історія пробігу',
   damage_repair: 'Пошкодження та відновлення',
   current_condition: 'Стан за фото',
   technical: 'Технічні ризики',

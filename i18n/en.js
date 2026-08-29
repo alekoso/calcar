@@ -546,4 +546,5 @@ window.CALCAR_DICT = {
   'через проблему ідентичності VIN': 'due to a VIN identity problem',
   'через непідтверджене відновлення після структурного пошкодження': 'due to unverified structural repair',
   'через ризик SRS': 'due to SRS risk',
+  'Історія пробігу': 'Mileage history',
 };
