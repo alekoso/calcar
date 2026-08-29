@@ -186,7 +186,9 @@ export default async function handler(req, res) {
       delete c.score_facts;
       delete c.score_v2_preview;
       delete c.score_breakdown_v2;
+      delete c.score_breakdown;
       delete c.score_breakdown_shadow;
+      delete c.active_score_version;
       return c;
     };
     let context = stripV2(body.context || body.report || {});

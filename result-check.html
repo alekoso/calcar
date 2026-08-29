@@ -767,7 +767,7 @@
   <div class="card" id="verdictCard" style="display:none">
     <div class="card-head">
       <h2>Чи варто брати</h2>
-      <span class="risk-badge" id="scoreBadge" style="display:none"><span class="dot ok" id="scoreDot"></span>Оцінка CalCar: <b id="scoreVal">–</b> <span class="risk-label" id="scoreLabel"></span><span class="score-shield" id="scoreShield" tabindex="0" role="button" aria-label="CalCar Score"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg><span class="score-tip" id="scoreTip"><b>CalCar Score</b><span>Наша оцінка авто на основі даних, які вдалося перевірити.</span><span>Критичні ризики можуть сильніше впливати на підсумкову оцінку.</span></span></span></span>
+      <span class="risk-badge" id="scoreBadge" style="display:none"><span class="dot ok" id="scoreDot"></span>Оцінка CalCar: <b id="scoreVal">–</b> <span class="risk-label" id="scoreLabel"></span><span class="score-shield" id="scoreShield" tabindex="0" role="button" aria-label="CalCar Score"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg><span class="score-tip" id="scoreTip"><b>CalCar Score</b><span id="scoreRiskLvl" style="display:none;font-weight:600"></span><span>Наша оцінка авто на основі даних, які вдалося перевірити.</span><span>Критичні ризики можуть сильніше впливати на підсумкову оцінку.</span></span></span></span>
     </div>
     <div class="card-body">
       <div id="pdBlock" style="display:none">
@@ -1150,9 +1150,10 @@ function boot2(D){
   if (vd && vd.summary) {
     if (!(pd && pd.headline)) $('verdictCard').style.display = '';
     $('vText').textContent = clean(vd.summary);
-    /* на екрані оцінка v2 (детермінована формула); легасі verdict.score
-       лишається у data і служить фолбеком для старих звітів */
-    const bd2 = D.score_breakdown_v2 || null;
+    /* на екрані активний CalCar Score (детермінована формула); канонічне
+       поле score_breakdown, score_breakdown_v2 це compatibility alias для
+       старих звітів; легасі verdict.score лишається фолбеком найстаріших */
+    const bd2 = D.score_breakdown || D.score_breakdown_v2 || null;
     /* нижче порога даних цифру не показуємо взагалі */
     if (bd2 && bd2.score_available === false) {
       $('scoreBadge').style.display = '';
@@ -1161,8 +1162,8 @@ function boot2(D){
       $('scoreLabel').textContent = t('Недостатньо даних для оцінки');
     }
     const v2 = (bd2 && bd2.score_available === false) ? null
-      : (typeof D.score_v2_preview === 'number' ? D.score_v2_preview : null);
-    const g2 = bd2 && bd2.grade;
+      : (bd2 && typeof bd2.final === 'number' ? bd2.final
+        : (typeof D.score_v2_preview === 'number' ? D.score_v2_preview : null));
     const sc = v2 !== null ? v2
       : (typeof vd.score === 'number' ? Math.round(Math.max(0, Math.min(10, vd.score)) * 10) / 10 : null);
     if (sc !== null) {
@@ -1173,6 +1174,12 @@ function boot2(D){
       $('scoreDot').className = 'dot ' + cls;
       $('scoreVal').textContent = sc.toFixed(1) + ' / 10';
       $('scoreLabel').style.display = 'none';
+      /* рівень ВИЯВЛЕНОГО ризику: wording, сам бал незмінний */
+      const riskLabel = sc >= 8.5 ? t('Низький виявлений ризик')
+        : sc >= 7.0 ? t('Помірний виявлений ризик')
+        : sc >= 5.5 ? t('Підвищений виявлений ризик') : t('Високий виявлений ризик');
+      const riskEl = document.getElementById('scoreRiskLvl');
+      if (riskEl) { riskEl.textContent = riskLabel; riskEl.style.display = ''; }
     }
     /* tooltip щита: hover/focus на desktop, tap на mobile, закриття кліком поза */
     const shield = $('scoreShield'), tip = $('scoreTip');
@@ -1317,6 +1324,7 @@ function boot2(D){
   }
 
   /* ---- історія: рядки з паузами володіння ---- */
+  const aas = (D.score_breakdown || D.score_breakdown_v2 || {}).auction_absent_state || null;
   if (Array.isArray(D.history) && D.history.length) {
     $('histCard').style.display = '';
     /* connector між подіями малюється ЗАВЖДИ (крім останньої), підпис
@@ -1325,7 +1333,12 @@ function boot2(D){
       (i > 0 ? '<div class="hgap">' + (h.gap ? esc(h.gap) : '') + '</div>' : '')
       + '<div class="hrow"><span class="hd">' + esc(h.date) + '</span><span>' + esc(h.event) + '</span></div>'
     ).join('')
-    + (D.history_note ? '<div class="dmg-note hnote">' + esc(D.history_note) + '</div>' : '');
+    + (D.history_note ? '<div class="dmg-note hnote">' + esc(D.history_note) + '</div>' : '')
+    /* стан аукціонної перевірки: НЕ твердження, що всі авто з США мусять
+       бути в базах; expected лише коли незалежні дані кажуть про аукціонну
+       історію, а сам запис не знайдено */
+    + (aas === 'checked_absent_neutral' ? '<div class="dmg-note hnote">' + esc(t('Аукціонних записів у перевірених джерелах не знайдено')) + '</div>' : '')
+    + (aas === 'checked_absent_expected' ? '<div class="dmg-note hnote">' + esc(t('Інші дані вказують на аукціонну історію в США, але сам запис у перевірених архівах знайти не вдалося')) + '</div>' : '');
   }
 
   /* ---- болячки: без бейджа ризику, це довідка про модель ---- */

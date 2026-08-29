@@ -123,26 +123,35 @@ const THIN = {
   b = score(sameYearDiffIds, RICH);
   if (b.accident_events.length !== 1) errs.push('різні LLM id, той самий рік: подій ' + b.accident_events.length + ' != 1');
 
-  /* ===== 4. severity: виводить код, не слово моделі ===== */
-  let sv = deriveSeverity({ signals: { structural: true, airbags: false, zones: 0, visual_severity: null } });
+  /* ===== 4. severity: код виводить tier зі СПОСТЕРЕЖУВАНИХ ознак; LLM
+     лише витягує ознаки, прикметник visible_severity в математику не входить */
+  const SIG = o => ({ signals: { structural: false, airbags: false, zones: 0, major_deformation: false, wheel_displacement: false, cosmetic_only: false, ...o } });
+  let sv = deriveSeverity(SIG({ structural: true }));
   if (sv.severity !== 'severe' || !sv.basis.includes('structural_damage')) errs.push('structural мав дати severe: ' + JSON.stringify(sv));
-  sv = deriveSeverity({ signals: { structural: false, airbags: true, zones: 0, visual_severity: null } });
+  sv = deriveSeverity(SIG({ major_deformation: true }));
+  if (sv.severity !== 'severe' || !sv.basis.includes('major_deformation_visible')) errs.push('глибока деформація мала дати severe: ' + JSON.stringify(sv));
+  sv = deriveSeverity(SIG({ airbags: true }));
   if (sv.severity !== 'moderate' || !sv.basis.includes('airbags_deployed')) errs.push('подушки мали дати мінімум moderate: ' + JSON.stringify(sv));
-  sv = deriveSeverity({ signals: { structural: false, airbags: false, zones: 2, visual_severity: null } });
+  sv = deriveSeverity(SIG({ wheel_displacement: true }));
+  if (sv.severity !== 'moderate' || !sv.basis.includes('wheel_displacement_visible')) errs.push('зміщене колесо мало дати мінімум moderate: ' + JSON.stringify(sv));
+  sv = deriveSeverity(SIG({ zones: 2 }));
   if (sv.severity !== 'moderate') errs.push('кілька зон мали дати moderate: ' + sv.severity);
-  sv = deriveSeverity({ signals: { structural: false, airbags: false, zones: 0, visual_severity: 'minor' } });
+  sv = deriveSeverity(SIG({ cosmetic_only: true }));
   if (sv.severity !== 'minor') errs.push('косметика мала дати minor: ' + sv.severity);
-  sv = deriveSeverity({ signals: { structural: false, airbags: false, zones: 0, visual_severity: null } });
-  if (sv.severity !== 'indeterminate') errs.push('без evidence мало бути indeterminate: ' + sv.severity);
-  sv = deriveSeverity({ signals: { structural: false, airbags: true, zones: 0, visual_severity: 'severe' } });
-  if (sv.severity !== 'severe') errs.push('severe візуал + подушки мали дати severe: ' + sv.severity);
+  sv = deriveSeverity(SIG({}));
+  if (sv.severity !== 'indeterminate') errs.push('без ознак мало бути indeterminate: ' + sv.severity);
+  sv = deriveSeverity(SIG({ airbags: true, major_deformation: true }));
+  if (sv.severity !== 'severe') errs.push('деформація + подушки мали дати severe: ' + sv.severity);
+  /* прикметник моделі САМ не піднімає tier */
+  sv = deriveSeverity({ signals: { structural: false, airbags: false, zones: 0, major_deformation: false, wheel_displacement: false, cosmetic_only: false, visual_severity: 'severe' } });
+  if (sv.severity !== 'indeterminate') errs.push('прикметник visible_severity потрапив у математику: ' + sv.severity);
 
   /* ===== 5. драбина severity в підсумку і repair-інваріанти ===== */
   const accCase = (sevSignals, repair) => {
     const meta = { lot_id: '9', house: 'IAAI', sale_date: '2022-03-01', airbags: sevSignals.airbags ? { deployed: true, raw: 'x' } : null, primary_damage: sevSignals.zones >= 1 ? 'FRONT END' : null, secondary_damage: sevSignals.zones >= 2 ? 'LEFT SIDE' : null };
     const hvv = sevSignals.structural
-      ? { structural_visual_status: 'visible_damage', srs_visual_status: 'not_assessable', visible_severity: 'severe', visible_damage_zones: [], evidence: [{ source: 'historical_listing', description: 'кадри' }] }
-      : (sevSignals.minor ? { structural_visual_status: 'no_visible_issues', srs_visual_status: 'not_assessable', visible_severity: 'minor', visible_damage_zones: [], evidence: [{ source: 'historical_listing', description: 'кадри' }] } : null);
+      ? { structural_visual_status: 'visible_damage', srs_visual_status: 'not_assessable', major_deformation_visible: true, visible_damage_zones: [], evidence: [{ source: 'historical_listing', description: 'кадри' }] }
+      : (sevSignals.minor ? { structural_visual_status: 'no_visible_issues', srs_visual_status: 'not_assessable', cosmetic_only: true, visible_damage_zones: [], evidence: [{ source: 'historical_listing', description: 'кадри' }] } : null);
     const f = repair ? [F('MAJOR_REPAIR_UNVERIFIED', 'acc_2022', { evidence: [ev('us_auction', 'lot', 'ремонт після лота')], repair_status: repair })] : [];
     return score(f, RICH, { auctionMeta: meta, historicalVisual: hvv });
   };
@@ -287,13 +296,14 @@ const THIN = {
     if (!(k in full)) errs.push('у breakdown нема поля ' + k);
   }
   const e0 = full.accident_events[0] || {};
-  for (const k of ['normalized_event_id', 'source_event_ids', 'merge_basis', 'accident_base', 'derived_severity', 'severity_basis', 'severity_additional', 'repair_status', 'repair_multiplier', 'minimum_residual_if_applied', 'final_event_penalty']) {
+  for (const k of ['normalized_event_id', 'anchored', 'source_event_ids', 'merge_basis', 'merge_confidence', 'accident_base', 'derived_severity', 'severity_basis', 'severity_additional', 'repair_status', 'repair_multiplier', 'minimum_residual_if_applied', 'final_event_penalty']) {
     if (!(k in e0)) errs.push('у accident_event нема поля ' + k);
   }
-  /* грейди нейтральні, без buy */
+  /* грейди: семантика рівня ВИЯВЛЕНОГО ризику, без buy/excellent */
   const grades = C.GRADE_THRESHOLDS.map(t => t.grade).join(',');
-  if (/buy/.test(grades)) errs.push('грейд buy лишився: ' + grades);
-  if (grades !== 'excellent,good,elevated_risk,high_risk') errs.push('несподівані грейди: ' + grades);
+  if (/buy|excellent/.test(grades)) errs.push('оцінювальний грейд лишився: ' + grades);
+  if (grades !== 'low_risk,moderate_risk,elevated_risk,high_risk') errs.push('несподівані грейди: ' + grades);
+  if (C.GRADE_THRESHOLDS.map(t => t.min).join(',') !== '8.5,7,5.5,0') errs.push('пороги грейдів змінились');
 
   /* ===== 15. каузальні порядки (розділ 44 ТЗ) ===== */
   const sevSrs = accCase({ structural: false, airbags: true, zones: 2 }, 'unknown');           /* severe-канал через подушки+зони: moderate; порівнюємо з чистим severe */
@@ -302,15 +312,84 @@ const THIN = {
   if (!(severe > flood.final)) errs.push('flood не гірший за severe: ' + flood.final + ' vs ' + severe);
   if (!(flood.final >= vin.final)) errs.push('identity fraud не найнижчий');
 
-  /* ===== 16. сторожі диспетчера і приватності ===== */
+  /* ===== 16. resolver: anchored проти unanchored (follow-up 3961e3b) ===== */
+  /* два РІЗНІ лоти одного року = дві події: інша лот-ідентичність не merge */
+  const anchorLot = { lot_id: '40111111', house: 'Copart', sale_date: '2021-06-01', airbags: { deployed: true, raw: 'x' }, primary_damage: 'FRONT END', secondary_damage: null };
+  b = score([
+    F('AIRBAGS_DEPLOYED', 'lot_40222222_2021', { evidence: [ev('us_auction', 'lot_40222222', 'подушки за іншим лотом 2021')], repair_status: 'unknown' }),
+  ], RICH, { auctionMeta: anchorLot });
+  if (b.accident_events.length !== 2) errs.push('два різні лоти одного року: подій ' + b.accident_events.length + ' != 2');
+  if (b.accident_events.length === 2 && !b.accident_events.some(e => e.merge_basis.includes('lot_mismatch_with_anchor'))) errs.push('lot_mismatch_with_anchor не зафіксований');
+  /* той самий лот у ref: merge у якір */
+  b = score([
+    F('AIRBAGS_DEPLOYED', 'acc_2021', { evidence: [ev('us_auction', 'lot_40111111', 'подушки за лотом')], repair_status: 'unknown' }),
+  ], RICH, { auctionMeta: anchorLot });
+  if (b.accident_events.length !== 1) errs.push('той самий лот: подій ' + b.accident_events.length + ' != 1');
+  /* generic запис площадки 2021 + єдиний аукціонний лот 2021 = одна подія */
+  b = score([], RICH, { auctionMeta: anchorLot, accidentRecord: { recorded: true, note: 'ДТП 2021 із пошкодженням передньої частини' } });
+  if (b.accident_events.length !== 1) errs.push('generic запис + єдиний лот того ж року: подій ' + b.accident_events.length + ' != 1');
+  if (b.accident_events.length === 1) {
+    const e0 = b.accident_events[0];
+    if (!e0.merge_basis.includes('platform_record_attached')) errs.push('platform_record_attached нема в merge_basis');
+    if (!e0.merge_basis.includes('damage_zones_match')) errs.push('збіг зон не зафіксований як підтвердження');
+    if (e0.merge_confidence !== 'high') errs.push('роки відомі й рівні: merge_confidence мав бути high, а не ' + e0.merge_confidence);
+    if (e0.anchored !== true) errs.push('якірна подія не позначена anchored');
+  }
+  /* зони як ВЕТО: запис площадки про удар у ЗАД проти фронтального лота */
+  b = score([], RICH, { auctionMeta: anchorLot, accidentRecord: { recorded: true, note: 'ДТП 2021 із пошкодженням задньої частини кузова' } });
+  if (b.accident_events.length !== 2) errs.push('вето за зонами не спрацювало: подій ' + b.accident_events.length + ' != 2');
+  if (b.accident_events.length === 2 && !b.accident_events.some(e => e.merge_basis.includes('damage_zones_veto'))) errs.push('damage_zones_veto не зафіксований');
+  /* два САМОСТІЙНІ ДТП одного року не схлопуються (без якоря) */
+  b = score([
+    F('AIRBAGS_DEPLOYED', 'acc_a_2021', { evidence: [ev('historical_listing', 'l1', 'подушки, перше ДТП 2021')], repair_status: 'unknown' }),
+    F('AIRBAGS_DEPLOYED', 'acc_b_2021', { evidence: [ev('historical_listing', 'l2', 'подушки, друге ДТП 2021')], repair_status: 'unknown' }),
+  ], RICH);
+  if (b.accident_events.length !== 2) errs.push('два самостійні ДТП одного року схлопнулись: подій ' + b.accident_events.length);
+  /* несумісні надійні дати проти us_auction-evidence: не merge */
+  b = score([
+    F('AIRBAGS_DEPLOYED', 'acc_2019', { evidence: [ev('us_auction', 'arch', 'подушки, архів 2019')], repair_status: 'unknown' }),
+  ], RICH, { auctionMeta: anchorLot });
+  if (b.accident_events.length !== 2) errs.push('різні надійні роки злились попри us_auction evidence: подій ' + b.accident_events.length);
+
+  /* ===== 17. округлення не перевищує стелю і кап ===== */
+  b = score([], { identity_confirmed: true, photos_count: 12, registration_data_exists: true, basics_known: true, mileage_known: true, historical_listings_count: 0, mileage_observation_count: 0 });
+  if (Math.abs(b.coverage_cap - 8.75) > 1e-9) errs.push('очікувалась стеля 8.75, а не ' + b.coverage_cap);
+  if (b.final > b.coverage_cap + 1e-9) errs.push('показаний бал ' + b.final + ' перевищив стелю ' + b.coverage_cap);
+  if (b.final !== 8.7) errs.push('стеля 8.75 мала показатись як 8.7, а не ' + b.final);
+  /* аналог для hard cap: кап 4.55 не показується як 4.6 */
+  const cfgCap = { ...C, HARD_CAPS: { ...C.HARD_CAPS, FLOOD: 4.55 } };
+  b = computeScoreV3({ findings: [F('FLOOD', 'fl1', { evidence: [ev('us_auction', null, 'flood title')] })], coverageInputs: RICH }, cfgCap);
+  if (b.final > 4.55 + 1e-9) errs.push('показаний бал ' + b.final + ' перевищив кап 4.55');
+  if (b.final !== 4.5) errs.push('кап 4.55 мав показатись як 4.5, а не ' + b.final);
+  /* quality-обмежений бал округлюється звичайно (може вгору) */
+  const cfgQ = { ...C, SEVERITY_ADDITIONAL: { ...C.SEVERITY_ADDITIONAL, moderate: 0.95 } };
+  b = computeScoreV3({ findings: [], coverageInputs: RICH, auctionMeta: { lot_id: '9', house: 'IAAI', sale_date: '2022-01-01', airbags: null, primary_damage: 'FRONT END', secondary_damage: 'LEFT SIDE' } }, cfgQ);
+  if (b.raw_quality !== 8.75) errs.push('очікувався raw 8.75, а не ' + b.raw_quality);
+  if (b.final !== 8.8) errs.push('quality-обмежений 8.75 мав округлитись звичайно до 8.8, а не ' + b.final);
+
+  /* ===== 18. not_applicable: bounded, без ratio-роздування ===== */
+  const ceilNA = score([], { ...RICH, auction_record_exists: false, auction_applicable: false }).coverage_cap;
+  const ceilFound = score([], RICH).coverage_cap;
+  if (Math.abs(ceilNA - ceilFound) > 1e-9) errs.push('not_applicable дав іншу стелю, ніж bounded-внесок домену: ' + ceilNA + ' vs ' + ceilFound);
+  if (ceilNA > C.CEILING_MAX + 1e-9) errs.push('not_applicable роздув стелю понад CEILING_MAX');
+
+  /* ===== 19. сторожі диспетчера і приватності ===== */
   const checkSrc = fs.readFileSync('api/check.js', 'utf8');
   if (!/CALCAR_SCORE_VERSION/.test(checkSrc)) errs.push('check.js: нема перемикача CALCAR_SCORE_VERSION');
+  if (!/parsed\.score_breakdown = breakdown/.test(checkSrc)) errs.push('check.js: канонічне поле score_breakdown не пишеться');
+  if (!/parsed\.active_score_version = SCORE_VERSION/.test(checkSrc)) errs.push('check.js: active_score_version не пишеться');
+  if (!/COMPATIBILITY/.test(checkSrc)) errs.push('check.js: compatibility alias не задокументований');
   if (!/score_breakdown_shadow/.test(checkSrc)) errs.push('check.js: тіньова версія не зберігається');
   if (!/computeScoreV3/.test(checkSrc)) errs.push('check.js: v3 не викликається');
   if (!/computeScore\(/.test(checkSrc)) errs.push('check.js: v2 більше не рахується (мала лишитись)');
   if (!fs.existsSync('api/score.js')) errs.push('api/score.js видалений: v2 мала жити поруч');
   const chatSrc = fs.readFileSync('api/chat.js', 'utf8');
   if (!/delete c\.score_breakdown_shadow/.test(chatSrc)) errs.push('chat.js: тіньовий breakdown не вирізається з контексту чату');
+  if (!/delete c\.score_breakdown;/.test(chatSrc)) errs.push('chat.js: канонічний breakdown не вирізається з контексту чату');
+  const pageSrc = fs.readFileSync('result-check.html', 'utf8');
+  if (!/D\.score_breakdown \|\| D\.score_breakdown_v2/.test(pageSrc)) errs.push('result-check: читач не переведений на канонічне поле з alias-фолбеком');
+  if (!/Низький виявлений ризик/.test(pageSrc)) errs.push('result-check: risk-wording рівня нема');
+  if (!/Аукціонних записів у перевірених джерелах не знайдено/.test(pageSrc)) errs.push('result-check: нейтральне повідомлення checked_absent нема');
 
   fs.unlinkSync(tmp);
   if (errs.length) {

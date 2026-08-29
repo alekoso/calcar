@@ -769,7 +769,8 @@ export function localizePhotoRefs(node, listingMap, auctionMap, labels) {
    Структурований assessment історичних кадрів. Жорстка семантика:
    no_obvious_severe_signs НІКОЛИ не означає "структура ціла",
    no_deployment_visible не означає справну SRS. Без переданих кадрів
-   поле не існує. На Score не впливає: лише wording, звіт і decision */
+   поле не існує. Score v3 читає ЛИШЕ структуровані поля (статуси, зони,
+   booleans-ознаки); прикметник visible_severity лишається wording звіту */
 export function sanitizeHistoricalVisual(hv, photosSent) {
   if (!photosSent || !hv || typeof hv !== 'object' || Array.isArray(hv)) return null;
   const SEV = ['minor', 'moderate', 'severe', 'indeterminate'];
@@ -779,6 +780,9 @@ export function sanitizeHistoricalVisual(hv, photosSent) {
   return {
     visible_damage_zones: (Array.isArray(hv.visible_damage_zones) ? hv.visible_damage_zones : []).map(clean).filter(Boolean).map(z => z.slice(0, 60)).slice(0, 10),
     visible_severity: SEV.includes(hv.visible_severity) ? hv.visible_severity : 'indeterminate',
+    major_deformation_visible: hv.major_deformation_visible === true,
+    wheel_displacement_visible: hv.wheel_displacement_visible === true,
+    cosmetic_only: hv.cosmetic_only === true,
     structural_visual_status: STR.includes(hv.structural_visual_status) ? hv.structural_visual_status : 'indeterminate',
     srs_visual_status: SRS.includes(hv.srs_visual_status) ? hv.srs_visual_status : 'indeterminate',
     summary: clean(hv.summary) ? clean(hv.summary).slice(0, 600) : null,
@@ -1285,7 +1289,8 @@ ${auction && auction.photos_sent ? `
 
 ІСТОРИЧНИЙ ВІЗУАЛЬНИЙ АНАЛІЗ ("historical_visual"): заповнюй ЛИШЕ коли історичні кадри реально передані. Оцінюй те, що РЕАЛЬНО видно САМЕ на цих кадрах, а не типовий сценарій ДТП:
 - visible_damage_zones: зони з ВИДИМИМ пошкодженням.
-- visible_severity за видимим обсягом: minor (косметика) | moderate (помітний удар, деформовані навісні елементи) | severe (очевидно тяжка деформація) | indeterminate.
+- visible_severity за видимим обсягом: minor (косметика) | moderate (помітний удар, деформовані навісні елементи) | severe (очевидно тяжка деформація) | indeterminate. Це wording для звіту; тяжкість у формулі рахує код зі структурованих ознак нижче.
+- СТРУКТУРОВАНІ ВИДИМІ ОЗНАКИ (booleans, СТАВ true ЛИШЕ коли ознака реально видима на кадрі): major_deformation_visible (глибока деформація металу: зімʼятий капот/крило/стійка, зміщені панелі кузова, а не подряпини чи тріснутий пластик), wheel_displacement_visible (колесо явно зміщене/вивернуте зі свого положення, видимий обвал підвіски), cosmetic_only (УСІ видимі пошкодження обмежені косметикою навісних панелей: подряпини, дрібні вмʼятини, тріснутий бампер).
 - structural_visual_status: "no_obvious_severe_signs" означає ЛИШЕ "на доступних кадрах нема явних візуальних ознак тяжкої деформації силової структури" і НІКОЛИ не дорівнює "структура ціла". "visible_damage" лише при видимій деформації силових елементів. Ракурс не дозволяє судити: "indeterminate".
 - srs_visual_status: "no_deployment_visible" означає лише "спрацювання не видно на доступних кадрах", НЕ "SRS справна". Салон у кадр не потрапив: "not_visible".
 - summary: 2-3 речення про побачене, з розділенням "що видно" і "що лишається невідомим". evidence з ref auction_photo_N.
@@ -1409,7 +1414,7 @@ ${DECISION_RULES}${decisionStyle === 'a' ? DECISION_FEWSHOT : ''}
  "vehicle": {"title":"Марка Модель Рік","year":2018,"fuel":"petrol|diesel|hybrid|electric","engine":"4.4 л бензин V8, 462 к.с. (або null)","transmission":"...","drive":"...","trim":"версія або null","mileage_note":"129 000 км"},
  "auction": {"found":true,"summary":"2-4 речення: що сталося з авто в США за архівом, реальний обсяг пошкоджень по фото, чи чесно продавець його описує","findings":[{"status":"ok|warn|bad|unknown","text":"порівняння до/після, 1 речення"}]},
  "body_wrap": {"present":false,"scope":"full|partial|unknown","sources":["seller","visual","historical"],"inspection_visibility":"limited|normal"},
- "historical_visual": {"visible_damage_zones":["капот","передній бампер"],"visible_severity":"minor|moderate|severe|indeterminate","structural_visual_status":"no_obvious_severe_signs|possible|visible_damage|indeterminate","srs_visual_status":"deployed_visible|no_deployment_visible|not_visible|indeterminate","summary":"2-3 речення: що реально видно і що лишається невідомим","evidence":[{"source":"us_auction","ref":"auction_photo_1","description":"зім'ятий капот"}]},
+ "historical_visual": {"visible_damage_zones":["капот","передній бампер"],"visible_severity":"minor|moderate|severe|indeterminate","major_deformation_visible":false,"wheel_displacement_visible":false,"cosmetic_only":false,"structural_visual_status":"no_obvious_severe_signs|possible|visible_damage|indeterminate","srs_visual_status":"deployed_visible|no_deployment_visible|not_visible|indeterminate","summary":"2-3 речення: що реально видно і що лишається невідомим","evidence":[{"source":"us_auction","ref":"auction_photo_1","description":"зім'ятий капот"}]},
  "risks":[{"title":"назва ризику","level":"high|med|low","note":"1-2 речення: чому це головна стаття витрат чи ризику саме тут","action":"конкретна перевірка до покупки, 1 рядок"}],
  "equipment_v2":[{"name":"вентиляція передніх сидінь","category":"comfort|interior|multimedia|assist|exterior|performance","confidence_level":"vehicle_data|seller_and_visual|visual|seller, або null лише для суто історичної","highlight":false,"retrofit":false,"retrofit_basis":null,"historical_claim":false,"value_tier":"standard|notable|high_value","evidence":[{"source":"vehicle_data|current_photos|seller_claim|listing_data|historical","ref":"photo_7 чи vin_decode чи назва історичного джерела","sign":"конкретна ознака на кадрі чи коротка цитата джерела"}]}],
  "discrepancies":[{"severity":"high|med|low","title":"коротка назва розбіжності","detail":"2-3 речення: що стверджується, що знайдено, звідки","sources":["опис продавця","перевірка площадки","фото","VIN"]}],
@@ -1808,9 +1813,21 @@ export default async function handler(req, res) {
          purchase_decision і майбутнього блоку осей, НЕ штраф */
       breakdown.accident_record_present = hf.accident_recorded === true;
       breakdown.accident_record_note = hf.accident_note || null;
+      /* нейтральний/посилений стан аукціонної перевірки для UI: Score не
+         чіпає. expected = незалежні дані кажуть про аукціонну історію США
+         (запис ДТП у США), але сам архівний запис знайти не вдалося */
+      breakdown.auction_absent_state = (coverageInputs.auction_us_signal && coverageInputs.auction_checked && !coverageInputs.auction_record_exists)
+        ? ((hf.accident_recorded === true && /США|USA|Copart|IAAI/i.test(hf.accident_note || '')) ? 'checked_absent_expected' : 'checked_absent_neutral')
+        : null;
+      /* канонічні поля нових звітів: score_breakdown, score_breakdown_shadow,
+         active_score_version. score_breakdown_v2 лишається як COMPATIBILITY
+         ALIAS активного breakdown для старих читачів (старі збережені звіти
+         і старі рендери читають лише його); не мігрувати старі звіти */
+      parsed.active_score_version = SCORE_VERSION;
+      parsed.score_breakdown = breakdown;
+      parsed.score_breakdown_shadow = shadow;
+      parsed.score_breakdown_v2 = breakdown;   /* alias, НЕ друга копія по суті */
       parsed.score_v2_preview = breakdown.score_available === false ? null : breakdown.final;
-      parsed.score_breakdown_v2 = breakdown;   /* активна версія; імʼя поля історичне */
-      parsed.score_breakdown_shadow = shadow;  /* неактивна версія: калібрування v2 vs v3 */
       console.log('[check] score', SCORE_VERSION, breakdown.final, '(shadow', shadow.score_version, shadow.final + ')',
         '| cap', breakdown.coverage_cap, '| lim', (breakdown.limiting_factors || []).join(',') || 'none');
     } catch (e) { console.log('[check] score failed:', e.message); }

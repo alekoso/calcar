@@ -29,8 +29,15 @@
    версію обирає диспетчер у api/check.js (env CALCAR_SCORE_VERSION),
    rollback це перемикання конфігурації, не revert коміту. */
 
-/* ================= КАЛІБРУЄТЬСЯ: усі числа v3 тут ================= */
+/* ================= КАЛІБРУЄТЬСЯ: усі числа v3 тут =================
+   Статус: v3 INITIAL PRODUCTION CALIBRATION (2026-08-29, коміт 3961e3b+).
+   Перегляд коефіцієнтів: після достатньої вибірки, орієнтир 50+ реальних
+   accident events у корпусі (усі валідні продові Check зберігаються в
+   reports; curated gold-набір живе у calibration-gold.json).
+   Watchpoints без зміни коефіцієнтів: indeterminate-ДТП ~9.2-9.3,
+   moderate + unknown repair ~8.7 (у стелі), ACCIDENT_BASE 0.3 */
 export const SCORE_CONFIG_V3 = {
+  CALIBRATION_TAG: 'v3-initial-2026-08-29',
   STARTING_SCORE: 10,
 
   /* ---- coverage: глибина перевірки інформаційних ДОМЕНІВ.
@@ -98,13 +105,14 @@ export const SCORE_CONFIG_V3 = {
     MIN_PHOTOS_STANDALONE: 4, /* фото як єдиний evidence-домен */
   },
 
-  /* пороги ті самі, що у v2 (до калібрування не змінюються), імена
-     нейтральні: ціна свідомо не входить у Score, тому "buy" некоректний */
+  /* пороги ті самі (до калібрування не змінюються), семантика: РІВЕНЬ
+     ВИЯВЛЕНОГО РИЗИКУ, не якість чи порада купувати. Ціна свідомо не
+     входить у Score, тому "buy"/"excellent" некоректні */
   GRADE_THRESHOLDS: [
-    { min: 8.5, grade: 'excellent' },
-    { min: 7.0, grade: 'good' },
-    { min: 5.5, grade: 'elevated_risk' },
-    { min: 0, grade: 'high_risk' },
+    { min: 8.5, grade: 'low_risk' },       /* низький виявлений ризик */
+    { min: 7.0, grade: 'moderate_risk' },  /* помірний виявлений ризик */
+    { min: 5.5, grade: 'elevated_risk' },  /* підвищений виявлений ризик */
+    { min: 0, grade: 'high_risk' },        /* високий виявлений ризик */
   ],
 
   /* positive bonuses у v3 СВІДОМО нуль: гак на майбутнє */
@@ -160,29 +168,80 @@ const yearOf = s => {
 const BENIGN_DAMAGE = /normal wear|minor dent|scratch|unknown|none/i;
 const materialZone = v => !!(v && typeof v === 'string' && !BENIGN_DAMAGE.test(v));
 
+/* класи зон пошкодження з довільного тексту: підтвердження або вето merge.
+   Дві НЕПОРОЖНІ множини без перетину = кажуть про різні частини авто */
+const ZONE_PATTERNS = [
+  { key: 'front', re: /перед|передн|front|капот|hood/i },
+  { key: 'rear', re: /зад|задн|rear|багажник|trunk/i },
+  { key: 'left', re: /лів|лев[аоыий]|left/i },
+  { key: 'right', re: /прав|right/i },
+  { key: 'roof', re: /дах|крыш|roof/i },
+];
+const zoneClasses = text => {
+  const s = new Set();
+  for (const z of ZONE_PATTERNS) if (z.re.test(String(text || ''))) s.add(z.key);
+  return s;
+};
+const zonesDisjoint = (a, b) => a.size > 0 && b.size > 0 && [...a].every(k => !b.has(k));
+
+const CONF_RANK = { high: 2, medium: 1 };
+const yearsCompatible = (a, b) => a === null || b === null || a === b;
+
+function newEvent(id, year, anchored, basis, confidence) {
+  return {
+    normalized_event_id: id,
+    anchored: !!anchored,
+    source_event_ids: [],
+    merge_basis: basis ? [...basis] : [],
+    merge_confidence: confidence || 'high',
+    year,
+    signals: { structural: false, airbags: false, zones: 0, major_deformation: false, wheel_displacement: false, cosmetic_only: false },
+    repair_statuses: [],
+    evidence: [],
+  };
+}
+function attach(target, basisTag, confidence) {
+  target.merge_basis.push(basisTag);
+  if (CONF_RANK[confidence] < CONF_RANK[target.merge_confidence]) target.merge_confidence = confidence;
+}
+function absorbGroup(target, g) {
+  target.source_event_ids.push(g.id);
+  for (const f of g.findings) {
+    target.evidence.push(...f.evidence);
+    if (f.repair_status) target.repair_statuses.push(f.repair_status);
+    if (f.type === 'STRUCTURAL_DAMAGE') target.signals.structural = true;
+    if (f.type === 'AIRBAGS_DEPLOYED') target.signals.airbags = true;
+    if (f.type === 'MAJOR_REPAIR_UNVERIFIED') target.merge_basis.push('major_repair_same_accident');
+  }
+}
+
 /* ---------- нормалізація ДТП: deterministic accident event resolver ----------
-   Один underlying accident, видимий через кілька джерел, стає ОДНОЮ подією.
-   Якорі надійності: аукціонний lot/event id -> дата/рік -> провенанс.
-   Конервативно: різні відомі роки НЕ склеюються */
+   Розділені ANCHORED події (аукціонний лот із власним ідентифікатором) і
+   UNANCHORED supporting-записи (generic запис площадки, ремонт, знахідки без
+   якоря). Правила merge:
+   - різні source_event_ids чи несумісні НАДІЙНІ роки НІКОЛИ не зливаються
+     лише за збігом року;
+   - us_auction-evidence зливає знахідку в якір лише за сумісного року;
+   - generic запис площадки БЕЗ власної ідентичності приєднується до ЄДИНОЇ
+     якірної події сумісного періоду, якщо зони пошкоджень не суперечать;
+   - ремонтний supporting-запис приєднується до єдиної події сумісного
+     періоду; кілька кандидатів = не приєднується;
+   - самостійні ДТП-групи одного року НЕ схлопуються між собою */
 export function resolveAccidentEvents(findings, ctx) {
   const c = ctx || {};
   const events = [];
   const auctionMeta = c.auctionMeta || null;
   const hv = c.historicalVisual || null;
 
-  /* якірна подія аукціону: власний надійний ідентифікатор */
+  /* якірна подія аукціону: власний надійний ідентифікатор (лот) */
   let auctionEvent = null;
+  let anchorZoneText = '';
   if (auctionMeta || (hv && Array.isArray(hv.evidence) && hv.evidence.length)) {
     const lotId = auctionMeta && auctionMeta.lot_id ? String(auctionMeta.lot_id) : null;
-    auctionEvent = {
-      normalized_event_id: lotId ? 'auction:' + (auctionMeta.house || 'lot') + ':' + lotId : 'auction:event',
-      source_event_ids: [],
-      merge_basis: [],
-      year: auctionMeta && auctionMeta.sale_date ? yearOf(auctionMeta.sale_date) : null,
-      signals: { structural: false, airbags: false, zones: 0, visual_severity: null },
-      repair_statuses: [],
-      evidence: [],
-    };
+    auctionEvent = newEvent(
+      lotId ? 'auction:' + (auctionMeta.house || 'lot') + ':' + lotId : 'auction:event',
+      auctionMeta && auctionMeta.sale_date ? yearOf(auctionMeta.sale_date) : null,
+      true, [], 'high');
     if (auctionMeta) {
       auctionEvent.merge_basis.push('auction_record');
       if (auctionMeta.airbags && auctionMeta.airbags.deployed === true) {
@@ -192,84 +251,132 @@ export function resolveAccidentEvents(findings, ctx) {
       const zones = [auctionMeta.primary_damage, auctionMeta.secondary_damage].filter(materialZone);
       auctionEvent.signals.zones = Math.max(auctionEvent.signals.zones, zones.length);
       for (const z of zones) auctionEvent.evidence.push({ source: 'us_auction', ref: 'auction_metadata', description: 'damage за metadata лота: ' + z });
+      anchorZoneText += ' ' + zones.join(' ');
     }
     if (hv) {
       /* historical visual привʼязаний до аукціонних кадрів цього ж лота */
       auctionEvent.merge_basis.push('historical_photos_same_lot');
       if (hv.structural_visual_status === 'visible_damage') auctionEvent.signals.structural = true;
       if (hv.srs_visual_status === 'deployed_visible') auctionEvent.signals.airbags = true;
-      auctionEvent.signals.zones = Math.max(auctionEvent.signals.zones, Array.isArray(hv.visible_damage_zones) ? hv.visible_damage_zones.length : 0);
-      auctionEvent.signals.visual_severity = ['minor', 'moderate', 'severe'].includes(hv.visible_severity) ? hv.visible_severity : null;
+      const hvZones = Array.isArray(hv.visible_damage_zones) ? hv.visible_damage_zones : [];
+      auctionEvent.signals.zones = Math.max(auctionEvent.signals.zones, hvZones.length);
+      anchorZoneText += ' ' + hvZones.join(' ');
+      /* структуровані ВИДИМІ ознаки, не прикметник моделі */
+      if (hv.major_deformation_visible === true) auctionEvent.signals.major_deformation = true;
+      if (hv.wheel_displacement_visible === true) auctionEvent.signals.wheel_displacement = true;
+      if (hv.cosmetic_only === true) auctionEvent.signals.cosmetic_only = true;
     }
     events.push(auctionEvent);
   }
+  const anchorZones = zoneClasses(anchorZoneText);
 
-  /* запис площадки про ДТП: окрема подія, ЯКЩО роки відомі і різні;
-     інакше консервативний merge у аукціонну (та сама аварія імпорту) */
-  if (c.accidentRecord && c.accidentRecord.recorded === true) {
-    const recYear = yearOf(c.accidentRecord.note);
-    const target = auctionEvent && (recYear === null || auctionEvent.year === null || recYear === auctionEvent.year)
-      ? auctionEvent : null;
-    if (target) {
-      target.merge_basis.push('platform_record_same_or_unknown_year');
-      target.evidence.push({ source: 'historical_listing', ref: 'platform_history', description: (c.accidentRecord.note || 'зафіксовано ДТП').slice(0, 200) });
-    } else {
-      events.push({
-        normalized_event_id: 'platform:accident' + (recYear ? ':' + recYear : ''),
-        source_event_ids: [], merge_basis: ['platform_record'],
-        year: recYear,
-        signals: { structural: false, airbags: false, zones: 0, visual_severity: null },
-        repair_statuses: [],
-        evidence: [{ source: 'historical_listing', ref: 'platform_history', description: (c.accidentRecord.note || 'зафіксовано ДТП').slice(0, 200) }],
-      });
+  /* групи знахідок за source_event_id: один id = одна група (high).
+     Крос-групового merge за роком НЕМАЄ */
+  const groups = new Map();
+  for (const f of findings) {
+    if (!ACCIDENT_FINDING_TYPES.has(f.type)) continue;
+    let g = groups.get(f.source_event_id);
+    if (!g) {
+      g = { id: f.source_event_id, findings: [], year: null, hasAuctionEvidence: false };
+      groups.set(f.source_event_id, g);
+    }
+    g.findings.push(f);
+    g.hasAuctionEvidence = g.hasAuctionEvidence || f.evidence.some(e => e.source === 'us_auction');
+    g.year = g.year || yearOf(f.source_event_id) || yearOf(f.evidence.map(e => e.description).join(' '));
+  }
+  const glist = [...groups.values()];
+  const isSupportingOnly = g => g.findings.every(f => f.type === 'MAJOR_REPAIR_UNVERIFIED');
+  /* власна лот-ідентичність групи: цифровий лот у event_id чи structured
+     refs (НЕ в описах). Інший лот, ніж у якоря, НІКОЛИ не зливається */
+  const anchorLotId = auctionMeta && auctionMeta.lot_id ? String(auctionMeta.lot_id) : null;
+  const lotRefOf = g => {
+    const src = [g.id, ...g.findings.flatMap(f => f.evidence.map(e => e.ref || ''))].join(' ');
+    const m = /(?<![0-9])(\d{7,9})(?![0-9])/.exec(src);
+    return m ? m[1] : null;
+  };
+  const lotConflicts = g => {
+    const ref = lotRefOf(g);
+    return !!(anchorLotId && ref && ref !== anchorLotId);
+  };
+
+  /* фаза 1: us_auction-evidence веде в якір, але НЕ проти надійних дат
+     і НЕ проти іншої лот-ідентичності */
+  const pending = [];
+  for (const g of glist) {
+    if (auctionEvent && g.hasAuctionEvidence && yearsCompatible(g.year, auctionEvent.year) && !lotConflicts(g)) {
+      attach(auctionEvent, 'us_auction_evidence', 'high');
+      absorbGroup(auctionEvent, g);
+    } else pending.push(g);
+  }
+
+  /* фаза 2: єдина неякірна ДТП-група сумісного періоду може приєднатися до
+     якоря (medium). Дві і більше груп одного періоду = неоднозначність,
+     жодна не приєднується за роком */
+  const accidentPending = pending.filter(g => !isSupportingOnly(g));
+  if (auctionEvent && accidentPending.length === 1) {
+    const g = accidentPending[0];
+    const gZones = zoneClasses(g.findings.map(f => f.evidence.map(e => e.description).join(' ')).join(' '));
+    if (yearsCompatible(g.year, auctionEvent.year) && !lotConflicts(g) && !zonesDisjoint(gZones, anchorZones)) {
+      attach(auctionEvent, 'same_period_single_anchor', 'medium');
+      if (gZones.size && anchorZones.size) auctionEvent.merge_basis.push('damage_zones_match');
+      absorbGroup(auctionEvent, g);
+      pending.splice(pending.indexOf(g), 1);
     }
   }
 
-  /* знахідки моделі accident-типів: us_auction-evidence і збіг року йдуть
-     у якірну подію; решта групується консервативно за source_event_id */
-  const byLLMEvent = new Map();
-  for (const f of findings) {
-    if (!ACCIDENT_FINDING_TYPES.has(f.type)) continue;
-    const hasAuctionEvidence = f.evidence.some(e => e.source === 'us_auction');
-    const fYear = yearOf(f.source_event_id) || yearOf(f.evidence.map(e => e.description).join(' '));
-    let target = null;
-    if (auctionEvent && (hasAuctionEvidence || fYear === null || auctionEvent.year === null || fYear === auctionEvent.year)) {
-      target = auctionEvent;
-      target.merge_basis.push(hasAuctionEvidence ? 'us_auction_evidence' : 'same_or_unknown_year');
+  /* фаза 3: решта груп = власні події */
+  for (const g of pending) {
+    if (isSupportingOnly(g)) continue; /* ремонтні: фаза 4 */
+    const ev = newEvent('accident:' + (g.year ? g.year + ':' : '') + g.id, g.year, false, ['llm_finding_group'], 'high');
+    if (auctionEvent && g.hasAuctionEvidence && !yearsCompatible(g.year, auctionEvent.year)) ev.merge_basis.push('year_mismatch_with_anchor');
+    if (auctionEvent && g.hasAuctionEvidence && lotConflicts(g)) ev.merge_basis.push('lot_mismatch_with_anchor');
+    absorbGroup(ev, g);
+    events.push(ev);
+  }
+
+  /* фаза 4: ремонтний supporting-запис приєднується до ЄДИНОЇ події
+     сумісного періоду; кандидатів кілька або нуль = власна подія */
+  for (const g of pending.filter(isSupportingOnly)) {
+    const candidates = events.filter(ev => yearsCompatible(g.year, ev.year));
+    if (candidates.length === 1) {
+      attach(candidates[0], 'supporting_repair_same_period', 'medium');
+      absorbGroup(candidates[0], g);
     } else {
-      /* без якоря: групування за LLM event_id, але кількість подій
-         підтверджується роками: однакові роки зливаються */
-      for (const ev of byLLMEvent.values()) {
-        if (fYear !== null && ev.year !== null && fYear === ev.year) { target = ev; target.merge_basis.push('same_year'); break; }
-      }
-      if (!target) target = byLLMEvent.get(f.source_event_id) || null;
-      if (!target) {
-        target = {
-          normalized_event_id: 'accident:' + (fYear || f.source_event_id),
-          source_event_ids: [], merge_basis: ['llm_finding_group'],
-          year: fYear,
-          signals: { structural: false, airbags: false, zones: 0, visual_severity: null },
-          repair_statuses: [], evidence: [],
-        };
-        byLLMEvent.set(f.source_event_id, target);
-        events.push(target);
-      }
+      const ev = newEvent('accident:' + (g.year ? g.year + ':' : '') + g.id, g.year, false, ['llm_finding_group'], 'high');
+      absorbGroup(ev, g);
+      events.push(ev);
     }
-    target.source_event_ids.push(f.source_event_id);
-    target.evidence.push(...f.evidence);
-    if (f.repair_status) target.repair_statuses.push(f.repair_status);
-    if (f.type === 'STRUCTURAL_DAMAGE') target.signals.structural = true;
-    if (f.type === 'AIRBAGS_DEPLOYED') target.signals.airbags = true;
-    if (f.type === 'MAJOR_REPAIR_UNVERIFIED') target.merge_basis.push('major_repair_same_accident');
+  }
+
+  /* фаза 5: generic запис площадки БЕЗ власної ідентичності приєднується
+     до ЄДИНОЇ якірної події сумісного періоду, якщо зони не суперечать */
+  if (c.accidentRecord && c.accidentRecord.recorded === true) {
+    const recYear = yearOf(c.accidentRecord.note);
+    const recZones = zoneClasses(c.accidentRecord.note);
+    const recEvidence = { source: 'historical_listing', ref: 'platform_history', description: (c.accidentRecord.note || 'зафіксовано ДТП').slice(0, 200) };
+    const veto = zonesDisjoint(recZones, anchorZones);
+    if (auctionEvent && yearsCompatible(recYear, auctionEvent.year) && !veto) {
+      attach(auctionEvent, 'platform_record_attached', recYear !== null && auctionEvent.year !== null ? 'high' : 'medium');
+      if (recZones.size && anchorZones.size) auctionEvent.merge_basis.push('damage_zones_match');
+      auctionEvent.evidence.push(recEvidence);
+    } else {
+      const ev = newEvent('platform:accident' + (recYear ? ':' + recYear : ''), recYear, false,
+        veto && auctionEvent ? ['platform_record', 'damage_zones_veto'] : ['platform_record'], 'high');
+      ev.evidence.push(recEvidence);
+      events.push(ev);
+    }
   }
 
   /* події без жодного сигналу і evidence не існують */
   return events.filter(e => e.evidence.length || e.signals.structural || e.signals.airbags || e.signals.zones > 0);
 }
 
-/* ---------- severity: виводить КОД зі structured evidence ----------
-   LLM не пише "severity=severe"; derivation зберігає severity_basis[].
-   Недостатньо evidence: indeterminate (допустимий стан) */
+/* ---------- severity: виводить КОД зі спостережуваних ознак ----------
+   LLM витягує ЛИШЕ структуровані спостереження (structural_visual_status,
+   major_deformation_visible, wheel_displacement_visible, cosmetic_only,
+   зони, подушки); tier визначає код. Прикметник visible_severity у
+   математику НЕ входить (лишається тільки wording звіту). Недостатньо
+   ознак: indeterminate (допустимий стан), severity_basis[] зберігається */
 export function deriveSeverity(ev) {
   const basis = [];
   let severity = 'indeterminate';
@@ -279,11 +386,11 @@ export function deriveSeverity(ev) {
     if (rank[level] > rank[severity]) severity = level;
   };
   if (ev.signals.structural) bump('severe', 'structural_damage');
-  if (ev.signals.visual_severity === 'severe') bump('severe', 'severe_visible_deformation');
+  if (ev.signals.major_deformation) bump('severe', 'major_deformation_visible');
   if (ev.signals.airbags) bump('moderate', 'airbags_deployed');
+  if (ev.signals.wheel_displacement) bump('moderate', 'wheel_displacement_visible');
   if (ev.signals.zones >= 2) bump('moderate', 'multiple_damage_zones');
-  if (ev.signals.visual_severity === 'moderate') bump('moderate', 'moderate_visible_damage');
-  if (ev.signals.visual_severity === 'minor' && severity === 'indeterminate') bump('minor', 'cosmetic_panels_only');
+  if (ev.signals.cosmetic_only && severity === 'indeterminate') bump('minor', 'cosmetic_panels_only');
   return { severity, basis };
 }
 
@@ -439,8 +546,10 @@ export function computeScoreV3(input, cfg = SCORE_CONFIG_V3) {
     }
     return {
       normalized_event_id: ev.normalized_event_id,
+      anchored: ev.anchored,
       source_event_ids: [...new Set(ev.source_event_ids)],
       merge_basis: [...new Set(ev.merge_basis)],
+      merge_confidence: ev.merge_confidence,
       accident_base: cfg.ACCIDENT_BASE,
       derived_severity: severity,
       severity_basis: basis,
@@ -514,8 +623,13 @@ export function computeScoreV3(input, cfg = SCORE_CONFIG_V3) {
     if (Math.abs(ceiling - unclamped) < EPS) limiting.push('coverage');
     for (const c of caps) if (Math.abs(c.value - unclamped) < EPS && !limiting.includes(c.name)) limiting.push(c.name);
   }
-  /* звичайне математичне округлення до 0.1 (7.24 -> 7.2, 7.25 -> 7.3) */
-  const final = round1(Math.min(10, Math.max(0, unclamped)));
+  /* звичайне математичне округлення до 0.1 (7.24 -> 7.2, 7.25 -> 7.3),
+     АЛЕ показаний бал ніколи не перевищує діючу стелю покриття чи жорсткий
+     кап через округлення: коли обмежувач зовнішній, округлення тільки вниз */
+  const clamped = Math.min(10, Math.max(0, unclamped));
+  let final = round1(clamped);
+  const boundIsExternal = limiting.includes('coverage') || limiting.some(l => l.startsWith('hard_cap'));
+  if (boundIsExternal && final > clamped + EPS) final = Math.floor((clamped + EPS) * 10) / 10;
 
   const base = {
     score_v: 3,

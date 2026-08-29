@@ -1,0 +1,700 @@
+{
+ "description": "CalCar Score: curated GOLD calibration set. Реальні перевірені кейси з production reports (2026-08-26..2026-08-29). Дублікати і failed-parsing сюди не потрапляють автоматично: кожен рядок доданий свідомо. Повний сирий корпус = таблиця reports у Supabase (кожен валідний Check зберігає score_facts, coverage_inputs, historical_visual, shadow breakdown). Синтетика сюди не пишеться.",
+ "config_tag": "v3-initial-2026-08-29",
+ "cases": [
+  {
+   "pid": "Q72S8E",
+   "vin": "WBAJA7C39HG905966",
+   "note": "BMW 5 G30, лот 40355574, тюнінг Stage1",
+   "cov": {
+    "basics_known": true,
+    "photos_count": 21,
+    "mileage_known": true,
+    "auction_checked": false,
+    "auction_us_signal": true,
+    "identity_confirmed": true,
+    "auction_record_exists": false,
+    "registration_data_exists": true,
+    "historical_listings_count": 0,
+    "mileage_observation_count": 0,
+    "auction_sources_unreachable": true
+   },
+   "findings": [
+    {
+     "type": "MODIFICATION_TECHNICAL_CONCERN",
+     "event_id": "stage1_tune",
+     "evidence": [
+      {
+       "ref": "seller_description",
+       "source": "seller_claim",
+       "description": "Продавец заявляет Stage 1, без сведений о настройщике, прошивке и диагностике."
+      }
+     ],
+     "severity": "med",
+     "repair_status": "unknown",
+     "maintenance_evidence": false,
+     "serious_intervention": true
+    }
+   ],
+   "hv": null,
+   "auction": null,
+   "accident_recorded": true,
+   "accident_note": null,
+   "v2_saved": 6.9
+  },
+  {
+   "pid": "XBFHQ6",
+   "vin": null,
+   "note": "без VIN: Score недоступний",
+   "cov": {
+    "basics_known": true,
+    "photos_count": 71,
+    "mileage_known": true,
+    "auction_checked": false,
+    "auction_us_signal": false,
+    "identity_confirmed": false,
+    "auction_record_exists": false,
+    "registration_data_exists": false,
+    "historical_listings_count": 0,
+    "mileage_observation_count": 0,
+    "auction_sources_unreachable": false
+   },
+   "findings": [],
+   "hv": null,
+   "auction": null,
+   "accident_recorded": false,
+   "accident_note": null,
+   "v2_saved": null
+  },
+  {
+   "pid": "6SYMZ7",
+   "vin": "7SAYGDEF3RA312959",
+   "note": "Tesla Model Y: severe візуал, шторки, vc-ремонт",
+   "cov": {
+    "basics_known": true,
+    "photos_count": 33,
+    "mileage_known": true,
+    "auction_checked": false,
+    "auction_us_signal": true,
+    "identity_confirmed": true,
+    "auction_record_exists": true,
+    "registration_data_exists": true,
+    "historical_listings_count": 0,
+    "mileage_observation_count": 0,
+    "auction_sources_unreachable": false
+   },
+   "findings": [
+    {
+     "type": "AIRBAGS_DEPLOYED",
+     "event_id": "accident_2025",
+     "evidence": [
+      {
+       "ref": "auction_photo_4",
+       "source": "us_auction",
+       "description": "В проеме левых дверей видна развернутая шторка безопасности."
+      },
+      {
+       "ref": "auction_photo_5",
+       "source": "us_auction",
+       "description": "В салоне видны сработавшие элементы подушек безопасности."
+      }
+     ],
+     "severity": "high",
+     "repair_status": "unknown",
+     "maintenance_evidence": false,
+     "serious_intervention": false
+    },
+    {
+     "type": "MAJOR_REPAIR_UNVERIFIED",
+     "event_id": "accident_2025",
+     "evidence": [
+      {
+       "ref": "auction_photo_1",
+       "source": "us_auction",
+       "description": "Передний бампер слева смещен и поврежден."
+      },
+      {
+       "ref": "photo_3",
+       "source": "current_photos",
+       "description": "Текущий левый борт выглядит ровно собранным."
+      }
+     ],
+     "severity": "high",
+     "repair_status": "visually_consistent",
+     "maintenance_evidence": false,
+     "serious_intervention": false
+    }
+   ],
+   "hv": {
+    "visible_severity": "severe",
+    "srs_visual_status": "deployed_visible",
+    "structural_visual_status": "no_obvious_severe_signs",
+    "visible_damage_zones": [
+     "передний бампер и левое переднее крыло",
+     "левые двери",
+     "левое заднее крыло",
+     "задний бампер",
+     "лобовое стекло",
+     "стеклянная панель крыши"
+    ],
+    "evidence": [
+     {
+      "source": "us_auction",
+      "description": "Сильно деформированы левое заднее крыло, левая задняя дверь и задний бампер, видна сработавшая шторка безопасности."
+     }
+    ],
+    "major_deformation_visible": true
+   },
+   "auction": null,
+   "accident_recorded": true,
+   "accident_note": null,
+   "v2_saved": 7.0,
+   "curation_note": "major_deformation_visible=true анотовано куратором зі збереженого фото-evidence снапшота (глибока деформація заднього крила і дверей); прикметник visible_severity у математиці v3 більше не використовується"
+  },
+  {
+   "pid": "HX8KT5",
+   "vin": "7SAYGDEF6PF943267",
+   "note": "Tesla Model Y: боковий/передній удар без подушок",
+   "cov": {
+    "basics_known": true,
+    "photos_count": 18,
+    "mileage_known": true,
+    "auction_checked": false,
+    "auction_us_signal": true,
+    "identity_confirmed": true,
+    "auction_record_exists": true,
+    "registration_data_exists": true,
+    "historical_listings_count": 0,
+    "mileage_observation_count": 1,
+    "auction_sources_unreachable": false
+   },
+   "findings": [],
+   "hv": {
+    "visible_severity": "moderate",
+    "srs_visual_status": "no_deployment_visible",
+    "structural_visual_status": "indeterminate",
+    "visible_damage_zones": [
+     "левая передняя часть",
+     "передний бампер",
+     "левое переднее крыло",
+     "левая передняя дверь",
+     "левая задняя дверь",
+     "зона переднего левого колеса и подвески"
+    ],
+    "evidence": [
+     {
+      "source": "us_auction",
+      "description": "Повреждены левое переднее крыло, передний бампер, левая передняя дверь."
+     }
+    ]
+   },
+   "auction": null,
+   "accident_recorded": true,
+   "accident_note": "ДТП на території США в 2024 році із пошкодженнями передньої, задньої та лівої частин кузова",
+   "v2_saved": 7.6
+  },
+  {
+   "pid": "3624NJ",
+   "vin": "WBAJA7C53KWW25622",
+   "note": "BMW 5: фронт, подушки водія, ремонт unknown",
+   "cov": {
+    "basics_known": true,
+    "photos_count": 19,
+    "mileage_known": true,
+    "auction_checked": false,
+    "auction_us_signal": true,
+    "identity_confirmed": true,
+    "auction_record_exists": true,
+    "registration_data_exists": true,
+    "historical_listings_count": 0,
+    "mileage_observation_count": 0,
+    "auction_sources_unreachable": false
+   },
+   "findings": [
+    {
+     "type": "AIRBAGS_DEPLOYED",
+     "event_id": "accident_2025",
+     "evidence": [
+      {
+       "ref": "auction_photo_4",
+       "source": "us_auction",
+       "description": "Видны сработавшие водительская фронтальная и коленная подушки безопасности."
+      }
+     ],
+     "severity": "high",
+     "repair_status": "unknown",
+     "maintenance_evidence": false,
+     "serious_intervention": false
+    },
+    {
+     "type": "MAJOR_REPAIR_UNVERIFIED",
+     "event_id": "accident_2025",
+     "evidence": [
+      {
+       "ref": "auction_photo_6",
+       "source": "us_auction",
+       "description": "Передняя часть имела повреждения бампера, решетки, капота и оптики."
+      }
+     ],
+     "severity": "high",
+     "repair_status": "unknown",
+     "maintenance_evidence": false,
+     "serious_intervention": false
+    }
+   ],
+   "hv": {
+    "visible_severity": "moderate",
+    "srs_visual_status": "deployed_visible",
+    "structural_visual_status": "no_obvious_severe_signs",
+    "visible_damage_zones": [
+     "передний бампер",
+     "решетка радиатора",
+     "капот",
+     "передняя оптика",
+     "передняя пластиковая панель"
+    ],
+    "evidence": [
+     {
+      "source": "us_auction",
+      "description": "Видна сработавшая водительская фронтальная подушка и коленная подушка."
+     }
+    ]
+   },
+   "auction": null,
+   "accident_recorded": true,
+   "accident_note": null,
+   "v2_saved": 7.0
+  },
+  {
+   "pid": "8FVRYG",
+   "vin": "WBAJA5C55JWA57024",
+   "note": "BMW 5: боковий удар, шторки",
+   "cov": {
+    "basics_known": true,
+    "photos_count": 30,
+    "mileage_known": true,
+    "auction_checked": false,
+    "auction_us_signal": true,
+    "identity_confirmed": true,
+    "auction_record_exists": true,
+    "registration_data_exists": true,
+    "historical_listings_count": 1,
+    "mileage_observation_count": 2,
+    "auction_sources_unreachable": false
+   },
+   "findings": [
+    {
+     "type": "AIRBAGS_DEPLOYED",
+     "event_id": "accident_2023",
+     "evidence": [
+      {
+       "ref": "auction_photo_3",
+       "source": "us_auction",
+       "description": "В задней части салона видна раскрытая боковая шторка безопасности."
+      },
+      {
+       "ref": "auction_event_2023",
+       "source": "historical_listing",
+       "description": "В истории AUTO.RIA зафиксировано ДТП в США в 2023 году с повреждением правой стороны кузова."
+      }
+     ],
+     "severity": "high",
+     "repair_status": "unknown",
+     "maintenance_evidence": false,
+     "serious_intervention": false
+    }
+   ],
+   "hv": {
+    "visible_severity": "moderate",
+    "srs_visual_status": "deployed_visible",
+    "structural_visual_status": "no_obvious_severe_signs",
+    "visible_damage_zones": [
+     "правая задняя дверь",
+     "правая передняя дверь",
+     "правая центральная часть кузова",
+     "боковые шторки безопасности"
+    ],
+    "evidence": [
+     {
+      "source": "us_auction",
+      "description": "В салоне видна сработавшая боковая шторка безопасности."
+     }
+    ]
+   },
+   "auction": null,
+   "accident_recorded": true,
+   "accident_note": null,
+   "v2_saved": 7.0
+  },
+  {
+   "pid": "AXGFW9",
+   "vin": "WBAJB1C58KB375294",
+   "note": "BMW 530e: фронт без подушок, багата історія",
+   "cov": {
+    "basics_known": true,
+    "photos_count": 40,
+    "mileage_known": true,
+    "auction_checked": false,
+    "auction_us_signal": true,
+    "identity_confirmed": true,
+    "auction_record_exists": true,
+    "registration_data_exists": true,
+    "historical_listings_count": 5,
+    "mileage_observation_count": 6,
+    "auction_sources_unreachable": false
+   },
+   "findings": [],
+   "hv": {
+    "visible_severity": "moderate",
+    "srs_visual_status": "no_deployment_visible",
+    "structural_visual_status": "no_obvious_severe_signs",
+    "visible_damage_zones": [
+     "капот",
+     "передний бампер и решетка",
+     "обе передние фары",
+     "передняя панель и нижняя часть передка"
+    ],
+    "evidence": [
+     {
+      "source": "us_auction",
+      "description": "Смяты капот и левая передняя часть, отсутствуют бампер и левая фара."
+     }
+    ]
+   },
+   "auction": null,
+   "accident_recorded": true,
+   "accident_note": "ДТП на території США в 2023 році із пошкодженням зовнішнього інтерфейсу та механічними пошкодженнями",
+   "v2_saved": 9.0
+  },
+  {
+   "pid": "8ZSUUY",
+   "vin": "WBAJE5C52KWW17844",
+   "note": "BMW 5: удар у зад, без подушок",
+   "cov": {
+    "basics_known": true,
+    "photos_count": 17,
+    "mileage_known": true,
+    "auction_checked": false,
+    "auction_us_signal": true,
+    "identity_confirmed": true,
+    "auction_record_exists": true,
+    "registration_data_exists": true,
+    "historical_listings_count": 0,
+    "mileage_observation_count": 0,
+    "auction_sources_unreachable": false
+   },
+   "findings": [],
+   "hv": {
+    "visible_severity": "moderate",
+    "srs_visual_status": "no_deployment_visible",
+    "structural_visual_status": "no_obvious_severe_signs",
+    "visible_damage_zones": [
+     "крышка багажника",
+     "задний бампер"
+    ],
+    "evidence": [
+     {
+      "source": "us_auction",
+      "description": "Крышка багажника глубоко смята, задний бампер деформирован."
+     }
+    ]
+   },
+   "auction": null,
+   "accident_recorded": true,
+   "accident_note": null,
+   "v2_saved": 7.6
+  },
+  {
+   "pid": "5C6HJ7",
+   "vin": "WBAJA9C53JB252874",
+   "note": "BMW 5: запис ДТП 2025, без фото-доказів",
+   "cov": {
+    "basics_known": true,
+    "photos_count": 14,
+    "mileage_known": true,
+    "auction_checked": false,
+    "auction_us_signal": true,
+    "identity_confirmed": true,
+    "auction_record_exists": true,
+    "registration_data_exists": true,
+    "historical_listings_count": 0,
+    "mileage_observation_count": 1,
+    "auction_sources_unreachable": false
+   },
+   "findings": [],
+   "hv": null,
+   "auction": null,
+   "accident_recorded": true,
+   "accident_note": "ДТП на території США в 2025 році із пошкодженням передньої частини кузова",
+   "v2_saved": 7.6
+  },
+  {
+   "pid": "M679AQ",
+   "vin": "WP1ZZZ92ZDLA45155",
+   "note": "Porsche Cayenne: чиста ЄС-історія, джерела недоступні",
+   "cov": {
+    "basics_known": true,
+    "photos_count": 29,
+    "mileage_known": true,
+    "auction_checked": false,
+    "auction_us_signal": false,
+    "identity_confirmed": true,
+    "auction_record_exists": false,
+    "registration_data_exists": true,
+    "historical_listings_count": 1,
+    "mileage_observation_count": 2,
+    "auction_sources_unreachable": true
+   },
+   "findings": [],
+   "hv": null,
+   "auction": null,
+   "accident_recorded": false,
+   "accident_note": null,
+   "v2_saved": 8.3
+  },
+  {
+   "pid": "TYTP3J",
+   "vin": "WBAJA9C52JB251151",
+   "note": "BMW 5: ретрофіт LCI-оптики, запис minor ДТП",
+   "cov": {
+    "basics_known": true,
+    "photos_count": 40,
+    "mileage_known": true,
+    "auction_checked": false,
+    "auction_us_signal": true,
+    "identity_confirmed": true,
+    "auction_record_exists": true,
+    "registration_data_exists": true,
+    "historical_listings_count": 0,
+    "mileage_observation_count": 1,
+    "auction_sources_unreachable": false
+   },
+   "findings": [
+    {
+     "type": "MODIFICATION_TECHNICAL_CONCERN",
+     "event_id": "retrofit_lci_lighting",
+     "evidence": [
+      {
+       "ref": "listing_description",
+       "source": "seller_claim",
+       "description": "Переоборудование в рестайлинговую версию M-style с заменой фар и фонарей."
+      }
+     ],
+     "severity": "med",
+     "repair_status": "unknown",
+     "maintenance_evidence": false,
+     "serious_intervention": false
+    }
+   ],
+   "hv": null,
+   "auction": null,
+   "accident_recorded": true,
+   "accident_note": "на території США в 2024 році із пошкодженнями передньої частини кузова та із незначними пошкодженнями/подряпинами",
+   "v2_saved": 7.6
+  },
+  {
+   "pid": "5GH5GA",
+   "vin": "WBAJA9C5XJB033667",
+   "note": "BMW 5: відмітка ДТП без деталей + Stage1 downpipe",
+   "cov": {
+    "vin_decoded": true,
+    "photos_count": 22,
+    "auction_us_signal": false,
+    "auction_record_exists": false,
+    "registration_data_exists": false,
+    "historical_listings_count": 0,
+    "mileage_observation_count": 0
+   },
+   "findings": [
+    {
+     "type": "MAJOR_REPAIR_UNVERIFIED",
+     "event_id": "prior_accident_unknown",
+     "evidence": [
+      {
+       "ref": "listing_1",
+       "source": "historical_listing",
+       "description": "В карточке объявления присутствует отметка Был в ДТП."
+      }
+     ],
+     "severity": "med",
+     "repair_status": "unknown"
+    },
+    {
+     "type": "MODIFICATION_TECHNICAL_CONCERN",
+     "event_id": "modification_powertrain_1",
+     "evidence": [
+      {
+       "ref": "listing_description",
+       "source": "seller_claim",
+       "description": "Продавец заявляет Stage 1, downpipe и прямую выхлопную трассу."
+      }
+     ],
+     "severity": "med",
+     "repair_status": "unknown"
+    }
+   ],
+   "hv": null,
+   "auction": null,
+   "accident_recorded": null,
+   "accident_note": null,
+   "v2_saved": 6.5
+  },
+  {
+   "pid": "VE2Q7H",
+   "vin": "WBAJB51040WA75503",
+   "note": "BMW: VIN не декодований",
+   "cov": {
+    "vin_decoded": false,
+    "photos_count": 40,
+    "auction_checked": false,
+    "auction_us_signal": false,
+    "auction_record_exists": false,
+    "registration_data_exists": false,
+    "historical_listings_count": 0,
+    "mileage_observation_count": 0
+   },
+   "findings": [],
+   "hv": null,
+   "auction": null,
+   "accident_recorded": null,
+   "accident_note": null,
+   "v2_saved": 5.8
+  },
+  {
+   "pid": "RKN6KJ",
+   "vin": "WDDNG86X28A217680",
+   "note": "Mercedes S: чиста, тонке покриття",
+   "cov": {
+    "vin_decoded": true,
+    "photos_count": 35,
+    "auction_checked": false,
+    "auction_us_signal": false,
+    "auction_record_exists": false,
+    "registration_data_exists": false,
+    "historical_listings_count": 0,
+    "mileage_observation_count": 0
+   },
+   "findings": [],
+   "hv": null,
+   "auction": null,
+   "accident_recorded": null,
+   "accident_note": null,
+   "v2_saved": 6.5
+  },
+  {
+   "pid": "5WVFS3",
+   "vin": "ZAM56RRA6G1184347",
+   "note": "Maserati: подушки 2019 + конфлікт пробігу",
+   "cov": {
+    "vin_decoded": true,
+    "photos_count": 18,
+    "auction_checked": false,
+    "auction_us_signal": false,
+    "auction_record_exists": true,
+    "registration_data_exists": false,
+    "historical_listings_count": 0,
+    "mileage_observation_count": 0
+   },
+   "findings": [
+    {
+     "type": "AIRBAGS_DEPLOYED",
+     "event_id": "accident_2019",
+     "evidence": [
+      {
+       "ref": "auction_event_1",
+       "source": "us_auction",
+       "description": "На аукционном фото салона видны сработавшие водительская и пассажирская фронтальные подушки."
+      }
+     ],
+     "severity": "high",
+     "repair_status": "unknown",
+     "maintenance_evidence": false,
+     "serious_intervention": false
+    },
+    {
+     "type": "MILEAGE_CONFLICT_UNEXPLAINED",
+     "event_id": "mileage_conflict_2025_2026",
+     "evidence": [
+      {
+       "ref": "listing_2025_04_08",
+       "source": "historical_listing",
+       "description": "В объявлении от 08.04.2025 указан пробег 139 тыс. км, сейчас заявлено 136 тыс. км."
+      }
+     ],
+     "severity": "med",
+     "repair_status": "unknown",
+     "maintenance_evidence": false,
+     "serious_intervention": false
+    }
+   ],
+   "hv": null,
+   "auction": null,
+   "accident_recorded": null,
+   "accident_note": null,
+   "v2_saved": 7.2
+  },
+  {
+   "pid": "WP7V3G",
+   "vin": "7SAYGDED3PF966312",
+   "note": "Tesla Model Y: чиста, US-сигнал без відповіді джерел",
+   "cov": {
+    "vin_decoded": true,
+    "photos_count": 24,
+    "auction_checked": false,
+    "auction_us_signal": true,
+    "auction_record_exists": false,
+    "registration_data_exists": false,
+    "historical_listings_count": 0,
+    "mileage_observation_count": 0
+   },
+   "findings": [],
+   "hv": null,
+   "auction": null,
+   "accident_recorded": null,
+   "accident_note": null,
+   "v2_saved": 6.5
+  },
+  {
+   "pid": "M3PKUY",
+   "vin": "7SAYGDEF4NF439913",
+   "note": "Tesla Model Y: FLOOD 2024",
+   "cov": {
+    "vin_decoded": true,
+    "photos_count": 22,
+    "auction_checked": false,
+    "auction_us_signal": false,
+    "auction_record_exists": true,
+    "registration_data_exists": false,
+    "historical_listings_count": 0,
+    "mileage_observation_count": 0
+   },
+   "findings": [
+    {
+     "type": "FLOOD",
+     "event_id": "flood_2024",
+     "evidence": [
+      {
+       "ref": "history_2024",
+       "source": "historical_listing",
+       "description": "Официальный блок AUTO.RIA указывает, что в США в 2024 году автомобиль пострадал при затоплении."
+      },
+      {
+       "ref": "auction_event_1",
+       "source": "us_auction",
+       "description": "Архивные фото IAAI подтверждают тот же синий Tesla Model Y с повреждениями переднего бампера и крыши."
+      }
+     ],
+     "severity": "high",
+     "repair_status": "unknown",
+     "maintenance_evidence": false,
+     "serious_intervention": false
+    }
+   ],
+   "hv": null,
+   "auction": null,
+   "accident_recorded": null,
+   "accident_note": null,
+   "v2_saved": 4.5
+  }
+ ]
+}

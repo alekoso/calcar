@@ -529,4 +529,10 @@ window.CALCAR_DICT = {
   '). Перевір, чи немає помилки. Натисни «Зберегти» ще раз, якщо все вірно.': '). Check for a mistake. Tap "Save" again if it is correct.',
   'Увійди в акаунт': 'Sign in',
   'Гараж доступний після входу.': 'The garage is available after signing in.',
+  'Низький виявлений ризик': 'Low detected risk',
+  'Помірний виявлений ризик': 'Moderate detected risk',
+  'Підвищений виявлений ризик': 'Elevated detected risk',
+  'Високий виявлений ризик': 'High detected risk',
+  'Аукціонних записів у перевірених джерелах не знайдено': 'No auction records found in the checked sources',
+  'Інші дані вказують на аукціонну історію в США, але сам запис у перевірених архівах знайти не вдалося': 'Other data points to a US auction history, but the record itself was not found in the checked archives',
 };
