@@ -459,6 +459,10 @@
   .dim-track{height:4px;border-radius:2px;background:var(--line);overflow:hidden}
   .dim-track i{display:block;height:100%;border-radius:2px;background:var(--ink)}
   .dim-track.na{background:transparent}
+  @media (max-width:480px){
+    .dim-row{grid-template-columns:minmax(0,1fr) 64px 34px;gap:10px}
+    .dim-lbl{white-space:normal;line-height:1.3;font-size:13px}
+  }
   .dim-num{font-size:13px;font-weight:700;text-align:right;font-variant-numeric:tabular-nums}
   .dim-num.na{color:var(--faint)}
   .hgap{position:relative;min-height:18px;display:flex;align-items:center;padding:1px 0 1px 110px;color:var(--faint);font-size:12px}
