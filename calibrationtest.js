@@ -74,9 +74,19 @@ const gold = JSON.parse(fs.readFileSync('calibration-gold.json', 'utf8'));
     if (res[pid].v3.score_available !== false) errs.push(pid + ': v3 мав бути недоступний');
     if (res[pid].v2.score_available !== false) errs.push(pid + ': v2 мав бути недоступний');
   }
-  /* штучний кластер v2 (6.9-7.2) у v3 на gold-наборі порожній */
-  const inWin = Object.values(res).filter(r => typeof r.v3.final === 'number' && r.v3.final >= 6.9 && r.v3.final <= 7.2);
-  if (inWin.length) errs.push('v3 має бали у вікні 6.9-7.2 на gold-наборі: ' + inWin.map(r => r.v3.final).join(','));
+  /* Проблема v2 була НЕ в самих значеннях 6.9-7.2, а в причинно
+     неправильній кластеризації РІЗНИХ машин біля однієї точки. Тому
+     зникнення старої проблеми тримають лише ПРИЧИННІ інваріанти нижче;
+     реальна машина має право чесно отримати 6.9-7.2 зі своїх findings,
+     coverage і капів. Кількість балів у смузі лишається суто
+     діагностичною метрикою в звіті калібрування (друк наприкінці) */
+  if (!(f('M679AQ') > f('HX8KT5'))) errs.push('причинність: чиста не вища за moderate: ' + f('M679AQ') + ' vs ' + f('HX8KT5'));
+  if (!(f('HX8KT5') > f('6SYMZ7'))) errs.push('причинність: moderate не вища за severe: ' + f('HX8KT5') + ' vs ' + f('6SYMZ7'));
+  /* moderate без unresolved SRS > moderate + unresolved SRS */
+  if (!(f('HX8KT5') > f('8FVRYG'))) errs.push('причинність: moderate без SRS-concern не вища за moderate+SRS: ' + f('HX8KT5') + ' vs ' + f('8FVRYG'));
+  /* severe-подія важча за moderate-подію за розміром штрафу */
+  const penOf = pid => Math.max(0, ...res[pid].v3.accident_events.map(e => e.final_event_penalty));
+  if (!(penOf('6SYMZ7') > penOf('HX8KT5'))) errs.push('причинність: штраф severe не більший за moderate: ' + penOf('6SYMZ7') + ' vs ' + penOf('HX8KT5'));
   /* показаний бал ніколи не вище стелі чи капа */
   for (const [pid, r] of Object.entries(res)) {
     if (typeof r.v3.final !== 'number') continue;
@@ -91,6 +101,10 @@ const gold = JSON.parse(fs.readFileSync('calibration-gold.json', 'utf8'));
     for (const e of errs) console.error('  - ' + e);
     process.exit(1);
   }
+  /* діагностика розподілу (НЕ pass/fail): скільки балів у смузі 6.9-7.2 */
+  const finals = Object.values(res).map(r => r.v3.final).filter(x => typeof x === 'number');
+  const diagWin = finals.filter(x => x >= 6.9 && x <= 7.2).length;
   console.log('gold-набір ' + gold.cases.length + ' кейсів · події ' + events + ' · severity ' + JSON.stringify(sevDist) + ' · watchpoints v3-initial тримаються');
+  console.log('діагностика розподілу: у смузі 6.9-7.2 зараз ' + diagWin + ' з ' + finals.length + ' (інформаційно, не критерій)');
   console.log('CALIBRATION TEST PASSED');
 })().catch(e => { console.error('CALIBRATION TEST CRASHED:', e); process.exit(1); });

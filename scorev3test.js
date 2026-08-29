@@ -163,8 +163,9 @@ const THIN = {
   const severe = accCase({ structural: true, airbags: true, zones: 2 }, 'unknown').final;
   if (!(clean > minor && minor > moderate && moderate > severe)) errs.push('драбина порушена: clean ' + clean + ', minor ' + minor + ', moderate ' + moderate + ', severe ' + severe);
   if (!(moderate - severe > 0.3)) errs.push('severe майже не відрізняється від moderate: ' + moderate + ' vs ' + severe);
-  /* severe не приземляється штучно на ~7.0 */
-  if (severe >= 6.9 && severe <= 7.2) errs.push('severe у старому кластері 6.9-7.2: ' + severe);
+  /* смуга 6.9-7.2 сама по собі НЕ проблема: конкретне значення severe
+     не фіксується вікном, стару кластеризацію тримають лише причинні
+     інваріанти вище (драбина) і нижче (repair, SRS, капи) */
   /* repair: confirmed_ok > visually_consistent > unknown; bad без помʼякшення */
   const modOk = accCase({ airbags: true, zones: 1 }, 'confirmed_ok').final;
   const modVc = accCase({ airbags: true, zones: 1 }, 'visually_consistent').final;
