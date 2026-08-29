@@ -129,7 +129,9 @@ const THIN = {
   let sv = deriveSeverity(SIG({ structural: true }));
   if (sv.severity !== 'severe' || !sv.basis.includes('structural_damage')) errs.push('structural мав дати severe: ' + JSON.stringify(sv));
   sv = deriveSeverity(SIG({ major_deformation: true }));
-  if (sv.severity !== 'severe' || !sv.basis.includes('major_deformation_visible')) errs.push('глибока деформація мала дати severe: ' + JSON.stringify(sv));
+  if (sv.severity !== 'moderate' || !sv.basis.includes('major_deformation_visible')) errs.push('самотня глибока деформація мала дати moderate, не severe: ' + JSON.stringify(sv));
+  sv = deriveSeverity(SIG({ major_deformation: true, wheel_displacement: true }));
+  if (sv.severity !== 'severe') errs.push('деформація + зміщене колесо мали дати severe: ' + sv.severity);
   sv = deriveSeverity(SIG({ airbags: true }));
   if (sv.severity !== 'moderate' || !sv.basis.includes('airbags_deployed')) errs.push('подушки мали дати мінімум moderate: ' + JSON.stringify(sv));
   sv = deriveSeverity(SIG({ wheel_displacement: true }));

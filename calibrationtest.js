@@ -58,6 +58,14 @@ const gold = JSON.parse(fs.readFileSync('calibration-gold.json', 'utf8'));
   if (!near(f('8FVRYG'), 8.0, 8.2)) errs.push('watchpoint moderate+SRS (8FVRYG): ' + f('8FVRYG'));
   /* severe + подушки + unknown ремонт: помітно нижче */
   if (!near(f('6SYMZ7'), 6.5, 6.9)) errs.push('watchpoint severe+SRS (6SYMZ7): ' + f('6SYMZ7'));
+  /* acceptance WP7V3G (свіжий Check): severe підтверджений подушками,
+     нормальна хронологія пробігу БЕЗ конфлікту і БЕЗ rollback */
+  if (!near(f('WP7V3G'), 6.5, 6.9)) errs.push('acceptance WP7V3G: ' + f('WP7V3G'));
+  if (res['WP7V3G'].v3.normalized_current_problems.some(p => /MILEAGE|ROLLBACK/.test(p.type))) errs.push('WP7V3G: нормальна хронологія оштрафована');
+  /* TYTP3J: глибока деформація БЕЗ підтвердження подушками/структурою = moderate */
+  if (!near(f('TYTP3J'), 8.8, 9.0)) errs.push('TYTP3J moderate/vc: ' + f('TYTP3J'));
+  const tyE = res['TYTP3J'].v3.accident_events[0];
+  if (!tyE || tyE.derived_severity !== 'moderate') errs.push('TYTP3J: непідтверджена деформація мала бути moderate, а не ' + (tyE && tyE.derived_severity));
   /* flood: кап тримає */
   if (f('M3PKUY') !== 4.5) errs.push('watchpoint flood cap (M3PKUY): ' + f('M3PKUY'));
   if (!res['M3PKUY'].v3.applied_hard_caps.some(c => c.name.includes('FLOOD'))) errs.push('flood без капа');

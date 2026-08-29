@@ -148,7 +148,7 @@
    "auction": null,
    "accident_recorded": true,
    "accident_note": null,
-   "v2_saved": 7.0,
+   "v2_saved": 7,
    "curation_note": "major_deformation_visible=true анотовано куратором зі збереженого фото-evidence снапшота (глибока деформація заднього крила і дверей); прикметник visible_severity у математиці v3 більше не використовується"
   },
   {
@@ -263,7 +263,7 @@
    "auction": null,
    "accident_recorded": true,
    "accident_note": null,
-   "v2_saved": 7.0
+   "v2_saved": 7
   },
   {
    "pid": "8FVRYG",
@@ -324,7 +324,7 @@
    "auction": null,
    "accident_recorded": true,
    "accident_note": null,
-   "v2_saved": 7.0
+   "v2_saved": 7
   },
   {
    "pid": "AXGFW9",
@@ -364,7 +364,7 @@
    "auction": null,
    "accident_recorded": true,
    "accident_note": "ДТП на території США в 2023 році із пошкодженням зовнішнього інтерфейсу та механічними пошкодженнями",
-   "v2_saved": 9.0
+   "v2_saved": 9
   },
   {
    "pid": "8ZSUUY",
@@ -455,41 +455,103 @@
   {
    "pid": "TYTP3J",
    "vin": "WBAJA9C52JB251151",
-   "note": "BMW 5: ретрофіт LCI-оптики, запис minor ДТП",
+   "note": "BMW 5: свіжий Check знайшов архівні кадри Copart 12.2024, фронтальний удар без подушок, ремонт visually_consistent",
+   "refreshed": "2026-08-29 (свіжий production Check після деплою a23fc6e)",
    "cov": {
-    "basics_known": true,
-    "photos_count": 40,
-    "mileage_known": true,
-    "auction_checked": false,
-    "auction_us_signal": true,
     "identity_confirmed": true,
-    "auction_record_exists": true,
-    "registration_data_exists": true,
+    "photos_count": 41,
     "historical_listings_count": 0,
     "mileage_observation_count": 1,
-    "auction_sources_unreachable": false
+    "auction_record_exists": true,
+    "auction_us_signal": true,
+    "auction_checked": false,
+    "auction_sources_unreachable": false,
+    "basics_known": true,
+    "mileage_known": true,
+    "registration_data_exists": true,
+    "service_history_exists": false,
+    "inspection_history_exists": false,
+    "seller_docs_exists": false
    },
    "findings": [
     {
-     "type": "MODIFICATION_TECHNICAL_CONCERN",
-     "event_id": "retrofit_lci_lighting",
+     "type": "MAJOR_REPAIR_UNVERIFIED",
+     "event_id": "accident_2024",
+     "severity": "med",
+     "repair_status": "visually_consistent",
+     "serious_intervention": false,
+     "maintenance_evidence": false,
      "evidence": [
       {
-       "ref": "listing_description",
-       "source": "seller_claim",
-       "description": "Переоборудование в рестайлинговую версию M-style с заменой фар и фонарей."
+       "source": "historical_listing",
+       "ref": "auction_event_1",
+       "description": "Площадка фиксирует ДТП в США в 2024 году с повреждением передней части кузова."
+      },
+      {
+       "source": "us_auction",
+       "ref": "auction_photo_5",
+       "description": "На архивном фото отсутствуют передний бампер и обе фары, видны поврежденные элементы передка."
+      },
+      {
+       "source": "us_auction",
+       "ref": "auction_photo_3",
+       "description": "На левой стороне видны деформация двери и повреждение порога."
+      },
+      {
+       "source": "current_photos",
+       "ref": "photo_1",
+       "description": "На текущем фото передняя часть с рестайлинговым бампером выглядит собранной, явных дефектов зазоров не видно."
+      },
+      {
+       "source": "current_photos",
+       "ref": "photo_11",
+       "description": "На текущем фото левые двери и порог визуально выглядят ровными."
       }
-     ],
-     "severity": "med",
-     "repair_status": "unknown",
-     "maintenance_evidence": false,
-     "serious_intervention": false
+     ]
     }
    ],
-   "hv": null,
+   "hv": {
+    "visible_damage_zones": [
+     "передний бампер",
+     "обе передние фары",
+     "правое переднее крыло",
+     "капот",
+     "левая передняя дверь",
+     "левый порог"
+    ],
+    "visible_severity": "moderate",
+    "major_deformation_visible": true,
+    "wheel_displacement_visible": false,
+    "cosmetic_only": false,
+    "structural_visual_status": "no_obvious_severe_signs",
+    "srs_visual_status": "no_deployment_visible",
+    "summary": "На архивных кадрах виден заметный фронтальный удар с отсутствующими бампером и фарами, деформацией правого крыла, а также повреждением левой стороны в районе двери и порога. Явных признаков тяжелой деформации силовой структуры или смещения колес на доступных ракурсах нет. Скрытые элементы передка, геометрия кузова и полная работоспособность SRS по этим кадрам не устанавливаются.",
+    "evidence": [
+     {
+      "source": "us_auction",
+      "ref": "auction_photo_4",
+      "description": "Правое переднее крыло глубоко деформировано в зоне фары, передний бампер и фара отсутствуют."
+     },
+     {
+      "source": "us_auction",
+      "ref": "auction_photo_5",
+      "description": "Видна разобранная передняя часть с отсутствующими бампером и обеими фарами."
+     },
+     {
+      "source": "us_auction",
+      "ref": "auction_photo_3",
+      "description": "На левой стороне заметны вмятины и заломы в зоне передней двери и порога."
+     },
+     {
+      "source": "us_auction",
+      "ref": "auction_photo_7",
+      "description": "В салоне не видно раскрытой подушки в рулевом колесе или боковой подушки переднего сиденья."
+     }
+    ]
+   },
    "auction": null,
    "accident_recorded": true,
-   "accident_note": "на території США в 2024 році із пошкодженнями передньої частини кузова та із незначними пошкодженнями/подряпинами",
+   "accident_note": null,
    "v2_saved": 7.6
   },
   {
@@ -636,23 +698,104 @@
   {
    "pid": "WP7V3G",
    "vin": "7SAYGDED3PF966312",
-   "note": "Tesla Model Y: чиста, US-сигнал без відповіді джерел",
+   "note": "Tesla Model Y: свіжий Check знайшов аукціон IAAI 12.2025, подушки, глибока деформація правого борта; хронологія пробігу нормальна (29 тис)",
+   "refreshed": "2026-08-29 (свіжий production Check після деплою a23fc6e)",
    "cov": {
-    "vin_decoded": true,
+    "identity_confirmed": true,
     "photos_count": 24,
-    "auction_checked": false,
+    "historical_listings_count": 1,
+    "mileage_observation_count": 2,
+    "auction_record_exists": true,
     "auction_us_signal": true,
-    "auction_record_exists": false,
+    "auction_checked": false,
+    "auction_sources_unreachable": false,
+    "basics_known": true,
+    "mileage_known": true,
     "registration_data_exists": false,
-    "historical_listings_count": 0,
-    "mileage_observation_count": 0
+    "service_history_exists": false,
+    "inspection_history_exists": false,
+    "seller_docs_exists": false
    },
-   "findings": [],
-   "hv": null,
+   "findings": [
+    {
+     "type": "AIRBAGS_DEPLOYED",
+     "event_id": "accident_2025",
+     "severity": "high",
+     "repair_status": "unknown",
+     "serious_intervention": false,
+     "maintenance_evidence": false,
+     "evidence": [
+      {
+       "source": "us_auction",
+       "ref": "auction_photo_4",
+       "description": "В салоне видны сработавшие водительская фронтальная подушка в руле и нижняя водительская подушка."
+      }
+     ]
+    },
+    {
+     "type": "MAJOR_REPAIR_UNVERIFIED",
+     "event_id": "accident_2025",
+     "severity": "high",
+     "repair_status": "unknown",
+     "serious_intervention": false,
+     "maintenance_evidence": false,
+     "evidence": [
+      {
+       "source": "us_auction",
+       "ref": "auction_photo_1",
+       "description": "Видны деформированные капот, передний бампер и правое переднее крыло."
+      },
+      {
+       "source": "us_auction",
+       "ref": "auction_photo_3",
+       "description": "Видна глубокая деформация обеих правых дверей и правого порога."
+      },
+      {
+       "source": "current_photos",
+       "ref": "photo_2",
+       "description": "На общем текущем плане кузов выглядит собранным, но кадр не подтверждает скрытую геометрию, состояние порога и качество восстановления."
+      }
+     ]
+    }
+   ],
+   "hv": {
+    "visible_damage_zones": [
+     "капот",
+     "передний бампер",
+     "правое переднее крыло",
+     "правая передняя дверь",
+     "правая задняя дверь",
+     "правый порог"
+    ],
+    "visible_severity": "moderate",
+    "major_deformation_visible": true,
+    "wheel_displacement_visible": false,
+    "cosmetic_only": false,
+    "structural_visual_status": "indeterminate",
+    "srs_visual_status": "deployed_visible",
+    "summary": "На архивных кадрах видно заметное столкновение в правую переднюю часть и правый борт: смяты навесные кузовные панели, повреждены двери и порог. В салоне видны сработавшие водительская фронтальная и нижняя подушки. Лонжероны, скрытая часть порога, геометрия кузова и полнота восстановления SRS на этих кадрах не подтверждаются.",
+    "evidence": [
+     {
+      "source": "us_auction",
+      "ref": "auction_photo_1",
+      "description": "Капот приподнят и деформирован, правое переднее крыло сильно смято, на переднем бампере видны повреждения."
+     },
+     {
+      "source": "us_auction",
+      "ref": "auction_photo_3",
+      "description": "На правом борту видна глубокая деформация обеих дверей и нижней части порога."
+     },
+     {
+      "source": "us_auction",
+      "ref": "auction_photo_4",
+      "description": "Видны сработавшие подушка в рулевом колесе и нижняя водительская подушка."
+     }
+    ]
+   },
    "auction": null,
-   "accident_recorded": null,
-   "accident_note": null,
-   "v2_saved": 6.5
+   "accident_recorded": true,
+   "accident_note": "ДТП на території США в 2025 році із пошкодженням правої сторони кузова та зовнішнього інтерфейсу Оцініть, наскільки корисна для вас",
+   "v2_saved": 7
   },
   {
    "pid": "M3PKUY",

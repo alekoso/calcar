@@ -386,7 +386,11 @@ export function deriveSeverity(ev) {
     if (rank[level] > rank[severity]) severity = level;
   };
   if (ev.signals.structural) bump('severe', 'structural_damage');
-  if (ev.signals.major_deformation) bump('severe', 'major_deformation_visible');
+  /* глибока видима деформація дає severe ЛИШЕ з незалежним важким
+     підтвердженням (подушки, структурні ознаки, зміщене колесо):
+     самотній visual-boolean моделі не має сили перевернути tier */
+  const majorCorroborated = ev.signals.airbags || ev.signals.structural || ev.signals.wheel_displacement;
+  if (ev.signals.major_deformation) bump(majorCorroborated ? 'severe' : 'moderate', 'major_deformation_visible');
   if (ev.signals.airbags) bump('moderate', 'airbags_deployed');
   if (ev.signals.wheel_displacement) bump('moderate', 'wheel_displacement_visible');
   if (ev.signals.zones >= 2) bump('moderate', 'multiple_damage_zones');
