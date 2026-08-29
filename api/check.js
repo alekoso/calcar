@@ -1377,7 +1377,7 @@ ${auction && auction.photos_sent ? `
 - РОЗБІЖНОСТІ ПРОДАВЦЯ (слова проти офіційних даних: "другий власник" при чотирьох тощо) живуть у discrepancies і в purchase_decision: матеріальна суперечність продавця йде ПЕРШИМ пунктом main_concerns і питанням у questions_for_seller. У score_facts їх НЕ класифікуй: самі по собі вони технічну чи історичну оцінку авто не погіршують.
 - evidence: масив {source: seller_claim|current_photos|historical_listing|us_auction|registry|document, ref: конкретний запис (listing_3, photo_7, auction_event_1) де можливо, description: коротке доказове речення}. Одна знахідка може мати скільки завгодно доказів.
 ${auctionMeta && auctionMeta.status === 'found' ? `
-METADATA EXACT-LOT (надійний historical, джерело ${auctionMeta.source || 'аукціон'}${auctionMeta.lot_id_meta ? ' лот ' + auctionMeta.lot_id_meta : ''}):${auctionMeta.airbags_meta ? '\n- Подушки за metadata лота: ' + JSON.stringify(auctionMeta.airbags_meta) : ''}${auctionMeta.primary_damage ? '\n- Primary damage: ' + auctionMeta.primary_damage : ''}${auctionMeta.secondary_damage ? '\n- Secondary damage: ' + auctionMeta.secondary_damage : ''}
+METADATA EXACT-LOT (надійний historical, джерело ${auctionMeta.source || 'аукціон'}${auctionMeta.lot_id_meta ? ' лот ' + auctionMeta.lot_id_meta : ''}):${auctionMeta.sale_date ? '\n- Дата продажу лота: ' + auctionMeta.sale_date : ''}${auctionMeta.odometer && auctionMeta.odometer.value != null ? '\n- Одометр за metadata лота: ' + JSON.stringify(auctionMeta.odometer) + ' (порівнюй ЛИШЕ за правилами про одиницю, статус і надійні дати)' : ''}${auctionMeta.airbags_meta ? '\n- Подушки за metadata лота: ' + JSON.stringify(auctionMeta.airbags_meta) : ''}${auctionMeta.primary_damage ? '\n- Primary damage: ' + auctionMeta.primary_damage : ''}${auctionMeta.secondary_damage ? '\n- Secondary damage: ' + auctionMeta.secondary_damage : ''}
 - METADATA І VISION ДОПОВНЮЮТЬ ОДНЕ ОДНОГО. Якщо metadata exact-lot прямо каже, що подушки спрацювали (Airbag: Driver/Passenger/Side тощо), створи AIRBAGS_DEPLOYED з evidence source us_auction і ref auction_metadata (НЕ current_photos, НЕ фото). Не вимагай фотопідтвердження салону: надійний exact-lot historical metadata сам є позитивним доказом. Це НЕ inference з характеру удару, а прямий запис аукціону.
 - Damage-зони з metadata (primary/secondary) бери як факт зони удару, навіть якщо кадр цієї зони у Vision відсутній.
 ` : ''}
@@ -1512,6 +1512,7 @@ export default async function handler(req, res) {
             auctionSearch.sale_date = cached.record?.meta?.sale_date || null;
             auctionSearch.lot_id_meta = cached.record?.meta?.lot_id || null;
             auctionSearch.airbags_meta = cached.record?.meta?.airbags || null;
+            auctionSearch.odometer = cached.record?.meta ? { value: cached.record.meta.odometer_value ?? null, unit: cached.record.meta.odometer_unit || 'unknown', status: cached.record.meta.odometer_status || 'unknown', status_raw: cached.record.meta.odometer_status_raw || null } : null;
             auctionSearch.primary_damage = cached.record?.meta?.primary_damage || null;
             auctionSearch.secondary_damage = cached.record?.meta?.secondary_damage || null;
             /* знайдена подія постійна і повторно не оплачується, але у VIN
@@ -1542,7 +1543,7 @@ export default async function handler(req, res) {
             auctionSearch.house = rec.meta?.auction_house || null;
             auctionSearch.sale_date = rec.meta?.sale_date || null;
             auctionSearch.paid = rec.paid || null;
-            auctionSearch.odometer = rec.meta ? { value: rec.meta.odometer_value, unit: rec.meta.odometer_unit } : null;
+            auctionSearch.odometer = rec.meta ? { value: rec.meta.odometer_value ?? null, unit: rec.meta.odometer_unit || 'unknown', status: rec.meta.odometer_status || 'unknown', status_raw: rec.meta.odometer_status_raw || null } : null;
             auctionSearch.lot_id_meta = rec.meta?.lot_id || null;
             auctionSearch.airbags_meta = rec.meta?.airbags || null;
             auctionSearch.primary_damage = rec.meta?.primary_damage || null;
