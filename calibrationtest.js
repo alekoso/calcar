@@ -101,6 +101,15 @@ const gold = JSON.parse(fs.readFileSync('calibration-gold.json', 'utf8'));
     for (const e of errs) console.error('  - ' + e);
     process.exit(1);
   }
+  /* діагностика: підоцінки по gold-набору (пояснювальний шар, у формулу не входить) */
+  console.log('pid      | v3  | Історія | Пробіг | Пошк/відн | Поточний | Технічні');
+  for (const [pid, r] of Object.entries(res)) {
+    if (typeof r.v3.final !== 'number') continue;
+    const d = r.v3.score_dimensions || {};
+    const cell = k => (d[k] && d[k].score_available ? d[k].score.toFixed(1) : '  - ');
+    console.log([pid.padEnd(8), r.v3.final.toFixed(1), '  ' + cell('history'), '  ' + cell('mileage'), '   ' + cell('damage_repair'), '   ' + cell('current_condition'), '  ' + cell('technical')].join(' | '));
+  }
+
   /* діагностика розподілу (НЕ pass/fail): скільки балів у смузі 6.9-7.2 */
   const finals = Object.values(res).map(r => r.v3.final).filter(x => typeof x === 'number');
   const diagWin = finals.filter(x => x >= 6.9 && x <= 7.2).length;

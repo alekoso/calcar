@@ -376,7 +376,68 @@ const THIN = {
   if (Math.abs(ceilNA - ceilFound) > 1e-9) errs.push('not_applicable дав іншу стелю, ніж bounded-внесок домену: ' + ceilNA + ' vs ' + ceilFound);
   if (ceilNA > C.CEILING_MAX + 1e-9) errs.push('not_applicable роздув стелю понад CEILING_MAX');
 
-  /* ===== 19. сторожі диспетчера і приватності ===== */
+  /* ===== 19. пояснювальні підоцінки (dimensions) ===== */
+  const { computeDimensions, buildScoreDigest, SCORE_DIMENSIONS_CONFIG, DIMENSION_LABELS } = M;
+  /* підоцінки НЕ міняють CalCar Score: еталонні фінали ті самі, що й до
+     їх появи (RICH-чиста = стеля 9.6, structural-severe = кап 5.5) */
+  b = score([], RICH);
+  if (b.final !== 9.6) errs.push('фінал чистої змінився після додавання dimensions: ' + b.final);
+  if (!b.score_dimensions) errs.push('score_dimensions нема в breakdown');
+  const sevCase = accCase({ structural: true, airbags: true, zones: 2 }, 'unknown');
+  if (sevCase.final !== 5.5) errs.push('фінал severe-кейса змінився після dimensions: ' + sevCase.final);
+  /* чиста перевірена машина: осі доступні і 10, БЕЗ проблем = 10 це
+     "перевірили і не знайшли", не фейк */
+  for (const k of ['history', 'mileage', 'damage_repair', 'current_condition', 'technical']) {
+    const d = b.score_dimensions[k];
+    if (!d || d.score_available !== true || d.score !== 10) errs.push('чиста перевірена: вісь ' + k + ' мала бути 10: ' + JSON.stringify(d));
+  }
+  /* нема даних != 10/10: непідтверджені домени дають unavailable і null */
+  b = score([], { identity_confirmed: true, photos_count: 3, basics_known: true, mileage_known: true, historical_listings_count: 1, mileage_observation_count: 0, auction_record_exists: false });
+  for (const k of ['mileage', 'current_condition', 'technical']) {
+    const d = b.score_dimensions[k];
+    if (!d || d.score_available !== false || d.score !== null) errs.push('без даних вісь ' + k + ' мала бути unavailable/null: ' + JSON.stringify(d));
+  }
+  /* severe гірший за moderate у History і Damage & Repair */
+  const sevDim = sevCase.score_dimensions;
+  const modDim = accCase({ airbags: true, zones: 1 }, 'unknown').score_dimensions;
+  if (!(modDim.history.score > sevDim.history.score)) errs.push('History: severe не гірший за moderate: ' + sevDim.history.score + ' vs ' + modDim.history.score);
+  if (!(modDim.damage_repair.score > sevDim.damage_repair.score)) errs.push('Damage&Repair: severe не гірший за moderate');
+  /* rollback значно гірший за конфлікт у Mileage */
+  const confDim = score([F('MILEAGE_CONFLICT_UNEXPLAINED', 'm1')], RICH).score_dimensions.mileage;
+  const rollDim = score([F('ODOMETER_ROLLBACK', 'm2', { evidence: [ev('registry', null, 'скручений')] })], RICH).score_dimensions.mileage;
+  if (!(confDim.score - rollDim.score >= 3)) errs.push('Mileage: rollback мало відрізняється від конфлікту: ' + rollDim.score + ' vs ' + confDim.score);
+  /* історичне ДТП САМО не знижує Поточний стан */
+  if (sevDim.current_condition.score !== 10) errs.push('історичне ДТП знизило current_condition: ' + sevDim.current_condition.score);
+  /* generic болячка моделі не знижує Технічні ризики (відкидається на вході) */
+  b = score([{ type: 'MODEL_GENERIC_WEAKNESS', event_id: 'g1', evidence: [ev('seller_claim', null, 'слабкі ланцюги у моделі')] }], RICH);
+  if (b.score_dimensions.technical.score !== 10) errs.push('generic болячка знизила technical: ' + b.score_dimensions.technical.score);
+  /* поточні проблеми працюють по своїх осях */
+  b = score([F('POOR_REPAIR_VISIBLE', 'pr1'), F('CRITICAL_WARNING_LIGHTS', 'w9', { evidence: [ev('current_photos', 'photo_2', 'горить ABS')] })], RICH);
+  if (!(b.score_dimensions.current_condition.score < 10)) errs.push('current_condition не відреагував на видимі проблеми');
+  b = score([F('SERIOUS_POWERTRAIN_FAULT', 'p1'), F('MODIFICATION_TECHNICAL_CONCERN', 'md1', { serious_intervention: true, maintenance_evidence: false })], RICH);
+  if (!(b.score_dimensions.technical.score < 10)) errs.push('technical не відреагував на несправність і тюнінг');
+
+  /* ===== 20. дайджест для AI-висновку: точні бекенд-числа ===== */
+  const digest = buildScoreDigest(sevCase);
+  if (!digest) errs.push('дайджест не побудований');
+  if (digest) {
+    if (digest.calcar_score !== sevCase.final) errs.push('дайджест: calcar_score != final');
+    for (const d of digest.dimensions) {
+      if (d.score !== sevCase.score_dimensions[d.key].score) errs.push('дайджест: бал осі ' + d.key + ' не збігається з бекендом');
+      if (!DIMENSION_LABELS[d.key] || d.label_ua !== DIMENSION_LABELS[d.key]) errs.push('дайджест: нема UA-мітки для ' + d.key);
+    }
+    if (!digest.weakest.length) errs.push('дайджест: weakest порожній для severe-кейса');
+    if (!digest.applied_hard_caps.some(c => c.includes('STRUCTURAL'))) errs.push('дайджест: кап не переданий');
+  }
+  /* недоступна вісь у дайджест не потрапляє взагалі */
+  const thinDigest = buildScoreDigest(score([], { identity_confirmed: true, photos_count: 3, basics_known: true, mileage_known: true, historical_listings_count: 1, mileage_observation_count: 0 }));
+  if (thinDigest && thinDigest.dimensions.some(d => ['mileage', 'current_condition', 'technical'].includes(d.key))) errs.push('дайджест містить недоступні осі');
+  /* переusage старого computeSubscores заборонений */
+  for (const f of ['api/check.js', 'api/score.js', 'api/score-v3.js', 'api/chat.js']) {
+    if (/computeSubscores/.test(fs.readFileSync(f, 'utf8'))) errs.push(f + ': computeSubscores не має існувати в новому pipeline');
+  }
+
+  /* ===== 21. сторожі диспетчера і приватності ===== */
   const checkSrc = fs.readFileSync('api/check.js', 'utf8');
   if (!/CALCAR_SCORE_VERSION/.test(checkSrc)) errs.push('check.js: нема перемикача CALCAR_SCORE_VERSION');
   if (!/parsed\.score_breakdown = breakdown/.test(checkSrc)) errs.push('check.js: канонічне поле score_breakdown не пишеться');
@@ -393,6 +454,19 @@ const THIN = {
   if (!/D\.score_breakdown \|\| D\.score_breakdown_v2/.test(pageSrc)) errs.push('result-check: читач не переведений на канонічне поле з alias-фолбеком');
   if (!/Низький виявлений ризик/.test(pageSrc)) errs.push('result-check: risk-wording рівня нема');
   if (!/Аукціонних записів у перевірених джерелах не знайдено/.test(pageSrc)) errs.push('result-check: нейтральне повідомлення checked_absent нема');
+  /* AI-висновок: check.js будує промпт з точних бекенд-балів і валідує числа */
+  if (!/buildScoreDigest/.test(checkSrc)) errs.push('check.js: дайджест балів не використовується');
+  if (!/score narrative rejected/.test(checkSrc)) errs.push('check.js: нема валідації чисел narrative проти дайджесту');
+  if (!/allowed\.has\(v\)/.test(checkSrc)) errs.push('check.js: числа narrative не звіряються з дозволеним набором');
+  /* картка підоцінок: пʼять міток на сторінці і в обох словниках */
+  const ruDict = fs.readFileSync('i18n/ru.js', 'utf8');
+  const enDict = fs.readFileSync('i18n/en.js', 'utf8');
+  for (const lbl of ['Історія авто', 'Пробіг', 'Пошкодження та відновлення', 'Поточний стан', 'Технічні ризики']) {
+    if (!pageSrc.includes("'" + lbl + "'")) errs.push('result-check: мітка осі відсутня: ' + lbl);
+    if (!ruDict.includes("'" + lbl + "'")) errs.push('ru.js: нема перекладу мітки ' + lbl);
+    if (!enDict.includes("'" + lbl + "'")) errs.push('en.js: нема перекладу мітки ' + lbl);
+  }
+  if (!/dimCard/.test(pageSrc) || !/dim-track/.test(pageSrc)) errs.push('result-check: картка підоцінок відсутня');
 
   fs.unlinkSync(tmp);
   if (errs.length) {

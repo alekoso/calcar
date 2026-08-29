@@ -1,7 +1,7 @@
 export const config = { maxDuration: 300 };
 
 import { computeScore } from './score.js';
-import { computeScoreV3 } from './score-v3.js';
+import { computeScoreV3, buildScoreDigest } from './score-v3.js';
 
 /* активна версія CalCar Score: перемикається конфігурацією без деплою коду.
    Rollback на v2 = env CALCAR_SCORE_VERSION=v2, НЕ revert коміту */
@@ -1836,6 +1836,54 @@ export default async function handler(req, res) {
     const cleanDecision = sanitizePurchaseDecision(parsed.purchase_decision, parsed.score_v2_preview);
     if (cleanDecision) parsed.purchase_decision = cleanDecision;
     else delete parsed.purchase_decision;
+
+    /* ---- AI-висновок отримує ТОЧНІ бекенд-бали ----
+       Підоцінки і CalCar Score рахує код ПІСЛЯ головного виклику, тому
+       reasoning вплітає їх окремим легким викликом. Модель числа НЕ
+       рахує і НЕ змінює: кожне число X/10 у результаті звіряється з
+       дайджестом buildScoreDigest, будь-яка невідповідність чи збій
+       лишають оригінальний текст без змін */
+    if (parsed.purchase_decision && parsed.score_breakdown && parsed.score_breakdown.score_version === 'v3') {
+      try {
+        const digest = buildScoreDigest(parsed.score_breakdown);
+        if (digest && digest.dimensions.length) {
+          const pd = parsed.purchase_decision;
+          const nPrompt = `Ти редактор звіту CalCar. Нижче фінальний висновок по авто і ДАЙДЖЕСТ детермінованої Оцінки CalCar (рахує код, не ти). Перепиши поле reasoning так, щоб воно ПРИРОДНО спиралось на ці бали.
+
+ДАЙДЖЕСТ (єдине джерело чисел, нічого не рахуй і не вигадуй):
+${JSON.stringify(digest)}
+
+ПРАВИЛА:
+- Використай зазвичай 1-2 найслабші осі (weakest), одну сильну (strongest, якщо є) і підсумковий CalCar Score (calcar_score). НЕ перелічуй механічно всі осі.
+- Числа пиши точно як у дайджесті, у форматі X.X/10. Осей, яких нема в dimensions, НЕ згадуй і чисел для них не вигадуй.
+- Якщо applied_hard_caps не порожній, поясни, що підсумковий бал обмежений відповідним фактором.
+- Ціна, вигідність, комплектація, чесність продавця і типові болячки моделі НЕ пояснюють Оцінку CalCar: не використовуй їх як причину балів.
+- Збережи всі факти, висновки і рекомендації оригінального reasoning, його мову і обсяг (2-4 абзаци). Без першої особи. Без символу довгого тире.
+${langDirective}
+
+ОРИГІНАЛЬНИЙ reasoning:
+${pd.reasoning}
+
+Поверни JSON {"reasoning":"новий текст"}.`;
+          const nBody = modelBody(nPrompt, false);
+          nBody.max_completion_tokens = 3000;
+          const nData = await callModel(nBody, 45000);
+          const nParsed = JSON.parse((nData.choices?.[0]?.message?.content || '{}').replace(/```json|```/g, '').trim());
+          const txt = typeof nParsed.reasoning === 'string' ? nParsed.reasoning.trim().replace(/\u2014/g, ',').slice(0, 4000) : '';
+          if (txt) {
+            const allowed = new Set([digest.calcar_score, ...digest.dimensions.map(d => d.score)].map(x => x.toFixed(1)));
+            const nums = [...txt.matchAll(/(\d{1,2}(?:[.,]\d)?)\s*\/\s*10/g)].map(m => parseFloat(m[1].replace(',', '.')).toFixed(1));
+            const valid = nums.length >= 2
+              && nums.every(v => allowed.has(v))
+              && nums.includes(digest.calcar_score.toFixed(1));
+            if (valid) {
+              pd.reasoning = txt;
+              pd.score_narrative = true;
+            } else console.log('[check] score narrative rejected: числа поза дайджестом', JSON.stringify(nums));
+          }
+        }
+      } catch (e) { console.log('[check] score narrative failed:', e.message); }
+    }
 
     /* плівка кузова: структурований факт */
     const bwClean = sanitizeBodyWrap(parsed.body_wrap);

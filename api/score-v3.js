@@ -649,6 +649,11 @@ export function computeScoreV3(input, cfg = SCORE_CONFIG_V3) {
     limiting_factors: limiting,
     dropped_findings: dropped,
     coverage_inputs: coverageInputs,
+    /* пояснювальні підоцінки: рахує КОД, вони НЕ входять у формулу
+       CalCar Score і не змінюють final (див. computeDimensions) */
+    score_dimensions: computeDimensions({
+      accidentEvents, problems: currentPenalties, unresolvedSafety, domains, coverageInputs,
+    }),
   };
   if (!eligibility.eligible) {
     return { ...base, score_available: false, score_unavailable_missing: eligibility.missing, final: null, grade: null,
@@ -657,4 +662,152 @@ export function computeScoreV3(input, cfg = SCORE_CONFIG_V3) {
   return { ...base, score_available: true, final, grade: gradeFromScoreV3(final, cfg),
     score_limited_by_data: limiting.includes('coverage'),
     score_limit_reason: limiting.includes('coverage') ? 'оцінка обмежена глибиною перевірки: стеля ' + ceiling : (limiting.filter(l => l.startsWith('hard_cap')).map(l => 'жорсткий кап ' + l.slice(9)).join('; ') || null) };
+}
+
+/* ============ пояснювальні підоцінки (explanatory dimensions) ============
+   П'ять окремих осей 0-10, які рахує КОД з уже нормалізованих фактів
+   breakdown. Вони НЕ усереднюються в CalCar Score, НЕ є входом
+   computeScoreV3 і НЕ впливають на final: це пояснювальний шар для
+   картки і AI-висновку. Числа підоцінок живуть у власному конфігу і
+   свідомо НЕ звірені з SCORE_CONFIG_V3: середнє п'яти осей не мусить
+   збігатися з CalCar Score. Недостатньо даних для осі:
+   score_available:false і score:null, жодних фейкових 10/10.
+   "Перевірили і проблем не знайшли" (10) != "даних недостатньо" (null) */
+export const SCORE_DIMENSIONS_CONFIG = {
+  HISTORY_EVENT: { severe: 3.5, moderate: 2.0, minor: 0.8, indeterminate: 1.0 },
+  HISTORY_FLOOD: 4.5,
+  HISTORY_FIRE: 5.0,
+  HISTORY_VIN: 5.0,
+  MILEAGE_CONFLICT: 3.0,
+  MILEAGE_ROLLBACK: 7.5,          /* rollback значно гірший за конфлікт */
+  DR_EVENT: { severe: 3.0, moderate: 1.6, minor: 0.5, indeterminate: 1.0 },
+  DR_REPAIR_MULT: { confirmed_ok: 0.45, visually_consistent: 0.8, unknown: 1.0, confirmed_bad: 1.3 },
+  DR_STRUCTURAL_UNRESOLVED: 1.0,  /* додатково до severe-події */
+  DR_SRS_UNVERIFIED: 1.2,
+  DR_POOR_REPAIR: 1.5,
+  DR_FLOOD: 4.0,                  /* затоплення/пожежа це теж пошкодження */
+  DR_FIRE: 4.5,
+  CC_POOR_REPAIR: 2.5,
+  CC_WARNING: 1.8,
+  TECH_SRS_FAULT: 3.0,
+  TECH_POWERTRAIN: 3.0,
+  TECH_MOD: 1.0,
+  TECH_MOD_SERIOUS: 2.0,
+};
+export const DIMENSION_LABELS = {
+  history: 'Історія авто',
+  mileage: 'Пробіг',
+  damage_repair: 'Пошкодження та відновлення',
+  current_condition: 'Поточний стан',
+  technical: 'Технічні ризики',
+};
+export const RISK_LABELS = {
+  low_risk: 'низький виявлений ризик',
+  moderate_risk: 'помірний виявлений ризик',
+  elevated_risk: 'підвищений виявлений ризик',
+  high_risk: 'високий виявлений ризик',
+};
+
+export function computeDimensions(input, dc = SCORE_DIMENSIONS_CONFIG) {
+  const events = Array.isArray(input.accidentEvents) ? input.accidentEvents : [];
+  const problems = Array.isArray(input.problems) ? input.problems : [];
+  const safety = Array.isArray(input.unresolvedSafety) ? input.unresolvedSafety : [];
+  const domains = input.domains || {};
+  const cov = input.coverageInputs || {};
+  const has = t => problems.some(p => p.type === t);
+  const earned = d => !!(domains[d] && domains[d].contribution > 0);
+  const dim = (available, penalty, factors) => available
+    ? { score_available: true, score: round1(Math.max(0, Math.min(10, 10 - penalty))), main_factors: factors.length ? factors : ['no_issues_found'] }
+    : { score_available: false, score: null, main_factors: [] };
+
+  /* A. HISTORY: що з авто БУЛО. Доступна, коли історію реально перевіряли
+     (джерела історії/аукціону відповіли) або серйозні події вже знайдені */
+  const histFactors = [];
+  let histPen = 0;
+  for (const ev of events) { histPen += dc.HISTORY_EVENT[ev.derived_severity]; histFactors.push(ev.derived_severity + '_accident'); }
+  if (events.length >= 2) histFactors.push('multiple_accidents');
+  if (has('FLOOD')) { histPen += dc.HISTORY_FLOOD; histFactors.push('flood_history'); }
+  if (has('FIRE')) { histPen += dc.HISTORY_FIRE; histFactors.push('fire_history'); }
+  if (has('VIN_IDENTITY_PROBLEM')) { histPen += dc.HISTORY_VIN; histFactors.push('vin_identity_problem'); }
+  const histAvailable = earned('history_records')
+    || (domains.auction_history && ['found', 'checked_absent'].includes(domains.auction_history.status))
+    || events.length > 0 || histFactors.length > 0;
+  const history = dim(histAvailable, histPen, histFactors);
+
+  /* B. MILEAGE: цілісність хронології. Доступна лише коли є що звіряти:
+     поточний пробіг + хоч одна незалежна історична точка, або знайдений
+     конфлікт/скрутка (вони самі доводять, що дані були) */
+  const milFactors = [];
+  let milPen = 0;
+  if (has('MILEAGE_CONFLICT_UNEXPLAINED')) { milPen += dc.MILEAGE_CONFLICT; milFactors.push('mileage_conflict'); }
+  if (has('ODOMETER_ROLLBACK')) { milPen += dc.MILEAGE_ROLLBACK; milFactors.push('odometer_rollback'); }
+  const n = v => (typeof v === 'number' && isFinite(v) && v > 0 ? v : 0);
+  const milAvailable = (n(cov.mileage_observation_count) >= 1 && cov.mileage_known !== false) || milFactors.length > 0;
+  const mileage = dim(milAvailable, milPen, milFactors);
+
+  /* C. DAMAGE_REPAIR: тяжкість пошкоджень і підтвердженість відновлення.
+     Доступна за тих самих умов, що HISTORY: перевірена чиста історія
+     чесно дає 10, неперевірена не дає нічого */
+  const drFactors = [];
+  let drPen = 0;
+  for (const ev of events) {
+    const mult = dc.DR_REPAIR_MULT[ev.repair_status || 'unknown'];
+    drPen += dc.DR_EVENT[ev.derived_severity] * mult;
+    drFactors.push(ev.derived_severity + '_damage_repair_' + (ev.repair_status || 'unknown'));
+    if (ev.structural && ev.repair_status !== 'confirmed_ok') { drPen += dc.DR_STRUCTURAL_UNRESOLVED; drFactors.push('structural_unresolved'); }
+  }
+  if (safety.length) { drPen += dc.DR_SRS_UNVERIFIED; drFactors.push('srs_restoration_unverified'); }
+  if (has('POOR_REPAIR_VISIBLE')) { drPen += dc.DR_POOR_REPAIR; drFactors.push('poor_repair_visible'); }
+  if (has('FLOOD')) { drPen += dc.DR_FLOOD; drFactors.push('flood_damage'); }
+  if (has('FIRE')) { drPen += dc.DR_FIRE; drFactors.push('fire_damage'); }
+  const damage_repair = dim(histAvailable || drFactors.length > 0, drPen, drFactors);
+
+  /* D. CURRENT_CONDITION: лише ПОТОЧНИЙ vehicle-specific стан.
+     Історичне ДТП саме по собі цю вісь НЕ знижує */
+  const ccFactors = [];
+  let ccPen = 0;
+  if (has('POOR_REPAIR_VISIBLE')) { ccPen += dc.CC_POOR_REPAIR; ccFactors.push('poor_repair_visible'); }
+  if (has('CRITICAL_WARNING_LIGHTS')) { ccPen += dc.CC_WARNING; ccFactors.push('warning_lights'); }
+  const current_condition = dim(earned('current_photos') || ccFactors.length > 0, ccPen, ccFactors);
+
+  /* E. TECHNICAL: лише конкретні vehicle-specific технічні знахідки.
+     Generic болячки моделі без evidence на цій машині сюди не входять
+     (їх відкидає sanitizeFindingsV3 ще на вході) */
+  const techFactors = [];
+  let techPen = 0;
+  if (has('SRS_FAULT')) { techPen += dc.TECH_SRS_FAULT; techFactors.push('srs_fault'); }
+  if (has('SERIOUS_POWERTRAIN_FAULT')) { techPen += dc.TECH_POWERTRAIN; techFactors.push('powertrain_fault'); }
+  for (const p of problems.filter(x => x.type === 'MODIFICATION_TECHNICAL_CONCERN')) {
+    const serious = p.serious_intervention && !p.maintenance_evidence;
+    techPen += serious ? dc.TECH_MOD_SERIOUS : dc.TECH_MOD;
+    techFactors.push(serious ? 'serious_modification_unverified' : 'technical_modification');
+  }
+  const technical = dim(earned('current_photos') || techFactors.length > 0, techPen, techFactors);
+
+  return { history, mileage, damage_repair, current_condition, technical };
+}
+
+/* ---------- дайджест для AI-висновку ----------
+   ЄДИНЕ джерело чисел для тексту: бекенд. Модель нічого не рахує і не
+   змінює; недоступні осі в дайджест не потрапляють взагалі */
+export function buildScoreDigest(breakdown) {
+  const b = breakdown || {};
+  if (b.score_available !== true || !b.score_dimensions) return null;
+  const dims = [];
+  for (const [key, d] of Object.entries(b.score_dimensions)) {
+    if (d && d.score_available === true && typeof d.score === 'number') {
+      dims.push({ key, label_ua: DIMENSION_LABELS[key], score: d.score, main_factors: d.main_factors });
+    }
+  }
+  const sorted = [...dims].sort((a, c) => a.score - c.score);
+  return {
+    calcar_score: b.final,
+    risk_grade: b.grade,
+    risk_label_ua: RISK_LABELS[b.grade] || null,
+    limiting_factor: (b.limiting_factors && b.limiting_factors[0]) || null,
+    applied_hard_caps: (b.applied_hard_caps || []).map(c => c.name),
+    dimensions: dims,
+    weakest: sorted.slice(0, 2).filter(d => d.score < 8).map(d => d.key),
+    strongest: sorted.length ? [sorted[sorted.length - 1]].filter(d => d.score >= 8).map(d => d.key) : [],
+  };
 }
