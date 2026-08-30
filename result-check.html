@@ -236,7 +236,15 @@
   .acc-menu a:hover{background:var(--surface-2)}
 
   /* ---- report toolbar: дії конкретного звіту (спільний компонент) ---- */
-  .topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:20px}
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:20px;position:relative}
+  .hrow.reg > span:not(.hd){font-weight:600}
+  .reg-badge{background:var(--bg);border:1px solid var(--line-strong);color:var(--ink-2);margin-left:6px;vertical-align:1px}
+  .spec-annual{display:block;font-size:12px;color:var(--faint);font-weight:500;margin-top:1px}
+  .chat-coach{position:absolute;top:calc(100% + 10px);right:0;z-index:60;max-width:290px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 34px rgba(20,22,25,.14);padding:12px 34px 12px 14px;font-size:13px;line-height:1.45;color:var(--ink-2)}
+  .chat-coach b{display:block;color:var(--ink);margin-bottom:3px;font-size:13.5px}
+  .chat-coach::before{content:'';position:absolute;top:-5px;right:34px;width:9px;height:9px;background:var(--card);border-left:1px solid var(--line);border-top:1px solid var(--line);transform:rotate(45deg)}
+  .chat-coach .coach-x{position:absolute;top:8px;right:9px;border:0;background:none;color:var(--faint);font-size:15px;line-height:1;cursor:pointer;padding:3px}
+  .chat-coach .coach-x:hover{color:var(--ink)}
   .btn-chat{
     display:inline-flex;align-items:center;gap:8px;background:var(--brand);color:var(--ink);
     border:1px solid rgba(20,22,25,.08);border-radius:12px;height:44px;padding:0 16px;
@@ -447,6 +455,9 @@
   .hrow .hd{flex:0 0 96px;text-align:center;font-weight:700;font-variant-numeric:tabular-nums;background:var(--card);position:relative;z-index:1;align-self:flex-start}
   .hrow > span:not(.hd){flex:1;min-width:0}
   #scoreBadge{position:relative}
+  #scoreBadge.has-dims{cursor:pointer}
+  .dim-caret{font-size:10px;color:var(--faint);margin-left:2px;transition:color .15s}
+  #scoreBadge.has-dims:hover .dim-caret{color:var(--ink-2)}
   .dim-pop{position:absolute;top:calc(100% + 8px);right:0;z-index:40;min-width:250px;max-width:calc(100vw - 32px);background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgba(20,22,25,.10);padding:8px 14px;display:none;flex-direction:column;cursor:default}
   .dim-pop.open{display:flex}
   .dim-pop-row{display:flex;justify-content:space-between;align-items:baseline;gap:16px;padding:7px 0;font-size:13px;color:var(--ink-2);white-space:nowrap}
@@ -765,7 +776,7 @@
   <div class="card" id="eqCard" style="display:none">
     <div class="card-head">
       <h2>Комплектація</h2>
-      <span class="sec-meta">З зазначенням джерела</span>
+      <span class="sec-meta">Дорогі опції виділені</span>
     </div>
     <div class="card-body"><div id="eqList"></div></div>
   </div>
@@ -1076,15 +1087,21 @@ function boot2(D){
      змінюється лише подача. 6 полів: 4+2, менше: порівну */
   const spec = [];
   if (M.price) spec.push([t('Ціна'), nf(M.price) + ' ' + (M.currency || ''), 'price']);
-  if (v.mileage_note) spec.push([t('Пробіг'), clean(v.mileage_note)]);
-  else if (M.odometer_km) spec.push([t('Пробіг'), nf(M.odometer_km) + ' ' + t('км')]);
+  const dimsMil = ((D.score_breakdown || D.score_breakdown_v2 || {}).score_dimensions || {}).mileage;
+  const annualKm = (dimsMil && dimsMil.score_available === true && typeof dimsMil.annual_mileage_km === 'number')
+    ? Math.round(dimsMil.annual_mileage_km / 100) * 100 : null;
+  const annualHtml = annualKm !== null
+    ? '<span class="spec-annual" title="' + esc(t('Середній пробіг за весь строк експлуатації автомобіля.')) + '">≈ ' + esc(nf(annualKm)) + ' ' + esc(t('км/рік')) + '</span>'
+    : '';
+  if (v.mileage_note) spec.push([t('Пробіг'), clean(v.mileage_note), null, annualHtml]);
+  else if (M.odometer_km) spec.push([t('Пробіг'), nf(M.odometer_km) + ' ' + t('км'), null, annualHtml]);
   if (v.engine) spec.push([t('Двигун'), clean(v.engine)]);
   if (v.transmission) spec.push([t('Коробка'), clean(v.transmission)]);
   if (v.drive) spec.push([t('Привід'), clean(v.drive)]);
   if (v.trim) spec.push([t('Версія'), clean(v.trim)]);
   const FUEL = { petrol: t('Бензин'), diesel: t('Дизель'), hybrid: t('Гібрид'), electric: t('Електро') };
   if (v.fuel && FUEL[v.fuel]) spec.push([t('Паливо'), FUEL[v.fuel]]);
-  const specRow = r => '<div class="spec-row"><span class="spec-l">' + esc(r[0]) + '</span><span class="spec-v' + (r[2] ? ' ' + r[2] : '') + '">' + esc(r[1]) + '</span></div>';
+  const specRow = r => '<div class="spec-row"><span class="spec-l">' + esc(r[0]) + '</span><span class="spec-v' + (r[2] ? ' ' + r[2] : '') + '">' + esc(r[1]) + (r[3] || '') + '</span></div>';
   /* збалансовані колонки: 5=3+2, 6=3+3, 7=4+3, 8=4+4 */
   const specCut = Math.ceil(spec.length / 2);
   $('specGrid').innerHTML = '<div class="spec-col">' + spec.slice(0, specCut).map(specRow).join('') + '</div>'
@@ -1193,7 +1210,9 @@ function boot2(D){
          у звіті лишається старим */
       const dims = bd2 && bd2.score_dimensions;
       if (dims && v2 !== null) {
-        const ORDER = [['history', 'Історія авто'], ['mileage', 'Пробіг'], ['damage_repair', 'Пошкодження та відновлення'], ['current_condition', 'Стан за фото'], ['technical', 'Технічні ризики']];
+        /* Технічні ризики свідомо НЕ показуються в popover: бекенд-вісь
+           лишається в breakdown, це лише presentation */
+        const ORDER = [['history', 'Історія авто'], ['mileage', 'Пробіг'], ['damage_repair', 'Пошкодження та відновлення'], ['current_condition', 'Стан за фото']];
         const pop = document.createElement('span');
         pop.className = 'dim-pop';
         pop.innerHTML = ORDER.map(([k, lbl]) => {
@@ -1202,19 +1221,38 @@ function boot2(D){
           return '<span class="dim-pop-row"><span>' + esc(t(lbl)) + '</span><b' + (val === null ? ' class="na"' : '') + '>' + (val === null ? '\u2013' : val) + '</b></span>';
         }).join('');
         const badge = $('scoreBadge');
+        const shieldEl = $('scoreShield');
+        const shieldTip = $('scoreTip');
+        /* ненавʼязливий affordance: бейдж явно розкривається */
+        const caret = document.createElement('span');
+        caret.className = 'dim-caret';
+        caret.textContent = '\u25BE';
+        badge.insertBefore(caret, shieldEl);
         badge.appendChild(pop);
+        badge.classList.add('has-dims');
         badge.tabIndex = 0;
-        const openPop = () => pop.classList.add('open');
+        const openPop = () => { pop.classList.add('open'); if (shieldTip) shieldTip.classList.remove('open'); };
         const closePop = () => pop.classList.remove('open');
-        badge.addEventListener('mouseenter', openPop);
+        /* щит = окремий interactive target: наведення на нього показує ЛИШЕ
+           пояснення Score і закриває popover підоцінок, і навпаки */
+        badge.addEventListener('mouseover', e => {
+          if (shieldEl && shieldEl.contains(e.target)) closePop();
+          else openPop();
+        });
         badge.addEventListener('mouseleave', closePop);
-        badge.addEventListener('focus', openPop);
+        badge.addEventListener('focus', e => { if (e.target === badge) openPop(); });
         badge.addEventListener('blur', closePop);
         badge.addEventListener('click', e => {
-          if ($('scoreShield') && $('scoreShield').contains(e.target)) return;
+          if (shieldEl && shieldEl.contains(e.target)) return;
           e.stopPropagation();
           pop.classList.toggle('open');
+          if (pop.classList.contains('open') && shieldTip) shieldTip.classList.remove('open');
         });
+        if (shieldEl) {
+          shieldEl.addEventListener('mouseenter', closePop);
+          shieldEl.addEventListener('focus', closePop);
+          shieldEl.addEventListener('click', closePop);
+        }
         document.addEventListener('click', e => { if (!badge.contains(e.target)) closePop(); });
       }
     }
@@ -1229,6 +1267,30 @@ function boot2(D){
       document.addEventListener('click', e => { if (!shield.contains(e.target)) tip.classList.remove('open'); });
     }
   }
+
+  /* ---- одноразовий coachmark чату: показується лише тому, хто його ще
+     не бачив; закриття чи будь-яка взаємодія ставить прапорець назавжди ---- */
+  try {
+    const COACH_KEY = 'calcar_chat_hint_seen';
+    let seen = null;
+    try { seen = localStorage.getItem(COACH_KEY); } catch (e) {}
+    const chatBtnEl = $('chatTopBtn');
+    if (!seen && chatBtnEl) {
+      const markSeen = () => { try { localStorage.setItem(COACH_KEY, '1'); } catch (e) {} };
+      setTimeout(() => {
+        const coach = document.createElement('div');
+        coach.className = 'chat-coach';
+        coach.innerHTML = '<b>' + esc(t('Можна спитати про це авто')) + '</b>'
+          + esc(t('Чат допоможе розібрати ДТП, пробіг, ризики і підкаже, що перевірити перед покупкою.'))
+          + '<button class="coach-x" type="button" aria-label="' + esc(t('Закрити')) + '">×</button>';
+        chatBtnEl.closest('.topbar').appendChild(coach);
+        const dismiss = () => { markSeen(); coach.remove(); };
+        coach.querySelector('.coach-x').addEventListener('click', dismiss);
+        chatBtnEl.addEventListener('click', dismiss, { once: true });
+        setTimeout(() => { document.addEventListener('click', e => { if (!coach.contains(e.target)) dismiss(); }, { once: true }); }, 400);
+      }, 1200);
+    }
+  } catch (e) {}
 
   /* ---- ключові ризики ---- */
   const LVL = { high: ['red', t('висока ціна помилки')], med: ['amber', t('варто уваги')], low: ['blue', t('фонове')] };
@@ -1325,7 +1387,11 @@ function boot2(D){
       /* premium-опція: та сама геометрія, інша лише рамка; tooltip каже
          про цінність, не про грошову вартість */
       const hv = o.value_tier === 'high_value';
-      const tip = hv ? (t('Преміальна опція') + (meta ? ' · ' + meta : '')) : meta;
+      /* пояснення, чому опція виділена; без грошових цифр, бо надійних
+         цінових даних нема */
+      const tip = hv
+        ? (t('Дорога опція') + '. ' + t('Ця опція зазвичай помітно впливає на вартість автомобіля або вартість її ремонту чи заміни.') + (meta ? ' · ' + meta : ''))
+        : meta;
       return '<span class="eq-chip' + (hv ? ' hv' : '') + '"' + (tip ? ' title="' + esc(tip) + '"' : '') + '>' + esc(o.name) + '</span>';
     };
     const byNotable = (a, b) => (b.highlight === true) - (a.highlight === true);
@@ -1368,7 +1434,10 @@ function boot2(D){
        інтервалу опційний: невідому дату не вигадуємо заради лінії */
     $('histList').innerHTML = D.history.map((h, i) =>
       (i > 0 ? '<div class="hgap">' + (h.gap ? esc(h.gap) : '') + '</div>' : '')
-      + '<div class="hrow"><span class="hd">' + esc(h.date) + '</span><span>' + esc(h.event) + '</span></div>'
+      /* реєстраційні події видно при скануванні; бейдж лише за явну
+         перереєстрацію, "зміну власника" не вигадуємо */
+      + '<div class="hrow' + (/реєстрац|регистрац|registration/i.test(h.event) ? ' reg' : '') + '"><span class="hd">' + esc(h.date) + '</span><span>' + esc(h.event)
+      + (/перереєстрац|перерегистрац|re-?regist/i.test(h.event) ? ' <span class="badge reg-badge">' + esc(t('Перереєстрація')) + '</span>' : '') + '</span></div>'
     ).join('')
     + (D.history_note ? '<div class="dmg-note hnote">' + esc(D.history_note) + '</div>' : '')
     /* стан аукціонної перевірки: НЕ твердження, що всі авто з США мусять

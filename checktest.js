@@ -423,7 +423,7 @@ const REPORTS = [
     if (!pg3.includes("factory_status: o.factory_status")) errs.push('чат не отримує структуровану комплектацію');
     for (const d of ['i18n/ru.js', 'i18n/en.js']) {
       const dict = fs.readFileSync(d, 'utf8');
-      for (const k of ['Дані оголошення', 'Преміальна опція']) {
+      for (const k of ['Дані оголошення', 'Дорога опція']) {
         if (!dict.includes("'" + k + "'")) errs.push('нема ключа "' + k + '" у ' + d);
       }
     }
@@ -485,7 +485,8 @@ const REPORTS = [
     if (pg4.includes('eq-star') || pg4.includes('hvGrad')) errs.push('зірка не видалена повністю');
     if (!pg4.includes('.eq-chip.hv{border-color:transparent;background:linear-gradient(var(--card),var(--card)) padding-box')) errs.push('premium-опція без градієнтної рамки');
     if (/\.eq-chip\.hv\{[^}]*(padding(?!-box)|width|height|margin)/.test(pg4)) errs.push('premium-chip змінює геометрію');
-    if (!pg4.includes("t('Преміальна опція')")) errs.push('tooltip не Преміальна опція');
+    if (!pg4.includes("t('Дорога опція')")) errs.push('tooltip не Дорога опція');
+    if (!pg4.includes('Дорогі опції виділені')) errs.push('нема підпису Дорогі опції виділені');
     if (pg4.includes("t('Цінна опція')")) errs.push('старий tooltip лишився');
     /* без першої особи */
     if (!api.includes('БЕЗ ПЕРШОЇ ОСОБИ')) errs.push('нема заборони першої особи в рішенні');
@@ -591,7 +592,33 @@ const REPORTS = [
     }
   }
 
-  if (errs.length) { console.log('FAILED:', errs); process.exit(1); }
+  /* ---- хибні spec-розбіжності: нормалізація потужності і рік/модельний рік ---- */
+{
+  const src = grab(api, 'normalizePowerHp') + '\n' + grab(api, 'isFalseSpecDiscrepancy');
+  const fns = new Function(src + '\nreturn { normalizePowerHp, isFalseSpecDiscrepancy };')();
+  const hp = fns.normalizePowerHp;
+  if (Math.abs(hp(462, 'к.с.') - 455.7) > 1) errs.push('462 к.с. не нормалізувалась у ~456 hp: ' + hp(462, 'к.с.'));
+  if (Math.abs(hp(100, 'кВт') - 134.1) > 0.5) errs.push('кВт не нормалізується');
+  if (hp(455, 'hp') !== 455) errs.push('hp не тотожна');
+  const F = fns.isFalseSpecDiscrepancy;
+  /* 462 PS проти 455 hp: після нормалізації НЕ значуща розбіжність */
+  if (!F({ title: 'Потужність в оголошенні і VIN-декодуванні різняться', detail: 'В оголошенні 462 к.с., VIN-декодування дає 455 hp.' })) errs.push('462 к.с. / 455 hp мала бути хибною розбіжністю');
+  /* 2017 виробництво / MY2018: НЕ розбіжність */
+  if (!F({ title: 'Рік випуску розходиться з VIN', detail: 'В оголошенні рік випуску 2017, VIN-декодування вказує модельний рік 2018.' })) errs.push('2017/MY2018 мала бути хибною розбіжністю');
+  /* комбінований BMW-кейс: рік+потужність разом теж хибний */
+  if (!F({ title: 'Рік випуску і потужність розходяться з VIN-декодуванням', detail: 'Оголошення: 2017, 462 к.с. VIN: модельний рік 2018, 455 к.с.' })) errs.push('комбінований рік+потужність кейс мав бути хибним');
+  /* СПРАВЖНІ розбіжності лишаються */
+  if (F({ title: 'Потужність розходиться', detail: 'Оголошення 462 к.с., VIN-декодування 300 к.с.' })) errs.push('суттєва різниця потужності помилково відфільтрована');
+  if (F({ title: 'Рік випуску розходиться', detail: 'Оголошення 2015, VIN вказує 2018 рік.' })) errs.push('різниця 3 роки помилково відфільтрована');
+  if (F({ title: 'Двигун не збігається', detail: 'Оголошення 462 к.с. і дизель, VIN-декодування 455 к.с. і бензиновий двигун.' })) errs.push('розбіжність двигуна помилково відфільтрована');
+  /* фільтр реально застосовується в handler */
+  if (!/isFalseSpecDiscrepancy\(d\)/.test(api)) errs.push('фільтр хибних розбіжностей не застосовується в handler');
+  /* правила промпту */
+  if (!/РІК ВИРОБНИЦТВА проти МОДЕЛЬНОГО РОКУ/.test(api)) errs.push('нема правила про рік виробництва/модельний рік у промпті');
+  if (!/приведи значення до ОДНІЄЇ одиниці/.test(api)) errs.push('нема правила нормалізації потужності в промпті');
+}
+
+if (errs.length) { console.log('FAILED:', errs); process.exit(1); }
   console.log('нормалізація одна · збіг за URL і за VIN · значущий query не клеїться · гість без перевірки · повтор свідомий, insert · правки звіту');
   console.log('CHECK DUP TEST PASSED');
 })().catch(e => { console.log('FAILED:', e.stack || e.message); process.exit(1); });

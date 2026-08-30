@@ -773,19 +773,18 @@ export function computeDimensions(input, dc = SCORE_DIMENSIONS_CONFIG) {
   /* B. MILEAGE: наскільки хороший ПІДТВЕРДЖЕНИЙ пробіг відносно віку і
      powertrain. Головний фактор: середньорічний пробіг проти reference
      класу (неперервна крива за usage_ratio), далі невеликий lifetime-
-     коректор і integrity. Для числового бала потрібні надійний одометр,
-     надійний вік І достатній mileage-evidence (хоч одна незалежна
-     історична точка, або вже знайдений конфлікт/скрутка):
-     unknown != bad, але unknown != 10/10 */
+     коректор і integrity. Для числового бала достатньо надійного одометра
+     і надійного віку: головний зміст осі це км/рік. Без незалежних
+     історичних точок хронологія НЕ вважається підтвердженою: integrity
+     чесно позначається insufficient_history (без бонусів і штрафів) */
   const n = v => (typeof v === 'number' && isFinite(v) && v > 0 ? v : 0);
   const veh = input.vehicle || {};
   const odo = (typeof veh.odometer_km === 'number' && isFinite(veh.odometer_km) && veh.odometer_km >= 0) ? veh.odometer_km : null;
   const months = (typeof veh.age_months === 'number' && isFinite(veh.age_months) && veh.age_months >= dc.MILEAGE_MIN_AGE_MONTHS) ? veh.age_months : null;
   const hasRollback = has('ODOMETER_ROLLBACK');
   const hasConflict = has('MILEAGE_CONFLICT_UNEXPLAINED');
-  const milEvidenceOk = n(cov.mileage_observation_count) >= 1 || hasRollback || hasConflict;
   let mileage;
-  if (odo === null || months === null || !milEvidenceOk) {
+  if (odo === null || months === null) {
     mileage = { score_available: false, score: null, main_factors: [] };
   } else {
     const interp = (curve, x) => {
@@ -817,6 +816,11 @@ export function computeDimensions(input, dc = SCORE_DIMENSIONS_CONFIG) {
        не штрафуємо: діє лише кап */
     let integrityAdj = 0;
     if (hasConflict && !hasRollback) { integrityAdj = -dc.MILEAGE_CONFLICT; milFactors.push('mileage_conflict'); }
+    /* стан цілісності хронології: issue_found | no_issues_found |
+       insufficient_history (історичних точок нема: НЕ "підтверджено чиста") */
+    const integrityState = (hasRollback || hasConflict) ? 'issue_found'
+      : (n(cov.mileage_observation_count) >= 1 ? 'no_issues_found' : 'insufficient_history');
+    if (integrityState === 'insufficient_history') milFactors.push('insufficient_mileage_history');
     let sc = Math.max(0, Math.min(10, annualBase + lifetimeAdj + integrityAdj));
     let rollbackCap = false;
     if (hasRollback) { sc = Math.min(sc, dc.MILEAGE_ROLLBACK_CAP); rollbackCap = true; milFactors.push('odometer_rollback'); }
@@ -836,6 +840,7 @@ export function computeDimensions(input, dc = SCORE_DIMENSIONS_CONFIG) {
       annual_base_score: round2(annualBase),
       lifetime_mileage_adjustment: round2(lifetimeAdj),
       integrity_adjustment: round2(integrityAdj),
+      integrity_state: integrityState,
       rollback_cap_applied: rollbackCap,
       final_score: finalScore,
     };

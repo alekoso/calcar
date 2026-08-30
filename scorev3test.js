@@ -470,9 +470,17 @@ const THIN = {
   const life300 = mil(300000, 240, 'petrol');
   if (!(life300.lifetime_mileage_adjustment === -0.7)) errs.push('lifetime на 300 тис. мав бути -0.7: ' + life300.lifetime_mileage_adjustment);
   if (mil(50000, 60, 'petrol').lifetime_mileage_adjustment !== 0) errs.push('lifetime на 50 тис. мав бути 0');
-  /* availability: без незалежної історичної точки числа нема */
+  /* availability: одометр + вік ДОСТАТНЬО для числа; без історичних точок
+     хронологія чесно insufficient_history, без бонусів і штрафів */
   b = score([], { ...RICH, mileage_observation_count: 0 }, { vehicle: VEH });
-  if (b.score_dimensions.mileage.score_available !== false) errs.push('без історичної точки Пробіг мав бути unavailable');
+  const noHist = b.score_dimensions.mileage;
+  if (noHist.score_available !== true) errs.push('без історичної точки Пробіг мав показуватись');
+  if (noHist.integrity_state !== 'insufficient_history') errs.push('без історії integrity_state мав бути insufficient_history: ' + noHist.integrity_state);
+  if (noHist.integrity_adjustment !== 0) errs.push('без evidence integrity дала поправку');
+  const withHist = score([], RICH, { vehicle: VEH }).score_dimensions.mileage;
+  if (withHist.integrity_state !== 'no_issues_found') errs.push('з історією integrity_state мав бути no_issues_found');
+  if (noHist.score !== withHist.score) errs.push('відсутність історії змінила число (бонус/штраф без evidence)');
+  if (score([F('ODOMETER_ROLLBACK', 'm2', { evidence: [ev('registry', null, 'скручений')] })], { ...RICH, mileage_observation_count: 0 }, { vehicle: VEH }).score_dimensions.mileage.integrity_state !== 'issue_found') errs.push('rollback без історичних точок не позначився issue_found');
   /* без надійного віку: unavailable */
   b = score([], RICH, { vehicle: { odometer_km: 60000, age_months: null, powertrain: 'petrol' } });
   if (b.score_dimensions.mileage.score_available !== false) errs.push('без віку Пробіг мав бути unavailable');
@@ -579,11 +587,25 @@ const THIN = {
   /* картка підоцінок: пʼять міток на сторінці і в обох словниках */
   const ruDict = fs.readFileSync('i18n/ru.js', 'utf8');
   const enDict = fs.readFileSync('i18n/en.js', 'utf8');
-  for (const lbl of ['Історія авто', 'Пробіг', 'Пошкодження та відновлення', 'Стан за фото', 'Технічні ризики']) {
+  for (const lbl of ['Історія авто', 'Пробіг', 'Пошкодження та відновлення', 'Стан за фото']) {
     if (!pageSrc.includes("'" + lbl + "'")) errs.push('result-check: мітка осі відсутня: ' + lbl);
     if (!ruDict.includes("'" + lbl + "'")) errs.push('ru.js: нема перекладу мітки ' + lbl);
     if (!enDict.includes("'" + lbl + "'")) errs.push('en.js: нема перекладу мітки ' + lbl);
   }
+  /* Технічні ризики свідомо приховані з popover (бекенд-вісь лишається) */
+  if (/\['technical'/.test(pageSrc)) errs.push('result-check: technical лишився в popover ORDER');
+  /* affordance і межі подій щита/бейджа */
+  if (!/dim-caret/.test(pageSrc)) errs.push('result-check: нема caret-affordance на бейджі');
+  if (!/has-dims\{cursor:pointer\}/.test(pageSrc.replace(/\s/g, ''))) errs.push('result-check: бейдж без cursor:pointer');
+  if (!/shieldEl\.contains\(e\.target\)/.test(pageSrc)) errs.push('result-check: межі подій щита не розділені');
+  /* coachmark чату: одноразовий, з localStorage-прапорцем */
+  if (!/calcar_chat_hint_seen/.test(pageSrc)) errs.push('result-check: coachmark без localStorage-прапорця');
+  if (!/Можна спитати про це авто/.test(pageSrc)) errs.push('result-check: нема тексту coachmark');
+  /* середній пробіг за рік: ТІ САМІ canonical-дані осі Пробіг */
+  if (!/annual_mileage_km/.test(pageSrc)) errs.push('result-check: річний пробіг не з breakdown осі');
+  if (!/Середній пробіг за весь строк експлуатації автомобіля\./.test(pageSrc)) errs.push('result-check: нема tooltip річного пробігу');
+  /* реєстраційні події історії */
+  if (!/reg-badge/.test(pageSrc) || !/перереєстрац\|перерегистрац/.test(pageSrc)) errs.push('result-check: нема виділення перереєстрацій');
   /* старий вигляд Score відновлений: окремої картки більше нема, лише popover */
   if (/dimCard|dim-wrap|dim-track|dimLimit/.test(pageSrc)) errs.push('result-check: залишки окремої картки підоцінок');
   if (!/dim-pop/.test(pageSrc)) errs.push('result-check: popover підоцінок відсутній');

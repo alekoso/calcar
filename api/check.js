@@ -128,6 +128,10 @@ function relevantText(text, markers, budget = 14000) {
   return (joined.length > 500 ? joined : text.slice(0, budget)).slice(0, budget);
 }
 
+/* TODO (окрема наступна data-задача, НЕ чіпати в поточних правках):
+   Ukraine MVS provider: спершу вивчити офіційну open-data схему, потім
+   вирішити стратегію VIN-індексації */
+
 /* ---------- 2б. Поточний пробіг зі сторінки: semantic scope ----------
    Root cause старого false positive: жадібний regex по ВСЬОМУ тексту
    сторінки першим ловив датовану ІСТОРИЧНУ фіксацію держблоку
@@ -765,6 +769,34 @@ export function localizePhotoRefs(node, listingMap, auctionMap, labels) {
   return walk(node);
 }
 
+/* ---------- 4в2б. Хибні spec-розбіжності: детермінований фільтр ----------
+   Рік виробництва != модельний рік (різниця 1) і потужність, що після
+   приведення до однієї одиниці збігається в межах max(5%, 10 hp), НЕ є
+   розбіжностями. Модель це знає з промпту, фільтр страхує від рецидиву */
+export function normalizePowerHp(value, unit) {
+  const v = parseFloat(value);
+  if (!isFinite(v)) return null;
+  const u = String(unit || '').toLowerCase();
+  if (/квт|kw/.test(u)) return v * 1.34102;
+  if (/пс|ps|к\.?\s?с|л\.?\s?с|cv/.test(u)) return v * 0.98632;
+  return v;
+}
+export function isFalseSpecDiscrepancy(d) {
+  if (!d || typeof d !== 'object') return false;
+  const text = [d.title, d.detail].filter(Boolean).join(' ');
+  /* справжні несумісності це не наш випадок */
+  if (/двигун|двигат|engine|привід|привод|трансміс|коробк|комплектац|версі|trim|кузов|покоління|поколени/i.test(text)) return false;
+  const pows = [...text.matchAll(/(\d{2,4})\s*(к\.?\s?с\.?|л\.?\s?с\.?|hp|ps|пс|квт|kw|cv)/gi)]
+    .map(m => normalizePowerHp(m[1], m[2])).filter(x => x !== null);
+  const years = [...text.matchAll(/\b(19\d\d|20\d\d)\b/g)].map(m => parseInt(m[1], 10));
+  const powerBenign = pows.length >= 2 && (Math.max(...pows) - Math.min(...pows)) <= Math.max(10, Math.max(...pows) * 0.05);
+  const yearBenign = years.length >= 2 && (Math.max(...years) - Math.min(...years)) <= 1;
+  const claims = [];
+  if (/потужн|мощно|к\.?\s?с|л\.?\s?с|hp|квт|kw/i.test(text)) claims.push(powerBenign);
+  if (/рік випуску|року випуску|год выпуска|модельн|model year|рік за vin/i.test(text)) claims.push(yearBenign);
+  return claims.length > 0 && claims.every(Boolean);
+}
+
 /* ---------- 4в3. Історичний візуальний аналіз: детермінована валідація ----------
    Структурований assessment історичних кадрів. Жорстка семантика:
    no_obvious_severe_signs НІКОЛИ не означає "структура ціла",
@@ -1304,6 +1336,8 @@ ${auction && auction.photos_sent ? `
 БЛОК ІСТОРІЇ ПОШКОДЖЕНЬ ("auction"): у звіті це розділ "Історія пошкоджень і фото з минулого", і він ГЛОБАЛЬНИЙ, не лише про США. "found": true СТАВ ЛИШЕ коли для авто реально знайдена подія, повʼязана з пошкодженням, ДТП чи відновленням (аукціон пошкоджених авто, запис про ДТП, історичні фото пошкодженого стану). Звичайна реєстраційна історія, зміна власників, минулі оголошення без пошкоджень та інші нейтральні історичні записи самі по собі цей блок НЕ створюють: тоді "found": false, "summary": null, "findings": порожній масив, і жодних текстів на кшталт "записів не знайдено" у summary. Американський контекст (США, IAAI, Copart) згадуй усередині блоку ЛИШЕ коли подія справді американська; для подій з інших країн називай їхнє джерело.
 
 РОЗБІЖНІСТЬ ІСНУЄ ЛИШЕ КОЛИ: джерело А стверджує X, а джерело Б стверджує несумісне з X значення Y, і ти називаєш обидва джерела та обидва значення. Відсутність інформації, "не розкрито", "не вдалося перевірити" РОЗБІЖНІСТЮ НЕ Є і в discrepancies не потрапляє ніколи. Якщо справжніх суперечностей немає, повертай порожній масив: блок просто не покажеться, і це правильно.
+- РІК ВИРОБНИЦТВА проти МОДЕЛЬНОГО РОКУ: це РІЗНІ сутності. Авто, вироблене у 2017, легально належить до model year 2018. Різниця в один рік між роком оголошення і ModelYear VIN-декодування САМА ПО СОБІ НЕ розбіжність, НЕ суперечність і НЕ ризик: ЗАБОРОНЕНО писати "дані суперечать", "потрібно виправити", "проблема в документах". За бажання додай нейтральну довідку в info_notes ("авто випущене у 2017 році і належить до модельного року 2018") і заповни vehicle.model_year. Розбіжність існує лише коли роки несумісні (різниця 2+ роки чи інше покоління).
+- ПОТУЖНІСТЬ: перед порівнянням приведи значення до ОДНІЄЇ одиниці (1 к.с./PS = 0.986 hp; 1 кВт = 1.341 к.с.). 462 к.с. це ~456 hp, що практично збігається з 455 hp. Різниця в межах max(5%, 10 к.с.) ПІСЛЯ нормалізації НЕ розбіжність, НЕ суперечність продавця і нічого не погіршує; максимум нейтральна довідка в info_notes. Справжня розбіжність: інший двигун, привід, trim/версія, суттєво інша потужність чи інші несумісні характеристики.
 
 ГОЛОВНА МЕХАНІКА: розбіжності між джерелами. Порівнюй:
 - твердження продавця в описі ПРОТИ офіційного блоку перевірки площадки (власники, ДТП, страхові випадки, історія пробігу, аукціонні записи США)
@@ -1418,7 +1452,7 @@ POSSIBLE STRUCTURAL: якщо historical_visual.possible_structural_damage = tru
 ${DECISION_RULES}${decisionStyle === 'a' ? DECISION_FEWSHOT : ''}
 Відповідай ЛИШЕ валідним JSON без markdown, точно за схемою:
 {
- "vehicle": {"title":"Марка Модель Рік","year":2018,"fuel":"petrol|diesel|hybrid|electric","engine":"4.4 л бензин V8, 462 к.с. (або null)","transmission":"...","drive":"...","trim":"версія або null","mileage_note":"129 000 км"},
+ "vehicle": {"title":"Марка Модель Рік","year":2018,"model_year":"рік за VIN, ЛИШЕ якщо надійно відомий і відрізняється від year, інакше null","fuel":"petrol|diesel|hybrid|electric","engine":"4.4 л бензин V8, 462 к.с. (або null)","transmission":"...","drive":"...","trim":"версія або null","mileage_note":"129 000 км"},
  "auction": {"found":true,"summary":"2-4 речення: що сталося з авто в США за архівом, реальний обсяг пошкоджень по фото, чи чесно продавець його описує","findings":[{"status":"ok|warn|bad|unknown","text":"порівняння до/після, 1 речення"}]},
  "body_wrap": {"present":false,"scope":"full|partial|unknown","sources":["seller","visual","historical"],"inspection_visibility":"limited|normal"},
  "historical_visual": {"visible_damage_zones":["капот","передній бампер"],"visible_severity":"minor|moderate|severe|indeterminate","major_deformation_visible":false,"wheel_displacement_visible":false,"cosmetic_only":false,"possible_structural_damage":false,"structural_visual_status":"no_obvious_severe_signs|possible|visible_damage|indeterminate","srs_visual_status":"deployed_visible|no_deployment_visible|not_visible|indeterminate","summary":"2-3 речення: що реально видно і що лишається невідомим","evidence":[{"source":"us_auction","ref":"auction_photo_1","description":"зім'ятий капот"}]},
@@ -1712,6 +1746,15 @@ export default async function handler(req, res) {
       parsed = JSON.parse((data.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim());
     } catch (e) {
       return res.status(502).json({ error: 'AI повернув невалідну відповідь, спробуй ще раз' });
+    }
+
+    /* хибні spec-розбіжності (рік виробництва/модельний рік, потужність
+       в різних одиницях): страхувальний фільтр після моделі */
+    if (Array.isArray(parsed.discrepancies)) {
+      parsed.discrepancies = parsed.discrepancies.filter(d => {
+        if (isFalseSpecDiscrepancy(d)) { console.log('[check] false spec discrepancy dropped:', (d.title || '').slice(0, 80)); return false; }
+        return true;
+      });
     }
 
     /* історичний візуал: валідація ДО скорингу, бо v3 читає його
