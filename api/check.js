@@ -1,7 +1,7 @@
 export const config = { maxDuration: 300 };
 
 import { computeScore } from './score.js';
-import { computeScoreV3, buildScoreDigest } from './score-v3.js';
+import { computeScoreV3 } from './score-v3.js';
 
 /* активна версія CalCar Score: перемикається конфігурацією без деплою коду.
    Rollback на v2 = env CALCAR_SCORE_VERSION=v2, НЕ revert коміту */
@@ -1793,9 +1793,21 @@ export default async function handler(req, res) {
         primary_damage: (auctionSearch && auctionSearch.primary_damage) || null,
         secondary_damage: (auctionSearch && auctionSearch.secondary_damage) || null,
       } : null;
+      /* вхід осі Пробіг: одометр, вік у МІСЯЦЯХ (від середини року випуску,
+         щоб не було стрибка в "день народження"), powertrain як широкий клас */
+      const vehYear = parseInt(parsed?.vehicle?.year, 10) || listing.year || null;
+      const ageMonths = vehYear
+        ? Math.max(6, Math.round((Date.now() - Date.UTC(vehYear, 6, 1)) / (30.44 * 24 * 3600 * 1000)))
+        : null;
+      const vehicleV3 = {
+        odometer_km: typeof listing.odometer_km === 'number' ? listing.odometer_km : null,
+        age_months: ageMonths,
+        powertrain: (typeof parsed?.vehicle?.fuel === 'string' ? parsed.vehicle.fuel : null),
+      };
       const breakdownV3 = computeScoreV3({
         findings,
         coverageInputs,
+        vehicle: vehicleV3,
         auctionMeta: auctionMetaV3,
         historicalVisual: parsed.historical_visual || null,
         accidentRecord: hf.accident_recorded === true
@@ -1844,54 +1856,23 @@ export default async function handler(req, res) {
     if (cleanDecision) parsed.purchase_decision = cleanDecision;
     else delete parsed.purchase_decision;
 
-    /* ---- AI-висновок отримує ТОЧНІ бекенд-бали ----
-       Підоцінки і CalCar Score рахує код ПІСЛЯ головного виклику, тому
-       reasoning вплітає їх окремим легким викликом. Модель числа НЕ
-       рахує і НЕ змінює: кожне число X/10 у результаті звіряється з
-       дайджестом buildScoreDigest, будь-яка невідповідність чи збій
-       лишають оригінальний текст без змін */
-    if (parsed.purchase_decision && parsed.score_breakdown && parsed.score_breakdown.score_version === 'v3') {
-      try {
-        const digest = buildScoreDigest(parsed.score_breakdown);
-        if (digest && digest.dimensions.length) {
-          const pd = parsed.purchase_decision;
-          const nPrompt = `Ти редактор звіту CalCar. Нижче фінальний висновок по авто і ДАЙДЖЕСТ детермінованої Оцінки CalCar (рахує код, не ти). Перепиши поле reasoning так, щоб воно ПРИРОДНО спиралось на ці бали.
-
-ДАЙДЖЕСТ (єдине джерело чисел, нічого не рахуй і не вигадуй):
-${JSON.stringify(digest)}
-
-ПРАВИЛА:
-- Використай зазвичай 1-2 найслабші осі (weakest), одну сильну (strongest, якщо є) і підсумковий CalCar Score (calcar_score). НЕ перелічуй механічно всі осі.
-- Числа пиши точно як у дайджесті, у форматі X.X/10. Осей, яких нема в dimensions, НЕ згадуй і чисел для них не вигадуй.
-- Вісь mileage називається "Історія пробігу" і міряє ЦІЛІСНІСТЬ хронології (послідовність фіксацій, конфлікти, скрутку), а НЕ величину пробігу. Пиши "історія пробігу отримала X.X/10: хронологія послідовна", НІКОЛИ не "пробіг отримав X.X/10", не "відмінний/невеликий пробіг": авто з 220 тис. км чесно отримує 10, якщо хронологія послідовна.
-- Якщо applied_hard_caps не порожній, поясни, що підсумковий бал обмежений відповідним фактором.
-- Ціна, вигідність, комплектація, чесність продавця і типові болячки моделі НЕ пояснюють Оцінку CalCar: не використовуй їх як причину балів.
-- Збережи всі факти, висновки і рекомендації оригінального reasoning, його мову і обсяг (2-4 абзаци). Без першої особи. Без символу довгого тире.
-${langDirective}
-
-ОРИГІНАЛЬНИЙ reasoning:
-${pd.reasoning}
-
-Поверни JSON {"reasoning":"новий текст"}.`;
-          const nBody = modelBody(nPrompt, false);
-          nBody.max_completion_tokens = 3000;
-          const nData = await callModel(nBody, 45000);
-          const nParsed = JSON.parse((nData.choices?.[0]?.message?.content || '{}').replace(/```json|```/g, '').trim());
-          const txt = typeof nParsed.reasoning === 'string' ? nParsed.reasoning.trim().replace(/\u2014/g, ',').slice(0, 4000) : '';
-          if (txt) {
-            const allowed = new Set([digest.calcar_score, ...digest.dimensions.map(d => d.score)].map(x => x.toFixed(1)));
-            const nums = [...txt.matchAll(/(\d{1,2}(?:[.,]\d)?)\s*\/\s*10/g)].map(m => parseFloat(m[1].replace(',', '.')).toFixed(1));
-            const valid = nums.length >= 2
-              && nums.every(v => allowed.has(v))
-              && nums.includes(digest.calcar_score.toFixed(1));
-            if (valid) {
-              pd.reasoning = txt;
-              pd.score_narrative = true;
-            } else console.log('[check] score narrative rejected: числа поза дайджестом', JSON.stringify(nums));
-          }
-        }
-      } catch (e) { console.log('[check] score narrative failed:', e.message); }
-    }
+    /* ---- Фінальна фраза з точним балом ----
+       Висновок пишеться головним викликом у звичайному стилі звіту, БЕЗ
+       перерахування числових підоцінок (вони лишаються прихованим
+       контекстом у breakdown). Код додає в кінець reasoning одну підсумкову
+       фразу з ТОЧНИМ бекенд-балом: це підсумок усього авто, не середнє осей */
+    try {
+      const bdF = parsed.score_breakdown;
+      const pdF = parsed.purchase_decision;
+      if (pdF && typeof pdF.reasoning === 'string' && bdF && bdF.score_available === true && typeof bdF.final === 'number') {
+        const FINAL_LINE = {
+          ua: 'З урахуванням усього переліченого, Оцінка CalCar цього автомобіля становить ' + bdF.final.toFixed(1) + '/10.',
+          ru: 'Учитывая всё вышеперечисленное, оценка CalCar этого автомобиля составляет ' + bdF.final.toFixed(1) + '/10.',
+          en: 'Taking all of the above into account, the CalCar Score of this car is ' + bdF.final.toFixed(1) + '/10.',
+        }[lang] || null;
+        if (FINAL_LINE && !pdF.reasoning.includes(FINAL_LINE)) pdF.reasoning = pdF.reasoning.trim() + '\n\n' + FINAL_LINE;
+      }
+    } catch (e) { console.log('[check] score final line failed:', e.message); }
 
     /* possible structural: якщо модель не поклала його в risks/must_check,
        код додає сам (У КІНЕЦЬ списку: не автоматично ризик №1, підтверджені

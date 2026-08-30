@@ -656,6 +656,7 @@ export function computeScoreV3(input, cfg = SCORE_CONFIG_V3) {
        CalCar Score і не змінюють final (див. computeDimensions) */
     score_dimensions: computeDimensions({
       accidentEvents, problems: currentPenalties, unresolvedSafety, domains, coverageInputs,
+      vehicle: inp.vehicle || null,
     }),
   };
   if (!eligibility.eligible) {
@@ -681,8 +682,20 @@ export const SCORE_DIMENSIONS_CONFIG = {
   HISTORY_FLOOD: 4.5,
   HISTORY_FIRE: 5.0,
   HISTORY_VIN: 5.0,
-  MILEAGE_CONFLICT: 3.0,
-  MILEAGE_ROLLBACK: 7.5,          /* rollback значно гірший за конфлікт */
+  /* ---- Пробіг: наскільки хороший ФАКТИЧНИЙ пробіг цього екземпляра ----
+     A. Абсолютний пробіг: плавна piecewise-linear крива (головна вага).
+        10.0 практично зарезервована за майже новим авто.
+     B. Вік у МІСЯЦЯХ + powertrain-контекст типової інтенсивності
+        (НЕ ресурс двигуна, без engine-specific правил): помірний коректор.
+     C. Integrity: послідовна хронологія бонуса не дає; конфлікт помірний
+        мінус; підтверджена скрутка = жорсткий кап осі ---- */
+  MILEAGE_CURVE: [[0, 10], [20000, 9.5], [50000, 8.8], [80000, 8.1], [120000, 7.2], [160000, 6.4], [200000, 5.6], [250000, 4.8], [300000, 4.2], [400000, 3.0]],
+  ANNUAL_REF_KM: { petrol: [10000, 13000], diesel: [15000, 20000], hev: [10000, 13000], phev: [13000, 17000], bev: [13000, 16000], hybrid: [11000, 16000], electric: [13000, 16000] },
+  MILEAGE_AGE_ADJ: { OVER_K: 1.2, OVER_MIN: -1.5, UNDER_K: 0.8, UNDER_MAX: 0.8 },
+  MILEAGE_UNDERUSE_CEILING: 9.5,  /* недопробіг не робить стару машину новою */
+  MILEAGE_MIN_AGE_MONTHS: 6,
+  MILEAGE_CONFLICT: 1.5,
+  MILEAGE_ROLLBACK_CAP: 2.5,      /* rollback: жорсткий кап осі, значно гірший за конфлікт */
   DR_EVENT: { severe: 3.0, moderate: 1.6, minor: 0.5, indeterminate: 1.0 },
   DR_REPAIR_MULT: { confirmed_ok: 0.45, visually_consistent: 0.8, unknown: 1.0, confirmed_bad: 1.3 },
   DR_STRUCTURAL_UNRESOLVED: 1.0,  /* додатково до severe-події */
@@ -699,7 +712,7 @@ export const SCORE_DIMENSIONS_CONFIG = {
 };
 export const DIMENSION_LABELS = {
   history: 'Історія авто',
-  mileage: 'Історія пробігу',
+  mileage: 'Пробіг',
   damage_repair: 'Пошкодження та відновлення',
   current_condition: 'Стан за фото',
   technical: 'Технічні ризики',
@@ -737,16 +750,59 @@ export function computeDimensions(input, dc = SCORE_DIMENSIONS_CONFIG) {
     || events.length > 0 || histFactors.length > 0;
   const history = dim(histAvailable, histPen, histFactors);
 
-  /* B. MILEAGE: цілісність хронології. Доступна лише коли є що звіряти:
-     поточний пробіг + хоч одна незалежна історична точка, або знайдений
-     конфлікт/скрутка (вони самі доводять, що дані були) */
-  const milFactors = [];
-  let milPen = 0;
-  if (has('MILEAGE_CONFLICT_UNEXPLAINED')) { milPen += dc.MILEAGE_CONFLICT; milFactors.push('mileage_conflict'); }
-  if (has('ODOMETER_ROLLBACK')) { milPen += dc.MILEAGE_ROLLBACK; milFactors.push('odometer_rollback'); }
+  /* B. MILEAGE: наскільки хороший фактичний пробіг з урахуванням віку,
+     типу силової установки і цілісності історії. Величина одометра є
+     головним компонентом: послідовна хронологія при великому пробігу
+     НЕ дає 10. Без відомого поточного одометра вісь недоступна */
+  const veh = input.vehicle || {};
+  const odo = (typeof veh.odometer_km === 'number' && isFinite(veh.odometer_km) && veh.odometer_km >= 0) ? veh.odometer_km : null;
+  let mileage;
+  if (odo === null) {
+    mileage = { score_available: false, score: null, main_factors: [] };
+  } else {
+    /* A. абсолютний пробіг: лінійна інтерполяція між опорними точками */
+    const curve = dc.MILEAGE_CURVE;
+    let absolute = curve[curve.length - 1][1];
+    if (odo <= 0) absolute = 10;
+    else for (let i = 1; i < curve.length; i++) {
+      if (odo <= curve[i][0]) {
+        const [x0, y0] = curve[i - 1], [x1, y1] = curve[i];
+        absolute = y0 + (y1 - y0) * (odo - x0) / (x1 - x0);
+        break;
+      }
+    }
+    /* B. вік у місяцях + powertrain: середньорічний пробіг проти типового
+       діапазону класу. Лише контекст інтенсивності, помірний коректор */
+    const milFactors = [];
+    let ageAdj = 0, annual = null;
+    const ref = dc.ANNUAL_REF_KM[String(veh.powertrain || '').toLowerCase()] || null;
+    const months = (typeof veh.age_months === 'number' && isFinite(veh.age_months)) ? veh.age_months : null;
+    if (ref && months !== null && months >= dc.MILEAGE_MIN_AGE_MONTHS) {
+      annual = odo / (months / 12);
+      if (annual > ref[1]) { ageAdj = Math.max(dc.MILEAGE_AGE_ADJ.OVER_MIN, -dc.MILEAGE_AGE_ADJ.OVER_K * (annual / ref[1] - 1)); milFactors.push('above_typical_annual_usage'); }
+      else if (annual < ref[0]) { ageAdj = Math.min(dc.MILEAGE_AGE_ADJ.UNDER_MAX, dc.MILEAGE_AGE_ADJ.UNDER_K * (1 - annual / ref[0])); milFactors.push('below_typical_annual_usage'); }
+    }
+    /* C. integrity: чиста хронологія = без штрафу, не бонус */
+    let integrityAdj = 0;
+    if (has('MILEAGE_CONFLICT_UNEXPLAINED')) { integrityAdj -= dc.MILEAGE_CONFLICT; milFactors.push('mileage_conflict'); }
+    let sc = absolute + ageAdj + integrityAdj;
+    if (ageAdj > 0) sc = Math.min(sc, Math.max(absolute, dc.MILEAGE_UNDERUSE_CEILING));
+    sc = Math.max(0, Math.min(10, sc));
+    let rollbackCap = false;
+    if (has('ODOMETER_ROLLBACK')) { sc = Math.min(sc, dc.MILEAGE_ROLLBACK_CAP); rollbackCap = true; milFactors.push('odometer_rollback'); }
+    if (odo >= 160000) milFactors.push('high_absolute_mileage');
+    mileage = {
+      score_available: true,
+      score: round1(sc),
+      main_factors: milFactors.length ? milFactors : ['no_issues_found'],
+      absolute_score: round1(absolute),
+      age_powertrain_adjustment: round1(ageAdj),
+      integrity_adjustment: round1(integrityAdj),
+      rollback_cap_applied: rollbackCap,
+      annual_km: annual !== null ? Math.round(annual) : null,
+    };
+  }
   const n = v => (typeof v === 'number' && isFinite(v) && v > 0 ? v : 0);
-  const milAvailable = (n(cov.mileage_observation_count) >= 1 && cov.mileage_known !== false) || milFactors.length > 0;
-  const mileage = dim(milAvailable, milPen, milFactors);
 
   /* C. DAMAGE_REPAIR: тяжкість пошкоджень і підтвердженість відновлення.
      Доступна за тих самих умов, що HISTORY: перевірена чиста історія

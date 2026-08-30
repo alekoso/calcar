@@ -446,26 +446,13 @@
   .hrow{display:flex;gap:14px;padding:9px 0;font-size:14px;line-height:1.5;position:relative}
   .hrow .hd{flex:0 0 96px;text-align:center;font-weight:700;font-variant-numeric:tabular-nums;background:var(--card);position:relative;z-index:1;align-self:flex-start}
   .hrow > span:not(.hd){flex:1;min-width:0}
-  .dim-wrap{display:flex;flex-direction:column;gap:12px}
-  .dim-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
-  .dim-name{font-size:16px;font-weight:700}
-  .dim-total{margin-left:auto;display:flex;align-items:baseline;gap:4px;font-size:26px;font-weight:800;letter-spacing:-.02em}
-  .dim-of{font-size:13px;color:var(--faint);font-weight:600}
-  .dim-risk{width:100%;color:var(--muted);font-size:13px;margin-top:-6px}
-  .dim-rows{display:flex;flex-direction:column}
-  .dim-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(56px,150px) 34px;align-items:center;gap:12px;padding:7px 0}
-  .dim-row+.dim-row{border-top:1px solid var(--line)}
-  .dim-lbl{font-size:13.5px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .dim-track{height:4px;border-radius:2px;background:var(--line);overflow:hidden}
-  .dim-track i{display:block;height:100%;border-radius:2px;background:var(--ink)}
-  .dim-track.na{background:transparent}
-  .dim-limit{color:var(--faint);font-size:12.5px;padding-top:10px;border-top:1px solid var(--line)}
-  @media (max-width:480px){
-    .dim-row{grid-template-columns:minmax(0,1fr) 64px 34px;gap:10px}
-    .dim-lbl{white-space:normal;line-height:1.3;font-size:13px}
-  }
-  .dim-num{font-size:13px;font-weight:700;text-align:right;font-variant-numeric:tabular-nums}
-  .dim-num.na{color:var(--faint)}
+  #scoreBadge{position:relative}
+  .dim-pop{position:absolute;top:calc(100% + 8px);right:0;z-index:40;min-width:250px;max-width:calc(100vw - 32px);background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgba(20,22,25,.10);padding:8px 14px;display:none;flex-direction:column;cursor:default}
+  .dim-pop.open{display:flex}
+  .dim-pop-row{display:flex;justify-content:space-between;align-items:baseline;gap:16px;padding:7px 0;font-size:13px;color:var(--ink-2);white-space:nowrap}
+  .dim-pop-row+.dim-pop-row{border-top:1px solid var(--line)}
+  .dim-pop-row b{font-variant-numeric:tabular-nums;color:var(--ink)}
+  .dim-pop-row b.na{color:var(--faint);font-weight:600}
   .hgap{position:relative;min-height:18px;display:flex;align-items:center;padding:1px 0 1px 110px;color:var(--faint);font-size:12px}
   .hgap::before{content:'';position:absolute;left:48px;top:-8px;bottom:-8px;width:2px;transform:translateX(-50%);background:var(--line-strong);border-radius:2px}
   .hnote{margin-top:12px}
@@ -784,18 +771,6 @@
   </div>
 
   <!-- вердикт -->
-  <div class="card" id="dimCard" style="display:none">
-    <div class="card-body dim-wrap">
-      <div class="dim-head">
-        <span class="dim-name" id="dimName"></span>
-        <span class="dim-total"><b id="dimVal">–</b><span class="dim-of">/ 10</span></span>
-        <span class="dim-risk" id="dimRisk"></span>
-      </div>
-      <div class="dim-rows" id="dimRows"></div>
-      <div class="dim-limit" id="dimLimit" style="display:none"></div>
-    </div>
-  </div>
-
   <div class="card" id="verdictCard" style="display:none">
     <div class="card-head">
       <h2>Чи варто брати</h2>
@@ -1212,42 +1187,35 @@ function boot2(D){
         : sc >= 5.5 ? t('Підвищений виявлений ризик') : t('Високий виявлений ризик');
       const riskEl = document.getElementById('scoreRiskLvl');
       if (riskEl) { riskEl.textContent = riskLabel; riskEl.style.display = ''; }
-      /* компактна картка Оцінки CalCar з пʼятьма підоцінками: лише нові
-         звіти зі score_dimensions; бейдж у заголовку тоді ховається, щоб
-         бал не дублювався. Пояснень у картці нема: їх дає звіт нижче */
+      /* компактний popover підоцінок на самому бейджі Оцінки CalCar:
+         desktop hover + click/focus, mobile tap. Лише пʼять міток і балів,
+         без пояснень; недоступна вісь = прочерк. Зовнішній вигляд Score
+         у звіті лишається старим */
       const dims = bd2 && bd2.score_dimensions;
       if (dims && v2 !== null) {
-        $('dimCard').style.display = '';
-        $('scoreBadge').style.display = 'none';
-        $('dimName').textContent = t('Оцінка CalCar:').replace(/:\s*$/, '');
-        $('dimVal').textContent = sc.toFixed(1);
-        $('dimRisk').textContent = riskLabel;
-        const ORDER = [['history', 'Історія авто'], ['mileage', 'Історія пробігу'], ['damage_repair', 'Пошкодження та відновлення'], ['current_condition', 'Стан за фото'], ['technical', 'Технічні ризики']];
-        $('dimRows').innerHTML = ORDER.map(([k, lbl]) => {
+        const ORDER = [['history', 'Історія авто'], ['mileage', 'Пробіг'], ['damage_repair', 'Пошкодження та відновлення'], ['current_condition', 'Стан за фото'], ['technical', 'Технічні ризики']];
+        const pop = document.createElement('span');
+        pop.className = 'dim-pop';
+        pop.innerHTML = ORDER.map(([k, lbl]) => {
           const d = dims[k] || {};
-          const val = d.score_available === true && typeof d.score === 'number' ? d.score : null;
-          return '<div class="dim-row"><span class="dim-lbl">' + esc(t(lbl)) + '</span>'
-            + '<span class="dim-track' + (val === null ? ' na' : '') + '">' + (val !== null ? '<i style="width:' + Math.round(val * 10) + '%"></i>' : '') + '</span>'
-            + '<b class="dim-num' + (val === null ? ' na' : '') + '">' + (val === null ? '–' : val.toFixed(1)) + '</b></div>';
+          const val = d.score_available === true && typeof d.score === 'number' ? d.score.toFixed(1) : null;
+          return '<span class="dim-pop-row"><span>' + esc(t(lbl)) + '</span><b' + (val === null ? ' class="na"' : '') + '>' + (val === null ? '\u2013' : val) + '</b></span>';
         }).join('');
-        const lim = bd2.limiting_factors || [];
-        const capName = lim.find(l => typeof l === 'string' && l.indexOf('hard_cap:') === 0);
-        const CAP_WHY = {
-          FLOOD: 'через затоплення', FIRE: 'через пожежу',
-          ODOMETER_ROLLBACK: 'через скручений пробіг',
-          VIN_IDENTITY_PROBLEM: 'через проблему ідентичності VIN',
-          STRUCTURAL_UNRESOLVED: 'через непідтверджене відновлення після структурного пошкодження',
-          SRS_STRONG_EVIDENCE: 'через ризик SRS',
-        };
-        const limEl = $('dimLimit');
-        if (capName && CAP_WHY[capName.slice(9)]) {
-          const capRow = (bd2.applied_hard_caps || []).find(c => c.name === capName);
-          limEl.textContent = t('Максимум') + ' ' + (capRow ? capRow.value.toFixed(1) : sc.toFixed(1)) + ' ' + t(CAP_WHY[capName.slice(9)]);
-          limEl.style.display = '';
-        } else if (lim.indexOf('coverage') >= 0) {
-          limEl.textContent = t('Оцінку обмежує повнота даних');
-          limEl.style.display = '';
-        }
+        const badge = $('scoreBadge');
+        badge.appendChild(pop);
+        badge.tabIndex = 0;
+        const openPop = () => pop.classList.add('open');
+        const closePop = () => pop.classList.remove('open');
+        badge.addEventListener('mouseenter', openPop);
+        badge.addEventListener('mouseleave', closePop);
+        badge.addEventListener('focus', openPop);
+        badge.addEventListener('blur', closePop);
+        badge.addEventListener('click', e => {
+          if ($('scoreShield') && $('scoreShield').contains(e.target)) return;
+          e.stopPropagation();
+          pop.classList.toggle('open');
+        });
+        document.addEventListener('click', e => { if (!badge.contains(e.target)) closePop(); });
       }
     }
     /* tooltip щита: hover/focus на desktop, tap на mobile, закриття кліком поза */

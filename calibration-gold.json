@@ -40,7 +40,14 @@
    "auction": null,
    "accident_recorded": true,
    "accident_note": null,
-   "v2_saved": 6.9
+   "v2_saved": 6.9,
+   "vehicle": {
+    "odometer_km": 151000,
+    "age_months": 110,
+    "powertrain": "petrol",
+    "year": 2017,
+    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)"
+   }
   },
   {
    "pid": "XBFHQ6",
@@ -64,7 +71,14 @@
    "auction": null,
    "accident_recorded": false,
    "accident_note": null,
-   "v2_saved": null
+   "v2_saved": null,
+   "vehicle": {
+    "odometer_km": 74372,
+    "age_months": 74,
+    "powertrain": "hybrid",
+    "year": 2020,
+    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)"
+   }
   },
   {
    "pid": "6SYMZ7",
@@ -149,7 +163,14 @@
    "accident_recorded": true,
    "accident_note": null,
    "v2_saved": 7,
-   "curation_note": "major_deformation_visible=true анотовано куратором зі збереженого фото-evidence снапшота (глибока деформація заднього крила і дверей); прикметник visible_severity у математиці v3 більше не використовується"
+   "curation_note": "major_deformation_visible=true анотовано куратором зі збереженого фото-evidence снапшота (глибока деформація заднього крила і дверей); прикметник visible_severity у математиці v3 більше не використовується",
+   "vehicle": {
+    "odometer_km": 1000,
+    "age_months": 26,
+    "powertrain": "electric",
+    "year": 2024,
+    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)"
+   }
   },
   {
    "pid": "HX8KT5",
@@ -191,7 +212,14 @@
    "auction": null,
    "accident_recorded": true,
    "accident_note": "ДТП на території США в 2024 році із пошкодженнями передньої, задньої та лівої частин кузова",
-   "v2_saved": 7.6
+   "v2_saved": 7.6,
+   "vehicle": {
+    "odometer_km": 24000,
+    "age_months": 38,
+    "powertrain": "electric",
+    "year": 2023,
+    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)"
+   }
   },
   {
    "pid": "3624NJ",
@@ -263,7 +291,14 @@
    "auction": null,
    "accident_recorded": true,
    "accident_note": null,
-   "v2_saved": 7
+   "v2_saved": 7,
+   "vehicle": {
+    "odometer_km": 115000,
+    "age_months": 86,
+    "powertrain": "petrol",
+    "year": 2019,
+    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)"
+   }
   },
   {
    "pid": "8FVRYG",
@@ -324,7 +359,14 @@
    "auction": null,
    "accident_recorded": true,
    "accident_note": null,
-   "v2_saved": 7
+   "v2_saved": 7,
+   "vehicle": {
+    "odometer_km": 122000,
+    "age_months": 98,
+    "powertrain": "petrol",
+    "year": 2018,
+    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)"
+   }
   },
   {
    "pid": "AXGFW9",
@@ -364,7 +406,14 @@
    "auction": null,
    "accident_recorded": true,
    "accident_note": "ДТП на території США в 2023 році із пошкодженням зовнішнього інтерфейсу та механічними пошкодженнями",
-   "v2_saved": 9
+   "v2_saved": 9,
+   "vehicle": {
+    "odometer_km": 65000,
+    "age_months": 98,
+    "powertrain": "hybrid",
+    "year": 2018,
+    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)"
+   }
   },
   {
    "pid": "8ZSUUY",
@@ -402,7 +451,14 @@
    "auction": null,
    "accident_recorded": true,
    "accident_note": null,
-   "v2_saved": 7.6
+   "v2_saved": 7.6,
+   "vehicle": {
+    "odometer_km": 147000,
+    "age_months": 86,
+    "powertrain": "petrol",
+    "year": 2019,
+    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)"
+   }
   },
   {
    "pid": "5C6HJ7",
@@ -426,7 +482,14 @@
    "auction": null,
    "accident_recorded": true,
    "accident_note": "ДТП на території США в 2025 році із пошкодженням передньої частини кузова",
-   "v2_saved": 7.6
+   "v2_saved": 7.6,
+   "vehicle": {
+    "odometer_km": 134000,
+    "age_months": 98,
+    "powertrain": "hybrid",
+    "year": 2018,
+    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)"
+   }
   },
   {
    "pid": "M679AQ",
@@ -450,7 +513,14 @@
    "auction": null,
    "accident_recorded": false,
    "accident_note": null,
-   "v2_saved": 8.3
+   "v2_saved": 8.3,
+   "vehicle": {
+    "odometer_km": 93000,
+    "age_months": 158,
+    "powertrain": "petrol",
+    "year": 2013,
+    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)"
+   }
   },
   {
    "pid": "TYTP3J",
@@ -552,7 +622,14 @@
    "auction": null,
    "accident_recorded": true,
    "accident_note": null,
-   "v2_saved": 7.6
+   "v2_saved": 7.6,
+   "vehicle": {
+    "odometer_km": 166000,
+    "age_months": 98,
+    "powertrain": "hybrid",
+    "year": 2018,
+    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)"
+   }
   },
   {
    "pid": "5GH5GA",
@@ -801,7 +878,14 @@
    "auction": null,
    "accident_recorded": true,
    "accident_note": "ДТП на території США в 2025 році із пошкодженням правої сторони кузова та зовнішнього інтерфейсу Оцініть, наскільки корисна для вас",
-   "v2_saved": 7
+   "v2_saved": 7,
+   "vehicle": {
+    "odometer_km": 29000,
+    "age_months": 38,
+    "powertrain": "electric",
+    "year": 2023,
+    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)"
+   }
   },
   {
    "pid": "M3PKUY",
@@ -844,6 +928,119 @@
    "accident_recorded": null,
    "accident_note": null,
    "v2_saved": 4.5
+  },
+  {
+   "pid": "2HGRSW",
+   "vin": null,
+   "note": "BMW 540i 2018, 113 тис.: severe фронт із подушкою, possible structural (зона лонжеронів не видима), downpipe",
+   "refreshed": "2026-08-30 (production Check власника, Vision gate у дії: indeterminate + possible без капа)",
+   "vehicle": {
+    "odometer_km": 113000,
+    "age_months": 98,
+    "powertrain": "petrol",
+    "year": 2018
+   },
+   "cov": {
+    "basics_known": true,
+    "photos_count": 17,
+    "mileage_known": true,
+    "auction_checked": false,
+    "auction_us_signal": true,
+    "identity_confirmed": true,
+    "seller_docs_exists": false,
+    "auction_record_exists": true,
+    "service_history_exists": false,
+    "registration_data_exists": true,
+    "historical_listings_count": 0,
+    "inspection_history_exists": false,
+    "mileage_observation_count": 1,
+    "auction_sources_unreachable": false
+   },
+   "findings": [
+    {
+     "type": "AIRBAGS_DEPLOYED",
+     "event_id": "accident_2025",
+     "evidence": [
+      {
+       "ref": "auction_photo_6",
+       "source": "us_auction",
+       "description": "На аукционном фото отчетливо видна сработавшая водительская подушка безопасности."
+      }
+     ],
+     "severity": "high",
+     "repair_status": "unknown",
+     "maintenance_evidence": false,
+     "serious_intervention": false
+    },
+    {
+     "type": "MAJOR_REPAIR_UNVERIFIED",
+     "event_id": "accident_2025",
+     "evidence": [
+      {
+       "ref": "auction_photo_5",
+       "source": "us_auction",
+       "description": "На аукционном фото видна глубокая деформация капота и разрушение переднего модуля после фронтального удара."
+      }
+     ],
+     "severity": "high",
+     "repair_status": "unknown",
+     "maintenance_evidence": false,
+     "serious_intervention": false
+    },
+    {
+     "type": "MODIFICATION_TECHNICAL_CONCERN",
+     "event_id": "modification_powertrain",
+     "evidence": [
+      {
+       "ref": "описание продавца",
+       "source": "seller_claim",
+       "description": "Продавец заявляет установленный downpipe и регулируемый выхлоп с заслонкой."
+      }
+     ],
+     "severity": "med",
+     "repair_status": "unknown",
+     "maintenance_evidence": false,
+     "serious_intervention": true
+    }
+   ],
+   "hv": {
+    "cosmetic_only": false,
+    "visible_severity": "severe",
+    "srs_visual_status": "deployed_visible",
+    "visible_damage_zones": [
+     "капот",
+     "передний бампер",
+     "решетки радиатора",
+     "передняя панель",
+     "левая передняя часть кузова",
+     "водительская подушка безопасности"
+    ],
+    "structural_visual_status": "indeterminate",
+    "major_deformation_visible": true,
+    "possible_structural_damage": true,
+    "wheel_displacement_visible": false,
+    "evidence": [
+     {
+      "ref": "auction_photo_5",
+      "source": "us_auction",
+      "description": "Глубоко смяты капот, передний бампер и решетки, открыт передний модуль автомобиля."
+     },
+     {
+      "ref": "auction_photo_6",
+      "source": "us_auction",
+      "description": "В салоне отчетливо видна сработавшая водительская подушка безопасности."
+     },
+     {
+      "ref": "auction_photo_1",
+      "source": "us_auction",
+      "description": "Подкапотное пространство доступно частично, полного обзора передних лонжеронов нет."
+     }
+    ]
+   },
+   "auction": null,
+   "accident_recorded": true,
+   "accident_note": null,
+   "v2_saved": 7
   }
  ]
 }

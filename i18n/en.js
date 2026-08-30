@@ -538,13 +538,4 @@ window.CALCAR_DICT = {
   'Пошкодження та відновлення': 'Damage and repair',
   'Технічні ризики': 'Technical risks',
   'Стан за фото': 'Condition from photos',
-  'Оцінку обмежує повнота даних': 'Score limited by available data',
-  'Максимум': 'Maximum',
-  'через затоплення': 'due to flood history',
-  'через пожежу': 'due to fire history',
-  'через скручений пробіг': 'due to odometer rollback',
-  'через проблему ідентичності VIN': 'due to a VIN identity problem',
-  'через непідтверджене відновлення після структурного пошкодження': 'due to unverified structural repair',
-  'через ризик SRS': 'due to SRS risk',
-  'Історія пробігу': 'Mileage history',
 };

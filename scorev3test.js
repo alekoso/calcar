@@ -388,10 +388,12 @@ const THIN = {
   /* чиста перевірена машина: перевірені осі дають чесні 10, а Технічні
      ризики БЕЗ конкретного технічного evidence недоступні: достатня
      кількість фото сама по собі цю вісь не відкриває */
-  for (const k of ['history', 'mileage', 'damage_repair', 'current_condition']) {
+  for (const k of ['history', 'damage_repair', 'current_condition']) {
     const d = b.score_dimensions[k];
     if (!d || d.score_available !== true || d.score !== 10) errs.push('чиста перевірена: вісь ' + k + ' мала бути 10: ' + JSON.stringify(d));
   }
+  /* Пробіг без відомого одометра недоступний: величина є головним компонентом */
+  if (b.score_dimensions.mileage.score_available !== false) errs.push('без одометра Пробіг мав бути unavailable');
   if (b.score_dimensions.technical.score_available !== false || b.score_dimensions.technical.score !== null) {
     errs.push('фото без технічного evidence: technical мав бути unavailable, а не ' + JSON.stringify(b.score_dimensions.technical));
   }
@@ -406,10 +408,49 @@ const THIN = {
   const modDim = accCase({ airbags: true, zones: 1 }, 'unknown').score_dimensions;
   if (!(modDim.history.score > sevDim.history.score)) errs.push('History: severe не гірший за moderate: ' + sevDim.history.score + ' vs ' + modDim.history.score);
   if (!(modDim.damage_repair.score > sevDim.damage_repair.score)) errs.push('Damage&Repair: severe не гірший за moderate');
-  /* rollback значно гірший за конфлікт у Mileage */
-  const confDim = score([F('MILEAGE_CONFLICT_UNEXPLAINED', 'm1')], RICH).score_dimensions.mileage;
-  const rollDim = score([F('ODOMETER_ROLLBACK', 'm2', { evidence: [ev('registry', null, 'скручений')] })], RICH).score_dimensions.mileage;
+  /* rollback значно гірший за конфлікт у Mileage (жорсткий кап осі) */
+  const VEH = { odometer_km: 60000, age_months: 60, powertrain: 'petrol' };
+  const confDim = score([F('MILEAGE_CONFLICT_UNEXPLAINED', 'm1')], RICH, { vehicle: VEH }).score_dimensions.mileage;
+  const rollDim = score([F('ODOMETER_ROLLBACK', 'm2', { evidence: [ev('registry', null, 'скручений')] })], RICH, { vehicle: VEH }).score_dimensions.mileage;
   if (!(confDim.score - rollDim.score >= 3)) errs.push('Mileage: rollback мало відрізняється від конфлікту: ' + rollDim.score + ' vs ' + confDim.score);
+  if (rollDim.score > 2.5 + 1e-9 || rollDim.rollback_cap_applied !== true) errs.push('Mileage: rollback-кап осі не застосований: ' + JSON.stringify(rollDim));
+
+  /* ===== 19в. Пробіг: неперервна формула (абсолют + вік/powertrain + integrity) ===== */
+  const mil = (odo, months, pt, findings) => score(findings || [], RICH, { vehicle: { odometer_km: odo, age_months: months, powertrain: pt } }).score_dimensions.mileage;
+  /* 10.0 практично зарезервована за майже новим авто */
+  if (mil(2000, 6, 'petrol').score !== 10) errs.push('майже нове авто не отримало 10');
+  if (mil(30000, 36, 'petrol').score >= 10) errs.push('30 тис. отримали 10');
+  /* послідовна хронологія при великому пробігу НЕ дає 10 */
+  const bmw113 = mil(113000, 97, 'petrol');
+  if (bmw113.score >= 8.5) errs.push('113 тис. з чистою хронологією отримали зависокий бал: ' + bmw113.score);
+  if (!(bmw113.score >= 6.5 && bmw113.score <= 7.8)) errs.push('113 тис. / 8 років поза розумною смугою: ' + bmw113.score);
+  /* неперервність: кожні 5 тис. км помітно рухають бал, без великих сходинок */
+  let prev = null, changes = 0;
+  for (const km of [100000, 105000, 110000, 115000, 120000]) {
+    const v = mil(km, 96, 'petrol').score;
+    if (prev !== null) {
+      if (v > prev + 1e-9) errs.push('бал виріс зі зростанням пробігу: ' + km);
+      if (prev - v > 0.35) errs.push('сходинка завелика на ' + km + ': ' + prev + ' -> ' + v);
+      if (Math.abs(prev - v) > 1e-9) changes++;
+    }
+    prev = v;
+  }
+  if (changes < 3) errs.push('крива не неперервна: лише ' + changes + ' зміни на 100-120 тис.');
+  /* вік: 113 тис. у 3-річного гірші, ніж у 9-річного; але 9-річний не 10 */
+  const young = mil(113000, 36, 'petrol'), old = mil(113000, 108, 'petrol');
+  if (!(old.score > young.score)) errs.push('вік не врахований: ' + young.score + ' vs ' + old.score);
+  if (old.score >= 8.5) errs.push('113 тис. у 9-річного все одно не преміум: ' + old.score);
+  /* powertrain-контекст: дизель з тим самим annual понад petrol-норму краще */
+  if (!(mil(113000, 96, 'diesel').score > mil(113000, 96, 'petrol').score)) errs.push('дизельний контекст не працює');
+  /* коректор обмежений: не переписує абсолют */
+  const y3 = mil(113000, 36, 'petrol');
+  if (y3.age_powertrain_adjustment < -1.5 - 1e-9) errs.push('age-коректор пробив нижню межу');
+  /* недопробіг не робить стару машину новою */
+  if (mil(20000, 120, 'petrol').score > 9.5 + 1e-9) errs.push('недопробіг дав більше 9.5');
+  /* компоненти в breakdown */
+  for (const k of ['absolute_score', 'age_powertrain_adjustment', 'integrity_adjustment', 'rollback_cap_applied', 'annual_km']) {
+    if (!(k in bmw113)) errs.push('у осі Пробіг нема компонента ' + k);
+  }
   /* історичне ДТП САМО не знижує Поточний стан */
   if (sevDim.current_condition.score !== 10) errs.push('історичне ДТП знизило current_condition: ' + sevDim.current_condition.score);
   /* generic болячка моделі не є технічним evidence: відкидається на вході
@@ -485,33 +526,32 @@ const THIN = {
   if (!/D\.score_breakdown \|\| D\.score_breakdown_v2/.test(pageSrc)) errs.push('result-check: читач не переведений на канонічне поле з alias-фолбеком');
   if (!/Низький виявлений ризик/.test(pageSrc)) errs.push('result-check: risk-wording рівня нема');
   if (!/Аукціонних записів у перевірених джерелах не знайдено/.test(pageSrc)) errs.push('result-check: нейтральне повідомлення checked_absent нема');
-  /* AI-висновок: check.js будує промпт з точних бекенд-балів і валідує числа */
-  if (!/buildScoreDigest/.test(checkSrc)) errs.push('check.js: дайджест балів не використовується');
-  if (!/score narrative rejected/.test(checkSrc)) errs.push('check.js: нема валідації чисел narrative проти дайджесту');
-  if (!/allowed\.has\(v\)/.test(checkSrc)) errs.push('check.js: числа narrative не звіряються з дозволеним набором');
+  /* AI-висновок: старий стиль головного виклику; числові підоцінки в текст
+     не вплітаються; в кінці ОДНА фраза з точним бекенд-балом */
+  if (/buildScoreDigest|nPrompt/.test(checkSrc)) errs.push('check.js: залишки narrative-переписування');
+  if (!/Оцінка CalCar цього автомобіля становить/.test(checkSrc)) errs.push('check.js: нема фінальної фрази з балом (ua)');
+  if (!/оценка CalCar этого автомобиля составляет/.test(checkSrc)) errs.push('check.js: нема фінальної фрази з балом (ru)');
+  if (!/CalCar Score of this car is/.test(checkSrc)) errs.push('check.js: нема фінальної фрази з балом (en)');
+  if (!/vehicle: vehicleV3/.test(checkSrc)) errs.push('check.js: vehicle-вхід осі Пробіг не передається');
   /* картка підоцінок: пʼять міток на сторінці і в обох словниках */
   const ruDict = fs.readFileSync('i18n/ru.js', 'utf8');
   const enDict = fs.readFileSync('i18n/en.js', 'utf8');
-  for (const lbl of ['Історія авто', 'Історія пробігу', 'Пошкодження та відновлення', 'Стан за фото', 'Технічні ризики']) {
+  for (const lbl of ['Історія авто', 'Пробіг', 'Пошкодження та відновлення', 'Стан за фото', 'Технічні ризики']) {
     if (!pageSrc.includes("'" + lbl + "'")) errs.push('result-check: мітка осі відсутня: ' + lbl);
     if (!ruDict.includes("'" + lbl + "'")) errs.push('ru.js: нема перекладу мітки ' + lbl);
     if (!enDict.includes("'" + lbl + "'")) errs.push('en.js: нема перекладу мітки ' + lbl);
   }
-  if (!/dimCard/.test(pageSrc) || !/dim-track/.test(pageSrc)) errs.push('result-check: картка підоцінок відсутня');
-  /* рядок обмеження: лише для стелі покриття чи капа, без слова "кап" в UI */
-  if (!/Оцінку обмежує повнота даних/.test(pageSrc)) errs.push('result-check: нема рядка обмеження покриттям');
-  if (!/CAP_WHY/.test(pageSrc) || !/indexOf\('hard_cap:'\) === 0/.test(pageSrc)) errs.push('result-check: нема рядка обмеження капом');
-  if (!/limiting_factors/.test(pageSrc)) errs.push('result-check: рядок обмеження не привʼязаний до limiting_factors');
-  /* narrative: вісь пробігу подається як ІСТОРІЯ пробігу, не величина */
-  if (!/Історія пробігу/.test(checkSrc)) errs.push('check.js: у промпті narrative нема семантики "Історія пробігу"');
-  if (!/НЕ величину пробігу|НІКОЛИ не "пробіг отримав/.test(checkSrc)) errs.push('check.js: нема заборони трактувати бал як розмір пробігу');
+  /* старий вигляд Score відновлений: окремої картки більше нема, лише popover */
+  if (/dimCard|dim-wrap|dim-track|dimLimit/.test(pageSrc)) errs.push('result-check: залишки окремої картки підоцінок');
+  if (!/dim-pop/.test(pageSrc)) errs.push('result-check: popover підоцінок відсутній');
+  if (!/mouseenter/.test(pageSrc) || !/tabIndex = 0|tabindex/.test(pageSrc)) errs.push('result-check: popover без hover/focus');
   /* Vision structural gate: строгі правила в промпті + страхувальний хід */
   if (!/STRONG structural evidence/.test(checkSrc)) errs.push('check.js: нема gate STRONG structural evidence у промпті');
   if (!/possible_structural_damage/.test(checkSrc)) errs.push('check.js: нема сигналу possible_structural_damage');
   if (!/"сильно пошкоджений поріг"/.test(checkSrc)) errs.push('check.js: нема явного прикладу недостатнього evidence (поріг)');
   if (!/Потенційно структурна зона удару/.test(checkSrc)) errs.push('check.js: нема детермінованого fallback-ризику possible structural');
   if (!/possible_structural_damage: hv\.possible_structural_damage === true && hv\.structural_visual_status !== 'visible_damage'/.test(checkSrc)) errs.push('check.js: sanitize не гейтить possible проти visible_damage');
-  for (const key of ['Стан за фото', 'Оцінку обмежує повнота даних', 'Максимум', 'через затоплення']) {
+  for (const key of ['Стан за фото']) {
     if (!ruDict.includes("'" + key + "'")) errs.push('ru.js: нема перекладу ' + key);
     if (!enDict.includes("'" + key + "'")) errs.push('en.js: нема перекладу ' + key);
   }

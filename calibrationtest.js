@@ -35,6 +35,7 @@ const gold = JSON.parse(fs.readFileSync('calibration-gold.json', 'utf8'));
     const v3 = computeScoreV3({
       findings: r.findings,
       coverageInputs: r.cov,
+      vehicle: r.vehicle || null,
       auctionMeta: (r.cov.auction_record_exists && r.auction && r.auction.lot_id) ? r.auction : null,
       historicalVisual: r.hv || null,
       accidentRecord: r.accident_recorded === true ? { recorded: true, note: r.accident_note || null } : null,
@@ -87,6 +88,16 @@ const gold = JSON.parse(fs.readFileSync('calibration-gold.json', 'utf8'));
   /* severe-подія важча за moderate-подію за розміром штрафу */
   const penOf = pid => Math.max(0, ...res[pid].v3.accident_events.map(e => e.final_event_penalty));
   if (!(penOf('6SYMZ7') > penOf('HX8KT5'))) errs.push('причинність: штраф severe не більший за moderate: ' + penOf('6SYMZ7') + ' vs ' + penOf('HX8KT5'));
+  /* acceptance 2HGRSW (BMW 113 тис., 8 років, petrol): вісь Пробіг
+     більше НЕ 10 за саму послідовну хронологію */
+  const bmwMil = res['2HGRSW'] && res['2HGRSW'].v3.score_dimensions.mileage;
+  if (!bmwMil || bmwMil.score_available !== true) errs.push('2HGRSW: вісь Пробіг недоступна');
+  else {
+    if (bmwMil.score >= 8.5) errs.push('2HGRSW: 113 тис. отримали зависокий Пробіг: ' + bmwMil.score);
+    if (!(bmwMil.score >= 6.5 && bmwMil.score <= 7.8)) errs.push('2HGRSW: Пробіг поза смугою: ' + bmwMil.score);
+  }
+  if (res['2HGRSW'] && !near(res['2HGRSW'].v3.final, 6.0, 6.2)) errs.push('2HGRSW: фінал зʼїхав: ' + f('2HGRSW'));
+
   /* показаний бал ніколи не вище стелі чи капа */
   for (const [pid, r] of Object.entries(res)) {
     if (typeof r.v3.final !== 'number') continue;
