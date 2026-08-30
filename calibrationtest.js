@@ -93,8 +93,9 @@ const gold = JSON.parse(fs.readFileSync('calibration-gold.json', 'utf8'));
   const bmwMil = res['2HGRSW'] && res['2HGRSW'].v3.score_dimensions.mileage;
   if (!bmwMil || bmwMil.score_available !== true) errs.push('2HGRSW: вісь Пробіг недоступна');
   else {
-    if (bmwMil.score >= 8.5) errs.push('2HGRSW: 113 тис. отримали зависокий Пробіг: ' + bmwMil.score);
-    if (!(bmwMil.score >= 6.5 && bmwMil.score <= 7.8)) errs.push('2HGRSW: Пробіг поза смугою: ' + bmwMil.score);
+    /* annual ~13.8к при reference petrol 12к: low-8, не 10 і не старі 7.3 */
+    if (!(bmwMil.score >= 8.0 && bmwMil.score <= 8.5)) errs.push('2HGRSW: Пробіг поза low-8 смугою: ' + bmwMil.score);
+    if (bmwMil.age_source !== 'model_year_midpoint') errs.push('2HGRSW: несподіване джерело віку: ' + bmwMil.age_source);
   }
   if (res['2HGRSW'] && !near(res['2HGRSW'].v3.final, 6.0, 6.2)) errs.push('2HGRSW: фінал зʼїхав: ' + f('2HGRSW'));
 
@@ -113,7 +114,7 @@ const gold = JSON.parse(fs.readFileSync('calibration-gold.json', 'utf8'));
     process.exit(1);
   }
   /* діагностика: підоцінки по gold-набору (пояснювальний шар, у формулу не входить) */
-  console.log('pid      | v3  | Історія | Іст.пробігу | Пошк/відн | Стан за фото | Технічні');
+  console.log('pid      | v3  | Історія | Пробіг | Пошк/відн | Стан за фото | Технічні');
   for (const [pid, r] of Object.entries(res)) {
     if (typeof r.v3.final !== 'number') continue;
     const d = r.v3.score_dimensions || {};

@@ -682,20 +682,21 @@ export const SCORE_DIMENSIONS_CONFIG = {
   HISTORY_FLOOD: 4.5,
   HISTORY_FIRE: 5.0,
   HISTORY_VIN: 5.0,
-  /* ---- Пробіг: наскільки хороший ФАКТИЧНИЙ пробіг цього екземпляра ----
-     A. Абсолютний пробіг: плавна piecewise-linear крива (головна вага).
-        10.0 практично зарезервована за майже новим авто.
-     B. Вік у МІСЯЦЯХ + powertrain-контекст типової інтенсивності
-        (НЕ ресурс двигуна, без engine-specific правил): помірний коректор.
-     C. Integrity: послідовна хронологія бонуса не дає; конфлікт помірний
-        мінус; підтверджена скрутка = жорсткий кап осі ---- */
-  MILEAGE_CURVE: [[0, 10], [20000, 9.5], [50000, 8.8], [80000, 8.1], [120000, 7.2], [160000, 6.4], [200000, 5.6], [250000, 4.8], [300000, 4.2], [400000, 3.0]],
-  ANNUAL_REF_KM: { petrol: [10000, 13000], diesel: [15000, 20000], hev: [10000, 13000], phev: [13000, 17000], bev: [13000, 16000], hybrid: [11000, 16000], electric: [13000, 16000] },
-  MILEAGE_AGE_ADJ: { OVER_K: 1.2, OVER_MIN: -1.5, UNDER_K: 0.8, UNDER_MAX: 0.8 },
-  MILEAGE_UNDERUSE_CEILING: 9.5,  /* недопробіг не робить стару машину новою */
+  /* ---- Пробіг: наскільки хороший ПІДТВЕРДЖЕНИЙ пробіг відносно віку і
+     типу силової установки. Головний показник: usage_ratio =
+     (одометр / вік у fractional роках) / reference класу. Стара машина з
+     природно великим сумарним пробігом НЕ погана за цією віссю; ресурс
+     конкретного двигуна живе в Technical Risks / Knowledge Layer.
+     A. annual_base_score: неперервна anchor-крива за usage_ratio;
+     B. невеликий НЕГАТИВНИЙ lifetime-коректор за сумарний пробіг;
+     C. integrity: чиста хронологія 0 (не бонус), конфлікт -1.5,
+        скрутка = кап осі 2.5 (низький км/рік скрутку не відмиває) ---- */
+  MILEAGE_REF_KM_YEAR: { petrol: 12000, diesel: 18000, hev: 12000, phev: 15000, bev: 16000, electric: 16000, hybrid: 14000, unknown: 14000 },
+  MILEAGE_USAGE_CURVE: [[0.25, 10], [0.40, 9.9], [0.50, 9.8], [0.60, 9.7], [0.75, 9.5], [0.90, 9.1], [1.00, 8.8], [1.10, 8.5], [1.25, 8.0], [1.40, 7.6], [1.60, 7.1], [1.80, 6.6], [2.00, 6.1], [2.25, 5.5], [2.50, 5.0], [3.00, 4.2], [3.50, 3.6], [4.00, 3.1], [5.00, 2.3], [6.00, 1.6], [7.00, 1.0]],
+  MILEAGE_LIFETIME_CURVE: [[100000, 0], [150000, -0.1], [200000, -0.3], [250000, -0.5], [300000, -0.7], [400000, -1.0], [500000, -1.3]],
   MILEAGE_MIN_AGE_MONTHS: 6,
   MILEAGE_CONFLICT: 1.5,
-  MILEAGE_ROLLBACK_CAP: 2.5,      /* rollback: жорсткий кап осі, значно гірший за конфлікт */
+  MILEAGE_ROLLBACK_CAP: 2.5,
   DR_EVENT: { severe: 3.0, moderate: 1.6, minor: 0.5, indeterminate: 1.0 },
   DR_REPAIR_MULT: { confirmed_ok: 0.45, visually_consistent: 0.8, unknown: 1.0, confirmed_bad: 1.3 },
   DR_STRUCTURAL_UNRESOLVED: 1.0,  /* додатково до severe-події */
@@ -724,6 +725,25 @@ export const RISK_LABELS = {
   high_risk: 'високий виявлений ризик',
 };
 
+/* ---------- вік автомобіля: пріоритет джерел ----------
+   1) надійна дата ПЕРШОЇ реєстрації/експлуатації авто взагалі (для
+      імпортованої машини першу реєстрацію В УКРАЇНІ використовувати
+      ЗАБОРОНЕНО: вона каже про імпорт, не про вік);
+   2) надійна дата виробництва (production/build date);
+   3) fallback: середина модельного року (1 липня, детерміновано).
+   Вік у МІСЯЦЯХ, далі fractional роки: без стрибків у "день народження" */
+export function resolveVehicleAge({ first_use_date, production_date, model_year } = {}, now = Date.now()) {
+  const months = from => Math.max(6, Math.round((now - from) / (30.44 * 24 * 3600 * 1000)));
+  const parse = v => { const t = Date.parse(v); return isFinite(t) ? t : null; };
+  const fu = first_use_date ? parse(first_use_date) : null;
+  if (fu !== null) return { age_months: months(fu), age_source: 'first_registration' };
+  const pd = production_date ? parse(production_date) : null;
+  if (pd !== null) return { age_months: months(pd), age_source: 'production_date' };
+  const y = parseInt(model_year, 10);
+  if (y >= 1950 && y <= 2100) return { age_months: months(Date.UTC(y, 6, 1)), age_source: 'model_year_midpoint' };
+  return { age_months: null, age_source: null };
+}
+
 export function computeDimensions(input, dc = SCORE_DIMENSIONS_CONFIG) {
   const events = Array.isArray(input.accidentEvents) ? input.accidentEvents : [];
   const problems = Array.isArray(input.problems) ? input.problems : [];
@@ -750,59 +770,76 @@ export function computeDimensions(input, dc = SCORE_DIMENSIONS_CONFIG) {
     || events.length > 0 || histFactors.length > 0;
   const history = dim(histAvailable, histPen, histFactors);
 
-  /* B. MILEAGE: наскільки хороший фактичний пробіг з урахуванням віку,
-     типу силової установки і цілісності історії. Величина одометра є
-     головним компонентом: послідовна хронологія при великому пробігу
-     НЕ дає 10. Без відомого поточного одометра вісь недоступна */
+  /* B. MILEAGE: наскільки хороший ПІДТВЕРДЖЕНИЙ пробіг відносно віку і
+     powertrain. Головний фактор: середньорічний пробіг проти reference
+     класу (неперервна крива за usage_ratio), далі невеликий lifetime-
+     коректор і integrity. Для числового бала потрібні надійний одометр,
+     надійний вік І достатній mileage-evidence (хоч одна незалежна
+     історична точка, або вже знайдений конфлікт/скрутка):
+     unknown != bad, але unknown != 10/10 */
+  const n = v => (typeof v === 'number' && isFinite(v) && v > 0 ? v : 0);
   const veh = input.vehicle || {};
   const odo = (typeof veh.odometer_km === 'number' && isFinite(veh.odometer_km) && veh.odometer_km >= 0) ? veh.odometer_km : null;
+  const months = (typeof veh.age_months === 'number' && isFinite(veh.age_months) && veh.age_months >= dc.MILEAGE_MIN_AGE_MONTHS) ? veh.age_months : null;
+  const hasRollback = has('ODOMETER_ROLLBACK');
+  const hasConflict = has('MILEAGE_CONFLICT_UNEXPLAINED');
+  const milEvidenceOk = n(cov.mileage_observation_count) >= 1 || hasRollback || hasConflict;
   let mileage;
-  if (odo === null) {
+  if (odo === null || months === null || !milEvidenceOk) {
     mileage = { score_available: false, score: null, main_factors: [] };
   } else {
-    /* A. абсолютний пробіг: лінійна інтерполяція між опорними точками */
-    const curve = dc.MILEAGE_CURVE;
-    let absolute = curve[curve.length - 1][1];
-    if (odo <= 0) absolute = 10;
-    else for (let i = 1; i < curve.length; i++) {
-      if (odo <= curve[i][0]) {
-        const [x0, y0] = curve[i - 1], [x1, y1] = curve[i];
-        absolute = y0 + (y1 - y0) * (odo - x0) / (x1 - x0);
-        break;
+    const interp = (curve, x) => {
+      if (x <= curve[0][0]) return curve[0][1];
+      for (let i = 1; i < curve.length; i++) {
+        if (x <= curve[i][0]) {
+          const [x0, y0] = curve[i - 1], [x1, y1] = curve[i];
+          return y0 + (y1 - y0) * (x - x0) / (x1 - x0);
+        }
       }
-    }
-    /* B. вік у місяцях + powertrain: середньорічний пробіг проти типового
-       діапазону класу. Лише контекст інтенсивності, помірний коректор */
+      return curve[curve.length - 1][1];
+    };
     const milFactors = [];
-    let ageAdj = 0, annual = null;
-    const ref = dc.ANNUAL_REF_KM[String(veh.powertrain || '').toLowerCase()] || null;
-    const months = (typeof veh.age_months === 'number' && isFinite(veh.age_months)) ? veh.age_months : null;
-    if (ref && months !== null && months >= dc.MILEAGE_MIN_AGE_MONTHS) {
-      annual = odo / (months / 12);
-      if (annual > ref[1]) { ageAdj = Math.max(dc.MILEAGE_AGE_ADJ.OVER_MIN, -dc.MILEAGE_AGE_ADJ.OVER_K * (annual / ref[1] - 1)); milFactors.push('above_typical_annual_usage'); }
-      else if (annual < ref[0]) { ageAdj = Math.min(dc.MILEAGE_AGE_ADJ.UNDER_MAX, dc.MILEAGE_AGE_ADJ.UNDER_K * (1 - annual / ref[0])); milFactors.push('below_typical_annual_usage'); }
-    }
-    /* C. integrity: чиста хронологія = без штрафу, не бонус */
+    const ageYears = months / 12;
+    const annual = odo / ageYears;
+    const ptClass = String(veh.powertrain || '').toLowerCase();
+    const refKm = dc.MILEAGE_REF_KM_YEAR[ptClass] || dc.MILEAGE_REF_KM_YEAR.unknown;
+    const usageRatio = annual / refKm;
+    /* A. головний фактор: неперервна крива за usage_ratio, без buckets */
+    const annualBase = interp(dc.MILEAGE_USAGE_CURVE, usageRatio);
+    if (usageRatio > 1.25) milFactors.push('high_annual_usage');
+    else if (usageRatio <= 0.6) milFactors.push('low_annual_usage');
+    /* B. невеликий негативний lifetime-коректор: сумарний пробіг не
+       ігнорується, але ніколи не стає головним фактором */
+    const lifetimeAdj = interp(dc.MILEAGE_LIFETIME_CURVE, odo);
+    if (lifetimeAdj <= -0.5) milFactors.push('high_lifetime_mileage');
+    /* C. integrity: конфлікт помірний мінус; скрутка = кап осі. Якщо
+       скрутка і конфлікт описують ту саму underlying проблему, двічі
+       не штрафуємо: діє лише кап */
     let integrityAdj = 0;
-    if (has('MILEAGE_CONFLICT_UNEXPLAINED')) { integrityAdj -= dc.MILEAGE_CONFLICT; milFactors.push('mileage_conflict'); }
-    let sc = absolute + ageAdj + integrityAdj;
-    if (ageAdj > 0) sc = Math.min(sc, Math.max(absolute, dc.MILEAGE_UNDERUSE_CEILING));
-    sc = Math.max(0, Math.min(10, sc));
+    if (hasConflict && !hasRollback) { integrityAdj = -dc.MILEAGE_CONFLICT; milFactors.push('mileage_conflict'); }
+    let sc = Math.max(0, Math.min(10, annualBase + lifetimeAdj + integrityAdj));
     let rollbackCap = false;
-    if (has('ODOMETER_ROLLBACK')) { sc = Math.min(sc, dc.MILEAGE_ROLLBACK_CAP); rollbackCap = true; milFactors.push('odometer_rollback'); }
-    if (odo >= 160000) milFactors.push('high_absolute_mileage');
+    if (hasRollback) { sc = Math.min(sc, dc.MILEAGE_ROLLBACK_CAP); rollbackCap = true; milFactors.push('odometer_rollback'); }
+    const finalScore = round1(sc);
     mileage = {
       score_available: true,
-      score: round1(sc),
+      score: finalScore,
       main_factors: milFactors.length ? milFactors : ['no_issues_found'],
-      absolute_score: round1(absolute),
-      age_powertrain_adjustment: round1(ageAdj),
-      integrity_adjustment: round1(integrityAdj),
+      current_odometer_km: odo,
+      age_source: veh.age_source || 'provided',
+      vehicle_age_months: months,
+      vehicle_age_years: round2(ageYears),
+      powertrain_class: dc.MILEAGE_REF_KM_YEAR[ptClass] ? ptClass : 'unknown',
+      reference_km_year: refKm,
+      annual_mileage_km: Math.round(annual),
+      usage_ratio: round2(usageRatio),
+      annual_base_score: round2(annualBase),
+      lifetime_mileage_adjustment: round2(lifetimeAdj),
+      integrity_adjustment: round2(integrityAdj),
       rollback_cap_applied: rollbackCap,
-      annual_km: annual !== null ? Math.round(annual) : null,
+      final_score: finalScore,
     };
   }
-  const n = v => (typeof v === 'number' && isFinite(v) && v > 0 ? v : 0);
 
   /* C. DAMAGE_REPAIR: тяжкість пошкоджень і підтвердженість відновлення.
      Доступна за тих самих умов, що HISTORY: перевірена чиста історія

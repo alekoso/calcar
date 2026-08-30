@@ -1,7 +1,7 @@
 export const config = { maxDuration: 300 };
 
 import { computeScore } from './score.js';
-import { computeScoreV3 } from './score-v3.js';
+import { computeScoreV3, resolveVehicleAge } from './score-v3.js';
 
 /* активна версія CalCar Score: перемикається конфігурацією без деплою коду.
    Rollback на v2 = env CALCAR_SCORE_VERSION=v2, НЕ revert коміту */
@@ -1793,15 +1793,18 @@ export default async function handler(req, res) {
         primary_damage: (auctionSearch && auctionSearch.primary_damage) || null,
         secondary_damage: (auctionSearch && auctionSearch.secondary_damage) || null,
       } : null;
-      /* вхід осі Пробіг: одометр, вік у МІСЯЦЯХ (від середини року випуску,
-         щоб не було стрибка в "день народження"), powertrain як широкий клас */
+      /* вхід осі Пробіг: одометр (вже нормалізований у км), вік і powertrain.
+         Вік за пріоритетом: перша експлуатація авто ВЗАГАЛІ -> дата
+         виробництва -> середина модельного року. Першу реєстрацію
+         В УКРАЇНІ імпортованої машини як початок віку використовувати
+         ЗАБОРОНЕНО, тому надійних структурованих дат перших двох рівнів
+         пайплайн поки НЕ подає: first_use_date/production_date = null */
       const vehYear = parseInt(parsed?.vehicle?.year, 10) || listing.year || null;
-      const ageMonths = vehYear
-        ? Math.max(6, Math.round((Date.now() - Date.UTC(vehYear, 6, 1)) / (30.44 * 24 * 3600 * 1000)))
-        : null;
+      const vehAge = resolveVehicleAge({ first_use_date: null, production_date: null, model_year: vehYear });
       const vehicleV3 = {
         odometer_km: typeof listing.odometer_km === 'number' ? listing.odometer_km : null,
-        age_months: ageMonths,
+        age_months: vehAge.age_months,
+        age_source: vehAge.age_source,
         powertrain: (typeof parsed?.vehicle?.fuel === 'string' ? parsed.vehicle.fuel : null),
       };
       const breakdownV3 = computeScoreV3({

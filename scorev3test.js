@@ -414,43 +414,86 @@ const THIN = {
   const rollDim = score([F('ODOMETER_ROLLBACK', 'm2', { evidence: [ev('registry', null, 'скручений')] })], RICH, { vehicle: VEH }).score_dimensions.mileage;
   if (!(confDim.score - rollDim.score >= 3)) errs.push('Mileage: rollback мало відрізняється від конфлікту: ' + rollDim.score + ' vs ' + confDim.score);
   if (rollDim.score > 2.5 + 1e-9 || rollDim.rollback_cap_applied !== true) errs.push('Mileage: rollback-кап осі не застосований: ' + JSON.stringify(rollDim));
+  /* конфлікт знижує рівно на сконфігуровану величину */
+  const cleanDim = score([], RICH, { vehicle: VEH }).score_dimensions.mileage;
+  if (Math.abs((cleanDim.score - confDim.score) - 1.5) > 0.051) errs.push('Mileage: конфлікт не -1.5: ' + cleanDim.score + ' -> ' + confDim.score);
+  /* скрутка + конфлікт однієї underlying проблеми: не двічі, лише кап */
+  const both = score([
+    F('ODOMETER_ROLLBACK', 'm2', { evidence: [ev('registry', null, 'скручений')] }),
+    F('MILEAGE_CONFLICT_UNEXPLAINED', 'm1'),
+  ], RICH, { vehicle: VEH }).score_dimensions.mileage;
+  if (both.integrity_adjustment !== 0) errs.push('Mileage: конфлікт оштрафований додатково до скрутки');
+  if (both.score !== rollDim.score) errs.push('Mileage: подвійний рахунок скрутки і конфлікту');
+  /* дуже низький км/рік не відмиває скрутку */
+  const lowKmRoll = score([F('ODOMETER_ROLLBACK', 'm2', { evidence: [ev('registry', null, 'скручений')] })], RICH, { vehicle: { odometer_km: 20000, age_months: 120, powertrain: 'petrol' } }).score_dimensions.mileage;
+  if (lowKmRoll.score > 2.5 + 1e-9) errs.push('Mileage: низький км/рік відмив скрутку: ' + lowKmRoll.score);
 
-  /* ===== 19в. Пробіг: неперервна формула (абсолют + вік/powertrain + integrity) ===== */
+  /* ===== 19в. Пробіг: annual usage ratio як головний фактор ===== */
   const mil = (odo, months, pt, findings) => score(findings || [], RICH, { vehicle: { odometer_km: odo, age_months: months, powertrain: pt } }).score_dimensions.mileage;
-  /* 10.0 практично зарезервована за майже новим авто */
-  if (mil(2000, 6, 'petrol').score !== 10) errs.push('майже нове авто не отримало 10');
-  if (mil(30000, 36, 'petrol').score >= 10) errs.push('30 тис. отримали 10');
-  /* послідовна хронологія при великому пробігу НЕ дає 10 */
-  const bmw113 = mil(113000, 97, 'petrol');
-  if (bmw113.score >= 8.5) errs.push('113 тис. з чистою хронологією отримали зависокий бал: ' + bmw113.score);
-  if (!(bmw113.score >= 6.5 && bmw113.score <= 7.8)) errs.push('113 тис. / 8 років поза розумною смугою: ' + bmw113.score);
-  /* неперервність: кожні 5 тис. км помітно рухають бал, без великих сходинок */
-  let prev = null, changes = 0;
-  for (const km of [100000, 105000, 110000, 115000, 120000]) {
-    const v = mil(km, 96, 'petrol').score;
-    if (prev !== null) {
-      if (v > prev + 1e-9) errs.push('бал виріс зі зростанням пробігу: ' + km);
-      if (prev - v > 0.35) errs.push('сходинка завелика на ' + km + ': ' + prev + ' -> ' + v);
-      if (Math.abs(prev - v) > 1e-9) changes++;
+  /* той самий 100k: 3-річний petrol гірший за 8-річний */
+  const y3 = mil(100000, 36, 'petrol'), y8 = mil(100000, 96, 'petrol');
+  if (!(y8.score - y3.score >= 2)) errs.push('100 тис.: 3-річний не гірший помітно за 8-річний: ' + y3.score + ' vs ' + y8.score);
+  /* 180k у 20-річного petrol: > 9 при чистій integrity */
+  const old20 = mil(180000, 240, 'petrol');
+  if (!(old20.score > 9)) errs.push('180 тис. / 20 років мали дати > 9: ' + old20.score);
+  if (!(old20.lifetime_mileage_adjustment < 0 && old20.lifetime_mileage_adjustment >= -1.3)) errs.push('lifetime-коректор поза межами: ' + old20.lifetime_mileage_adjustment);
+  /* чиста хронологія НЕ бонус: integrity_adjustment 0 */
+  if (old20.integrity_adjustment !== 0) errs.push('чиста хронологія дала integrity-поправку');
+  /* дизель кращий за petrol при тих самих віку/пробігу */
+  if (!(mil(113000, 97, 'diesel').score > mil(113000, 97, 'petrol').score)) errs.push('дизельний reference не працює');
+  /* annual-крива монотонна, десяткова, без bucket-стрибків */
+  let prevA = null, aChanges = 0;
+  for (let annualK = 8; annualK <= 40; annualK++) {
+    const v = mil(annualK * 5000, 60, 'petrol');
+    if (prevA !== null) {
+      if (v.annual_base_score > prevA + 1e-9) errs.push('annual-крива не монотонна на ' + annualK + 'к/рік');
+      /* дрібний крок 1к/рік: без bucket-стрибків, максимум плавний нахил */
+      if (prevA - v.annual_base_score > 0.35) errs.push('bucket-стрибок annual-кривої на ' + annualK + 'к/рік: ' + prevA + ' -> ' + v.annual_base_score);
+      if (Math.abs(prevA - v.annual_base_score) > 1e-9) aChanges++;
     }
-    prev = v;
+    prevA = v.annual_base_score;
   }
-  if (changes < 3) errs.push('крива не неперервна: лише ' + changes + ' зміни на 100-120 тис.');
-  /* вік: 113 тис. у 3-річного гірші, ніж у 9-річного; але 9-річний не 10 */
-  const young = mil(113000, 36, 'petrol'), old = mil(113000, 108, 'petrol');
-  if (!(old.score > young.score)) errs.push('вік не врахований: ' + young.score + ' vs ' + old.score);
-  if (old.score >= 8.5) errs.push('113 тис. у 9-річного все одно не преміум: ' + old.score);
-  /* powertrain-контекст: дизель з тим самим annual понад petrol-норму краще */
-  if (!(mil(113000, 96, 'diesel').score > mil(113000, 96, 'petrol').score)) errs.push('дизельний контекст не працює');
-  /* коректор обмежений: не переписує абсолют */
-  const y3 = mil(113000, 36, 'petrol');
-  if (y3.age_powertrain_adjustment < -1.5 - 1e-9) errs.push('age-коректор пробив нижню межу');
-  /* недопробіг не робить стару машину новою */
-  if (mil(20000, 120, 'petrol').score > 9.5 + 1e-9) errs.push('недопробіг дав більше 9.5');
-  /* компоненти в breakdown */
-  for (const k of ['absolute_score', 'age_powertrain_adjustment', 'integrity_adjustment', 'rollback_cap_applied', 'annual_km']) {
+  if (aChanges < 25) errs.push('annual-крива недостатньо неперервна: ' + aChanges);
+  /* плавність за одометром при фіксованому віці */
+  let prevS = null, sChanges = 0;
+  for (const km of [100000, 105000, 110000, 115000, 120000, 125000, 130000]) {
+    const v = mil(km, 96, 'petrol').score;
+    if (prevS !== null) {
+      if (v > prevS + 1e-9) errs.push('бал виріс зі зростанням пробігу: ' + km);
+      if (prevS - v > 0.4) errs.push('сходинка завелика на ' + km);
+      if (Math.abs(prevS - v) > 1e-9) sChanges++;
+    }
+    prevS = v;
+  }
+  if (sChanges < 4) errs.push('крива за одометром не плавна: ' + sChanges + ' зміни');
+  /* lifetime малий, тільки негативний, ніколи не головний фактор */
+  const life300 = mil(300000, 240, 'petrol');
+  if (!(life300.lifetime_mileage_adjustment === -0.7)) errs.push('lifetime на 300 тис. мав бути -0.7: ' + life300.lifetime_mileage_adjustment);
+  if (mil(50000, 60, 'petrol').lifetime_mileage_adjustment !== 0) errs.push('lifetime на 50 тис. мав бути 0');
+  /* availability: без незалежної історичної точки числа нема */
+  b = score([], { ...RICH, mileage_observation_count: 0 }, { vehicle: VEH });
+  if (b.score_dimensions.mileage.score_available !== false) errs.push('без історичної точки Пробіг мав бути unavailable');
+  /* без надійного віку: unavailable */
+  b = score([], RICH, { vehicle: { odometer_km: 60000, age_months: null, powertrain: 'petrol' } });
+  if (b.score_dimensions.mileage.score_available !== false) errs.push('без віку Пробіг мав бути unavailable');
+  /* компоненти діагностики */
+  const bmw113 = mil(113000, 98, 'petrol');
+  for (const k of ['current_odometer_km', 'age_source', 'vehicle_age_months', 'vehicle_age_years', 'powertrain_class', 'reference_km_year', 'annual_mileage_km', 'usage_ratio', 'annual_base_score', 'lifetime_mileage_adjustment', 'integrity_adjustment', 'rollback_cap_applied', 'final_score']) {
     if (!(k in bmw113)) errs.push('у осі Пробіг нема компонента ' + k);
   }
+  if (!(bmw113.score >= 8.0 && bmw113.score <= 8.5)) errs.push('BMW 113 тис. / ~8.2 року поза low-8 смугою: ' + bmw113.score);
+
+  /* ===== 19г. вік: пріоритет джерел, УКРАЇНСЬКА реєстрація не вік ===== */
+  const { resolveVehicleAge } = M;
+  const NOW = Date.UTC(2026, 7, 30);
+  let ag = resolveVehicleAge({ first_use_date: '2019-03-15', production_date: '2018-11-01', model_year: 2018 }, NOW);
+  if (ag.age_source !== 'first_registration' || Math.abs(ag.age_months - 89) > 1) errs.push('пріоритет first_registration зламаний: ' + JSON.stringify(ag));
+  ag = resolveVehicleAge({ production_date: '2018-11-01', model_year: 2018 }, NOW);
+  if (ag.age_source !== 'production_date') errs.push('пріоритет production_date зламаний');
+  ag = resolveVehicleAge({ model_year: 2018 }, NOW);
+  if (ag.age_source !== 'model_year_midpoint' || Math.abs(ag.age_months - 98) > 1) errs.push('midpoint-fallback зламаний: ' + JSON.stringify(ag));
+  if (resolveVehicleAge({}, NOW).age_months !== null) errs.push('без жодної дати вік мав бути null');
+
   /* історичне ДТП САМО не знижує Поточний стан */
   if (sevDim.current_condition.score !== 10) errs.push('історичне ДТП знизило current_condition: ' + sevDim.current_condition.score);
   /* generic болячка моделі не є технічним evidence: відкидається на вході

@@ -46,7 +46,8 @@
     "age_months": 110,
     "powertrain": "petrol",
     "year": 2017,
-    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)"
+    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)",
+    "age_source": "model_year_midpoint"
    }
   },
   {
@@ -77,7 +78,8 @@
     "age_months": 74,
     "powertrain": "hybrid",
     "year": 2020,
-    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)"
+    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)",
+    "age_source": "model_year_midpoint"
    }
   },
   {
@@ -169,7 +171,8 @@
     "age_months": 26,
     "powertrain": "electric",
     "year": 2024,
-    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)"
+    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)",
+    "age_source": "model_year_midpoint"
    }
   },
   {
@@ -218,7 +221,8 @@
     "age_months": 38,
     "powertrain": "electric",
     "year": 2023,
-    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)"
+    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)",
+    "age_source": "model_year_midpoint"
    }
   },
   {
@@ -297,7 +301,8 @@
     "age_months": 86,
     "powertrain": "petrol",
     "year": 2019,
-    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)"
+    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)",
+    "age_source": "model_year_midpoint"
    }
   },
   {
@@ -365,7 +370,8 @@
     "age_months": 98,
     "powertrain": "petrol",
     "year": 2018,
-    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)"
+    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)",
+    "age_source": "model_year_midpoint"
    }
   },
   {
@@ -412,7 +418,8 @@
     "age_months": 98,
     "powertrain": "hybrid",
     "year": 2018,
-    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)"
+    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)",
+    "age_source": "model_year_midpoint"
    }
   },
   {
@@ -457,7 +464,8 @@
     "age_months": 86,
     "powertrain": "petrol",
     "year": 2019,
-    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)"
+    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)",
+    "age_source": "model_year_midpoint"
    }
   },
   {
@@ -488,7 +496,8 @@
     "age_months": 98,
     "powertrain": "hybrid",
     "year": 2018,
-    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)"
+    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)",
+    "age_source": "model_year_midpoint"
    }
   },
   {
@@ -519,7 +528,8 @@
     "age_months": 158,
     "powertrain": "petrol",
     "year": 2013,
-    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)"
+    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)",
+    "age_source": "model_year_midpoint"
    }
   },
   {
@@ -628,7 +638,8 @@
     "age_months": 98,
     "powertrain": "hybrid",
     "year": 2018,
-    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)"
+    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)",
+    "age_source": "model_year_midpoint"
    }
   },
   {
@@ -884,7 +895,8 @@
     "age_months": 38,
     "powertrain": "electric",
     "year": 2023,
-    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)"
+    "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)",
+    "age_source": "model_year_midpoint"
    }
   },
   {
@@ -938,7 +950,8 @@
     "odometer_km": 113000,
     "age_months": 98,
     "powertrain": "petrol",
-    "year": 2018
+    "year": 2018,
+    "age_source": "model_year_midpoint"
    },
    "cov": {
     "basics_known": true,
