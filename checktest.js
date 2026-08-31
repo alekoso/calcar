@@ -740,6 +740,21 @@ const REPORTS = [
   if (!/hv_version: HISTORICAL_VISUAL_VERSION/.test(api)) errs.push('версія hv не зберігається');
 }
 
+/* ---- SRS з історичних кадрів: строге правило і деталізація ---- */
+{
+  if (!/deployed_visible" СТАВ ЛИШЕ за ПРЯМИМ візуальним доказом РОЗКРИТОЇ подушки/.test(api)) errs.push('нема строгого правила deployed_visible');
+  if (!/Пошкоджений салон, розібрана торпедо, зірвана обшивка[^.]*НЕ доводять/.test(api)) errs.push('нема заборони виводити подушки з пошкодженого салону');
+  if (!/airbags_visible_parts/.test(api)) errs.push('нема опціональної деталізації подушок');
+  /* деталізація лише за deployed_visible і лише з переліку */
+  const fn = new Function(grab(api, 'sanitizeHistoricalVisual') + '\nreturn sanitizeHistoricalVisual;')();
+  const okParts = fn({ srs_visual_status: 'deployed_visible', airbags_visible_parts: ['driver', 'knee', 'вигадане'] }, 3);
+  if (JSON.stringify(okParts.airbags_visible_parts) !== JSON.stringify(['driver', 'knee'])) errs.push('деталізація подушок не відфільтрована: ' + JSON.stringify(okParts.airbags_visible_parts));
+  const noParts = fn({ srs_visual_status: 'no_deployment_visible', airbags_visible_parts: ['driver'] }, 3);
+  if (noParts.airbags_visible_parts.length) errs.push('деталізація подушок без deployed_visible');
+  /* кадри беруться рівномірно по галереї, а не перші 8 екстерʼєрних */
+  if (!/pickEvenIndexes\(directCandidates\.length, 8\)/.test(api)) errs.push('кадри не відбираються рівномірно по галереї');
+}
+
 if (errs.length) { console.log('FAILED:', errs); process.exit(1); }
   console.log('нормалізація одна · збіг за URL і за VIN · значущий query не клеїться · гість без перевірки · повтор свідомий, insert · правки звіту');
   console.log('CHECK DUP TEST PASSED');

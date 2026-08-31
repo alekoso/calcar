@@ -515,6 +515,23 @@ function makeFetch(map) {
   const freshMeta = A.extractLotMeta(CAROUSEL, 'https://agg.example/catalog/' + VIN, VIN);
   if (freshMeta.parser_version !== A.PARSER_VERSION) errs.push('parser_version не пишеться в meta');
 
+
+  /* ===== галерея лота: добір кадрів тієї самої теки (салон/подушки) ===== */
+  const F = h => 'https://cdn.example/v1/lot/0325/' + h + '_hrs.jpg';
+  const OTHER = h => 'https://cdn.example/v1/lot/1125/' + h + '_hrs.jpg';
+  const GAL = '<html><head><script type="application/ld+json">'
+    + JSON.stringify({ '@type': 'Vehicle', vehicleIdentificationNumber: VIN, image: [F('a'), F('b')] })
+    + '</script></head><body>'
+    + '<div class="gallery"><img src="' + F('a') + '"><img src="' + F('b') + '"><img src="' + F('c') + '"><img src="' + F('d') + '"></div>'
+    + '<div class="carousel"><img src="' + OTHER('x') + '"><img src="' + OTHER('y') + '"></div>'
+    + '<div>VIN: ' + VIN + '</div></body></html>';
+  const galScope = A.vinScopedRegions(GAL, VIN);
+  if (galScope.jsonld_photos.length !== 4) errs.push('галерея тієї самої теки не добрана: ' + galScope.jsonld_photos.length);
+  if (galScope.jsonld_photos.some(u => /1125/.test(u))) errs.push('кадри чужої теки (карусель) протекли в галерею лота');
+  /* без жодного JSON-LD кадру добір не запускається */
+  const NOLD = '<html><body><img src="' + F('a') + '"><div>VIN: ' + VIN + '</div></body></html>';
+  if ((A.vinScopedRegions(NOLD, VIN).jsonld_photos || []).length !== 0) errs.push('добір спрацював без якірних кадрів VIN');
+
   if (errs.length) { console.log('FAILED:', errs); process.exit(1); }
   console.log('повний шлях · ідентичність (VIN > naming) · absent проти unreachable · ліміти фото · TTL кешу · Serper discovery і ranking · сніпет не evidence · 200-челендж · ZenRows discovery-unblock і подвійна умова');
   console.log('AUCTION TEST PASSED');

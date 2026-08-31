@@ -623,6 +623,27 @@ const THIN = {
   b = score([], { ...GAP_COV, imported_used: false, history_gap_detected: false });
   if (b.score_dimensions.history.score_available !== true || b.score_dimensions.history.score !== 10) errs.push('без gap перевірена чиста історія зламалась');
 
+  /* ===== 19д. SRS-сигнал з історичних кадрів доїжджає до резолвера ===== */
+  const AM = { lot_id: '49495925', house: 'Copart', sale_date: '2025-04-29', airbags: null, primary_damage: 'Front end', secondary_damage: 'Side' };
+  const hvBase = { structural_visual_status: 'indeterminate', possible_structural_damage: true, major_deformation_visible: true,
+    visible_damage_zones: ['капот', 'бампер', 'крило', 'передок', 'оптика'], evidence: [{ source: 'us_auction', description: 'кадри лота' }] };
+  /* салон не переданий: подушки невідомі -> moderate (як було) */
+  let evb = score([], RICH, { auctionMeta: AM, historicalVisual: { ...hvBase, srs_visual_status: 'not_visible' } }).accident_events[0];
+  if (evb.derived_severity !== 'moderate') errs.push('без кадрів салону мало лишитись moderate: ' + evb.derived_severity);
+  if (evb.airbags !== false) errs.push('подушки з нічого стали true');
+  /* кадр салону з розкритою подушкою -> airbags true -> severe (формула не змінена) */
+  evb = score([], RICH, { auctionMeta: AM, historicalVisual: { ...hvBase, srs_visual_status: 'deployed_visible' } }).accident_events[0];
+  if (evb.airbags !== true) errs.push('deployed_visible не доїхав до резолвера');
+  if (evb.derived_severity !== 'severe') errs.push('major_deformation + подушки мали дати severe: ' + evb.derived_severity);
+  if (!evb.severity_basis.includes('airbags_deployed')) errs.push('airbags_deployed нема в basis');
+  /* "салон пошкоджений" без розкритої подушки severity НЕ піднімає */
+  evb = score([], RICH, { auctionMeta: AM, historicalVisual: { ...hvBase, srs_visual_status: 'no_deployment_visible' } }).accident_events[0];
+  if (evb.derived_severity !== 'moderate') errs.push('no_deployment_visible підняв severity');
+  /* SRS-restoration лишається окремою логікою і не дублює deployment */
+  const srsRun = score([], RICH, { auctionMeta: AM, historicalVisual: { ...hvBase, srs_visual_status: 'deployed_visible' } });
+  if (srsRun.unresolved_safety_concerns.length !== 1) errs.push('SRS-concern не один: ' + srsRun.unresolved_safety_concerns.length);
+  if (srsRun.applied_hard_caps.some(c => c.name.includes('SRS'))) errs.push('сам факт розкриття подушок дав SRS-кап');
+
   /* ===== 20. дайджест для AI-висновку: точні бекенд-числа ===== */
   const digest = buildScoreDigest(sevCase);
   if (!digest) errs.push('дайджест не побудований');

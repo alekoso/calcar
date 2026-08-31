@@ -476,6 +476,28 @@ export function vinScopedRegions(html, vin, windowChars = 2500) {
     const imgs = Array.isArray(node.image) ? node.image : (node.image ? [node.image] : []);
     for (const u of imgs) if (typeof u === 'string' && /^https?:\/\/.*\.(?:jpe?g|png|webp)/i.test(u)) out.jsonld_photos.push(u);
   }
+  /* галерея лота ПОВНІСТЮ: structured-блок часто цитує лише кілька перших
+     кадрів (у діагностованого VIN 5 із 12, усі екстерʼєрні), через що салон
+     і докази подушок ніколи не доїжджали до Vision. Добираємо кадри ТОГО
+     САМОГО хоста і ТІЄЇ САМОЇ теки, що й кадри цього VIN, і лише суцільним
+     блоком у порядку документа, який містить хоча б один кадр із JSON-LD:
+     сусідні теки на агрегаторі належать іншим авто */
+  if (out.jsonld_photos.length) {
+    const keyOf = u => { try { const x = new URL(u); return x.hostname + x.pathname.replace(/[^/]+$/, ''); } catch (e) { return null; } };
+    const ldKeys = new Set(out.jsonld_photos.map(keyOf).filter(Boolean));
+    const pageImgs = [...new Set([...src.matchAll(/https?:\/\/[^"'\s>\\]+\.(?:jpe?g|png|webp)/gi)].map(m => m[0]))];
+    const block = [];
+    let started = false;
+    for (const u of pageImgs) {
+      const k = keyOf(u);
+      if (k && ldKeys.has(k)) { block.push(u); started = true; }
+      else if (started) break; /* суцільний блок скінчився: далі чужі авто */
+    }
+    if (block.length && block.some(u => out.jsonld_photos.includes(u))) {
+      out.gallery_photos = block.slice(0, 20);
+      out.jsonld_photos = [...new Set([...out.jsonld_photos, ...out.gallery_photos])];
+    }
+  }
   out.found = out.jsonld.length > 0 || parts.length > 0;
   return out;
 }

@@ -948,6 +948,9 @@ export function sanitizeHistoricalVisual(hv, photosSent) {
     side_confidence: ['high', 'medium', 'low'].includes(hv.side_confidence) ? hv.side_confidence : 'low',
     structural_visual_status: STR.includes(hv.structural_visual_status) ? hv.structural_visual_status : 'indeterminate',
     srs_visual_status: SRS.includes(hv.srs_visual_status) ? hv.srs_visual_status : 'indeterminate',
+    /* опціональна деталізація: лише для deployed_visible і лише з переліку */
+    airbags_visible_parts: (hv.srs_visual_status === 'deployed_visible' && Array.isArray(hv.airbags_visible_parts))
+      ? hv.airbags_visible_parts.filter(x => ['driver', 'passenger', 'curtain', 'knee', 'seat'].includes(x)).slice(0, 5) : [],
     summary: clean(hv.summary) ? clean(hv.summary).slice(0, 600) : null,
     evidence: (Array.isArray(hv.evidence) ? hv.evidence : [])
       .filter(e => e && typeof e === 'object')
@@ -1459,7 +1462,8 @@ ${auction && auction.photos_sent ? `
 - structural_visual_status: "no_obvious_severe_signs" означає ЛИШЕ "на доступних кадрах нема явних візуальних ознак тяжкої деформації силової структури" і НІКОЛИ не дорівнює "структура ціла". "visible_damage" СТАВ ЛИШЕ за STRONG structural evidence, коли ОДНОЧАСНО: (1) конкретно ідентифікований силовий елемент (внутрішній силовий поріг/sill, стійка A/B/C, лонжерон/frame rail, стакан/strut tower, силова підлога, інший явно названий structural member, або очевидне зміщення геометрії силової частини); (2) цей елемент достатньо видимий на кадрі; (3) видима деформація САМЕ силового елемента, а не сусідньої зовнішньої панелі. НЕДОСТАТНЬО: "сильно пошкоджений поріг", "зімʼята боковина", "сильний удар", "деформація в районі стійки", будь-який прикметник тяжкості без ідентифікованого силового елемента. Ракурс не дозволяє судити або силову частину від зовнішньої панелі відрізнити не можна: "indeterminate".
 - damage_side: сторона АВТОМОБІЛЯ з видимим пошкодженням за правилом сторін вище: "left|right|both|center|unknown"; side_confidence: "high" ЛИШЕ за надійної орієнтації (видно кермо/номер/написи), інакше "medium" чи "low". Не можеш надійно: "unknown".
 - possible_structural_damage (boolean): true, коли пошкодження лежить у ПОТЕНЦІЙНО структурній зоні (зона порога/rocker, зона стійки, передня/задня зона лонжеронів), але надійно відрізнити зовнішню панель від силового елемента за фото не можна. Тоді structural_visual_status = "indeterminate" + possible_structural_damage: true. Цей сигнал НЕ є підтвердженим структурним пошкодженням.
-- srs_visual_status: "no_deployment_visible" означає лише "спрацювання не видно на доступних кадрах", НЕ "SRS справна". Салон у кадр не потрапив: "not_visible".
+- srs_visual_status: "deployed_visible" СТАВ ЛИШЕ за ПРЯМИМ візуальним доказом РОЗКРИТОЇ подушки на кадрі: видима біла/сіра тканина подушки з керма, торпедо, шторка вздовж даху, колінна подушка, подушка сидіння. Пошкоджений салон, розібрана торпедо, зірвана обшивка, спрацьовані ремені чи сам факт сильного удару подушок НЕ доводять і "deployed_visible" НЕ дають. "no_deployment_visible" означає лише "спрацювання не видно на доступних кадрах", НЕ "SRS справна". Салон у кадр не потрапив: "not_visible".
+- airbags_visible_parts: за deployed_visible опціонально перелічи, які саме подушки РЕАЛЬНО видно розкритими: "driver" | "passenger" | "curtain" | "knee" | "seat". Не вгадуй: у списку лише те, що видно на кадрі.
 - summary: 2-3 речення про побачене, з розділенням "що видно" і "що лишається невідомим". evidence з ref auction_photo_N.
 ` : auction && (auction.blocked || (auction.photos || []).length) ? `Архів чи історичні матеріали існують, але кадри автоматично недоступні.
 ЖОРСТКЕ ПРАВИЛО: технічну недоступність архіву чи фото НЕ згадуй НІДЕ у звіті, включно з auction.summary: ані "сервер не пустив", ані "не вдалося завантажити", ані "матеріали недоступні". Користувач бачить лише те, що знайдено; факт недоступності живе тільки в службових логах. auction.summary будуй з наявних фактів (запис про ДТП, дані площадки, слова продавця) без жодного речення про доступ. Роби висновки з того, що маєш: запис про ДТП у США сам по собі є фактом, і оцінювати треба ризик неякісного відновлення, а не відсутність фото.` : 'Архіву аукціону США у сторінці немає.'}
@@ -1588,7 +1592,7 @@ ${DECISION_RULES}${decisionStyle === 'a' ? DECISION_FEWSHOT : ''}
  "vehicle": {"title":"Марка Модель Рік","year":2018,"model_year":"рік за VIN, ЛИШЕ якщо надійно відомий і відрізняється від year, інакше null","fuel":"petrol|diesel|hybrid|electric","engine":"4.4 л бензин V8, 462 к.с. (або null)","transmission":"...","drive":"...","trim":"версія або null","mileage_note":"129 000 км"},
  "auction": {"found":true,"summary":"2-4 речення: що сталося з авто в США за архівом, реальний обсяг пошкоджень по фото, чи чесно продавець його описує","findings":[{"status":"ok|warn|bad|unknown","text":"порівняння до/після, 1 речення"}]},
  "body_wrap": {"present":false,"scope":"full|partial|unknown","sources":["seller","visual","historical"],"inspection_visibility":"limited|normal"},
- "historical_visual": {"visible_damage_zones":["капот","передній бампер"],"visible_severity":"minor|moderate|severe|indeterminate","major_deformation_visible":false,"wheel_displacement_visible":false,"cosmetic_only":false,"possible_structural_damage":false,"damage_side":"left|right|both|center|unknown","side_confidence":"high|medium|low","structural_visual_status":"no_obvious_severe_signs|possible|visible_damage|indeterminate","srs_visual_status":"deployed_visible|no_deployment_visible|not_visible|indeterminate","summary":"2-3 речення: що реально видно і що лишається невідомим","evidence":[{"source":"us_auction","ref":"auction_photo_1","description":"зім'ятий капот"}]},
+ "historical_visual": {"visible_damage_zones":["капот","передній бампер"],"visible_severity":"minor|moderate|severe|indeterminate","major_deformation_visible":false,"wheel_displacement_visible":false,"cosmetic_only":false,"possible_structural_damage":false,"damage_side":"left|right|both|center|unknown","side_confidence":"high|medium|low","structural_visual_status":"no_obvious_severe_signs|possible|visible_damage|indeterminate","srs_visual_status":"deployed_visible|no_deployment_visible|not_visible|indeterminate","airbags_visible_parts":["driver"],"summary":"2-3 речення: що реально видно і що лишається невідомим","evidence":[{"source":"us_auction","ref":"auction_photo_1","description":"зім'ятий капот"}]},
  "risks":[{"title":"назва ризику","level":"high|med|low","note":"1-2 речення: чому це головна стаття витрат чи ризику саме тут","action":"конкретна перевірка до покупки, 1 рядок"}],
  "equipment_v2":[{"name":"вентиляція передніх сидінь","category":"comfort|interior|multimedia|assist|exterior|performance","confidence_level":"vehicle_data|seller_and_visual|visual|seller, або null лише для суто історичної","highlight":false,"retrofit":false,"retrofit_basis":null,"historical_claim":false,"value_tier":"standard|notable|high_value","evidence":[{"source":"vehicle_data|current_photos|seller_claim|listing_data|historical","ref":"photo_7 чи vin_decode чи назва історичного джерела","sign":"конкретна ознака на кадрі чи коротка цитата джерела"}]}],
  "discrepancies":[{"severity":"high|med|low","title":"коротка назва розбіжності","detail":"2-3 речення: що стверджується, що знайдено, звідки","sources":["опис продавця","перевірка площадки","фото","VIN"]}],
@@ -1893,7 +1897,12 @@ export default async function handler(req, res) {
       .filter(u => ldPhotoSet.has(u) || (auction && auction.from_ria && /riastatic\.com\/photos\/auto\/usa\//.test(u)) || photoHasProvenance(u, listing.vin, auctionLotId));
     /* безкоштовно завантажувані йдуть Vision як URL (як і раніше);
        захищені проходять серверну лестницю і йдуть як base64-байти */
-    let auctionPhotos = photoCandidates.filter(visionDirect).slice(0, 8);
+    /* кадрів більше за ліміт: беремо рівномірно по всій галереї, інакше
+       перші 8 = самий екстерʼєр, а салон (докази подушок) не доїжджає */
+    const directCandidates = photoCandidates.filter(visionDirect);
+    let auctionPhotos = directCandidates.length > 8
+      ? pickEvenIndexes(directCandidates.length, 8).map(i => directCandidates[i])
+      : directCandidates.slice(0, 8);
     let historicalPhotoStats = null;
     if (auction && photoCandidates.length && auctionPhotos.length < 3 && !cachedHv) {
       try {
