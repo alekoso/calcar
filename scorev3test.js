@@ -433,9 +433,10 @@ const THIN = {
   /* той самий 100k: 3-річний petrol гірший за 8-річний */
   const y3 = mil(100000, 36, 'petrol'), y8 = mil(100000, 96, 'petrol');
   if (!(y8.score - y3.score >= 2)) errs.push('100 тис.: 3-річний не гірший помітно за 8-річний: ' + y3.score + ' vs ' + y8.score);
-  /* 180k у 20-річного petrol: > 9 при чистій integrity */
+  /* 180k у 20-річного petrol: дуже високий бал при чистій integrity
+     (ratio 0.75 -> 9.1 за новим верхом кривої, мінус lifetime) */
   const old20 = mil(180000, 240, 'petrol');
-  if (!(old20.score > 9)) errs.push('180 тис. / 20 років мали дати > 9: ' + old20.score);
+  if (!(old20.score >= 8.8)) errs.push('180 тис. / 20 років мали дати >= 8.8: ' + old20.score);
   if (!(old20.lifetime_mileage_adjustment < 0 && old20.lifetime_mileage_adjustment >= -1.3)) errs.push('lifetime-коректор поза межами: ' + old20.lifetime_mileage_adjustment);
   /* чиста хронологія НЕ бонус: integrity_adjustment 0 */
   if (old20.integrity_adjustment !== 0) errs.push('чиста хронологія дала integrity-поправку');
@@ -484,6 +485,44 @@ const THIN = {
   /* без надійного віку: unavailable */
   b = score([], RICH, { vehicle: { odometer_km: 60000, age_months: null, powertrain: 'petrol' } });
   if (b.score_dimensions.mileage.score_available !== false) errs.push('без віку Пробіг мав бути unavailable');
+  /* ===== 19в2. верх кривої: 10.0 лише за нульовий пробіг ===== */
+  /* нульовий одометр: 10.0 дозволена, вік сам по собі не штраф */
+  if (mil(0, 240, 'petrol').score !== 10) errs.push('нульовий пробіг у 20-річного мав дати 10.0: ' + mil(0, 240, 'petrol').score);
+  /* будь-який ненульовий пробіг НІКОЛИ не показується як 10.0 */
+  for (const [odoV, m] of [[1000, 240], [500, 12], [1200, 12], [100, 6]]) {
+    const v = mil(odoV, m, 'petrol');
+    if (v.score >= 10) errs.push('ненульовий пробіг ' + odoV + ' показаний як 10.0');
+  }
+  /* приклади верху кривої (petrol reference 12000, вік 12 міс.) */
+  const topCase = kmYear => mil(kmYear, 12, 'petrol');
+  for (const [kmY, want] of [[1200, 9.9], [3000, 9.6], [4800, 9.5], [6000, 9.4], [7200, 9.3], [9000, 9.1], [10800, 9.0], [12000, 8.8]]) {
+    const v = topCase(kmY).score;
+    if (Math.abs(v - want) > 0.051) errs.push('верх кривої: ' + kmY + ' км/рік мав дати ' + want + ', а не ' + v);
+  }
+  /* acceptance: 20 років / 60 тис. = 3 тис. км/рік -> ~9.6, точно НЕ 10 */
+  const gq = mil(60000, 240, 'petrol');
+  if (!(gq.score >= 9.5 && gq.score <= 9.7)) errs.push('20 років / 60 тис. поза ~9.6: ' + gq.score);
+  if (gq.score >= 10) errs.push('20 років / 60 тис. показані як 10.0');
+  /* неперервність верху: монотонно, плавно, без bucket-стрибків, десяткові */
+  const topRatios = [0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50, 0.75, 1.00];
+  let prevT = null, tChanges = 0;
+  const seenT = new Set();
+  for (const r of topRatios) {
+    const v = topCase(Math.round(r * 12000)).annual_base_score;
+    seenT.add(Math.round(v * 10) / 10);
+    if (prevT !== null) {
+      if (v > prevT + 1e-9) errs.push('верх кривої не монотонний на ratio ' + r);
+      if (prevT - v > 0.35) errs.push('bucket-стрибок верху кривої на ratio ' + r + ': ' + prevT + ' -> ' + v);
+      if (Math.abs(prevT - v) > 1e-9) tChanges++;
+    }
+    prevT = v;
+  }
+  if (tChanges < 8) errs.push('верх кривої недостатньо неперервний: ' + tChanges);
+  if (seenT.size < 8) errs.push('верх кривої дає замало різних десяткових значень: ' + seenT.size);
+  /* значення МІЖ якорями теж існують (не лише самі якорі) */
+  const mid = topCase(Math.round(0.175 * 12000)).annual_base_score;
+  if (!(mid < 9.9 - 1e-9 && mid > 9.6 + 1e-9)) errs.push('між якорями нема проміжних значень: ' + mid);
+
   /* компоненти діагностики */
   const bmw113 = mil(113000, 98, 'petrol');
   for (const k of ['current_odometer_km', 'age_source', 'vehicle_age_months', 'vehicle_age_years', 'powertrain_class', 'reference_km_year', 'annual_mileage_km', 'usage_ratio', 'annual_base_score', 'lifetime_mileage_adjustment', 'integrity_adjustment', 'rollback_cap_applied', 'final_score']) {

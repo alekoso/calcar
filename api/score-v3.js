@@ -692,7 +692,9 @@ export const SCORE_DIMENSIONS_CONFIG = {
      C. integrity: чиста хронологія 0 (не бонус), конфлікт -1.5,
         скрутка = кап осі 2.5 (низький км/рік скрутку не відмиває) ---- */
   MILEAGE_REF_KM_YEAR: { petrol: 12000, diesel: 18000, hev: 12000, phev: 15000, bev: 16000, electric: 16000, hybrid: 14000, unknown: 14000 },
-  MILEAGE_USAGE_CURVE: [[0.25, 10], [0.40, 9.9], [0.50, 9.8], [0.60, 9.7], [0.75, 9.5], [0.90, 9.1], [1.00, 8.8], [1.10, 8.5], [1.25, 8.0], [1.40, 7.6], [1.60, 7.1], [1.80, 6.6], [2.00, 6.1], [2.25, 5.5], [2.50, 5.0], [3.00, 4.2], [3.50, 3.6], [4.00, 3.1], [5.00, 2.3], [6.00, 1.6], [7.00, 1.0]],
+  /* 10.0 = фактично нульовий пробіг: верх кривої стартує з ratio 0,
+     будь-який ненульовий пробіг дає < 10 (страхує guard нижче) */
+  MILEAGE_USAGE_CURVE: [[0, 10], [0.10, 9.9], [0.25, 9.6], [0.40, 9.5], [0.50, 9.4], [0.60, 9.3], [0.75, 9.1], [0.90, 9.0], [1.00, 8.8], [1.10, 8.5], [1.25, 8.0], [1.40, 7.6], [1.60, 7.1], [1.80, 6.6], [2.00, 6.1], [2.25, 5.5], [2.50, 5.0], [3.00, 4.2], [3.50, 3.6], [4.00, 3.1], [5.00, 2.3], [6.00, 1.6], [7.00, 1.0]],
   MILEAGE_LIFETIME_CURVE: [[100000, 0], [150000, -0.1], [200000, -0.3], [250000, -0.5], [300000, -0.7], [400000, -1.0], [500000, -1.3]],
   MILEAGE_MIN_AGE_MONTHS: 6,
   MILEAGE_CONFLICT: 1.5,
@@ -824,7 +826,10 @@ export function computeDimensions(input, dc = SCORE_DIMENSIONS_CONFIG) {
     let sc = Math.max(0, Math.min(10, annualBase + lifetimeAdj + integrityAdj));
     let rollbackCap = false;
     if (hasRollback) { sc = Math.min(sc, dc.MILEAGE_ROLLBACK_CAP); rollbackCap = true; milFactors.push('odometer_rollback'); }
-    const finalScore = round1(sc);
+    let finalScore = round1(sc);
+    /* семантика 10.0 = нульовий пробіг: raw лишається неперервним, guard
+       лише не дає округленню показати 10.0 машині, що вже їздила */
+    if (odo > 0 && finalScore >= 10) finalScore = 9.9;
     mileage = {
       score_available: true,
       score: finalScore,
