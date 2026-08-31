@@ -84,7 +84,40 @@ const VALID = {
   }
 
   fs.rmSync(dir, { recursive: true, force: true });
-  if (errs.length) { console.log('FAILED:', errs); process.exit(1); }
+  /* ---- висновок зважує ризик + бажаність + цінність, а не лише ризики ---- */
+{
+  const src = fs.readFileSync('api/check.js', 'utf8');
+  /* A/B: комплектація і ціна стають факторами рішення */
+  if (!/ГОЛОВНЕ ПИТАННЯ ВИСНОВКУ/.test(src)) errs.push('нема вимоги відповісти "чи варто саме цей екземпляр"');
+  for (const k of ['decision_positives', 'decision_negatives', 'decision_unknowns', 'deal_breakers', 'reasons_to_choose_this_car']) {
+    if (!src.includes(k)) errs.push('нема внутрішнього списку ' + k);
+  }
+  if (!/НЕ виводь ці списки у відповідь/.test(src)) errs.push('внутрішні списки не позначені як службові');
+  if (!/пʼять питань/.test(src)) errs.push('нема пʼяти обовʼязкових питань');
+  /* C: комплектація не рятує поганий екземпляр -> deal_breakers існують */
+  if (!/deal_breakers: те, що робить покупку нерозумною за будь-якої ціни/.test(src)) errs.push('нема семантики deal_breaker');
+  /* B: опції не рівноцінні, лише підтверджені і найвагоміші */
+  if (!/КОМПЛЕКТАЦІЯ ЯК ФАКТОР РІШЕННЯ/.test(src)) errs.push('комплектація не піднята до фактора рішення');
+  if (!/Називай 2-4 найвагоміші ПІДТВЕРДЖЕНІ опції/.test(src)) errs.push('нема обмеження на кілька ключових опцій');
+  if (!/value_tier high_value/.test(src)) errs.push('рішення не спирається на value_tier');
+  /* F: нічого не вигадувати про рідкість */
+  if (!/РІДКІСНІСТЬ на ринку стверджуй ЛИШЕ за наявними порівняльними даними/.test(src)) errs.push('дозволена вигадана рідкість');
+  /* 3: заводське проти доробок */
+  if (!/retrofit НЕ видавай за заводську комплектацію/.test(src)) errs.push('retrofit не відділений від заводської комплектації');
+  if (!/НЕ означає "за машиною добре стежили"/.test(src)) errs.push('вкладені гроші прирівняні до догляду');
+  /* D/5: бал не є вердиктом про покупку в обидва боки */
+  if (!/ОЦІНКА CALCAR НЕ Є ВЕРДИКТОМ ПРО ПОКУПКУ/.test(src)) errs.push('бал досі трактується як вердикт покупки');
+  if (!/низький бал = погана покупка/.test(src) || !/високий бал = хороша покупка/.test(src)) errs.push('нема заборони механічного мапінгу балу');
+  /* 7: без перестраховки */
+  if (!/не закінчуй кожен висновок універсальним/.test(src)) errs.push('нема заборони універсальної кінцівки');
+  /* 9: структура виводу */
+  if (!/СТРУКТУРА reasoning/.test(src)) errs.push('нема структури висновку');
+  /* Score v3 не зачеплений цією ітерацією */
+  const v3 = fs.readFileSync('api/score-v3.js', 'utf8');
+  if (/equipment|price|value_tier/i.test(v3)) errs.push('комплектація або ціна протекли у Score v3');
+}
+
+if (errs.length) { console.log('FAILED:', errs); process.exit(1); }
   console.log('валідація структури · битий висновок дає старий рендер · 400/8 ліміти · сумісність із балом · промпт і два стилі · словники');
   console.log('DECISION TEST PASSED');
 })().catch(e => { console.log('FAILED:', e.stack || e.message); process.exit(1); });
