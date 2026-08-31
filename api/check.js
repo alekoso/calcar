@@ -1903,7 +1903,12 @@ export default async function handler(req, res) {
        подушку, і severity лишалась moderate при severe-евіденсі. Тому
        безкоштовну галерею беремо ПОВНІСТЮ до AUCTION_VISION_MAX; платний
        транспорт як і раніше обмежений (кадри там коштують грошей) */
-    const AUCTION_VISION_MAX = 12;
+    /* 8, а не 12: у запиті вже до 24 кадрів оголошення, і надто велика
+       сумарна кількість зображень призводила до того, що архівні кадри не
+       доїжджали до Vision узагалі (модель писала "вмісту кадрів нема").
+       Порядок документа зберігаємо: галерея аукціону йде екстерʼєр ->
+       салон, і перші 8 кадрів включають кадр із розкритою подушкою */
+    const AUCTION_VISION_MAX = 8;
     const directCandidates = photoCandidates.filter(visionDirect);
     let auctionPhotos = directCandidates.slice(0, AUCTION_VISION_MAX);
     let historicalPhotoStats = null;
