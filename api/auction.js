@@ -61,6 +61,16 @@ export const AUCTION_CONFIG = {
   ZENROWS_REASONS: ['title_status_missing', 'photos_unavailable', 'photos_low_quality', 'odometer_unreadable', 'critical_auction_metadata_missing', 'discovery_blocked'],
   FETCH_TIMEOUT_MS: 12000,
   TOTAL_BUDGET_MS: 25000,
+  /* історичний візуал: скільки кадрів реально тягнемо на Vision.
+     Не 20: достатньо репрезентативних ракурсів для зон, severity і SRS */
+  VISION_PHOTOS_MAX: 6,
+  VISION_PHOTO_MAX_BYTES: 1600000,
+  /* конвенція префікса лота bid.cars ПЕРЕВІРЕНА на 6 реальних лотах
+     (BMW x4, Tesla x2): 0- -> IAAI, 1- -> Copart; на кожній сторінці
+     збігаються два незалежні labelled-сигнали (var auctionType і фраза
+     "Data fetched from the platform"). Використовується ЛИШЕ як
+     last-resort після structured і labelled evidence */
+  LOT_PREFIX_HOUSE: { '0': 'IAAI', '1': 'COPART' },
   /* ліміти скачування фото */
   MAX_PHOTOS: 20,
   MAX_PHOTO_BYTES: 5 * 1024 * 1024,
@@ -402,6 +412,88 @@ export function photoHasProvenance(url, vin, lotId) {
 /* канонічний ідентифікатор аукціонного дому. Домен дзеркала
    (americamotors.com, bid.cars, bidfax.info) НІКОЛИ не auction_house:
    тут лише самі доми, і жодних варіантів регістру назовні */
+/* ---------- VIN-scoped витяг історичних фактів ----------
+   На сторінці-агрегаторі поруч живуть чужі авто (каруселі, реклама,
+   рекомендації) і навігаційний текст ("дані аукціонів Copart і IAAI").
+   Витягати факти з plain-тексту ВСЬОГО документа не можна: саме так
+   з'явився хибний IAAI для лота Copart. Скоуп будується навколо
+   ЦІЛЬОВОГО VIN: structured-блок з vehicleIdentificationNumber === VIN,
+   плюс текстові вікна навколо входжень VIN */
+export function vinScopedRegions(html, vin, windowChars = 700) {
+  const V = String(vin || '').toUpperCase();
+  const src = String(html || '');
+  const out = { jsonld: [], text: '', found: false };
+  if (!V) return out;
+  /* JSON-LD блоки з ТОЧНИМ VIN: рекурсивно, бо буває @graph і масиви */
+  for (const m of src.matchAll(/<script[^>]*application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi)) {
+    let parsed;
+    try { parsed = JSON.parse(m[1]); } catch (e) { continue; }
+    const stack = [parsed];
+    while (stack.length) {
+      const node = stack.pop();
+      if (!node || typeof node !== 'object') continue;
+      if (Array.isArray(node)) { for (const x of node) stack.push(x); continue; }
+      const nodeVin = String(node.vehicleIdentificationNumber || node.vin || '').toUpperCase();
+      if (nodeVin === V) out.jsonld.push(node);
+      else for (const k of Object.keys(node)) if (node[k] && typeof node[k] === 'object') stack.push(node[k]);
+    }
+  }
+  /* текстові вікна навколо VIN у розмітці, зведені до plain */
+  const plainAll = src.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  const up = plainAll.toUpperCase();
+  const parts = [];
+  let i = up.indexOf(V);
+  while (i >= 0 && parts.length < 8) {
+    parts.push(plainAll.slice(Math.max(0, i - windowChars), i + windowChars));
+    i = up.indexOf(V, i + V.length);
+  }
+  out.text = parts.join(' \u2022 ');
+  out.found = out.jsonld.length > 0 || parts.length > 0;
+  return out;
+}
+
+/* платформа аукціону ЛИШЕ зі скоупу цільового VIN, за пріоритетом
+   evidence. Неоднозначність (обидві платформи в одному вікні без
+   мітки) чесно дає null: unknown краще за неправильний IAAI */
+export function auctionHouseScoped(html, url, vin, cfg = AUCTION_CONFIG) {
+  const scope = vinScopedRegions(html, vin);
+  /* 1. structured-блок цього VIN: явні поля і хости зображень лота */
+  for (const node of scope.jsonld) {
+    const flat = JSON.stringify(node);
+    const hostHouse = /(?:^|[\/."'])copart[a-z0-9.-]*\.(?:com|by|ua|net)/i.test(flat) ? 'COPART'
+      : /(?:^|[\/."'])(?:vis\.)?iaai[a-z0-9.-]*\.(?:com|by|ua|net)/i.test(flat) ? 'IAAI' : null;
+    if (hostHouse) return { value: hostHouse, evidence_type: 'json_ld_exact_vin' };
+    const direct = canonicalAuctionHouse(flat.replace(/[{}\",:\[\]]/g, ' '));
+    if (direct) return { value: direct, evidence_type: 'json_ld_exact_vin' };
+  }
+  /* 2. явно підписане поле (у скоупі або у службових змінних сторінки) */
+  const labelled = String(html || '').match(/(?:var\s+auctionType\s*=\s*['"]|Data fetched from the platform\s+|Auction house[:\s]{1,4}|Auction[:\s]{1,4}|Platform[:\s]{1,4}|Аукцион[:\s]{1,4}|Аукціон[:\s]{1,4}|Площадка[:\s]{1,4}|Майданчик[:\s]{1,4})(Copart|IAAI)\b/i);
+  if (labelled) return { value: canonicalAuctionHouse(labelled[1]), evidence_type: 'labelled_field' };
+  /* 3. скоуп VIN: рахуємо лише коли платформа в ньому ОДНА */
+  if (scope.text) {
+    const hasC = /\bcopart\b/i.test(scope.text);
+    const hasI = /\biaai\b/i.test(scope.text);
+    if (hasC && !hasI) return { value: 'COPART', evidence_type: 'vin_scoped_text' };
+    if (hasI && !hasC) return { value: 'IAAI', evidence_type: 'vin_scoped_text' };
+  }
+  /* 4. last-resort: перевірена конвенція префікса лота джерела */
+  const ref = parseLotRef(url);
+  if (ref.raw_lot_reference && ref.house_hint) return { value: ref.house_hint, evidence_type: 'source_lot_convention' };
+  /* 5. надійних доказів нема */
+  return { value: null, evidence_type: null };
+}
+
+/* lot id з URL джерела. bid.cars має форму /lot/<префікс>-<lot>/...:
+   стара регулярка \/(\d{7,9})\b її не бачила (перед цифрами дефіс) */
+export function parseLotRef(url, cfg = AUCTION_CONFIG) {
+  const u = String(url || '');
+  const pref = u.match(/\/lot\/([01])-(\d{6,9})\b/);
+  if (pref) return { lot_id: pref[2], raw_lot_reference: pref[1] + '-' + pref[2], house_hint: cfg.LOT_PREFIX_HOUSE[pref[1]] || null };
+  const plainLot = u.match(/\/(\d{7,9})\b/);
+  if (plainLot) return { lot_id: plainLot[1], raw_lot_reference: plainLot[1], house_hint: null };
+  return { lot_id: null, raw_lot_reference: null, house_hint: null };
+}
+
 export function canonicalAuctionHouse(raw) {
   const t = String(raw || '').trim().toLowerCase();
   /* чистий домен-токен (americamotors.com, copart.com, bid.cars) домом НЕ є */
@@ -433,9 +525,17 @@ function parseSaleDate(raw) {
   return { sale_date: iso, sale_date_raw: iso ? null : (r.slice(0, 40) || null) };
 }
 
-export function extractLotMeta(html, url) {
-  const plain = String(html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
-  const auction_house = canonicalAuctionHouse(plain);
+export function extractLotMeta(html, url, vin) {
+  /* VIN-scoped: усі vehicle-specific факти беремо ЛИШЕ зі скоупу цільового
+     VIN (structured-блок + вікна навколо VIN). Без vin поведінка legacy:
+     весь документ (для одно-лотових сторінок і зворотної сумісності) */
+  const wholePlain = String(html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  const scope = vin ? vinScopedRegions(html, vin) : null;
+  const scopeSource = vin ? 'vin_scoped' : 'whole_page';
+  const jsonldText = scope && scope.jsonld.length ? scope.jsonld.map(n => JSON.stringify(n).replace(/[{}\",:\[\]]/g, ' ')).join(' ') : '';
+  const plain = (scope && scope.found) ? (jsonldText + ' ' + scope.text).replace(/\s+/g, ' ') : wholePlain;
+  const houseScoped = vin ? auctionHouseScoped(html, url, vin) : { value: canonicalAuctionHouse(wholePlain), evidence_type: 'whole_page_legacy' };
+  const auction_house = houseScoped.value;
   /* дата: беремо ЛИШЕ явну "Auction ended" чи ISO; для американмоторс блок
      "Дата продажи" стосується схожих авто, не цього лота, тому не чіпаємо */
   const dateRaw = (plain.match(/Auction ended[^.]*?((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})/i) || [])[1] || null;
@@ -457,15 +557,18 @@ export function extractLotMeta(html, url) {
     else if (/exempt|exceeds/.test(tt)) odometer_status = 'exempt';
     else odometer_status = 'actual';
   }
-  /* ідентичність події: lot id DIRECT зі сторінки або URL */
-  const lot_id = ((String(url || '').match(/\/(\d{7,9})\b/) || [])[1]
-    || (plain.match(/(?:Lot|Лот|лота)[:\s#№]{0,5}(\d{7,9})/i) || [])[1] || null);
+  /* ідентичність події: lot id з URL джерела (source-aware) або зі скоупу */
+  const lotRef = parseLotRef(url);
+  const lot_id = lotRef.lot_id
+    || (plain.match(/(?:Lot|Лот|лота)[:\s#№]{0,5}(\d{7,9})/i) || [])[1] || null;
+  const raw_lot_reference = lotRef.raw_lot_reference || lot_id;
   /* невізуальні метадані: тягнемо завжди, дефіс/тире = нема (null) */
   /* damage/title: захоплюємо ЛИШЕ латиницю значення (аукціонні мітки латиною),
      стоп на кирилиці наступного маркера; дефіс = нема */
   const clean = v => { const t = (v || '').trim().replace(/^[-\u2013\u2014\s]+|[-\u2013\u2014\s]+$/g, ''); return t.length >= 2 ? t.slice(0, 40) : null; };
   /* стоп на наступному маркері, щоб primary не тягнув 'Secondary damage ...' */
-  const dmgStop = '(?:Secondary|Odometer|Loss|Title|Airbag|Primary|VIN|Тип|Пробіг|Пробег|Втор|Основ|$)';
+  /* \u2022 це роздільник вікон VIN-скоупу: теж законний стоп */
+  const dmgStop = '(?:Secondary|Odometer|Loss|Title|Airbag|Primary|VIN|\u2022|\\d|Тип|Пробіг|Пробег|Втор|Основ|$)';
   const primary_damage = clean((plain.match(new RegExp('(?:Primary damage|Осн\\.? поврежд[а-яіїєґё]*|Основн[а-яіїєґё]+ пошкодж[а-яіїєґё]*)[:\\s]{0,5}([A-Za-z\\- ,\\/]{1,30}?)\\s*' + dmgStop, 'i')) || [])[1]);
   const secondary_damage = clean((plain.match(new RegExp('(?:Secondary damage|Втор\\.? поврежд[а-яіїєґё]*|Другорядн[а-яіїєґё]+ пошкодж[а-яіїєґё]*)[:\\s]{0,5}([A-Za-z\\- ,\\/]{1,30}?)\\s*' + dmgStop, 'i')) || [])[1]);
   const title_status = clean((plain.match(/(?:Title status|Document type|Тип документа|Тип документу)[:\s]{0,5}([A-Za-z\- ,\/]{1,30})/i) || [])[1]);
@@ -478,7 +581,23 @@ export function extractLotMeta(html, url) {
     if (/none|no\b|not deployed|intact/.test(a)) airbags = { deployed: false, raw: airRaw.trim().slice(0, 30) };
     else if (/driver|passenger|side|curtain|both|deployed|yes|front/.test(a)) airbags = { deployed: true, raw: airRaw.trim().slice(0, 30) };
   }
-  return { auction_house, sale_date, sale_date_raw, odometer_value, odometer_unit, odometer_status, odometer_status_raw, lot_id, lot_id_source: lot_id ? 'direct' : null, primary_damage, secondary_damage, title_status, airbags };
+  /* field-level provenance: завжди видно, звідки взялося значення.
+     Внутрішні/діагностичні дані, у користувацький звіт не йдуть */
+  let sourceHost = null;
+  try { sourceHost = new URL(String(url || '')).hostname.replace(/^www\./, ''); } catch (e) {}
+  const prov = (value, evidence) => (value === null || value === undefined)
+    ? null : { value, source: sourceHost, evidence_type: evidence || scopeSource };
+  const field_provenance = {
+    auction_house: auction_house ? { value: auction_house, source: sourceHost, evidence_type: houseScoped.evidence_type } : null,
+    lot_id: prov(lot_id, lotRef.lot_id ? 'source_url' : scopeSource),
+    sale_date: prov(sale_date),
+    mileage: odometer_value === null ? null : { value: odometer_value, unit: odometer_unit, source: sourceHost, evidence_type: scopeSource },
+    primary_damage: prov(primary_damage),
+    secondary_damage: prov(secondary_damage),
+    title_status: prov(title_status),
+    airbags: airbags ? { value: airbags.raw, source: sourceHost, evidence_type: scopeSource } : null,
+  };
+  return { auction_house, sale_date, sale_date_raw, odometer_value, odometer_unit, odometer_status, odometer_status_raw, lot_id, raw_lot_reference, lot_id_source: lot_id ? (lotRef.lot_id ? 'source_url' : 'direct') : null, primary_damage, secondary_damage, title_status, airbags, scope: scopeSource, field_provenance };
 }
 
 /* строге відновлення lot_id з discovery-кандидата: ЛИШЕ коли одночасно
@@ -553,7 +672,7 @@ export async function findAuctionRecord(vin, nhtsa, opts = {}, cfg = AUCTION_CON
            записом: дім, лот або аукціонні damage-поля. Довільна сторінка з
            VIN (лістинг, каталог без аукціонного контенту) found не дає */
         if (identity.matched) {
-          const metaProbe = extractLotMeta(r.body, cand.url);
+          const metaProbe = extractLotMeta(r.body, cand.url, vin);
           if (!metaProbe.auction_house && !metaProbe.lot_id && !metaProbe.primary_damage) {
             outcomes[cand.source] = 'not_found';
             d.identity = (d.identity || 'high') + '+no_auction_content';
@@ -569,7 +688,7 @@ export async function findAuctionRecord(vin, nhtsa, opts = {}, cfg = AUCTION_CON
           diagnostics.push(d);
           console.log('[auction] source=' + cand.source, 'step=lot', 'status=200 found identity=' + d.identity, d.ms + 'ms');
           /* ранній вихід законний ЛИШЕ при found */
-          const meta = extractLotMeta(r.body, cand.url);
+          const meta = extractLotMeta(r.body, cand.url, vin);
           const rec = {
             status: 'found',
             source: cand.source,
@@ -600,7 +719,7 @@ export async function findAuctionRecord(vin, nhtsa, opts = {}, cfg = AUCTION_CON
                   rec.photo_urls = [...new Set([...more, ...rec.photo_urls])].slice(0, cfg.MAX_PHOTOS);
                   /* сторінку вже отримано з необхідної причини: беремо достовірні
                      metadata (подушки, damage) без окремого запиту */
-                  const m2 = extractLotMeta(z.body, alt.url);
+                  const m2 = extractLotMeta(z.body, alt.url, vin);
                   rec.meta = { ...rec.meta, airbags: rec.meta?.airbags || m2.airbags, primary_damage: rec.meta?.primary_damage || m2.primary_damage, secondary_damage: rec.meta?.secondary_damage || m2.secondary_damage, lot_id: rec.meta?.lot_id || m2.lot_id };
                   rec.paid = { provider: 'zenrows', reason, calls: z.calls, credits: z.credits };
                 }
@@ -629,7 +748,7 @@ export async function findAuctionRecord(vin, nhtsa, opts = {}, cfg = AUCTION_CON
     const z = await zenrowsFetch(best.url, { missing_reason: 'photos_unavailable', missing_fact_required: true }, opts, cfg);
     if (!z.skipped && z.status === 200) {
       const identity = verifyLotIdentity({ url: best.url, html: z.body }, vin, nhtsa);
-      const metaZ = identity.matched ? extractLotMeta(z.body, best.url) : null;
+      const metaZ = identity.matched ? extractLotMeta(z.body, best.url, vin) : null;
       if (identity.matched && metaZ && (metaZ.auction_house || metaZ.lot_id || metaZ.primary_damage)) {
         const photoUrls = [...new Set([...z.body.matchAll(/https?:\/\/[^"'\s>]+\.(?:jpe?g|png|webp)/gi)]
           .map(m => m[0]).filter(u => (u.toUpperCase().includes(String(vin).toUpperCase()) || /(copart|iaai|bid\.car|bidfax|poctra)/i.test(u)) && !/logo|icon|favicon|sprite|flag|thumb/i.test(u)))];
@@ -660,6 +779,126 @@ export async function findAuctionRecord(vin, nhtsa, opts = {}, cfg = AUCTION_CON
     diagnostics,
     total_ms: Date.now() - t0,
   };
+}
+
+/* ---------- історичні фото: транспорт до Vision ----------
+   Захищені CDN (mercury.bid.cars, pluto.bid.car) віддають Cloudflare-
+   челендж на прямий запит, тому Vision НІКОЛИ не зможе відкрити такий URL
+   сам. Тягнемо БАЙТИ на сервері і віддаємо їх Vision як bytes/base64.
+   Лестниця на КОЖЕН кадр: (A) прямий серверний fetch, (B) ZenRows на сам
+   IMAGE URL у найдешевшому режимі, (C) ZenRows premium_proxy.
+   Порядок кандидатів: спершу пробуємо ВСІ вільні URL прямим шляхом і
+   платимо лише за брак кадрів. HTTP 200 з HTML-челенджем зображенням НЕ
+   вважається: перевіряємо content-type і магічні байти */
+export function dedupePhotoUrls(urls) {
+  const byId = new Map();
+  for (const u of (urls || [])) {
+    if (typeof u !== 'string' || !/^https?:\/\//.test(u)) continue;
+    let id;
+    try { id = new URL(u).pathname.split('/').filter(Boolean).pop().toLowerCase(); } catch (e) { id = u.toLowerCase(); }
+    if (!byId.has(id)) byId.set(id, []);
+    byId.get(id).push(u);
+  }
+  /* один кадр = один запис із дзеркалами-альтернативами */
+  return [...byId.entries()].map(([id, mirrors]) => ({ id, mirrors }));
+}
+
+function pickSpread(items, k) {
+  if (items.length <= k) return items;
+  const out = [];
+  for (let i = 0; i < k; i++) out.push(items[Math.round(i * (items.length - 1) / (k - 1))]);
+  return [...new Set(out)];
+}
+
+async function tryImage(url, opts, cfg, mode) {
+  const cost = { calls: 0, credits: 0 };
+  let body = null, status = null, type = '';
+  try {
+    if (mode === 'direct') {
+      const fetchImpl = opts.fetchImpl || fetch;
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), opts.timeoutMs || cfg.FETCH_TIMEOUT_MS);
+      let r;
+      try { r = await fetchImpl(url, { signal: ctl.signal, headers: { 'user-agent': UA, accept: 'image/*' } }); } finally { clearTimeout(t); }
+      status = r.status;
+      type = String(r.headers?.get?.('content-type') || '');
+      if (r.ok) body = Buffer.from(await r.arrayBuffer());
+    } else {
+      const z = await zenrowsImage(url, opts, cfg, mode === 'premium');
+      cost.calls = z.calls || 0;
+      cost.credits = z.credits || 0;
+      status = z.status;
+      type = z.type || '';
+      body = z.buf || null;
+    }
+  } catch (e) { status = 'error'; }
+  /* валідація: тип, магічні байти, розмір. HTML-челендж відкидається */
+  if (!body || !Buffer.isBuffer(body) || body.length < 12) return { ok: false, reason: 'no_bytes', status, cost };
+  if (type && !/^image\//i.test(type) && !/octet-stream/i.test(type)) return { ok: false, reason: 'not_image_type', status, cost };
+  if (!IMG_MAGIC(body)) return { ok: false, reason: 'bad_signature', status, cost };
+  if (body.length > cfg.VISION_PHOTO_MAX_BYTES) return { ok: false, reason: 'too_large', status, cost };
+  return { ok: true, buf: body, type: /^image\//i.test(type) ? type : 'image/jpeg', status, cost };
+}
+
+export async function zenrowsImage(targetUrl, opts = {}, cfg = AUCTION_CONFIG, premium = false) {
+  const key = process.env.ZENROWS_API_KEY;
+  if (!key) return { skipped: 'no_api_key', calls: 0, credits: 0 };
+  const fetchImpl = opts.zenrowsFetchImpl || fetch;
+  /* для прямого image URL js_render НЕ потрібен: тягнемо байти */
+  const api = 'https://api.zenrows.com/v1/?apikey=' + encodeURIComponent(key)
+    + '&url=' + encodeURIComponent(targetUrl) + (premium ? '&premium_proxy=true' : '');
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), opts.zenrowsTimeoutMs || 45000);
+  try {
+    const r = await fetchImpl(api, { signal: ctl.signal });
+    const type = String(r.headers?.get?.('content-type') || '');
+    const buf = Buffer.from(await r.arrayBuffer());
+    const cost = r.headers?.get?.('x-request-cost');
+    return { status: r.status, type, buf, calls: 1, credits: cost ? Number(cost) : (premium ? 25 : 1) };
+  } catch (e) {
+    return { status: 'error', calls: 1, credits: premium ? 25 : 1 };
+  } finally { clearTimeout(t); }
+}
+
+export async function fetchHistoricalPhotos(urls, opts = {}, cfg = AUCTION_CONFIG) {
+  const frames = dedupePhotoUrls(urls);
+  const picked = pickSpread(frames, opts.max || cfg.VISION_PHOTOS_MAX);
+  const stats = { discovered: frames.length, attempted: picked.length, direct_ok: 0, direct_fail: 0, zen_basic: 0, zen_premium: 0, credits: 0, failed: [] };
+  const photos = [];
+  /* ФАЗА 1: усе, що відкривається безкоштовно (будь-яке дзеркало кадру) */
+  const unresolved = [];
+  for (const f of picked) {
+    let done = null;
+    for (const u of f.mirrors) {
+      const r = await tryImage(u, opts, cfg, 'direct');
+      if (r.ok) { done = { url: u, buf: r.buf, type: r.type, via: 'direct' }; break; }
+      stats.direct_fail++;
+    }
+    if (done) { stats.direct_ok++; photos.push(done); } else unresolved.push(f);
+  }
+  /* ФАЗА 2: платимо лише за брак кадрів і лише за найдешевшим режимом */
+  const wantMin = Math.min(opts.min || 3, picked.length);
+  if (photos.length < wantMin && opts.allowPaid !== false && process.env.ZENROWS_API_KEY) {
+    for (const f of unresolved) {
+      if (photos.length >= wantMin) break;
+      let done = null;
+      for (const mode of ['basic', 'premium']) {
+        for (const u of f.mirrors) {
+          const r = await tryImage(u, opts, cfg, mode);
+          stats.credits += r.cost.credits;
+          if (mode === 'basic') stats.zen_basic += r.cost.calls; else stats.zen_premium += r.cost.calls;
+          if (r.ok) { done = { url: u, buf: r.buf, type: r.type, via: 'zenrows_' + mode }; break; }
+        }
+        if (done) break;
+      }
+      if (done) photos.push(done); else stats.failed.push(f.id);
+    }
+  } else {
+    for (const f of unresolved) stats.failed.push(f.id);
+  }
+  console.log('[auction] historical photos: discovered=' + stats.discovered, 'direct_ok=' + stats.direct_ok,
+    'zen_basic=' + stats.zen_basic, 'zen_premium=' + stats.zen_premium, 'used=' + photos.length, 'credits~=' + stats.credits);
+  return { photos, stats };
 }
 
 /* ---------- ZenRows: СТРОГО останній fallback ----------

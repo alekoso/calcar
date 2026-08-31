@@ -6,7 +6,7 @@ import { computeScoreV3, resolveVehicleAge } from './score-v3.js';
 /* активна версія CalCar Score: перемикається конфігурацією без деплою коду.
    Rollback на v2 = env CALCAR_SCORE_VERSION=v2, НЕ revert коміту */
 const SCORE_VERSION = process.env.CALCAR_SCORE_VERSION === 'v2' ? 'v2' : 'v3';
-import { findAuctionRecord, shouldRecheck, discoverVinCandidates, photoHasProvenance } from './auction.js';
+import { findAuctionRecord, shouldRecheck, discoverVinCandidates, photoHasProvenance, fetchHistoricalPhotos } from './auction.js';
 
 /* ============================================================
    CalCar Check, рушій v1: посилання на оголошення -> звіт.
@@ -126,6 +126,29 @@ function relevantText(text, markers, budget = 14000) {
   }
   const joined = chunks.join('\n\n');
   return (joined.length > 500 ? joined : text.slice(0, budget)).slice(0, budget);
+}
+
+/* meta події для кеша: рівно ті поля, які читає гілка cache-hit */
+function auctionSearchMetaForCache(as) {
+  return {
+    auction_house: as.house || null, sale_date: as.sale_date || null, lot_id: as.lot_id_meta || null,
+    airbags: as.airbags_meta || null, primary_damage: as.primary_damage || null,
+    secondary_damage: as.secondary_damage || null,
+    odometer_value: as.odometer?.value ?? null, odometer_unit: as.odometer?.unit || 'unknown',
+    odometer_status: as.odometer?.status || 'unknown', odometer_status_raw: as.odometer?.status_raw || null,
+    field_provenance: as.field_provenance || null,
+  };
+}
+
+/* версія екстрактора історичного візуалу: зміна семантики промпту/полів
+   мусить інвалідовувати кеш historical_visual */
+export const HISTORICAL_VISUAL_VERSION = 'hv-2026-08-31';
+/* стабільний відбиток набору кадрів: djb2 по відсортованих URL */
+export function photoSetFingerprint(urls, version = HISTORICAL_VISUAL_VERSION) {
+  const norm = [...new Set((urls || []).filter(u => typeof u === 'string'))].sort().join('|') + '::' + version;
+  let h = 5381;
+  for (let i = 0; i < norm.length; i++) h = ((h * 33) ^ norm.charCodeAt(i)) >>> 0;
+  return version + ':' + h.toString(36);
 }
 
 /* TODO (окрема наступна data-задача, НЕ чіпати в поточних правках):
@@ -1617,6 +1640,16 @@ export default async function handler(req, res) {
             auctionSearch.odometer = cached.record?.meta ? { value: cached.record.meta.odometer_value ?? null, unit: cached.record.meta.odometer_unit || 'unknown', status: cached.record.meta.odometer_status || 'unknown', status_raw: cached.record.meta.odometer_status_raw || null } : null;
             auctionSearch.primary_damage = cached.record?.meta?.primary_damage || null;
             auctionSearch.secondary_damage = cached.record?.meta?.secondary_damage || null;
+            auctionSearch.field_provenance = cached.record?.meta?.field_provenance || null;
+            /* усі кадри події з кешу: не лише перші 8 */
+            auctionSearch.extra_photos = Array.isArray(cached.record?.photo_urls) ? cached.record.photo_urls : [];
+            /* кешований historical_visual: якщо набір кадрів і версія
+               екстрактора ті самі, платний добір і повторний Vision не
+               потрібні (кадри аукціону незмінні) */
+            if (cached.record?.historical_visual && cached.record?.hv_fingerprint
+              === photoSetFingerprint(cached.record?.photo_urls || [])) {
+              auctionSearch.cached_historical_visual = cached.record.historical_visual;
+            }
             /* знайдена подія постійна і повторно не оплачується, але у VIN
                може зʼявитись НОВА аукціонна подія: discovery повторюємо і
                дивимось лише на кандидатів з ІНШИМИ сторінками */
@@ -1652,6 +1685,8 @@ export default async function handler(req, res) {
             auctionSearch.airbags_meta = rec.meta?.airbags || null;
             auctionSearch.primary_damage = rec.meta?.primary_damage || null;
             auctionSearch.secondary_damage = rec.meta?.secondary_damage || null;
+            auctionSearch.field_provenance = rec.meta?.field_provenance || null;
+            auctionSearch.extra_photos = rec.photo_urls || [];
             /* подія постійна за source+lot; vin-кеш лишається для сумісності */
             await writeAuctionEvent(listing.vin, rec);
             await writeAuctionCache(listing.vin, { status: 'found', source: rec.source, lot_url: rec.lot_url, record: { photo_urls: rec.photo_urls || [], identity: rec.identity, meta: rec.meta || null, sources_checked: rec.sources_checked || [] } });
@@ -1661,6 +1696,11 @@ export default async function handler(req, res) {
         }
       } catch (e) { console.log('[auction] пошук впав:', e.message); }
     }
+
+    /* кешований історичний візуал: ті самі незмінні кадри вже розібрані.
+       Даємо моделі готовий структурований результат текстом, щоб рішення
+       його бачило, і не платимо за повторний добір кадрів і Vision */
+    const cachedHv = (auctionSearch && auctionSearch.cached_historical_visual) || null;
 
     /* --- AI --- */
     const LANG_NAME = { ua: 'українською', ru: 'російською', en: 'англійською (English)' };
@@ -1746,15 +1786,38 @@ export default async function handler(req, res) {
        їх не завантажить: у Vision вони не йдуть (інакше запит зависає на
        кожному недоступному кадрі). Такі кадри лишаються в record, а зони і
        подушки для них дає exact-lot metadata */
-    const visionLoadable = u => !/mercury\.bid|pluto\.bid|bid\.cars|bidfax|poctra|cf-chl/i.test(String(u));
+    /* Захищені CDN історичних кадрів (mercury.bid.cars, pluto.bid.car)
+       Vision за URL не відкриє: тягнемо байти на сервері і віддаємо
+       base64. visionDirect лишається лише для вибору, кому потрібен
+       транспорт, а не для викидання кадрів (root cause старого бага) */
+    const visionDirect = u => !/mercury\.bid|pluto\.bid|bid\.cars|bidfax|poctra|cf-chl/i.test(String(u));
     /* ВИНЯТОК ПРОВЕНАНСУ (виправлення регресії 49c1b55): usa_photos,
        збережені САМОЮ площадкою у гілці /photos/auto/usa/ сторінки цього
        VIN, привʼязані до exact події платформою: це явна технічна
        привʼязка, VIN у імені файлу їм не потрібен. Generic-дзеркала
        (americamotors) як і раніше мусять мати VIN/lot у URL */
-    const auctionPhotos = (auction?.photos || [])
-      .filter(u => ((auction.from_ria && /riastatic\.com\/photos\/auto\/usa\//.test(u)) || photoHasProvenance(u, listing.vin, auctionLotId)) && visionLoadable(u))
-      .slice(0, 8);
+    /* data-URI -> вихідний URL кадру: у _meta і photo_map зберігаємо
+       посилання, а не мегабайти base64 */
+    const photoOriginByData = new Map();
+    /* кандидати з ПРОВЕНАНСОМ: усі підтверджені джерела цієї події */
+    const photoCandidates = [...new Set([...(auction?.photos || []), ...((auctionSearch && auctionSearch.extra_photos) || [])])]
+      .filter(u => (auction && auction.from_ria && /riastatic\.com\/photos\/auto\/usa\//.test(u)) || photoHasProvenance(u, listing.vin, auctionLotId));
+    /* безкоштовно завантажувані йдуть Vision як URL (як і раніше);
+       захищені проходять серверну лестницю і йдуть як base64-байти */
+    let auctionPhotos = photoCandidates.filter(visionDirect).slice(0, 8);
+    let historicalPhotoStats = null;
+    if (auction && photoCandidates.length && auctionPhotos.length < 3 && !cachedHv) {
+      try {
+        const need = Math.max(0, 6 - auctionPhotos.length);
+        const hp = await fetchHistoricalPhotos(photoCandidates.filter(u => !auctionPhotos.includes(u)), { max: need, min: Math.min(3, need), nhtsa }, undefined);
+        historicalPhotoStats = hp.stats;
+        for (const ph of hp.photos) {
+          auctionPhotos.push('data:' + (ph.type || 'image/jpeg') + ';base64,' + ph.buf.toString('base64'));
+          photoOriginByData.set(auctionPhotos[auctionPhotos.length - 1], ph.url);
+        }
+        auctionPhotos = auctionPhotos.slice(0, 8);
+      } catch (e) { console.log('[check] historical photo transport failed:', e.message); }
+    }
     if (auction) auction.photos_sent = auctionPhotos.length;
     if (auction && !auctionPhotos.length) {
       /* структуроване діагностичне повідомлення для Runtime Logs:
@@ -1776,6 +1839,9 @@ export default async function handler(req, res) {
       ...photoUrls.map((u, i) => img(u, highSet.has(i) ? 'high' : 'low')),
       ...(auctionPhotos.length
         ? [{ type: 'text', text: 'ФОТО З АУКЦІОНУ США (до ремонту, архів). Нумерація: auction_photo_1..auction_photo_' + auctionPhotos.length + ' у порядку подачі:' }, ...auctionPhotos.map(u => img(u, 'high'))]
+        : []),
+      ...(cachedHv
+        ? [{ type: 'text', text: 'ІСТОРИЧНИЙ ВІЗУАЛЬНИЙ РОЗБІР (готовий, з попереднього аналізу ТИХ САМИХ архівних кадрів цієї події; кадри незмінні). Використай його як historical_visual БЕЗ змін і врахуй у висновку: ' + JSON.stringify(cachedHv) }]
         : []),
       { type: 'text', text: PROMPT(listing, nhtsa, auction, langDirective, decisionStyle, auctionSearch) },
     ];
@@ -1824,9 +1890,22 @@ export default async function handler(req, res) {
        structured-поля (structural_visual_status, srs, зони, severity).
        Виник у ТОМУ Ж виклику, що й purchase_decision, тому рішення
        бачило кадри до формування */
-    const hvClean = sanitizeHistoricalVisual(parsed.historical_visual, auctionPhotos.length);
+    const hvClean = sanitizeHistoricalVisual(parsed.historical_visual, auctionPhotos.length || (cachedHv ? 1 : 0));
     if (hvClean) parsed.historical_visual = hvClean;
     else delete parsed.historical_visual;
+    /* свіжий розбір незмінних кадрів кладемо в кеш події разом із
+       відбитком набору: наступний Check не платитиме за ті самі кадри */
+    if (parsed.historical_visual && !cachedHv && listing.vin && auctionSearch && auctionSearch.status === 'found') {
+      try {
+        const shots = (auctionSearch.extra_photos && auctionSearch.extra_photos.length)
+          ? auctionSearch.extra_photos : (auction && auction.photos) || [];
+        await writeAuctionCache(listing.vin, {
+          status: 'found', source: auctionSearch.source || null, lot_url: auctionSearch.lot_url || null,
+          record: { photo_urls: shots, meta: auctionSearchMetaForCache(auctionSearch), sources_checked: auctionSearch.sources_checked || [],
+            historical_visual: parsed.historical_visual, hv_fingerprint: photoSetFingerprint(shots) },
+        });
+      } catch (e) { console.log('[check] hv cache write failed:', e.message); }
+    }
 
     /* ---- CalCar Score: модель класифікувала знахідки, код визначає
        доступність джерел із фактів пайплайна, формула рахує. Рахуються
@@ -2060,7 +2139,7 @@ export default async function handler(req, res) {
     else delete parsed.body_wrap;
 
     /* людські номери кадрів у текстах: N = позиція у вихідній галереї */
-    const auctionOrigIdx = auctionPhotos.map(u => (auction && Array.isArray(auction.photos)) ? auction.photos.indexOf(u) : -1);
+    const auctionOrigIdx = auctionPhotos.map(u => { const real = photoOriginByData.get(u) || u; return (auction && Array.isArray(auction.photos)) ? auction.photos.indexOf(real) : -1; });
     localizePhotoRefs(parsed, photoIdx, auctionOrigIdx, PHOTO_LABELS[lang] || PHOTO_LABELS.ua);
 
     /* ---- комплектація: детермінована валідація + скептична перевірка ----
@@ -2130,9 +2209,10 @@ export default async function handler(req, res) {
       photo_selection: { total: listing.photos.length, picked: photoIdx, high: photoIdx.filter((_, i) => highSet.has(i)), gallery_coverage_complete: galleryCoverageComplete, selector: photoSelectorMeta },
       seller_text: listing.seller_text || null,
       auction_url: listing.auction_url || null,
-      auction_photos: auctionPhotos,
+      auction_photos: auctionPhotos.map(u => photoOriginByData.get(u) || u),
+      historical_photo_transport: historicalPhotoStats,
       /* мапи для UI і чату: технічний id кадру -> позиція у вихідній галереї */
-      photo_map: { listing: photoIdx, auction: auctionPhotos.map(u => (auction && Array.isArray(auction.photos)) ? auction.photos.indexOf(u) : -1) },
+      photo_map: { listing: photoIdx, auction: auctionPhotos.map(u => { const real = photoOriginByData.get(u) || u; return (auction && Array.isArray(auction.photos)) ? auction.photos.indexOf(real) : -1; }) },
       price_context: listing.price_context || null,
       auction_photos_provenance: auction && auctionPhotos.length
         ? (auction.from_ria ? 'autoria_history' : auction.from_search ? 'auction_search' : 'external_archive')

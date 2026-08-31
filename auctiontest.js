@@ -381,6 +381,97 @@ function makeFetch(map) {
   if (disco2.candidates.some(c => /auto\.ria\.com/.test(c.url))) errs.push('площадка оголошення лишилась кандидатом');
   delete process.env.SERPER_API_KEY;
 
+
+  /* ===== історичні фото: транспорт байтів замість викидання URL ===== */
+  const PROT = 'https://mercury.bid.cars/1-49495925/2017-BMW-5-Series-' + VIN + '-1.jpg';
+  const PROT2 = 'https://pluto.bid.car/1-49495925/2017-BMW-5-Series-' + VIN + '-2.jpg';
+  const FREE = 'https://copart.vincheck.by/v1/AUTH/lpp/0325/free-' + VIN + '.jpg';
+  const CF_HTML = '<!DOCTYPE html><html><head><title>Just a moment...</title></head><body>cf-chl</body></html>';
+  const imgResp = (buf, type) => ({ ok: true, status: 200, headers: { get: h => (h.toLowerCase() === 'content-type' ? type : null) }, arrayBuffer: async () => buf, text: async () => '' });
+  const htmlResp = (status, body) => ({ ok: status < 400, status, headers: { get: h => (h.toLowerCase() === 'content-type' ? 'text/html' : null) }, arrayBuffer: async () => Buffer.from(body), text: async () => body });
+
+  /* 1+2. прямий 403 -> дозволений платний фолбек, байти приймаються */
+  process.env.ZENROWS_API_KEY = 'test-zen';
+  let zenImgCalls = [];
+  const directBlocked = async () => htmlResp(403, CF_HTML);
+  const zenImgOk = async (api) => { zenImgCalls.push(decodeURIComponent(String(api))); return imgResp(jpeg(90000), 'image/jpeg'); };
+  let hp = await quiet(() => A.fetchHistoricalPhotos([PROT, PROT2], { fetchImpl: directBlocked, zenrowsFetchImpl: zenImgOk, min: 2 }));
+  if (hp.photos.length !== 2) errs.push('захищені кадри не дістались через ZenRows: ' + hp.photos.length);
+  if (!hp.photos.every(p => Buffer.isBuffer(p.buf) && p.via.startsWith('zenrows'))) errs.push('кадри повернулись не байтами');
+  if (!zenImgCalls.every(u => /\.jpg/.test(u))) errs.push('ZenRows викликався не на IMAGE URL');
+  if (zenImgCalls.some(u => /js_render/.test(u))) errs.push('для image URL увімкнувся зайвий js_render');
+  if (hp.stats.zen_basic < 1) errs.push('не порахований дешевий режим');
+
+  /* 3. HTTP 200 з Cloudflare-HTML НЕ є зображенням */
+  const zenImgHtml = async () => htmlResp(200, CF_HTML);
+  hp = await quiet(() => A.fetchHistoricalPhotos([PROT], { fetchImpl: directBlocked, zenrowsFetchImpl: zenImgHtml, min: 1 }));
+  if (hp.photos.length !== 0) errs.push('HTML-челендж прийнятий як зображення');
+  if (!hp.stats.failed.length) errs.push('невдалий кадр не позначений');
+
+  /* 4. валідні JPEG-байти напряму приймаються */
+  const directOk = async () => imgResp(jpeg(120000), 'image/jpeg');
+  hp = await quiet(() => A.fetchHistoricalPhotos([FREE], { fetchImpl: directOk, min: 1 }));
+  if (hp.photos.length !== 1 || hp.photos[0].via !== 'direct') errs.push('валідний прямий JPEG не прийнятий');
+
+  /* 5. вільне джерело в пріоритеті: за нього не платимо */
+  zenImgCalls = [];
+  const mixed = async (u) => (/vincheck/.test(String(u)) ? imgResp(jpeg(100000), 'image/jpeg') : htmlResp(403, CF_HTML));
+  hp = await quiet(() => A.fetchHistoricalPhotos([PROT, FREE, PROT2], { fetchImpl: mixed, zenrowsFetchImpl: zenImgOk, min: 1, max: 3 }));
+  if (!hp.photos.some(p => p.via === 'direct')) errs.push('вільний кадр не використаний');
+  if (hp.stats.credits > 0 && hp.photos.filter(p => p.via === 'direct').length >= 1 && hp.stats.zen_basic > 2) errs.push('заплатили більше, ніж потрібно, за наявності вільних кадрів');
+
+  /* 6. усе недоступне -> нуль кадрів, жодних вигаданих даних */
+  hp = await quiet(() => A.fetchHistoricalPhotos([PROT, PROT2], { fetchImpl: directBlocked, allowPaid: false }));
+  if (hp.photos.length !== 0 || hp.stats.credits !== 0) errs.push('без платного шляху кадри взялись нізвідки');
+  delete process.env.ZENROWS_API_KEY;
+
+  /* дедуп дзеркал одного кадру */
+  const dd = A.dedupePhotoUrls(['https://mercury.bid.cars/1-1/x-1.jpg', 'https://pluto.bid.car/1-1/x-1.jpg', 'https://mercury.bid.cars/1-1/x-2.jpg']);
+  if (dd.length !== 2) errs.push('дзеркала одного кадру не злились: ' + dd.length);
+  if (dd[0].mirrors.length !== 2) errs.push('дзеркала не збережені як альтернативи');
+
+  /* ===== 7-11. VIN-scoped метадані ===== */
+  const AGG = '<html><head>' +
+    '<script type="application/ld+json">' + JSON.stringify({ '@type': 'Vehicle', vehicleIdentificationNumber: VIN, name: '2018 BMW 530E', odometer: { value: '98997', unitCode: 'SMI' }, image: ['https://copart.vincheck.by/v1/AUTH/lpp/0325/a_hrs.jpg'] }) + '</script>' +
+    '<script type="application/ld+json">' + JSON.stringify({ '@type': 'Vehicle', vehicleIdentificationNumber: 'WBAJA9C51KB111111', name: '2019 BMW I4', odometer: { value: '12345', unitCode: 'SMI' }, image: ['https://vis.iaai.com/resizer?imageKeys=44352640'] }) + '</script>' +
+    '</head><body><nav>лоти з США, дані аукціонів Copart і IAAI</nav>' +
+    '<div class="lot">VIN: ' + VIN + ' пробіг 98 997 mi Primary damage Front end Secondary damage Side</div>' +
+    '<div class="carousel">2019 BMW I4 WBAJA9C51KB111111 IAAI пробіг 12 345 mi Primary damage Rear end</div>' +
+    '</body></html>';
+  const aggMeta = A.extractLotMeta(AGG, 'https://vincheck.by/catalog/' + VIN, VIN);
+  if (aggMeta.auction_house !== 'COPART') errs.push('exact-VIN JSON-LD Copart + чужа IAAI-карусель дали: ' + aggMeta.auction_house);
+  if (aggMeta.field_provenance?.auction_house?.evidence_type !== 'json_ld_exact_vin') errs.push('провенанс платформи не json_ld_exact_vin');
+  if (aggMeta.odometer_value !== 98997) errs.push('пробіг цільового VIN: ' + aggMeta.odometer_value);
+  if (aggMeta.primary_damage !== 'Front end' || aggMeta.secondary_damage !== 'Side') errs.push('damage цільового VIN: ' + aggMeta.primary_damage + '/' + aggMeta.secondary_damage);
+  if (/Rear/i.test(String(aggMeta.primary_damage))) errs.push('damage чужого авто просочився');
+  if (aggMeta.field_provenance?.mileage?.value !== 98997) errs.push('провенанс пробігу відсутній');
+
+  /* 8. навігаційний текст "Copart і IAAI" сам по собі платформу не визначає */
+  const NAV_ONLY = '<html><body><nav>дані аукціонів Copart і IAAI</nav><div>VIN: ' + VIN + ' пробіг 50 000 mi</div></body></html>';
+  const navMeta = A.extractLotMeta(NAV_ONLY, 'https://agg.example/x', VIN);
+  if (navMeta.auction_house !== null) errs.push('навігаційний текст визначив платформу: ' + navMeta.auction_house);
+
+  /* 9. немає надійних доказів -> null */
+  const NOTHING = '<html><body><div>VIN: ' + VIN + ' просто сторінка</div></body></html>';
+  if (A.extractLotMeta(NOTHING, 'https://agg.example/y', VIN).auction_house !== null) errs.push('без доказів платформа не null');
+
+  /* 10. lot_id з bid.cars-URL виду /lot/1-49495925/ */
+  const lr = A.parseLotRef('https://bid.cars/en/lot/1-49495925/2017-BMW-5-Series-' + VIN);
+  if (lr.lot_id !== '49495925' || lr.raw_lot_reference !== '1-49495925') errs.push('lot_id bid.cars: ' + JSON.stringify(lr));
+  if (lr.house_hint !== 'COPART') errs.push('перевірена конвенція префікса не дала Copart');
+  if (A.parseLotRef('https://bid.cars/en/lot/0-42107936/x').house_hint !== 'IAAI') errs.push('префікс 0- не дав IAAI');
+  /* старі прямі lot id не зламані */
+  if (A.parseLotRef('https://poctra.com/lot/12345678').lot_id !== '12345678') errs.push('прямий lot_id зламаний');
+  /* конвенція ЛИШЕ last-resort: structured evidence сильніша */
+  const BIDLOT = '<html><head><title>2018 BMW 530e ' + VIN + '</title></head><body><script>var auctionType = \'IAAI\';</script><div>VIN: ' + VIN + '</div></body></html>';
+  const bidMeta = A.extractLotMeta(BIDLOT, 'https://bid.cars/en/lot/1-49495925/x', VIN);
+  if (bidMeta.auction_house !== 'IAAI') errs.push('labelled-поле мало перебити конвенцію префікса: ' + bidMeta.auction_house);
+
+  /* 13. field_provenance зберігається для ключових полів */
+  for (const k of ['auction_house', 'lot_id', 'mileage', 'primary_damage']) {
+    if (!(k in (aggMeta.field_provenance || {}))) errs.push('нема провенансу поля ' + k);
+  }
+
   if (errs.length) { console.log('FAILED:', errs); process.exit(1); }
   console.log('повний шлях · ідентичність (VIN > naming) · absent проти unreachable · ліміти фото · TTL кешу · Serper discovery і ranking · сніпет не evidence · 200-челендж · ZenRows discovery-unblock і подвійна умова');
   console.log('AUCTION TEST PASSED');

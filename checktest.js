@@ -684,6 +684,28 @@ const REPORTS = [
   if (!fs.existsSync('supabase-auction-cache.sql')) errs.push('нема SQL-файла auction_checks для власника');
 }
 
+/* ---- історичні фото як байти + кеш historical_visual ---- */
+{
+  /* фото більше НЕ викидаються: захищені йдуть через серверний транспорт */
+  if (/visionLoadable/.test(api)) errs.push('старий фільтр visionLoadable, що викидав захищені кадри, лишився');
+  if (!/fetchHistoricalPhotos/.test(api)) errs.push('транспорт історичних кадрів не підключений');
+  if (!/base64/.test(api)) errs.push('кадри не передаються Vision байтами');
+  if (!/photoOriginByData/.test(api)) errs.push('нема мапи data-URI -> вихідний URL (у _meta полізе base64)');
+  /* кеш historical_visual за відбитком набору кадрів і версією екстрактора */
+  const fns = new Function(grab(api, 'photoSetFingerprint') + '\nconst HISTORICAL_VISUAL_VERSION = "hv-test";\nreturn { photoSetFingerprint };')();
+  const a = fns.photoSetFingerprint(['https://x/2.jpg', 'https://x/1.jpg'], 'v1');
+  const b = fns.photoSetFingerprint(['https://x/1.jpg', 'https://x/2.jpg'], 'v1');
+  if (a !== b) errs.push('відбиток набору кадрів залежить від порядку URL');
+  if (a === fns.photoSetFingerprint(['https://x/1.jpg'], 'v1')) errs.push('різні набори кадрів дали однаковий відбиток');
+  if (a === fns.photoSetFingerprint(['https://x/2.jpg', 'https://x/1.jpg'], 'v2')) errs.push('зміна версії екстрактора не інвалідує кеш');
+  if (!/hv_fingerprint/.test(api)) errs.push('відбиток не зберігається в кеш події');
+  if (!/cached_historical_visual/.test(api)) errs.push('кешований historical_visual не читається');
+  if (!/auctionPhotos\.length < 3 && !cachedHv/.test(api)) errs.push('кеш hv не запобігає повторному платному добору кадрів');
+  if (!/ІСТОРИЧНИЙ ВІЗУАЛЬНИЙ РОЗБІР \(готовий/.test(api)) errs.push('кешований розбір не подається моделі текстом');
+  /* провенанс полів події доїжджає до звіту */
+  if (!/field_provenance/.test(api)) errs.push('field_provenance не прокидається');
+}
+
 if (errs.length) { console.log('FAILED:', errs); process.exit(1); }
   console.log('нормалізація одна · збіг за URL і за VIN · значущий query не клеїться · гість без перевірки · повтор свідомий, insert · правки звіту');
   console.log('CHECK DUP TEST PASSED');
