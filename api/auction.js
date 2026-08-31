@@ -6,6 +6,11 @@
    і пайплайн не залежать ні від пошуковика, ні від способу обходу
    антибота (прямий fetch, актор, scraping API: усе це лише fetchImpl). */
 
+/* версії шарів історичних даних: змінив семантику витягу чи нормалізації
+   події -> підніми версію, і кеш оновиться сам, без ручної чистки таблиць */
+export const PARSER_VERSION = 'parser-2026-08-31';
+export const EVENT_VERSION = 'event-2026-08-31';
+
 /* ================= КАЛІБРУЄТЬСЯ ================= */
 export const AUCTION_CONFIG = {
   /* білий список джерел: discovery не виходить за нього ніколи */
@@ -456,9 +461,14 @@ export function vinScopedRegions(html, vin, windowChars = 2500) {
     if (c !== V && /\d/.test(c) && /[A-Z]/.test(c)) otherVins.add(c);
   }
   out.other_vehicles = otherVins.size;
+  /* ДІАГНОСТИКА, не режим витягу: відсутність чужого VIN у тексті НЕ
+     доводить, що сторінка одно-лотова (карусель може не друкувати VIN, і
+     тоді у whole-document режим протікали чужі пробіг/damage/title).
+     Скоуп ЗАВЖДИ вікна навколо VIN + structured-блок цього VIN.
+     Перевірено на реальній сторінці bid.cars: поля лота лежать за 142
+     символи від VIN, тобто вікно їх упевнено покриває */
   out.single_lot_page = otherVins.size === 0;
-  if (out.single_lot_page && parts.length) out.text = plainAll;
-  else out.text = parts.join(' \u2022 ');
+  out.text = parts.join(' \u2022 ');
   /* зображення зі structured-блоку цього VIN: провенанс за побудовою
      (лежать усередині блоку саме цього VIN), навіть якщо в URL хеш */
   out.jsonld_photos = [];
@@ -621,7 +631,7 @@ export function extractLotMeta(html, url, vin) {
     title_status: prov(title_status),
     airbags: airbags ? { value: airbags.raw, source: sourceHost, evidence_type: scopeSource } : null,
   };
-  return { auction_house, sale_date, sale_date_raw, odometer_value, odometer_unit, odometer_status, odometer_status_raw, lot_id, raw_lot_reference, lot_id_source: lot_id ? (lotRef.lot_id ? 'source_url' : 'direct') : null, primary_damage, secondary_damage, title_status, airbags, scope: scopeSource, jsonld_photos: (scope && scope.jsonld_photos) || [], field_provenance };
+  return { auction_house, sale_date, sale_date_raw, odometer_value, odometer_unit, odometer_status, odometer_status_raw, lot_id, raw_lot_reference, lot_id_source: lot_id ? (lotRef.lot_id ? 'source_url' : 'direct') : null, primary_damage, secondary_damage, title_status, airbags, scope: scopeSource, jsonld_photos: (scope && scope.jsonld_photos) || [], field_provenance, parser_version: PARSER_VERSION };
 }
 
 /* строге відновлення lot_id з discovery-кандидата: ЛИШЕ коли одночасно

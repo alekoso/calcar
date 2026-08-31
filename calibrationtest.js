@@ -63,8 +63,10 @@ const gold = JSON.parse(fs.readFileSync('calibration-gold.json', 'utf8'));
      нормальна хронологія пробігу БЕЗ конфлікту і БЕЗ rollback */
   if (!near(f('WP7V3G'), 6.5, 6.9)) errs.push('acceptance WP7V3G: ' + f('WP7V3G'));
   if (res['WP7V3G'].v3.normalized_current_problems.some(p => /MILEAGE|ROLLBACK/.test(p.type))) errs.push('WP7V3G: нормальна хронологія оштрафована');
-  /* TYTP3J: глибока деформація БЕЗ підтвердження подушками/структурою = moderate */
-  if (!near(f('TYTP3J'), 8.8, 9.0)) errs.push('TYTP3J moderate/vc: ' + f('TYTP3J'));
+  /* TYTP3J: глибока деформація БЕЗ підтвердження подушками/структурою =
+     moderate. Бал 8.9 -> 8.7 свідомо: visually_consistent став
+     нейтральним (він доводить лише відсутність видимих протиріч) */
+  if (!near(f('TYTP3J'), 8.6, 8.8)) errs.push('TYTP3J moderate/vc: ' + f('TYTP3J'));
   const tyE = res['TYTP3J'].v3.accident_events[0];
   if (!tyE || tyE.derived_severity !== 'moderate') errs.push('TYTP3J: непідтверджена деформація мала бути moderate, а не ' + (tyE && tyE.derived_severity));
   /* flood: кап тримає */

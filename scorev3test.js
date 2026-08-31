@@ -167,11 +167,24 @@ const THIN = {
   /* смуга 6.9-7.2 сама по собі НЕ проблема: конкретне значення severe
      не фіксується вікном, стару кластеризацію тримають лише причинні
      інваріанти вище (драбина) і нижче (repair, SRS, капи) */
-  /* repair: confirmed_ok > visually_consistent > unknown; bad без помʼякшення */
+  /* repair: знижку дає ЛИШЕ confirmed_ok. visually_consistent доводить
+     тільки відсутність видимих протиріч на доступних кадрах, тому він
+     НЕЙТРАЛЬНИЙ і дорівнює unknown: поява статусу сама по собі не може
+     підняти бал авто. confirmed_bad помʼякшення не дає */
   const modOk = accCase({ airbags: true, zones: 1 }, 'confirmed_ok').final;
   const modVc = accCase({ airbags: true, zones: 1 }, 'visually_consistent').final;
   const modUnk = accCase({ airbags: true, zones: 1 }, 'unknown').final;
-  if (!(modOk > modVc && modVc > modUnk)) errs.push('repair-порядок порушений: ok ' + modOk + ', vc ' + modVc + ', unknown ' + modUnk);
+  const modBad = accCase({ airbags: true, zones: 1 }, 'confirmed_bad').final;
+  if (!(modOk > modUnk)) errs.push('confirmed_ok не дає знижки: ok ' + modOk + ', unknown ' + modUnk);
+  if (modVc !== modUnk) errs.push('visually_consistent не нейтральний: vc ' + modVc + ', unknown ' + modUnk);
+  if (modBad > modUnk) errs.push('confirmed_bad помʼякшив бал');
+  if (C.REPAIR_MULTIPLIER.visually_consistent !== 1.0) errs.push('множник visually_consistent не 1.0');
+  if (C_DIM.DR_REPAIR_MULT.visually_consistent !== 1.0) errs.push('DR-множник visually_consistent не 1.0');
+  /* база ДТП незмінна: множник діє лише на severity-складову */
+  const evOk = accCase({ airbags: true, zones: 1 }, 'confirmed_ok').accident_events[0];
+  const expOk = C.ACCIDENT_BASE + C.SEVERITY_ADDITIONAL.moderate * C.REPAIR_MULTIPLIER.confirmed_ok;
+  if (Math.abs(evOk.final_event_penalty - expOk) > 1e-9) errs.push('ACCIDENT_BASE стерта ремонтом: ' + evOk.final_event_penalty + ' != ' + expOk);
+  if (evOk.final_event_penalty <= C.ACCIDENT_BASE) errs.push('штраф упав до/нижче бази ДТП');
   /* confirmed_ok не стирає severe-історію: помітний residual проти чистої */
   const sevOk = accCase({ structural: true, airbags: true, zones: 2 }, 'confirmed_ok');
   const sevOkEvent = sevOk.accident_events[0];

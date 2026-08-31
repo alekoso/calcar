@@ -706,6 +706,40 @@ const REPORTS = [
   if (!/field_provenance/.test(api)) errs.push('field_provenance не прокидається');
 }
 
+/* ---- version-aware кеш історичної події ---- */
+{
+  const src = grab(api, 'cacheVersionState');
+  const fns = new Function("const PARSER_VERSION='P1', EVENT_VERSION='E1';" + src + '\nreturn { cacheVersionState };')();
+  const F = fns.cacheVersionState;
+  /* A: усі версії поточні -> reuse без мережі і Vision */
+  let st = F({ parser_version: 'P1', event_version: 'E1', historical_visual: { x: 1 }, hv_version: 'HV1' }, 'HV1');
+  if (st.parser_stale || st.hv_stale || !st.reusable_hv) errs.push('A: свіжий запис визнаний застарілим: ' + JSON.stringify(st));
+  /* B: застарів парсер -> переобробка, hv поки лишається придатним */
+  st = F({ parser_version: 'P0', event_version: 'E1', historical_visual: { x: 1 }, hv_version: 'HV1' }, 'HV1');
+  if (!st.parser_stale) errs.push('B: застарілий parser_version не помічений');
+  /* застаріла версія події теж вимагає переобробки */
+  if (!F({ parser_version: 'P1', event_version: 'E0' }, 'HV1').parser_stale) errs.push('застарілий event_version не помічений');
+  /* C: застаріла лише версія historical_visual */
+  st = F({ parser_version: 'P1', event_version: 'E1', historical_visual: { x: 1 }, hv_version: 'HV0' }, 'HV1');
+  if (st.parser_stale) errs.push('C: зайва переобробка парсера');
+  if (!st.hv_stale || st.reusable_hv) errs.push('C: застарілий hv визнаний придатним');
+  /* D: старий запис без метаданих версій -> stale один раз, авто-оновлення */
+  st = F({ photo_urls: ['a'] }, 'HV1');
+  if (!st.legacy || !st.parser_stale) errs.push('D: legacy-запис без версій не позначений stale');
+  /* переобробка бере ЗБЕРЕЖЕНИЙ lot_url, а не новий discovery */
+  if (!/reparseCachedLot/.test(api)) errs.push('нема переобробки збереженого лота');
+  if (!/const lotUrl = cached && cached\.lot_url/.test(api)) errs.push('переобробка не привʼязана до збереженого lot_url');
+  if (/reparseCachedLot[\s\S]{0,900}discoverVinCandidates|reparseCachedLot[\s\S]{0,900}serper/i.test(api)) errs.push('переобробка запускає зайвий discovery');
+  /* захищена сторінка: платний шлях лише за блокування */
+  if (!/page\.blocked \|\| page\.status !== 200\) && process\.env\.ZENROWS_API_KEY/.test(api)) errs.push('переобробка платить без блокування');
+  /* після переобробки: фінгерпринт вирішує долю historical_visual */
+  if (!/sameShots && rec0\.hv_version === HISTORICAL_VISUAL_VERSION/.test(api)) errs.push('hv не перевіряється відбитком після переобробки');
+  if (!/photos_changed: !sameShots/.test(api)) errs.push('зміна набору кадрів не фіксується');
+  /* версії пишуться у запис */
+  if (!/parser_version: PARSER_VERSION, event_version: EVENT_VERSION/.test(api)) errs.push('версії не зберігаються у кеші');
+  if (!/hv_version: HISTORICAL_VISUAL_VERSION/.test(api)) errs.push('версія hv не зберігається');
+}
+
 if (errs.length) { console.log('FAILED:', errs); process.exit(1); }
   console.log('нормалізація одна · збіг за URL і за VIN · значущий query не клеїться · гість без перевірки · повтор свідомий, insert · правки звіту');
   console.log('CHECK DUP TEST PASSED');

@@ -62,7 +62,13 @@ export const SCORE_CONFIG_V3 = {
   ACCIDENT_BASE: 0.3,        /* підтверджене ДТП саме по собі: малий базовий вплив,
                                 але помітний на кроці 0.1 навіть при повній стелі */
   SEVERITY_ADDITIONAL: { minor: 0.2, moderate: 1.0, severe: 2.4, indeterminate: 0 },
-  REPAIR_MULTIPLIER: { confirmed_ok: 0.6, visually_consistent: 0.85, unknown: 1.0, confirmed_bad: 1.0 },
+  /* visually_consistent означає ЛИШЕ "на доступних поточних кадрах
+     пошкоджені зони без видимих протиріч із відновленням": це НЕ перевірка
+     геометрії, зварних швів, силових елементів чи SRS. Тому він
+     НЕЙТРАЛЬНИЙ (1.0), як і unknown: факт лишається у звіті, але числового
+     бонуса авто не дає. Знижку дає лише confirmed_ok з обʼєктивним
+     підтвердженням якості відновлення */
+  REPAIR_MULTIPLIER: { confirmed_ok: 0.6, visually_consistent: 1.0, unknown: 1.0, confirmed_bad: 1.0 },
   /* підтверджений ремонт не стирає severe-історію: мінімальний residual */
   SEVERE_MIN_RESIDUAL: 1.0,
 
@@ -542,8 +548,9 @@ export function computeScoreV3(input, cfg = SCORE_CONFIG_V3) {
       if (repair === null || REPAIR_RANK[r] > REPAIR_RANK[repair]) repair = r;
     }
     const mult = cfg.REPAIR_MULTIPLIER[repair || 'unknown'];
-    const base = cfg.ACCIDENT_BASE + cfg.SEVERITY_ADDITIONAL[severity];
-    let penalty = round2(base * mult);
+    /* САМ ФАКТ підтвердженого ДТП не стирається якістю ремонту: множник
+       діє лише на severity-складову, ACCIDENT_BASE лишається незмінною */
+    let penalty = round2(cfg.ACCIDENT_BASE + cfg.SEVERITY_ADDITIONAL[severity] * mult);
     let residualApplied = false;
     if (severity === 'severe' && penalty < cfg.SEVERE_MIN_RESIDUAL) {
       penalty = cfg.SEVERE_MIN_RESIDUAL;   /* ремонт не стирає severe-історію */
@@ -701,7 +708,8 @@ export const SCORE_DIMENSIONS_CONFIG = {
   MILEAGE_CONFLICT: 1.5,
   MILEAGE_ROLLBACK_CAP: 2.5,
   DR_EVENT: { severe: 3.0, moderate: 1.6, minor: 0.5, indeterminate: 1.0 },
-  DR_REPAIR_MULT: { confirmed_ok: 0.45, visually_consistent: 0.8, unknown: 1.0, confirmed_bad: 1.3 },
+  /* та сама семантика: visually_consistent нейтральний */
+  DR_REPAIR_MULT: { confirmed_ok: 0.45, visually_consistent: 1.0, unknown: 1.0, confirmed_bad: 1.3 },
   DR_STRUCTURAL_UNRESOLVED: 1.0,  /* додатково до severe-події */
   DR_SRS_UNVERIFIED: 1.2,
   DR_POOR_REPAIR: 1.5,

@@ -487,6 +487,34 @@ function makeFetch(map) {
     if (!(k in (aggMeta.field_provenance || {}))) errs.push('нема провенансу поля ' + k);
   }
 
+
+  /* ===== scoped extraction: карусель БЕЗ чужого VIN більше не протікає ===== */
+  const CAROUSEL = '<html><body>'
+    + '<div class="lot">VIN: ' + VIN + ' 2018 BMW 530E Copart Odometer 98 997 mi Primary damage Front end Secondary damage Side Title status Salvage Seller State Farm Auction ended on Tuesday, April 29, 2025</div>'
+    + '<div class="carousel"><a href="/catalog/other"><img src="https://vis.iaai.com/x.jpg">2019 BMW X5 IAAI Odometer 250 000 mi Primary damage Rear end Secondary damage Roof Title status Flood Seller GEICO Auction ended on Monday, January 5, 2020</a></div>'
+    + '</body></html>';
+  const carMeta = A.extractLotMeta(CAROUSEL, 'https://agg.example/catalog/' + VIN, VIN);
+  const carScope = A.vinScopedRegions(CAROUSEL, VIN);
+  if (carScope.other_vehicles !== 0) errs.push('фікстура має містити карусель БЕЗ чужого VIN');
+  /* whole-document режим прибраний: скоуп лишається вікном навколо VIN */
+  if (carScope.text.length >= CAROUSEL.replace(/<[^>]+>/g, ' ').length) errs.push('увімкнувся небезпечний whole-document витяг');
+  if (carMeta.odometer_value === 250000) errs.push('протік пробіг чужого авто');
+  if (carMeta.odometer_value !== 98997) errs.push('пробіг цільового авто: ' + carMeta.odometer_value);
+  if (/Rear/i.test(String(carMeta.primary_damage))) errs.push('протік damage чужого авто');
+  if (carMeta.primary_damage !== 'Front end' || carMeta.secondary_damage !== 'Side') errs.push('damage цільового: ' + carMeta.primary_damage + '/' + carMeta.secondary_damage);
+  if (/Flood/i.test(String(carMeta.title_status))) errs.push('протік title чужого авто');
+  if (carMeta.auction_house === 'IAAI') errs.push('платформа чужого авто протекла');
+  if (carMeta.sale_date && /2020/.test(String(carMeta.sale_date))) errs.push('протекла дата продажу чужого авто');
+  /* поле далеко від VIN тепер чесно null, а не чуже значення */
+  const FAR = '<html><body><div>Primary damage Rear end</div><div>' + 'x '.repeat(2000) + '</div><div>VIN: ' + VIN + '</div></body></html>';
+  const farMeta = A.extractLotMeta(FAR, 'https://agg.example/z', VIN);
+  if (farMeta.primary_damage !== null) errs.push('поле поза скоупом підтягнулось: ' + farMeta.primary_damage);
+
+  /* ===== версії шарів історичних даних ===== */
+  if (!A.PARSER_VERSION || !A.EVENT_VERSION) errs.push('нема версій парсера/події');
+  const freshMeta = A.extractLotMeta(CAROUSEL, 'https://agg.example/catalog/' + VIN, VIN);
+  if (freshMeta.parser_version !== A.PARSER_VERSION) errs.push('parser_version не пишеться в meta');
+
   if (errs.length) { console.log('FAILED:', errs); process.exit(1); }
   console.log('повний шлях · ідентичність (VIN > naming) · absent проти unreachable · ліміти фото · TTL кешу · Serper discovery і ranking · сніпет не evidence · 200-челендж · ZenRows discovery-unblock і подвійна умова');
   console.log('AUCTION TEST PASSED');

@@ -6,7 +6,7 @@ import { computeScoreV3, resolveVehicleAge } from './score-v3.js';
 /* активна версія CalCar Score: перемикається конфігурацією без деплою коду.
    Rollback на v2 = env CALCAR_SCORE_VERSION=v2, НЕ revert коміту */
 const SCORE_VERSION = process.env.CALCAR_SCORE_VERSION === 'v2' ? 'v2' : 'v3';
-import { findAuctionRecord, shouldRecheck, discoverVinCandidates, photoHasProvenance, fetchHistoricalPhotos } from './auction.js';
+import { findAuctionRecord, shouldRecheck, discoverVinCandidates, photoHasProvenance, fetchHistoricalPhotos, extractLotMeta, verifyLotIdentity, zenrowsFetch, PARSER_VERSION, EVENT_VERSION } from './auction.js';
 
 /* ============================================================
    CalCar Check, рушій v1: посилання на оголошення -> звіт.
@@ -126,6 +126,55 @@ function relevantText(text, markers, budget = 14000) {
   }
   const joined = chunks.join('\n\n');
   return (joined.length > 500 ? joined : text.slice(0, budget)).slice(0, budget);
+}
+
+/* ---------- version-aware кеш історичної події ----------
+   A. усі версії поточні: reuse, нуль мережі і нуль Vision.
+   B. застарів PARSER_VERSION/EVENT_VERSION: переобробляємо ЗБЕРЕЖЕНИЙ
+      lot_url (прямий fetch, ZenRows лише за блокування), новий scoped
+      parse, оновлений запис. Фото не перекачуються.
+   C. застаріла лише версія historical_visual: discovery не повторюємо,
+      беремо відомі immutable URL кадрів і переганяємо Vision.
+   D. старі записи без метаданих версій вважаються stale ОДИН раз і
+      оновлюються самі: ручна чистка таблиць не потрібна */
+export function cacheVersionState(record, hvVersion) {
+  const r = record || {};
+  const parserOk = r.parser_version === PARSER_VERSION && r.event_version === EVENT_VERSION;
+  const hvOk = !!r.historical_visual && r.hv_version === hvVersion;
+  return {
+    parser_stale: !parserOk,
+    hv_stale: !!r.historical_visual && !hvOk,
+    legacy: !r.parser_version && !r.event_version,
+    reusable_hv: hvOk,
+  };
+}
+
+async function reparseCachedLot(cached, vin, nhtsa) {
+  const lotUrl = cached && cached.lot_url;
+  if (!lotUrl) return null;
+  const get = async () => {
+    try {
+      const r = await fetch(lotUrl, { headers: { 'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36' } });
+      const body = await r.text();
+      const blocked = r.status === 403 || r.status === 429 || /just a moment|cf-chl|captcha/i.test(body.slice(0, 3000));
+      return { status: r.status, body, blocked };
+    } catch (e) { return { status: 'error', body: '', blocked: true }; }
+  };
+  let page = await get();
+  /* захищено: один платний виклик, той самий whitelisted шлях */
+  if ((page.blocked || page.status !== 200) && process.env.ZENROWS_API_KEY) {
+    const z = await zenrowsFetch(lotUrl, { missing_reason: 'critical_auction_metadata_missing', missing_fact_required: true }, { zenrowsTimeoutMs: 45000 });
+    if (!z.skipped && z.status === 200) page = { status: 200, body: z.body, blocked: false };
+  }
+  if (page.status !== 200 || page.blocked) return null;
+  const identity = verifyLotIdentity({ url: lotUrl, html: page.body }, vin, nhtsa);
+  if (!identity.matched) return null;
+  const meta = extractLotMeta(page.body, lotUrl, vin);
+  const ld = meta.jsonld_photos || [];
+  const photoUrls = [...new Set([...ld, ...[...page.body.matchAll(/https?:\/\/[^"'\s>]+\.(?:jpe?g|png|webp)/gi)].map(m => m[0])
+    .filter(u => photoHasProvenance(u, vin, meta.lot_id) && !/logo|icon|favicon|sprite|flag|thumb/i.test(u))])];
+  console.log('[auction] cache reparse:', lotUrl.slice(0, 80), 'house=' + meta.auction_house, 'lot=' + meta.lot_id);
+  return { meta, photo_urls: photoUrls, jsonld_photos: ld, identity };
 }
 
 /* meta події для кеша: рівно ті поля, які читає гілка cache-hit */
@@ -1644,12 +1693,46 @@ export default async function handler(req, res) {
             /* усі кадри події з кешу: не лише перші 8 */
             auctionSearch.extra_photos = Array.isArray(cached.record?.photo_urls) ? cached.record.photo_urls : [];
             auctionSearch.jsonld_photos = Array.isArray(cached.record?.jsonld_photos) ? cached.record.jsonld_photos : [];
-            /* кешований historical_visual: якщо набір кадрів і версія
-               екстрактора ті самі, платний добір і повторний Vision не
-               потрібні (кадри аукціону незмінні) */
-            if (cached.record?.historical_visual && cached.record?.hv_fingerprint
-              === photoSetFingerprint(cached.record?.photo_urls || [])) {
-              auctionSearch.cached_historical_visual = cached.record.historical_visual;
+            /* ---- version-aware кеш ---- */
+            let rec0 = cached.record || {};
+            const vstate = cacheVersionState(rec0, HISTORICAL_VISUAL_VERSION);
+            auctionSearch.cache_versions = { parser_stale: vstate.parser_stale, hv_stale: vstate.hv_stale, legacy: vstate.legacy };
+            if (vstate.parser_stale) {
+              /* B/D: застарілий (або взагалі без версій) запис оновлюємо
+                 самі, без ручної чистки таблиць */
+              const fresh = await reparseCachedLot(cached, listing.vin, nhtsa);
+              if (fresh) {
+                const prevShots = rec0.photo_urls || [];
+                const sameShots = photoSetFingerprint(prevShots) === photoSetFingerprint(fresh.photo_urls);
+                rec0 = {
+                  ...rec0, meta: { ...fresh.meta }, photo_urls: fresh.photo_urls, jsonld_photos: fresh.jsonld_photos,
+                  parser_version: PARSER_VERSION, event_version: EVENT_VERSION,
+                  /* набір кадрів не змінився і версія екстрактора поточна:
+                     historical_visual лишається; інакше буде перерахований */
+                  historical_visual: (sameShots && rec0.hv_version === HISTORICAL_VISUAL_VERSION) ? rec0.historical_visual : null,
+                  hv_fingerprint: (sameShots && rec0.hv_version === HISTORICAL_VISUAL_VERSION) ? rec0.hv_fingerprint : null,
+                };
+                auctionSearch.cache_refreshed = { photos_changed: !sameShots };
+                await writeAuctionCache(listing.vin, { status: 'found', source: cached.source || null, lot_url: cached.lot_url, record: rec0 });
+                /* оновлені метадані одразу в поточний звіт */
+                auctionSearch.house = rec0.meta?.auction_house || null;
+                auctionSearch.lot_id_meta = rec0.meta?.lot_id || null;
+                auctionSearch.airbags_meta = rec0.meta?.airbags || null;
+                auctionSearch.primary_damage = rec0.meta?.primary_damage || null;
+                auctionSearch.secondary_damage = rec0.meta?.secondary_damage || null;
+                auctionSearch.sale_date = rec0.meta?.sale_date || null;
+                auctionSearch.field_provenance = rec0.meta?.field_provenance || null;
+                auctionSearch.odometer = { value: rec0.meta?.odometer_value ?? null, unit: rec0.meta?.odometer_unit || 'unknown', status: rec0.meta?.odometer_status || 'unknown', status_raw: rec0.meta?.odometer_status_raw || null };
+                auctionSearch.extra_photos = rec0.photo_urls || [];
+                auctionSearch.jsonld_photos = rec0.jsonld_photos || [];
+                if (auction) auction.photos = (rec0.photo_urls || []).slice(0, 8);
+              }
+            }
+            /* A/C: hv перевикористовуємо лише коли і версія екстрактора,
+               і відбиток набору кадрів поточні */
+            if (rec0.historical_visual && rec0.hv_version === HISTORICAL_VISUAL_VERSION
+              && rec0.hv_fingerprint === photoSetFingerprint(rec0.photo_urls || [])) {
+              auctionSearch.cached_historical_visual = rec0.historical_visual;
             }
             /* знайдена подія постійна і повторно не оплачується, але у VIN
                може зʼявитись НОВА аукціонна подія: discovery повторюємо і
@@ -1908,7 +1991,8 @@ export default async function handler(req, res) {
         await writeAuctionCache(listing.vin, {
           status: 'found', source: auctionSearch.source || null, lot_url: auctionSearch.lot_url || null,
           record: { photo_urls: shots, jsonld_photos: auctionSearch.jsonld_photos || [], meta: auctionSearchMetaForCache(auctionSearch), sources_checked: auctionSearch.sources_checked || [],
-            historical_visual: parsed.historical_visual, hv_fingerprint: photoSetFingerprint(shots) },
+            parser_version: PARSER_VERSION, event_version: EVENT_VERSION,
+            historical_visual: parsed.historical_visual, hv_version: HISTORICAL_VISUAL_VERSION, hv_fingerprint: photoSetFingerprint(shots) },
         });
       } catch (e) { console.log('[check] hv cache write failed:', e.message); }
     }
