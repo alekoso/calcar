@@ -1643,6 +1643,7 @@ export default async function handler(req, res) {
             auctionSearch.field_provenance = cached.record?.meta?.field_provenance || null;
             /* усі кадри події з кешу: не лише перші 8 */
             auctionSearch.extra_photos = Array.isArray(cached.record?.photo_urls) ? cached.record.photo_urls : [];
+            auctionSearch.jsonld_photos = Array.isArray(cached.record?.jsonld_photos) ? cached.record.jsonld_photos : [];
             /* кешований historical_visual: якщо набір кадрів і версія
                екстрактора ті самі, платний добір і повторний Vision не
                потрібні (кадри аукціону незмінні) */
@@ -1687,6 +1688,7 @@ export default async function handler(req, res) {
             auctionSearch.secondary_damage = rec.meta?.secondary_damage || null;
             auctionSearch.field_provenance = rec.meta?.field_provenance || null;
             auctionSearch.extra_photos = rec.photo_urls || [];
+            auctionSearch.jsonld_photos = rec.jsonld_photos || [];
             /* подія постійна за source+lot; vin-кеш лишається для сумісності */
             await writeAuctionEvent(listing.vin, rec);
             await writeAuctionCache(listing.vin, { status: 'found', source: rec.source, lot_url: rec.lot_url, record: { photo_urls: rec.photo_urls || [], identity: rec.identity, meta: rec.meta || null, sources_checked: rec.sources_checked || [] } });
@@ -1800,8 +1802,12 @@ export default async function handler(req, res) {
        посилання, а не мегабайти base64 */
     const photoOriginByData = new Map();
     /* кандидати з ПРОВЕНАНСОМ: усі підтверджені джерела цієї події */
-    const photoCandidates = [...new Set([...(auction?.photos || []), ...((auctionSearch && auctionSearch.extra_photos) || [])])]
-      .filter(u => (auction && auction.from_ria && /riastatic\.com\/photos\/auto\/usa\//.test(u)) || photoHasProvenance(u, listing.vin, auctionLotId));
+    /* ВИНЯТОК ПРОВЕНАНСУ: кадри зі structured-блоку саме цього VIN
+       (JSON-LD image[]) привʼязані до авто самим джерелом, тому VIN у
+       назві файла їм не потрібен, як і usa_photos площадки */
+    const ldPhotoSet = new Set((auctionSearch && auctionSearch.jsonld_photos) || []);
+    const photoCandidates = [...new Set([...ldPhotoSet, ...(auction?.photos || []), ...((auctionSearch && auctionSearch.extra_photos) || [])])]
+      .filter(u => ldPhotoSet.has(u) || (auction && auction.from_ria && /riastatic\.com\/photos\/auto\/usa\//.test(u)) || photoHasProvenance(u, listing.vin, auctionLotId));
     /* безкоштовно завантажувані йдуть Vision як URL (як і раніше);
        захищені проходять серверну лестницю і йдуть як base64-байти */
     let auctionPhotos = photoCandidates.filter(visionDirect).slice(0, 8);
@@ -1901,7 +1907,7 @@ export default async function handler(req, res) {
           ? auctionSearch.extra_photos : (auction && auction.photos) || [];
         await writeAuctionCache(listing.vin, {
           status: 'found', source: auctionSearch.source || null, lot_url: auctionSearch.lot_url || null,
-          record: { photo_urls: shots, meta: auctionSearchMetaForCache(auctionSearch), sources_checked: auctionSearch.sources_checked || [],
+          record: { photo_urls: shots, jsonld_photos: auctionSearch.jsonld_photos || [], meta: auctionSearchMetaForCache(auctionSearch), sources_checked: auctionSearch.sources_checked || [],
             historical_visual: parsed.historical_visual, hv_fingerprint: photoSetFingerprint(shots) },
         });
       } catch (e) { console.log('[check] hv cache write failed:', e.message); }

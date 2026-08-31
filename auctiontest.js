@@ -467,6 +467,21 @@ function makeFetch(map) {
   const bidMeta = A.extractLotMeta(BIDLOT, 'https://bid.cars/en/lot/1-49495925/x', VIN);
   if (bidMeta.auction_house !== 'IAAI') errs.push('labelled-поле мало перебити конвенцію префікса: ' + bidMeta.auction_house);
 
+  /* кадри structured-блоку цього VIN: провенанс за побудовою, першими */
+  if (!(aggMeta.jsonld_photos || []).some(u => /copart\.vincheck\.by/.test(u))) errs.push('кадри JSON-LD цього VIN не зібрані');
+  const AGG_OTHER = AGG.replace('WBAJA9C51KB111111', 'WBAJA9C51KB111111');
+  const sc = A.vinScopedRegions(AGG_OTHER, VIN);
+  if (sc.single_lot_page !== false) errs.push('сторінка з чужим авто вважається одно-лотовою');
+  if ((sc.jsonld_photos || []).some(u => /iaai/.test(u))) errs.push('кадри чужого авто просочились у скоуп');
+  /* одно-лотова сторінка: скоуп = весь документ (поля лота далеко від VIN) */
+  const SINGLE = '<html><head><title>2018 BMW 530e ' + VIN + '</title></head><body><div>' + 'x'.repeat(3000) + '</div><div>Primary damage Front end Secondary damage Side</div><div>VIN: ' + VIN + '</div></body></html>';
+  const singleMeta = A.extractLotMeta(SINGLE, 'https://bid.cars/en/lot/1-49495925/x', VIN);
+  if (singleMeta.primary_damage !== 'Front end') errs.push('одно-лотова сторінка: damage загубився через вузький скоуп: ' + singleMeta.primary_damage);
+  /* damage з опису structured-блоку (vincheck-формат) */
+  const LD_DESC = '<html><head><script type="application/ld+json">' + JSON.stringify({ '@type': 'Vehicle', vehicleIdentificationNumber: VIN, description: '2017 BMW 540 XI, VIN ' + VIN + ': фото лота, повреждения Front end , Side, пробег 98 997 mi', image: ['https://copart.vincheck.by/v1/a_hrs.jpg'] }) + '</script></head><body><div>VIN ' + VIN + '</div><div>WBAJA9C51KB111111 чуже авто</div></body></html>';
+  const ldMeta = A.extractLotMeta(LD_DESC, 'https://vincheck.by/catalog/' + VIN, VIN);
+  if (ldMeta.primary_damage !== 'Front end' || ldMeta.secondary_damage !== 'Side') errs.push('damage з JSON-LD description: ' + ldMeta.primary_damage + '/' + ldMeta.secondary_damage);
+
   /* 13. field_provenance зберігається для ключових полів */
   for (const k of ['auction_house', 'lot_id', 'mileage', 'primary_damage']) {
     if (!(k in (aggMeta.field_provenance || {}))) errs.push('нема провенансу поля ' + k);

@@ -419,7 +419,7 @@ export function photoHasProvenance(url, vin, lotId) {
    з'явився хибний IAAI для лота Copart. Скоуп будується навколо
    ЦІЛЬОВОГО VIN: structured-блок з vehicleIdentificationNumber === VIN,
    плюс текстові вікна навколо входжень VIN */
-export function vinScopedRegions(html, vin, windowChars = 700) {
+export function vinScopedRegions(html, vin, windowChars = 2500) {
   const V = String(vin || '').toUpperCase();
   const src = String(html || '');
   const out = { jsonld: [], text: '', found: false };
@@ -447,7 +447,25 @@ export function vinScopedRegions(html, vin, windowChars = 700) {
     parts.push(plainAll.slice(Math.max(0, i - windowChars), i + windowChars));
     i = up.indexOf(V, i + V.length);
   }
-  out.text = parts.join(' \u2022 ');
+  /* чужі авто на сторінці: інший Vehicle-JSON-LD або інший 17-значний VIN.
+     Якщо їх нема, сторінка одно-лотова і ВЕСЬ її текст стосується цього
+     авто: тоді звужувати скоуп шкідливо (поля лота лежать далеко від VIN) */
+  const otherVins = new Set();
+  for (const m of plainAll.matchAll(/\b([A-HJ-NPR-Z0-9]{17})\b/g)) {
+    const c = m[1].toUpperCase();
+    if (c !== V && /\d/.test(c) && /[A-Z]/.test(c)) otherVins.add(c);
+  }
+  out.other_vehicles = otherVins.size;
+  out.single_lot_page = otherVins.size === 0;
+  if (out.single_lot_page && parts.length) out.text = plainAll;
+  else out.text = parts.join(' \u2022 ');
+  /* зображення зі structured-блоку цього VIN: провенанс за побудовою
+     (лежать усередині блоку саме цього VIN), навіть якщо в URL хеш */
+  out.jsonld_photos = [];
+  for (const node of out.jsonld) {
+    const imgs = Array.isArray(node.image) ? node.image : (node.image ? [node.image] : []);
+    for (const u of imgs) if (typeof u === 'string' && /^https?:\/\/.*\.(?:jpe?g|png|webp)/i.test(u)) out.jsonld_photos.push(u);
+  }
   out.found = out.jsonld.length > 0 || parts.length > 0;
   return out;
 }
@@ -536,6 +554,12 @@ export function extractLotMeta(html, url, vin) {
   const plain = (scope && scope.found) ? (jsonldText + ' ' + scope.text).replace(/\s+/g, ' ') : wholePlain;
   const houseScoped = vin ? auctionHouseScoped(html, url, vin) : { value: canonicalAuctionHouse(wholePlain), evidence_type: 'whole_page_legacy' };
   const auction_house = houseScoped.value;
+  /* damage з опису structured-блоку цього VIN: "повреждения Front end , Side" */
+  let ldDamage = null;
+  for (const node of (scope ? scope.jsonld : [])) {
+    const dm = String(node.description || '').match(/(?:повреждения|пошкодження|damage)[:\s]{0,3}([A-Za-z][A-Za-z\- ]{1,28})(?:\s*,\s*([A-Za-z][A-Za-z\- ]{1,28}))?/i);
+    if (dm) { ldDamage = { primary: (dm[1] || '').trim() || null, secondary: (dm[2] || '').trim() || null }; break; }
+  }
   /* дата: беремо ЛИШЕ явну "Auction ended" чи ISO; для американмоторс блок
      "Дата продажи" стосується схожих авто, не цього лота, тому не чіпаємо */
   const dateRaw = (plain.match(/Auction ended[^.]*?((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})/i) || [])[1] || null;
@@ -569,8 +593,8 @@ export function extractLotMeta(html, url, vin) {
   /* стоп на наступному маркері, щоб primary не тягнув 'Secondary damage ...' */
   /* \u2022 це роздільник вікон VIN-скоупу: теж законний стоп */
   const dmgStop = '(?:Secondary|Odometer|Loss|Title|Airbag|Primary|VIN|\u2022|\\d|Тип|Пробіг|Пробег|Втор|Основ|$)';
-  const primary_damage = clean((plain.match(new RegExp('(?:Primary damage|Осн\\.? поврежд[а-яіїєґё]*|Основн[а-яіїєґё]+ пошкодж[а-яіїєґё]*)[:\\s]{0,5}([A-Za-z\\- ,\\/]{1,30}?)\\s*' + dmgStop, 'i')) || [])[1]);
-  const secondary_damage = clean((plain.match(new RegExp('(?:Secondary damage|Втор\\.? поврежд[а-яіїєґё]*|Другорядн[а-яіїєґё]+ пошкодж[а-яіїєґё]*)[:\\s]{0,5}([A-Za-z\\- ,\\/]{1,30}?)\\s*' + dmgStop, 'i')) || [])[1]);
+  const primary_damage = (ldDamage && ldDamage.primary) || clean((plain.match(new RegExp('(?:Primary damage|Осн\\.? поврежд[а-яіїєґё]*|Основн[а-яіїєґё]+ пошкодж[а-яіїєґё]*)[:\\s]{0,5}([A-Za-z\\- ,\\/]{1,30}?)\\s*' + dmgStop, 'i')) || [])[1]);
+  const secondary_damage = (ldDamage && ldDamage.secondary) || clean((plain.match(new RegExp('(?:Secondary damage|Втор\\.? поврежд[а-яіїєґё]*|Другорядн[а-яіїєґё]+ пошкодж[а-яіїєґё]*)[:\\s]{0,5}([A-Za-z\\- ,\\/]{1,30}?)\\s*' + dmgStop, 'i')) || [])[1]);
   const title_status = clean((plain.match(/(?:Title status|Document type|Тип документа|Тип документу)[:\s]{0,5}([A-Za-z\- ,\/]{1,30})/i) || [])[1]);
   /* подушки з metadata лота (bid.cars/IAAI/Copart дають Airbag: Driver тощо).
      Це НЕ visual evidence, а надійний historical metadata exact-lot */
@@ -597,7 +621,7 @@ export function extractLotMeta(html, url, vin) {
     title_status: prov(title_status),
     airbags: airbags ? { value: airbags.raw, source: sourceHost, evidence_type: scopeSource } : null,
   };
-  return { auction_house, sale_date, sale_date_raw, odometer_value, odometer_unit, odometer_status, odometer_status_raw, lot_id, raw_lot_reference, lot_id_source: lot_id ? (lotRef.lot_id ? 'source_url' : 'direct') : null, primary_damage, secondary_damage, title_status, airbags, scope: scopeSource, field_provenance };
+  return { auction_house, sale_date, sale_date_raw, odometer_value, odometer_unit, odometer_status, odometer_status_raw, lot_id, raw_lot_reference, lot_id_source: lot_id ? (lotRef.lot_id ? 'source_url' : 'direct') : null, primary_damage, secondary_damage, title_status, airbags, scope: scopeSource, jsonld_photos: (scope && scope.jsonld_photos) || [], field_provenance };
 }
 
 /* строге відновлення lot_id з discovery-кандидата: ЛИШЕ коли одночасно
@@ -689,13 +713,17 @@ export async function findAuctionRecord(vin, nhtsa, opts = {}, cfg = AUCTION_CON
           console.log('[auction] source=' + cand.source, 'step=lot', 'status=200 found identity=' + d.identity, d.ms + 'ms');
           /* ранній вихід законний ЛИШЕ при found */
           const meta = extractLotMeta(r.body, cand.url, vin);
+          /* кадри зі structured-блоку цього VIN мають провенанс за
+             побудовою і зазвичай відкриваються прямо: ставимо їх ПЕРШИМИ */
+          const ldPhotos = meta.jsonld_photos || [];
           const rec = {
             status: 'found',
             source: cand.source,
             lot_url: cand.url,
             identity,
             meta,
-            photo_urls: photoUrls.slice(0, cfg.MAX_PHOTOS),
+            photo_urls: [...new Set([...ldPhotos, ...photoUrls])].slice(0, cfg.MAX_PHOTOS),
+            jsonld_photos: ldPhotos,
             sources_checked: sourcesChecked(outcomes, cfg),
             diagnostics,
             total_ms: Date.now() - t0,
