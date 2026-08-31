@@ -372,8 +372,16 @@ export async function discoverVinCandidates(vin, opts = {}, cfg = AUCTION_CONFIG
     const u = m.url(V, opts.nhtsa);
     if (u) tail.push({ source: m.name, url: u, synthetic: true });
   }
+  /* сама сторінка оголошення, що перевіряється, і будь-які URL її
+     площадки НЕ є historical-кандидатами: індексований Google лістинг
+     містить VIN, але це поточне оголошення, а не аукціонний архів */
+  let excludeHost = null;
+  try { excludeHost = opts.excludeUrl ? new URL(opts.excludeUrl).hostname.replace(/^www\./, '') : null; } catch (e) {}
   const merged = [];
   for (const c of [...out, ...serperHist, ...serperOther, ...ddgCandidates, ...tail]) {
+    if (excludeHost) {
+      try { if (new URL(c.url).hostname.replace(/^www\./, '') === excludeHost) continue; } catch (e) {}
+    }
     if (!merged.some(x => x.url === c.url)) merged.push(c);
   }
   return { candidates: merged, diagnostics: diag, discovery_ms: Date.now() - t0 };
@@ -541,7 +549,19 @@ export async function findAuctionRecord(vin, nhtsa, opts = {}, cfg = AUCTION_CON
         /* сторінка відповіла, але це не наш запис: джерело чесно "нема".
            Для кандидатів довільних доменів ідентичність це ЄДИНИЙ гейт */
         outcomes[cand.source] = identity.matched ? 'found' : 'not_found';
+        /* ідентичність підтверджена, але сторінка мусить бути АУКЦІОННИМ
+           записом: дім, лот або аукціонні damage-поля. Довільна сторінка з
+           VIN (лістинг, каталог без аукціонного контенту) found не дає */
         if (identity.matched) {
+          const metaProbe = extractLotMeta(r.body, cand.url);
+          if (!metaProbe.auction_house && !metaProbe.lot_id && !metaProbe.primary_damage) {
+            outcomes[cand.source] = 'not_found';
+            d.identity = (d.identity || 'high') + '+no_auction_content';
+            d.ms = Date.now() - ts;
+            console.log('[auction] source=' + cand.source, 'step=lot VIN ok, але не аукціонний запис');
+            diagnostics.push(d);
+            continue;
+          }
           d.found = true;
           const photoUrls = [...new Set([...r.body.matchAll(/https?:\/\/[^"'\s>]+\.(?:jpe?g|png|webp)/gi)]
             .map(m => m[0]).filter(u => (u.toUpperCase().includes(String(vin).toUpperCase()) || /(copart|iaai|bid\.car|bidfax|poctra)/i.test(u)) && !/logo|icon|favicon|sprite|flag|thumb/i.test(u)))];
@@ -609,7 +629,8 @@ export async function findAuctionRecord(vin, nhtsa, opts = {}, cfg = AUCTION_CON
     const z = await zenrowsFetch(best.url, { missing_reason: 'photos_unavailable', missing_fact_required: true }, opts, cfg);
     if (!z.skipped && z.status === 200) {
       const identity = verifyLotIdentity({ url: best.url, html: z.body }, vin, nhtsa);
-      if (identity.matched) {
+      const metaZ = identity.matched ? extractLotMeta(z.body, best.url) : null;
+      if (identity.matched && metaZ && (metaZ.auction_house || metaZ.lot_id || metaZ.primary_damage)) {
         const photoUrls = [...new Set([...z.body.matchAll(/https?:\/\/[^"'\s>]+\.(?:jpe?g|png|webp)/gi)]
           .map(m => m[0]).filter(u => (u.toUpperCase().includes(String(vin).toUpperCase()) || /(copart|iaai|bid\.car|bidfax|poctra)/i.test(u)) && !/logo|icon|favicon|sprite|flag|thumb/i.test(u)))];
         outcomes[best.source] = 'found';
@@ -618,7 +639,7 @@ export async function findAuctionRecord(vin, nhtsa, opts = {}, cfg = AUCTION_CON
           source: best.source,
           lot_url: best.url,
           identity,
-          meta: extractLotMeta(z.body, best.url),
+          meta: metaZ,
           photo_urls: photoUrls.slice(0, cfg.MAX_PHOTOS),
           paid: { provider: 'zenrows', reason: 'photos_unavailable', calls: z.calls, credits: z.credits },
           sources_checked: sourcesChecked(outcomes, cfg),

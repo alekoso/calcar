@@ -1618,7 +1618,7 @@ export default async function handler(req, res) {
                може зʼявитись НОВА аукціонна подія: discovery повторюємо і
                дивимось лише на кандидатів з ІНШИМИ сторінками */
             try {
-              const disco = await discoverVinCandidates(listing.vin, { totalBudgetMs: 8000, nhtsa, skipSerper: true });
+              const disco = await discoverVinCandidates(listing.vin, { totalBudgetMs: 8000, nhtsa, skipSerper: true, excludeUrl: url });
               const fresh = disco.candidates.filter(c => normalizeListingUrl(c.url) !== normalizeListingUrl(cached.lot_url));
               if (fresh.length) {
                 console.log('[auction] новий кандидат поза кешем:', fresh[0].url.slice(0, 90));
@@ -1630,7 +1630,7 @@ export default async function handler(req, res) {
         } else {
           /* imported/history-gap: дозволений limited extended search */
           const extendedSearch = listing.history_facts?.imported_used === true || listing.history_facts?.us_import_record === true;
-          const rec = await findAuctionRecord(listing.vin, nhtsa, { totalBudgetMs: 20000, nhtsa, zenrowsTimeoutMs: 55000, extendedSearch });
+          const rec = await findAuctionRecord(listing.vin, nhtsa, { totalBudgetMs: 20000, nhtsa, zenrowsTimeoutMs: 55000, extendedSearch, excludeUrl: url });
           auctionSearch = {
             status: rec.status, reason: rec.reason || null, source: rec.source || null,
             lot_url: rec.lot_url || null, total_ms: rec.total_ms, cache: 'miss',
@@ -1849,7 +1849,8 @@ export default async function handler(req, res) {
         mileage_observation_count: Math.max(
           snaps.filter(r => r.odometer_km != null).length,
           hf.past_mileage_points || 0
-        ),
+        ) + ((auctionSearch && auctionSearch.status === 'found' && auctionSearch.odometer
+          && auctionSearch.odometer.value != null && auctionSearch.odometer.unit !== 'unknown') ? 1 : 0),
         /* запис аукціону існує, якщо він у нас (пошук/лістинг) АБО площадка
            сама цитує архівні дані офіційного аукціону */
         auction_record_exists: !!auction || hf.ria_auction_record === true,

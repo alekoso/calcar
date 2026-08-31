@@ -361,6 +361,26 @@ function makeFetch(map) {
   delete process.env.ZENROWS_API_KEY;
   delete process.env.SERPER_API_KEY;
 
+
+  /* ===== сторінка оголошення і не-аукціонний контент не дають found ===== */
+  process.env.SERPER_API_KEY = 'test-key-for-mock';
+  const LISTING_URL = 'https://auto.ria.com/uk/auto_bmw_5-series_40359409.html';
+  const serperListing = async () => ({ status: 200, headers: { get: () => null }, text: async () => JSON.stringify({ organic: [
+    { link: LISTING_URL, title: 'BMW 530e 2018 ' + VIN, snippet: 'оголошення' },
+    { link: 'https://somecatalog.example/vin/' + VIN, title: '2018 BMW 530e ' + VIN, snippet: 'каталог' },
+  ] }) });
+  const catalogPage = '<html><head><title>2018 BMW 530e ' + VIN + '</title></head><body>Просто каталожна сторінка без аукціонного контенту</body></html>';
+  const listingFetch = makeFetch([
+    [/somecatalog\.example/, { body: catalogPage }],
+    [/auto\.ria\.com/, { body: '<html><head><title>2018 BMW 530e ' + VIN + '</title></head><body>оголошення</body></html>' }],
+    [/./, { status: 403, body: 'Just a moment...' }],
+  ]);
+  rec = await quiet(() => A.findAuctionRecord(VIN, NHTSA, { fetchImpl: listingFetch, serperFetchImpl: serperListing, allowPaid: false, excludeUrl: LISTING_URL }));
+  if (rec.status === 'found') errs.push('сторінка оголошення/каталог без аукціонного контенту дали found');
+  const disco2 = await quiet(() => A.discoverVinCandidates(VIN, { fetchImpl: listingFetch, serperFetchImpl: serperListing, excludeUrl: LISTING_URL }));
+  if (disco2.candidates.some(c => /auto\.ria\.com/.test(c.url))) errs.push('площадка оголошення лишилась кандидатом');
+  delete process.env.SERPER_API_KEY;
+
   if (errs.length) { console.log('FAILED:', errs); process.exit(1); }
   console.log('повний шлях · ідентичність (VIN > naming) · absent проти unreachable · ліміти фото · TTL кешу · Serper discovery і ranking · сніпет не evidence · 200-челендж · ZenRows discovery-unblock і подвійна умова');
   console.log('AUCTION TEST PASSED');
