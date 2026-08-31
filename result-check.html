@@ -239,7 +239,7 @@
   .topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:20px;position:relative}
   .hrow.reg > span:not(.hd){font-weight:600}
   .reg-badge{background:var(--bg);border:1px solid var(--line-strong);color:var(--ink-2);margin-left:6px;vertical-align:1px}
-  .spec-annual{display:block;font-size:12px;color:var(--faint);font-weight:500;margin-top:1px}
+  .spec-mo{color:var(--ink-2);font-weight:600;font-size:.93em;margin-left:6px;white-space:nowrap}
   .chat-coach{position:absolute;top:calc(100% + 10px);right:0;z-index:60;max-width:290px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 34px rgba(20,22,25,.14);padding:12px 34px 12px 14px;font-size:13px;line-height:1.45;color:var(--ink-2)}
   .chat-coach b{display:block;color:var(--ink);margin-bottom:3px;font-size:13.5px}
   .chat-coach::before{content:'';position:absolute;top:-5px;right:34px;width:9px;height:9px;background:var(--card);border-left:1px solid var(--line);border-top:1px solid var(--line);transform:rotate(45deg)}
@@ -402,6 +402,8 @@
      геометрія, висота, padding і фон ідентичні звичайному chip. Без
      зірок, свічення, анімацій і додаткового місця */
   .eq-chip.hv{border-color:transparent;background:linear-gradient(var(--card),var(--card)) padding-box,linear-gradient(135deg,#7C3AED 0%,#C026D3 50%,#E8A33D 100%) border-box}
+  /* легенда до виділених дорогих опцій: та сама візуальна мова рамки */
+  .sec-meta.hv-legend{border-color:transparent;background:linear-gradient(var(--card),var(--card)) padding-box,linear-gradient(135deg,#7C3AED 0%,#C026D3 50%,#E8A33D 100%) border-box}
   /* міжчипові відступи більші, щоб маркер не наїжджав на сусідів і рядки */
   .eq-chips{gap:8px 12px}
   .eq-chips{margin-top:2px}
@@ -454,10 +456,12 @@
   .hrow{display:flex;gap:14px;padding:9px 0;font-size:14px;line-height:1.5;position:relative}
   .hrow .hd{flex:0 0 96px;text-align:center;font-weight:700;font-variant-numeric:tabular-nums;background:var(--card);position:relative;z-index:1;align-self:flex-start}
   .hrow > span:not(.hd){flex:1;min-width:0}
-  #scoreBadge{position:relative}
+  #scoreBadge{position:relative;color:var(--ink)}
   #scoreBadge.has-dims{cursor:pointer}
-  .dim-caret{font-size:10px;color:var(--faint);margin-left:2px;transition:color .15s}
-  #scoreBadge.has-dims:hover .dim-caret{color:var(--ink-2)}
+  .dim-caret{display:inline-flex;align-items:center;margin-left:-3px;color:var(--ink-2);transition:transform .18s ease,color .15s}
+  .dim-caret svg{display:block}
+  #scoreBadge.has-dims:hover .dim-caret{color:var(--ink)}
+  #scoreBadge.pop-open .dim-caret{transform:rotate(180deg)}
   .dim-pop{position:absolute;top:calc(100% + 8px);right:0;z-index:40;min-width:250px;max-width:calc(100vw - 32px);background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgba(20,22,25,.10);padding:8px 14px;display:none;flex-direction:column;cursor:default}
   .dim-pop.open{display:flex}
   .dim-pop-row{display:flex;justify-content:space-between;align-items:baseline;gap:16px;padding:7px 0;font-size:13px;color:var(--ink-2);white-space:nowrap}
@@ -776,7 +780,7 @@
   <div class="card" id="eqCard" style="display:none">
     <div class="card-head">
       <h2>Комплектація</h2>
-      <span class="sec-meta">Дорогі опції виділені</span>
+      <span class="sec-meta hv-legend">Дорогі опції виділені</span>
     </div>
     <div class="card-body"><div id="eqList"></div></div>
   </div>
@@ -1087,11 +1091,13 @@ function boot2(D){
      змінюється лише подача. 6 полів: 4+2, менше: порівну */
   const spec = [];
   if (M.price) spec.push([t('Ціна'), nf(M.price) + ' ' + (M.currency || ''), 'price']);
+  /* середній пробіг за МІСЯЦЬ: суто presentation з того самого
+     canonical annual_mileage_km осі Пробіг, округлення до 50 */
   const dimsMil = ((D.score_breakdown || D.score_breakdown_v2 || {}).score_dimensions || {}).mileage;
-  const annualKm = (dimsMil && dimsMil.score_available === true && typeof dimsMil.annual_mileage_km === 'number')
-    ? Math.round(dimsMil.annual_mileage_km / 100) * 100 : null;
-  const annualHtml = annualKm !== null
-    ? '<span class="spec-annual" title="' + esc(t('Середній пробіг за весь строк експлуатації автомобіля.')) + '">≈ ' + esc(nf(annualKm)) + ' ' + esc(t('км/рік')) + '</span>'
+  const monthlyKm = (dimsMil && dimsMil.score_available === true && typeof dimsMil.annual_mileage_km === 'number')
+    ? Math.round(dimsMil.annual_mileage_km / 12 / 50) * 50 : null;
+  const annualHtml = monthlyKm !== null
+    ? '<span class="spec-mo" title="' + esc(t('Середній пробіг за місяць за весь строк експлуатації автомобіля.')) + '">· ≈' + esc(nf(monthlyKm)) + ' ' + esc(t('км/міс')) + '</span>'
     : '';
   if (v.mileage_note) spec.push([t('Пробіг'), clean(v.mileage_note), null, annualHtml]);
   else if (M.odometer_km) spec.push([t('Пробіг'), nf(M.odometer_km) + ' ' + t('км'), null, annualHtml]);
@@ -1226,13 +1232,13 @@ function boot2(D){
         /* ненавʼязливий affordance: бейдж явно розкривається */
         const caret = document.createElement('span');
         caret.className = 'dim-caret';
-        caret.textContent = '\u25BE';
+        caret.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
         badge.insertBefore(caret, shieldEl);
         badge.appendChild(pop);
         badge.classList.add('has-dims');
         badge.tabIndex = 0;
-        const openPop = () => { pop.classList.add('open'); if (shieldTip) shieldTip.classList.remove('open'); };
-        const closePop = () => pop.classList.remove('open');
+        const openPop = () => { pop.classList.add('open'); badge.classList.add('pop-open'); if (shieldTip) shieldTip.classList.remove('open'); };
+        const closePop = () => { pop.classList.remove('open'); badge.classList.remove('pop-open'); };
         /* щит = окремий interactive target: наведення на нього показує ЛИШЕ
            пояснення Score і закриває popover підоцінок, і навпаки */
         badge.addEventListener('mouseover', e => {

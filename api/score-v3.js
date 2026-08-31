@@ -657,6 +657,7 @@ export function computeScoreV3(input, cfg = SCORE_CONFIG_V3) {
     score_dimensions: computeDimensions({
       accidentEvents, problems: currentPenalties, unresolvedSafety, domains, coverageInputs,
       vehicle: inp.vehicle || null,
+      visualEvidence: inp.visualEvidence || null,
     }),
   };
   if (!eligibility.eligible) {
@@ -706,6 +707,15 @@ export const SCORE_DIMENSIONS_CONFIG = {
   DR_POOR_REPAIR: 1.5,
   DR_FLOOD: 4.0,                  /* затоплення/пожежа це теж пошкодження */
   DR_FIRE: 4.5,
+  /* Стан за фото: 10.0 це ВИНЯТОК (практично бездоганний вигляд при
+     достатньому покритті і якості кадрів), а не дефолт за "нічого поганого
+     не видно". База залежить від сили visual evidence, вік не бере участі */
+  CC_BASE_DEFAULT: 9.4,     /* дефектів не видно, звичайний достатній набір */
+  CC_BASE_RICH: 9.6,        /* + повністю переглянута галерея, >=12 кадрів */
+  CC_FLAWLESS: 9.8,         /* строгий flawless-сигнал без повного покриття */
+  CC_FLAWLESS_FULL: 10,     /* flawless + повна галерея + >=18 кадрів */
+  CC_RICH_MIN_PHOTOS: 12,
+  CC_FLAWLESS_MIN_PHOTOS: 18,
   CC_POOR_REPAIR: 2.5,
   CC_WARNING: 1.8,
   TECH_SRS_FAULT: 3.0,
@@ -869,12 +879,23 @@ export function computeDimensions(input, dc = SCORE_DIMENSIONS_CONFIG) {
   const damage_repair = dim(histAvailable || drFactors.length > 0, drPen, drFactors);
 
   /* D. CURRENT_CONDITION: лише ПОТОЧНИЙ vehicle-specific стан.
-     Історичне ДТП саме по собі цю вісь НЕ знижує */
+     Історичне ДТП саме по собі цю вісь НЕ знижує. "Дефектів не видно"
+     НЕ дорівнює "ідеальний стан": база визначається силою visual
+     evidence, 10.0 лише за справді виняткових доказів */
+  const vev = input.visualEvidence || {};
+  const photosN = n(cov.photos_count);
   const ccFactors = [];
   let ccPen = 0;
   if (has('POOR_REPAIR_VISIBLE')) { ccPen += dc.CC_POOR_REPAIR; ccFactors.push('poor_repair_visible'); }
   if (has('CRITICAL_WARNING_LIGHTS')) { ccPen += dc.CC_WARNING; ccFactors.push('warning_lights'); }
-  const current_condition = dim(earned('current_photos') || ccFactors.length > 0, ccPen, ccFactors);
+  let ccBase = dc.CC_BASE_DEFAULT;
+  if (vev.flawless === true && vev.gallery_complete === true && photosN >= dc.CC_FLAWLESS_MIN_PHOTOS) { ccBase = dc.CC_FLAWLESS_FULL; ccFactors.push('showroom_condition_confirmed'); }
+  else if (vev.flawless === true) { ccBase = dc.CC_FLAWLESS; ccFactors.push('flawless_on_available_photos'); }
+  else if (vev.gallery_complete === true && photosN >= dc.CC_RICH_MIN_PHOTOS) { ccBase = dc.CC_BASE_RICH; }
+  const ccAvailable = earned('current_photos') || ccFactors.length > 0;
+  const current_condition = ccAvailable
+    ? { score_available: true, score: round1(Math.max(0, Math.min(10, ccBase - ccPen))), main_factors: ccFactors.length ? ccFactors : ['no_visible_defects'] }
+    : { score_available: false, score: null, main_factors: [] };
 
   /* E. TECHNICAL: лише конкретні vehicle-specific технічні знахідки.
      Generic болячки моделі без evidence на цій машині сюди не входять

@@ -331,8 +331,9 @@ const REPORTS = [
     if (/score-shield[^>]*title=/.test(page)) errs.push('щит досі з browser-title');
     if (page.includes("t('після перевірок')")) errs.push('grade-бейдж біля оцінки лишився');
     if (page.includes('id="vHint"')) errs.push('рядок-підпис під оцінкою лишився');
-    const metaCount = (page.match(/class="sec-meta"/g) || []).length;
+    const metaCount = (page.match(/class="sec-meta( hv-legend)?"/g) || []).length;
     if (metaCount < 7) errs.push('sec-meta pill не скрізь: ' + metaCount);
+    if (!page.includes('sec-meta hv-legend')) errs.push('легенда дорогих опцій без hv-рамки');
     if (page.includes('class="hint" style="margin-left:auto"')) errs.push('старий сірий hint у шапках лишився');
     /* вердикт: плашки і списків нема, видима частина обмежена */
     if (page.includes('id="pdRec"') || page.includes('id="pdLists"')) errs.push('плашка або списки лишились у вердикті');
@@ -616,6 +617,46 @@ const REPORTS = [
   /* правила промпту */
   if (!/РІК ВИРОБНИЦТВА проти МОДЕЛЬНОГО РОКУ/.test(api)) errs.push('нема правила про рік виробництва/модельний рік у промпті');
   if (!/приведи значення до ОДНІЄЇ одиниці/.test(api)) errs.push('нема правила нормалізації потужності в промпті');
+}
+
+/* ---- сторона пошкодження: канонічна резолюція source + Vision ---- */
+{
+  const src = grab(api, 'sideFromText') + '\n' + grab(api, 'resolveDamageSide') + '\n' + grab(api, 'isSideDiscrepancy');
+  const fns = new Function(src + '\nreturn { sideFromText, resolveDamageSide, isSideDiscrepancy };')();
+  if (fns.sideFromText('FRONT END RIGHT SIDE') !== 'right') errs.push('sideFromText не бачить right');
+  if (fns.sideFromText('пошкодження правої сторони') !== 'right' || fns.sideFromText('лівий борт') !== 'left') errs.push('sideFromText не бачить кирилицю');
+  const R = fns.resolveDamageSide;
+  /* A: source RIGHT + Vision right/high -> RIGHT, без розбіжності */
+  let r = R({ source_side: 'right', vision_side: 'right', vision_confidence: 'high' });
+  if (r.side !== 'right' || r.discrepancy_allowed) errs.push('A: right/high зламаний: ' + JSON.stringify(r));
+  /* B: Vision unknown/low -> RIGHT, без розбіжності */
+  r = R({ source_side: 'right', vision_side: 'unknown', vision_confidence: 'low' });
+  if (r.side !== 'right' || r.discrepancy_allowed) errs.push('B: unknown/low зламаний');
+  /* C: Vision left/low -> без суперечності, показуємо RIGHT */
+  r = R({ source_side: 'right', vision_side: 'left', vision_confidence: 'low' });
+  if (r.side !== 'right' || r.discrepancy_allowed) errs.push('C: left/low створив суперечність');
+  /* D: Vision left/medium -> без суперечності */
+  r = R({ source_side: 'right', vision_side: 'left', vision_confidence: 'medium' });
+  if (r.side !== 'right' || r.discrepancy_allowed) errs.push('D: left/medium створив суперечність');
+  /* E: Vision left/high -> розбіжність ДОЗВОЛЕНА (сторона показу лишається source) */
+  r = R({ source_side: 'right', vision_side: 'left', vision_confidence: 'high' });
+  if (!r.discrepancy_allowed || r.side !== 'right') errs.push('E: left/high не дозволив розбіжність');
+  /* G: одна подія не може бути RIGHT в History і LEFT у Discrepancies:
+     resolved side один для всіх розділів */
+  if (R({ source_side: 'right', vision_side: 'left', vision_confidence: 'medium' }).side !== R({ source_side: 'right', vision_side: 'unknown', vision_confidence: 'low' }).side) errs.push('G: resolved side не єдиний');
+  /* фільтр side-розбіжностей */
+  if (!fns.isSideDiscrepancy({ title: 'Сторона удару розходиться', detail: 'Джерело каже права сторона, а фото нібито показують лівий борт.' })) errs.push('isSideDiscrepancy не ловить спір сторін');
+  if (fns.isSideDiscrepancy({ title: 'Пробіг розходиться', detail: 'В історії 141 тис., зараз 113 тис.' })) errs.push('isSideDiscrepancy ловить зайве');
+  if (!/isSideDiscrepancy\(d\)/.test(api)) errs.push('side-фільтр не застосовується в handler');
+  if (!/presentation_damage/.test(api)) errs.push('нема canonical presentation_damage');
+  /* F: image-left != vehicle-left, правило координат у промпті */
+  if (!/права сторона авто візуально ЗЛІВА кадру/.test(api)) errs.push('нема правила орієнтації кадру');
+  if (!/лючка бака САМОСТІЙНИМ доказом сторони НЕ є/.test(api)) errs.push('нема правила про лючок бака');
+  if (!/бокова частина/.test(api)) errs.push('нема правила "бокова частина" замість вгадування');
+  /* structured side у hv-санітайзері */
+  if (!/damage_side: \['left', 'right', 'both', 'center', 'unknown'\]/.test(api)) errs.push('sanitize hv без damage_side');
+  /* flawless-сигнал стану за фото: строге правило в промпті */
+  if (!/current_visual_flawless: true СТАВ ЛИШЕ/.test(api)) errs.push('нема строгого правила flawless');
 }
 
 if (errs.length) { console.log('FAILED:', errs); process.exit(1); }

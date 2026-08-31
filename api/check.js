@@ -797,6 +797,40 @@ export function isFalseSpecDiscrepancy(d) {
   return claims.length > 0 && claims.every(Boolean);
 }
 
+/* ---------- 4в2в. Сторона пошкодження: канонічна резолюція ----------
+   LEFT/RIGHT завжди сторони САМОГО авто. Structured-джерело канонічне для
+   presentation; Vision може дозволити side-розбіжність ЛИШЕ з high
+   confidence. Слабкий Vision-інференс сторону джерела не перебиває */
+export function sideFromText(text) {
+  const t = String(text || '').toLowerCase();
+  const r = /right|прав/.test(t), l = /left|лів|лев/.test(t);
+  if (r && l) return 'both';
+  if (r) return 'right';
+  if (l) return 'left';
+  return 'unknown';
+}
+export function resolveDamageSide({ source_side, vision_side, vision_confidence } = {}) {
+  const src = source_side || 'unknown';
+  const vis = vision_side || 'unknown';
+  const conf = ['high', 'medium', 'low'].includes(vision_confidence) ? vision_confidence : 'low';
+  if (src === 'unknown') {
+    return { side: vis === 'unknown' || vis === 'center' ? 'unknown' : vis, side_confidence: vis === 'unknown' ? 'low' : conf, discrepancy_allowed: false };
+  }
+  /* збіг, unknown-Vision, both/center: джерело канонічне, суперечності нема */
+  if (vis === 'unknown' || vis === 'center' || vis === src || src === 'both' || vis === 'both') {
+    return { side: src, side_confidence: 'high', discrepancy_allowed: false };
+  }
+  /* конфлікт сторін: лише high-Vision ДОЗВОЛЯЄ розбіжність; для показу
+     сторона джерела все одно лишається основною */
+  return { side: src, side_confidence: 'medium', discrepancy_allowed: conf === 'high' };
+}
+/* розбіжність, що спорить про ліво/право однієї події */
+export function isSideDiscrepancy(d) {
+  if (!d || typeof d !== 'object') return false;
+  const text = [d.title, d.detail].filter(Boolean).join(' ').toLowerCase();
+  return /прав/.test(text) && /лів|лев|left/.test(text) && /стор|борт|side|бок|част/.test(text);
+}
+
 /* ---------- 4в3. Історичний візуальний аналіз: детермінована валідація ----------
    Структурований assessment історичних кадрів. Жорстка семантика:
    no_obvious_severe_signs НІКОЛИ не означає "структура ціла",
@@ -818,6 +852,8 @@ export function sanitizeHistoricalVisual(hv, photosSent) {
     /* потенційно структурна зона БЕЗ надійно видимого силового елемента:
        НЕ підтверджене структурне, у Score не входить, живе в risks/must_check */
     possible_structural_damage: hv.possible_structural_damage === true && hv.structural_visual_status !== 'visible_damage',
+    damage_side: ['left', 'right', 'both', 'center', 'unknown'].includes(hv.damage_side) ? hv.damage_side : 'unknown',
+    side_confidence: ['high', 'medium', 'low'].includes(hv.side_confidence) ? hv.side_confidence : 'low',
     structural_visual_status: STR.includes(hv.structural_visual_status) ? hv.structural_visual_status : 'indeterminate',
     srs_visual_status: SRS.includes(hv.srs_visual_status) ? hv.srs_visual_status : 'indeterminate',
     summary: clean(hv.summary) ? clean(hv.summary).slice(0, 600) : null,
@@ -1322,11 +1358,14 @@ ${auction && auction.photos_sent ? `
 - порівняй зону удару "до" з нинішніми фото "після": збіг відтінку, зазори, якість відновлення
 - verdict тверджень продавця про пошкодження і ремонт тепер спирається на аукціонні фото, а не на "недоступно"
 
+СТОРОНИ АВТОМОБІЛЯ (ГЛОБАЛЬНЕ ПРАВИЛО для всіх секцій: historical_visual, auction, photo_findings, risks, discrepancies, score_facts, purchase_decision): LEFT/ліва і RIGHT/права це сторони САМОГО АВТОМОБІЛЯ з точки зору водія, що сидить у машині й дивиться вперед, а НЕ сторони кадру. Авто зняте СПЕРЕДУ: права сторона авто візуально ЗЛІВА кадру; зняте ЗЗАДУ: навпаки. Завжди спочатку визнач орієнтацію авто в кадрі. Якщо сторону надійно визначити не можна: пиши "бокова частина"/"бокове пошкодження" і НЕ вгадуй ліво/право: краще unknown, ніж впевнено неправильно. Structured-сторона ДЖЕРЕЛА (auction LEFT/RIGHT, запис площадки) є канонічною для текстів УСІХ розділів однієї події: не перевизначай сторону заново в кожному блоці. Заперечити сторону джерела можна ЛИШЕ за сильних незалежних ознак орієнтації (номерний знак, кермо, написи). Положення лючка бака САМОСТІЙНИМ доказом сторони НЕ є.
+
 ІСТОРИЧНИЙ ВІЗУАЛЬНИЙ АНАЛІЗ ("historical_visual"): заповнюй ЛИШЕ коли історичні кадри реально передані. Оцінюй те, що РЕАЛЬНО видно САМЕ на цих кадрах, а не типовий сценарій ДТП:
 - visible_damage_zones: зони з ВИДИМИМ пошкодженням.
 - visible_severity за видимим обсягом: minor (косметика) | moderate (помітний удар, деформовані навісні елементи) | severe (очевидно тяжка деформація) | indeterminate. Це wording для звіту; тяжкість у формулі рахує код зі структурованих ознак нижче.
 - СТРУКТУРОВАНІ ВИДИМІ ОЗНАКИ (booleans, СТАВ true ЛИШЕ коли ознака реально видима на кадрі): major_deformation_visible (глибока деформація металу: зімʼятий капот/крило/стійка, зміщені панелі кузова, а не подряпини чи тріснутий пластик), wheel_displacement_visible (колесо явно зміщене/вивернуте зі свого положення, видимий обвал підвіски), cosmetic_only (УСІ видимі пошкодження обмежені косметикою навісних панелей: подряпини, дрібні вмʼятини, тріснутий бампер).
 - structural_visual_status: "no_obvious_severe_signs" означає ЛИШЕ "на доступних кадрах нема явних візуальних ознак тяжкої деформації силової структури" і НІКОЛИ не дорівнює "структура ціла". "visible_damage" СТАВ ЛИШЕ за STRONG structural evidence, коли ОДНОЧАСНО: (1) конкретно ідентифікований силовий елемент (внутрішній силовий поріг/sill, стійка A/B/C, лонжерон/frame rail, стакан/strut tower, силова підлога, інший явно названий structural member, або очевидне зміщення геометрії силової частини); (2) цей елемент достатньо видимий на кадрі; (3) видима деформація САМЕ силового елемента, а не сусідньої зовнішньої панелі. НЕДОСТАТНЬО: "сильно пошкоджений поріг", "зімʼята боковина", "сильний удар", "деформація в районі стійки", будь-який прикметник тяжкості без ідентифікованого силового елемента. Ракурс не дозволяє судити або силову частину від зовнішньої панелі відрізнити не можна: "indeterminate".
+- damage_side: сторона АВТОМОБІЛЯ з видимим пошкодженням за правилом сторін вище: "left|right|both|center|unknown"; side_confidence: "high" ЛИШЕ за надійної орієнтації (видно кермо/номер/написи), інакше "medium" чи "low". Не можеш надійно: "unknown".
 - possible_structural_damage (boolean): true, коли пошкодження лежить у ПОТЕНЦІЙНО структурній зоні (зона порога/rocker, зона стійки, передня/задня зона лонжеронів), але надійно відрізнити зовнішню панель від силового елемента за фото не можна. Тоді structural_visual_status = "indeterminate" + possible_structural_damage: true. Цей сигнал НЕ є підтвердженим структурним пошкодженням.
 - srs_visual_status: "no_deployment_visible" означає лише "спрацювання не видно на доступних кадрах", НЕ "SRS справна". Салон у кадр не потрапив: "not_visible".
 - summary: 2-3 речення про побачене, з розділенням "що видно" і "що лишається невідомим". evidence з ref auction_photo_N.
@@ -1403,6 +1442,7 @@ ${auction && auction.photos_sent ? `
 - MILEAGE_CONFLICT_UNEXPLAINED на основі АУКЦІОННОГО одометра дозволений ЛИШЕ коли ОДНОЧАСНО: одиниця аукціонної точки не unknown; її статус actual (не not_actual, не exempt, не unknown); аукціонна точка має надійну дату; порівнювана точка з історії чи оголошення теж має надійну дату; і ПІСЛЯ переведення одиниць пізніша точка справді нижча за ранішу. Якщо статус not_actual, exempt чи unknown, одиниця unknown, або дата хоч однієї точки ненадійна: конфлікт НЕ виставляй, збережи як інформаційний факт в info_notes із вихідним значенням і статусом.
 - Різниця пробігів САМА ПО СОБІ це НЕ ODOMETER_ROLLBACK, а MILEAGE_CONFLICT_UNEXPLAINED. Тюнінг сам по собі НЕ MODIFICATION_TECHNICAL_CONCERN: потрібен конкретний технічний привід. Минуле ДТП саме по собі НЕ POOR_REPAIR_VISIBLE: потрібні видимі сліди поганого ремонту.
 - ВІДСУТНІСТЬ ДАНИХ НІКОЛИ НЕ Є ЗНАХІДКОЮ. Unknown не добре і не погано.
+- signals.current_visual_flawless: true СТАВ ЛИШЕ коли на ДОСТАТНІХ і якісних поточних кадрах кузов і салон виглядають практично бездоганно, showroom-like: без видимих дефектів, слідів ремонту, різнотону, потертостей чи помітного зносу на видимих ділянках. "Нічого поганого не видно" на кількох звичайних кадрах це НЕ flawless: тоді false. Вік авто сам по собі значення не має.
 - event_id ОБОВʼЯЗКОВИЙ для КОЖНОЇ знахідки, без нього код її відкине. Для подій це імʼя події (accident_2020, flood_2021), для поточних станів і несправностей стабільний ідентифікатор (current_srs_fault, mileage_conflict_1, modification_suspension). Знахідки ОДНОЇ події (одного ДТП) несуть СПІЛЬНИЙ event_id: подія з кількома підтвердженнями це ОДНА знахідка з кількома evidence, не кілька знахідок.
 - repair_status де застосовно, МЕЖІ ЖОРСТКІ:
   * visually_consistent: пошкоджені на аукціоні зони на НИНІШНІХ фото без видимих слідів неякісного відновлення, І лише коли нинішні фото достатньо показують САМЕ ті зони і ракурси, що були пошкоджені. Потрібна зона не видна або порівняння ненадійне: лишається unknown, НЕ visually_consistent.
@@ -1455,7 +1495,7 @@ ${DECISION_RULES}${decisionStyle === 'a' ? DECISION_FEWSHOT : ''}
  "vehicle": {"title":"Марка Модель Рік","year":2018,"model_year":"рік за VIN, ЛИШЕ якщо надійно відомий і відрізняється від year, інакше null","fuel":"petrol|diesel|hybrid|electric","engine":"4.4 л бензин V8, 462 к.с. (або null)","transmission":"...","drive":"...","trim":"версія або null","mileage_note":"129 000 км"},
  "auction": {"found":true,"summary":"2-4 речення: що сталося з авто в США за архівом, реальний обсяг пошкоджень по фото, чи чесно продавець його описує","findings":[{"status":"ok|warn|bad|unknown","text":"порівняння до/після, 1 речення"}]},
  "body_wrap": {"present":false,"scope":"full|partial|unknown","sources":["seller","visual","historical"],"inspection_visibility":"limited|normal"},
- "historical_visual": {"visible_damage_zones":["капот","передній бампер"],"visible_severity":"minor|moderate|severe|indeterminate","major_deformation_visible":false,"wheel_displacement_visible":false,"cosmetic_only":false,"possible_structural_damage":false,"structural_visual_status":"no_obvious_severe_signs|possible|visible_damage|indeterminate","srs_visual_status":"deployed_visible|no_deployment_visible|not_visible|indeterminate","summary":"2-3 речення: що реально видно і що лишається невідомим","evidence":[{"source":"us_auction","ref":"auction_photo_1","description":"зім'ятий капот"}]},
+ "historical_visual": {"visible_damage_zones":["капот","передній бампер"],"visible_severity":"minor|moderate|severe|indeterminate","major_deformation_visible":false,"wheel_displacement_visible":false,"cosmetic_only":false,"possible_structural_damage":false,"damage_side":"left|right|both|center|unknown","side_confidence":"high|medium|low","structural_visual_status":"no_obvious_severe_signs|possible|visible_damage|indeterminate","srs_visual_status":"deployed_visible|no_deployment_visible|not_visible|indeterminate","summary":"2-3 речення: що реально видно і що лишається невідомим","evidence":[{"source":"us_auction","ref":"auction_photo_1","description":"зім'ятий капот"}]},
  "risks":[{"title":"назва ризику","level":"high|med|low","note":"1-2 речення: чому це головна стаття витрат чи ризику саме тут","action":"конкретна перевірка до покупки, 1 рядок"}],
  "equipment_v2":[{"name":"вентиляція передніх сидінь","category":"comfort|interior|multimedia|assist|exterior|performance","confidence_level":"vehicle_data|seller_and_visual|visual|seller, або null лише для суто історичної","highlight":false,"retrofit":false,"retrofit_basis":null,"historical_claim":false,"value_tier":"standard|notable|high_value","evidence":[{"source":"vehicle_data|current_photos|seller_claim|listing_data|historical","ref":"photo_7 чи vin_decode чи назва історичного джерела","sign":"конкретна ознака на кадрі чи коротка цитата джерела"}]}],
  "discrepancies":[{"severity":"high|med|low","title":"коротка назва розбіжності","detail":"2-3 речення: що стверджується, що знайдено, звідки","sources":["опис продавця","перевірка площадки","фото","VIN"]}],
@@ -1466,7 +1506,7 @@ ${DECISION_RULES}${decisionStyle === 'a' ? DECISION_FEWSHOT : ''}
  "model_notes":{"issues":[{"unit":"вузол/двигун","title":"назва проблеми","detail":"1-2 речення","severity":"low|med|high","seller_serviced":false}]},
  "checklist":["конкретна перевірка при огляді, 1 рядок", "..."],
  "purchase_decision":{"recommendation":"buy|go_see|negotiate|skip","headline":"рішення одним рядком","summary_short":"чому: 3-4 речення, до 400 символів","reasoning":"повне міркування, 2-4 абзаци","why_consider":["..."],"main_concerns":["..."],"must_check":["..."],"questions_for_seller":["..."],"value_context":"про ціну словами","missing_but_important":["..."]},
- "score_facts":{"findings":[{"type":"STRUCTURAL_DAMAGE","event_id":"accident_2020","severity":"high","repair_status":"unknown","serious_intervention":false,"maintenance_evidence":false,"evidence":[{"source":"us_auction","ref":"auction_event_1","description":"на аукціонних фото деформований лівий лонжерон"}]}],"signals":{"seller_claims_us_import":false},"info_notes":["вільна замітка без впливу на бал"]},
+ "score_facts":{"findings":[{"type":"STRUCTURAL_DAMAGE","event_id":"accident_2020","severity":"high","repair_status":"unknown","serious_intervention":false,"maintenance_evidence":false,"evidence":[{"source":"us_auction","ref":"auction_event_1","description":"на аукціонних фото деформований лівий лонжерон"}]}],"signals":{"seller_claims_us_import":false,"current_visual_flawless":false},"info_notes":["вільна замітка без впливу на бал"]},
  "verdict":{"score":7.4,"summary":"3-5 речень людською мовою: що це за авто і пропозиція, головні знахідки, чи варто розглядати і за яких умов. Без канцеляриту"}
 }
 "checklist": 3-6 пунктів, і це поради ПОКУПЦЮ ДЛЯ ЖИВОГО ОГЛЯДУ І ТЕСТ-ДРАЙВУ, а не дослідницькі завдання. ЖОРСТКІ правила:
@@ -1854,6 +1894,12 @@ export default async function handler(req, res) {
         findings,
         coverageInputs,
         vehicle: vehicleV3,
+        /* сила visual evidence для осі "Стан за фото": повнота галереї і
+           строгий flawless-сигнал моделі (10.0 це виняток, не дефолт) */
+        visualEvidence: {
+          gallery_complete: galleryCoverageComplete === true,
+          flawless: parsed?.score_facts?.signals?.current_visual_flawless === true,
+        },
         auctionMeta: auctionMetaV3,
         historicalVisual: parsed.historical_visual || null,
         accidentRecord: hf.accident_recorded === true
@@ -1919,6 +1965,37 @@ export default async function handler(req, res) {
         if (FINAL_LINE && !pdF.reasoning.includes(FINAL_LINE)) pdF.reasoning = pdF.reasoning.trim() + '\n\n' + FINAL_LINE;
       }
     } catch (e) { console.log('[check] score final line failed:', e.message); }
+
+    /* канонічна сторона пошкодження: source + Vision -> одна resolved
+       сторона для всіх розділів; слабкий Vision не створює "право проти
+       ліво". Score math і resolver це НЕ чіпає */
+    try {
+      const hfS = listing.history_facts || {};
+      const srcSideText = [auctionSearch && auctionSearch.primary_damage, auctionSearch && auctionSearch.secondary_damage, hfS.accident_note].filter(Boolean).join(' ');
+      const hvS = parsed.historical_visual || null;
+      const resolvedSide = resolveDamageSide({
+        source_side: sideFromText(srcSideText),
+        vision_side: hvS ? hvS.damage_side : 'unknown',
+        vision_confidence: hvS ? hvS.side_confidence : 'low',
+      });
+      if (srcSideText || (hvS && hvS.damage_side !== 'unknown')) {
+        parsed.presentation_damage = {
+          primary_zone: (auctionSearch && auctionSearch.primary_damage) || null,
+          side: resolvedSide.side,
+          side_confidence: resolvedSide.side_confidence,
+          source_side: sideFromText(srcSideText),
+          vision_side: hvS ? hvS.damage_side : 'unknown',
+          vision_side_confidence: hvS ? hvS.side_confidence : 'low',
+          side_discrepancy_allowed: resolvedSide.discrepancy_allowed,
+        };
+      }
+      if (Array.isArray(parsed.discrepancies) && !(parsed.presentation_damage && parsed.presentation_damage.side_discrepancy_allowed)) {
+        parsed.discrepancies = parsed.discrepancies.filter(d => {
+          if (isSideDiscrepancy(d)) { console.log('[check] side discrepancy dropped (weak vision side):', (d.title || '').slice(0, 80)); return false; }
+          return true;
+        });
+      }
+    } catch (e) { console.log('[check] side resolution failed:', e.message); }
 
     /* possible structural: якщо модель не поклала його в risks/must_check,
        код додає сам (У КІНЕЦЬ списку: не автоматично ризик №1, підтверджені

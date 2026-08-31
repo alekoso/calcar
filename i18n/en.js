@@ -539,8 +539,8 @@ window.CALCAR_DICT = {
   'Дорога опція': 'Expensive option',
   'Ця опція зазвичай помітно впливає на вартість автомобіля або вартість її ремонту чи заміни.': 'This option usually has a noticeable impact on the car price or on the cost of its repair or replacement.',
   'Перереєстрація': 'Re-registration',
-  'км/рік': 'km/year',
-  'Середній пробіг за весь строк експлуатації автомобіля.': 'Average mileage over the whole life of the vehicle.',
   'Можна спитати про це авто': 'You can ask about this car',
   'Чат допоможе розібрати ДТП, пробіг, ризики і підкаже, що перевірити перед покупкою.': 'The chat can walk you through the accident history, mileage and risks, and suggest what to check before buying.',
+  'км/міс': 'km/mo',
+  'Середній пробіг за місяць за весь строк експлуатації автомобіля.': 'Average monthly mileage over the whole life of the vehicle.',
 };

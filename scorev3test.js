@@ -31,6 +31,7 @@ const THIN = {
 (async () => {
   const M = await import('file://' + tmp);
   const { computeScoreV3, resolveAccidentEvents, deriveSeverity, normalizeCurrentProblems, buildCoverageV3, checkEligibilityV3, SCORE_CONFIG_V3 } = M;
+  const C_DIM = M.SCORE_DIMENSIONS_CONFIG;
   const C = SCORE_CONFIG_V3;
   const score = (findings, cov, extra) => computeScoreV3({ findings, coverageInputs: cov, ...(extra || {}) });
 
@@ -388,10 +389,22 @@ const THIN = {
   /* чиста перевірена машина: перевірені осі дають чесні 10, а Технічні
      ризики БЕЗ конкретного технічного evidence недоступні: достатня
      кількість фото сама по собі цю вісь не відкриває */
-  for (const k of ['history', 'damage_repair', 'current_condition']) {
+  for (const k of ['history', 'damage_repair']) {
     const d = b.score_dimensions[k];
     if (!d || d.score_available !== true || d.score !== 10) errs.push('чиста перевірена: вісь ' + k + ' мала бути 10: ' + JSON.stringify(d));
   }
+  /* Стан за фото: "дефектів не видно" це НЕ 10.0, а base 9.4; 10.0 лише
+     за винятковим visual evidence (flawless + повна галерея + >=18 кадрів) */
+  const ccPlain = b.score_dimensions.current_condition;
+  if (!ccPlain || ccPlain.score !== C_DIM.CC_BASE_DEFAULT) errs.push('звичайний набір без дефектів мав дати базу ' + C_DIM.CC_BASE_DEFAULT + ': ' + JSON.stringify(ccPlain));
+  const ccRich = score([], RICH, { visualEvidence: { gallery_complete: true } }).score_dimensions.current_condition;
+  if (ccRich.score !== C_DIM.CC_BASE_RICH) errs.push('повна галерея без дефектів мала дати ' + C_DIM.CC_BASE_RICH + ': ' + ccRich.score);
+  const ccFlaw = score([], RICH, { visualEvidence: { gallery_complete: false, flawless: true } }).score_dimensions.current_condition;
+  if (ccFlaw.score !== C_DIM.CC_FLAWLESS) errs.push('flawless без повного покриття мав дати ' + C_DIM.CC_FLAWLESS + ': ' + ccFlaw.score);
+  const ccFull = score([], RICH, { visualEvidence: { gallery_complete: true, flawless: true } }).score_dimensions.current_condition;
+  if (ccFull.score !== 10) errs.push('винятковий evidence мав дати 10.0: ' + ccFull.score);
+  /* 10.0 недосяжна без flawless-сигналу */
+  if (score([], { ...RICH, photos_count: 40 }, { visualEvidence: { gallery_complete: true } }).score_dimensions.current_condition.score >= 10) errs.push('10.0 стала дешевою: без flawless');
   /* Пробіг без відомого одометра недоступний: величина є головним компонентом */
   if (b.score_dimensions.mileage.score_available !== false) errs.push('без одометра Пробіг мав бути unavailable');
   if (b.score_dimensions.technical.score_available !== false || b.score_dimensions.technical.score !== null) {
@@ -541,8 +554,8 @@ const THIN = {
   if (ag.age_source !== 'model_year_midpoint' || Math.abs(ag.age_months - 98) > 1) errs.push('midpoint-fallback зламаний: ' + JSON.stringify(ag));
   if (resolveVehicleAge({}, NOW).age_months !== null) errs.push('без жодної дати вік мав бути null');
 
-  /* історичне ДТП САМО не знижує Поточний стан */
-  if (sevDim.current_condition.score !== 10) errs.push('історичне ДТП знизило current_condition: ' + sevDim.current_condition.score);
+  /* історичне ДТП САМО не знижує Стан за фото: та сама база, що в чистої */
+  if (sevDim.current_condition.score !== C_DIM.CC_BASE_DEFAULT) errs.push('історичне ДТП знизило current_condition: ' + sevDim.current_condition.score);
   /* generic болячка моделі не є технічним evidence: відкидається на вході
      і вісь лишається недоступною, а не оціненою */
   b = score([{ type: 'MODEL_GENERIC_WEAKNESS', event_id: 'g1', evidence: [ev('seller_claim', null, 'слабкі ланцюги у моделі')] }], RICH);
@@ -642,7 +655,7 @@ const THIN = {
   if (!/Можна спитати про це авто/.test(pageSrc)) errs.push('result-check: нема тексту coachmark');
   /* середній пробіг за рік: ТІ САМІ canonical-дані осі Пробіг */
   if (!/annual_mileage_km/.test(pageSrc)) errs.push('result-check: річний пробіг не з breakdown осі');
-  if (!/Середній пробіг за весь строк експлуатації автомобіля\./.test(pageSrc)) errs.push('result-check: нема tooltip річного пробігу');
+  if (!/Середній пробіг за місяць за весь строк експлуатації автомобіля\./.test(pageSrc)) errs.push('result-check: нема tooltip місячного пробігу');
   /* реєстраційні події історії */
   if (!/reg-badge/.test(pageSrc) || !/перереєстрац\|перерегистрац/.test(pageSrc)) errs.push('result-check: нема виділення перереєстрацій');
   /* старий вигляд Score відновлений: окремої картки більше нема, лише popover */
