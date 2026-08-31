@@ -777,7 +777,13 @@ export function computeDimensions(input, dc = SCORE_DIMENSIONS_CONFIG) {
   if (has('FLOOD')) { histPen += dc.HISTORY_FLOOD; histFactors.push('flood_history'); }
   if (has('FIRE')) { histPen += dc.HISTORY_FIRE; histFactors.push('fire_history'); }
   if (has('VIN_IDENTITY_PROBLEM')) { histPen += dc.HISTORY_VIN; histFactors.push('vin_identity_problem'); }
-  const histAvailable = earned('history_records')
+  /* history gap (ввезена вживаною без жодного незалежного історичного
+     якоря): одна пізня локальна реєстрація НЕ є meaningful-покриттям
+     життя авто, і "нічого не знайдено" тут не означає "ідеальна історія".
+     Це НЕ штраф: вісь чесно недоступна, поки не зʼявиться справжній
+     evidence (аукціон found/checked_absent, події, минулі записи) */
+  const historyGap = cov.history_gap_detected === true;
+  const histAvailable = (earned('history_records') && !historyGap)
     || (domains.auction_history && ['found', 'checked_absent'].includes(domains.auction_history.status))
     || events.length > 0 || histFactors.length > 0;
   const history = dim(histAvailable, histPen, histFactors);

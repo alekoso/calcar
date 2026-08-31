@@ -517,7 +517,21 @@ async function readAuctionCache(vin) {
     if (!r.ok) return null;
     const rows = await r.json();
     const row = Array.isArray(rows) && rows[0] ? rows[0] : null;
-    if (!row) return null;
+    if (!row) {
+      /* події нема: читаємо negative/discovery-кеш (auction_checks, TTL).
+         Він же захищає від повторних Serper-викликів на кожен Check */
+      try {
+        const r2 = await fetch(base.replace(/\/$/, '') + '/rest/v1/auction_checks?vin=eq.' + encodeURIComponent(vin) + '&limit=1&select=*', {
+          headers: { apikey: key, authorization: 'Bearer ' + key },
+        });
+        if (r2.ok) {
+          const rows2 = await r2.json();
+          const c = Array.isArray(rows2) && rows2[0] ? rows2[0] : null;
+          if (c && c.status === 'absent') return { status: 'absent', source: null, lot_url: null, checked_at: c.checked_at, record: c.record || {} };
+        }
+      } catch (e) { /* negative-кеш опційний */ }
+      return null;
+    }
     /* приводимо рядок події до форми, яку очікує гілка cache-hit */
     return {
       status: 'found',
@@ -634,6 +648,9 @@ export function extractHistoryFacts(text) {
     accident_recorded,
     accident_note,
     us_import_record: /Пригнано з США|Ввезено з США|Пригнано зі США/i.test(t),
+    /* ввезення з-за кордону БЕЗ конкретної країни: imported_used, НЕ США.
+       Архітектура глобальна: US-сигнал лишається окремим */
+    imported_used: /ввезен[а-яіїєґ]*\s+(по|за)?\s*ВМД|по ВМД|з-за кордону|ввезено з-за/i.test(t) || /Перша реєстрація в Україні.{0,60}(ввезен|імпорт)/i.test(t),
     /* \w не матчить кирилицю: явний літерал фрази площадки */
     ria_auction_record: /архівні дані з офіційного аукціону/i.test(t),
   };
@@ -1442,6 +1459,7 @@ ${auction && auction.photos_sent ? `
 - MILEAGE_CONFLICT_UNEXPLAINED на основі АУКЦІОННОГО одометра дозволений ЛИШЕ коли ОДНОЧАСНО: одиниця аукціонної точки не unknown; її статус actual (не not_actual, не exempt, не unknown); аукціонна точка має надійну дату; порівнювана точка з історії чи оголошення теж має надійну дату; і ПІСЛЯ переведення одиниць пізніша точка справді нижча за ранішу. Якщо статус not_actual, exempt чи unknown, одиниця unknown, або дата хоч однієї точки ненадійна: конфлікт НЕ виставляй, збережи як інформаційний факт в info_notes із вихідним значенням і статусом.
 - Різниця пробігів САМА ПО СОБІ це НЕ ODOMETER_ROLLBACK, а MILEAGE_CONFLICT_UNEXPLAINED. Тюнінг сам по собі НЕ MODIFICATION_TECHNICAL_CONCERN: потрібен конкретний технічний привід. Минуле ДТП саме по собі НЕ POOR_REPAIR_VISIBLE: потрібні видимі сліди поганого ремонту.
 - ВІДСУТНІСТЬ ДАНИХ НІКОЛИ НЕ Є ЗНАХІДКОЮ. Unknown не добре і не погано.
+- ПОЗИТИВНИЙ ДОКАЗ ГОЛОВНІШИЙ ЗА ВІДСУТНІСТЬ У ДЖЕРЕЛІ: позначка будь-якої площадки "ДТП не зареєстровано" означає лише відсутність запису В ЦЬОМУ джерелі. Якщо незалежне історичне джерело (аукціонний запис, архівні фото, реєстр іншої країни) підтверджує ДТП, позитивний доказ ПЕРЕМАГАЄ: подія існує. Це загальне правило для всіх площадок і джерел.
 - signals.current_visual_flawless: true СТАВ ЛИШЕ коли на ДОСТАТНІХ і якісних поточних кадрах кузов і салон виглядають практично бездоганно, showroom-like: без видимих дефектів, слідів ремонту, різнотону, потертостей чи помітного зносу на видимих ділянках. "Нічого поганого не видно" на кількох звичайних кадрах це НЕ flawless: тоді false. Вік авто сам по собі значення не має.
 - event_id ОБОВʼЯЗКОВИЙ для КОЖНОЇ знахідки, без нього код її відкине. Для подій це імʼя події (accident_2020, flood_2021), для поточних станів і несправностей стабільний ідентифікатор (current_srs_fault, mileage_conflict_1, modification_suspension). Знахідки ОДНОЇ події (одного ДТП) несуть СПІЛЬНИЙ event_id: подія з кількома підтвердженнями це ОДНА знахідка з кількома evidence, не кілька знахідок.
 - repair_status де застосовно, МЕЖІ ЖОРСТКІ:
@@ -1600,7 +1618,7 @@ export default async function handler(req, res) {
                може зʼявитись НОВА аукціонна подія: discovery повторюємо і
                дивимось лише на кандидатів з ІНШИМИ сторінками */
             try {
-              const disco = await discoverVinCandidates(listing.vin, { totalBudgetMs: 8000, nhtsa });
+              const disco = await discoverVinCandidates(listing.vin, { totalBudgetMs: 8000, nhtsa, skipSerper: true });
               const fresh = disco.candidates.filter(c => normalizeListingUrl(c.url) !== normalizeListingUrl(cached.lot_url));
               if (fresh.length) {
                 console.log('[auction] новий кандидат поза кешем:', fresh[0].url.slice(0, 90));
@@ -1610,7 +1628,9 @@ export default async function handler(req, res) {
           }
           console.log('[auction] cache=hit', cached.status, listing.vin);
         } else {
-          const rec = await findAuctionRecord(listing.vin, nhtsa, { totalBudgetMs: 20000, nhtsa, zenrowsTimeoutMs: 55000 });
+          /* imported/history-gap: дозволений limited extended search */
+          const extendedSearch = listing.history_facts?.imported_used === true || listing.history_facts?.us_import_record === true;
+          const rec = await findAuctionRecord(listing.vin, nhtsa, { totalBudgetMs: 20000, nhtsa, zenrowsTimeoutMs: 55000, extendedSearch });
           auctionSearch = {
             status: rec.status, reason: rec.reason || null, source: rec.source || null,
             lot_url: rec.lot_url || null, total_ms: rec.total_ms, cache: 'miss',
@@ -1856,11 +1876,23 @@ export default async function handler(req, res) {
         mileage_known: listing.odometer_km != null,
         /* держдані: офіційний блок площадки з власниками й операціями */
         registration_data_exists: hf.registry_present === true,
+        /* ввезена вживаною: НЕ US-сигнал і НЕ штраф, лише provenance */
+        imported_used: hf.imported_used === true,
         /* цих джерел у пайплайні поки немає: код чесно каже "не був" */
         service_history_exists: false,
         inspection_history_exists: false,
         seller_docs_exists: false,
       };
+      /* structured history gap: авто ввезене вживаним, і жодного незалежного
+         історичного якоря (аукціон/минулі оголошення/точки пробігу) нема.
+         НЕ штраф і НЕ ризик: сигнал недостатності evidence для осей і привід
+         для глибшого discovery. Пізня перша локальна реєстрація сама по собі
+         історію не покриває */
+      coverageInputs.history_gap_detected = coverageInputs.imported_used === true
+        && coverageInputs.historical_listings_count === 0
+        && coverageInputs.mileage_observation_count === 0
+        && !coverageInputs.auction_record_exists
+        && !(coverageInputs.auction_us_signal && coverageInputs.auction_checked);
       const findings = Array.isArray(parsed?.score_facts?.findings) ? parsed.score_facts.findings : [];
       const breakdownV2 = computeScore(findings, coverageInputs);
       breakdownV2.score_version = 'v2';

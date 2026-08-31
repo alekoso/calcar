@@ -25,14 +25,19 @@ export const AUCTION_CONFIG = {
     },
     {
       name: 'poctra.com',
-      searchUrl: vin => 'https://poctra.com/search/q?searchtext=' + vin,
+      searchUrl: vin => 'https://poctra.com/search?q=' + vin,
       searchKind: 'html_links',
       lotUrlPattern: /^https:\/\/poctra\.com\/[a-z0-9\-\/]+$/i,
     },
   ],
-  /* безкоштовний discovery поза білим списком доменів: кандидатом стає
-     будь-яка публічна сторінка з точним VIN в URL; використання даних
-     завжди йде через строгу перевірку ідентичності */
+  /* ШТАТНИЙ general discovery: Serper (Google) за точним VIN у лапках.
+     Прод-IP Vercel масово ловить 403 від безкоштовних endpoint-ів, тому
+     дешевий пошуковий крок є нормою, а не аварією. Serper дає ЛИШЕ
+     кандидатів (URL): жоден факт зі сніпета не стає evidence */
+  SERPER_ENDPOINT: 'https://google.serper.dev/search',
+  /* відомі historical-домени: кандидати з них ранжуються вище */
+  HISTORICAL_DOMAINS: /bid\.cars|bidfax|poctra|stat\.vin|plc\.auction|salvagebid|autoastat|autobidmaster|carsfromwest|epicvin|vinchain/i,
+  /* fallback-пошук без ключа: НЕ основний шлях продакшна */
   SEARCH_ENDPOINT: vin => 'https://html.duckduckgo.com/html/?q=%22' + vin + '%22',
   SEARCH_MAX_CANDIDATES: 8,
   /* безкоштовні дзеркала: production-адаптер без VIN-specific хардкоду,
@@ -53,7 +58,7 @@ export const AUCTION_CONFIG = {
      sale_price_missing причиною НЕ є (ціна не в продуктовій логіці);
      need_damage_labels ЗАБОРОНЕНА при наявності якісних фото: зони і подушки
      визначає vision-аналіз власним пайплайном */
-  ZENROWS_REASONS: ['title_status_missing', 'photos_unavailable', 'photos_low_quality', 'odometer_unreadable', 'critical_auction_metadata_missing'],
+  ZENROWS_REASONS: ['title_status_missing', 'photos_unavailable', 'photos_low_quality', 'odometer_unreadable', 'critical_auction_metadata_missing', 'discovery_blocked'],
   FETCH_TIMEOUT_MS: 12000,
   TOTAL_BUDGET_MS: 25000,
   /* ліміти скачування фото */
@@ -86,8 +91,10 @@ async function fetchText(url, opts) {
     });
     const body = await r.text();
     const blocked = r.status === 403 || r.status === 429 || r.status === 503
-      /* маркери challenge-сторінки, НЕ голе слово cloudflare (буває у CDN-скриптах) */
-      || /just a moment|cf-chl|cf-browser-verification|captcha|incapsula|attention required|enable javascript and cookies/i.test(body.slice(0, 4000));
+      /* маркери challenge/interstitial, НЕ голе слово cloudflare (буває у
+         CDN-скриптах). HTTP 200 із челенджем ("Select all squares containing
+         a duck") це ТЕЖ blocked, а не порожній результат пошуку */
+      || /just a moment|cf-chl|cf-browser-verification|captcha|incapsula|attention required|enable javascript and cookies|bots use duckduckgo|select all squares|verify (that )?you are (a )?human|security verification|robot check|performing security/i.test(body.slice(0, 4000));
     return { status: r.status, body, blocked };
   } finally { clearTimeout(t); }
 }
@@ -111,24 +118,32 @@ export function verifyLotIdentity(page, vin, nhtsa) {
   const inCanonical = zones.some(z => z.includes(V)) || labeled;
   if (!inCanonical) return { matched: false, reason: 'vin_not_in_canonical_zone' };
 
-  const head = norm(title + ' ' + h1 + ' ' + String(page.url || ''));
+  /* make/model звіряються по КОНТЕНТУ сторінки (title/h1): URL-слаг це наш
+     же candidate і не може підтверджувати сам себе */
+  const head = norm(title + ' ' + h1);
   const make = norm(nhtsa && nhtsa.Make);
   const model = norm(nhtsa && nhtsa.Model);
+  /* несумісна МАРКА при заявленому VIN: справжній identity-конфлікт */
   if (make && !head.includes(make)) return { matched: false, reason: 'make_mismatch' };
+  let confidence = 'high';
+  let model_naming_mismatch = false;
   if (model) {
-    /* модель збігається, якщо хоч один змістовний токен моделі є в заголовку */
+    /* ТОЧНИЙ повний VIN у канонічній зоні є ГОЛОВНИМ якорем ідентичності.
+       Варіації naming моделі/trim ("540i" проти "5 Series 540 XI") НЕ
+       відкидають запис: це знижена впевненість і data-quality нотатка,
+       а не hard reject (диагностований false negative) */
     const tokens = model.split(' ').filter(x => x.length >= 2);
     if (tokens.length && !tokens.some(tk => head.includes(tk))) {
-      return { matched: false, reason: 'model_mismatch' };
+      confidence = 'reduced';
+      model_naming_mismatch = true;
     }
   }
-  let confidence = 'high';
   const nYear = parseInt(nhtsa && nhtsa.ModelYear, 10);
   const pYear = parseInt((title + ' ' + h1).match(/\b(19|20)\d{2}\b/)?.[0], 10);
   if (nYear && pYear && Math.abs(nYear - pYear) > AUCTION_CONFIG.YEAR_TOLERANCE) {
     confidence = 'reduced';
   }
-  return { matched: true, confidence, year_page: pYear || null, year_vin: nYear || null };
+  return { matched: true, confidence, model_naming_mismatch, year_page: pYear || null, year_vin: nYear || null };
 }
 
 /* ---------- 2/3. кеш і статуси ----------
@@ -202,6 +217,61 @@ export async function downloadLotPhotos(urls, opts = {}, cfg = AUCTION_CONFIG) {
 /* безкоштовний пошуковий discovery: кандидати з БУДЬ-ЯКОГО публічного
    домену, аби точний VIN стояв у URL. Endpoint часом віддає антибот 202:
    тоді просто нуль кандидатів, драбина йде далі шаблонами джерел */
+/* Serper: один дешевий запит "<VIN>" (+ опційний extended "<VIN> auction"
+   лише для imported/history-gap без результатів першого). Повертає ЛИШЕ
+   кандидатів: title/snippet служать discovery і ранжуванню, факти з них
+   НІКОЛИ не нормалізуються (дані беруться тільки зі сторінки після fetch
+   і підтвердженої ідентичності) */
+async function serperDiscovery(vin, opts, cfg) {
+  const V = String(vin || '').toUpperCase();
+  const key = process.env.SERPER_API_KEY;
+  const diag = { source: 'serper', step: 'discovery', status: null, found: false, queries: 0, ms: 0 };
+  if (!key) { diag.status = 'no_api_key'; return { candidates: [], diag }; }
+  const fetchImpl = opts.serperFetchImpl || opts.fetchImpl || fetch;
+  const ts = Date.now();
+  const out = [];
+  const runQuery = async q => {
+    diag.queries++;
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), opts.timeoutMs || cfg.FETCH_TIMEOUT_MS);
+    try {
+      const r = await fetchImpl(cfg.SERPER_ENDPOINT, {
+        signal: ctl.signal,
+        method: 'POST',
+        headers: { 'X-API-KEY': key, 'content-type': 'application/json' },
+        body: JSON.stringify({ q }),
+      });
+      diag.status = r.status;
+      if (r.status !== 200) return;
+      const j = JSON.parse(await r.text());
+      for (const item of (Array.isArray(j.organic) ? j.organic : [])) {
+        const u = String(item.link || '');
+        if (!/^https?:\/\//.test(u)) continue;
+        /* strong candidate: точний VIN в url, title АБО snippet. Це привід
+           ВІДКРИТИ сторінку, не підтверджена ідентичність */
+        const hay = (u + ' ' + (item.title || '') + ' ' + (item.snippet || '')).toUpperCase();
+        if (!hay.includes(V)) continue;
+        let host;
+        try { host = new URL(u).hostname; } catch (e) { continue; }
+        if (out.some(c => c.url === u)) continue;
+        out.push({ source: 'serper:' + host, url: u, known_historical: cfg.HISTORICAL_DOMAINS.test(host) });
+        if (out.length >= cfg.SEARCH_MAX_CANDIDATES) break;
+      }
+    } catch (e) { diag.status = diag.status || 'error'; diag.error = String(e.message || e).slice(0, 60); } finally { clearTimeout(t); }
+  };
+  await runQuery('"' + V + '"');
+  /* limited extended search: лише imported/history-gap і лише коли перший
+     запит не дав historical-кандидатів. Без віяла з 5-10 запитів */
+  if (opts.extendedSearch && !out.some(c => c.known_historical) && out.length < cfg.SEARCH_MAX_CANDIDATES) {
+    await runQuery('"' + V + '" auction');
+  }
+  diag.found = out.length > 0;
+  diag.ms = Date.now() - ts;
+  console.log('[auction] source=serper step=discovery status=' + diag.status,
+    'queries=' + diag.queries, 'candidates=' + out.length, diag.ms + 'ms');
+  return { candidates: out, diag };
+}
+
 async function searchDiscovery(vin, opts, cfg) {
   const V = String(vin || '').toUpperCase();
   const d = { source: 'search', step: 'discovery', url: cfg.SEARCH_ENDPOINT(V), status: null, blocked: false, found: false, ms: 0 };
@@ -278,19 +348,32 @@ export async function discoverVinCandidates(vin, opts = {}, cfg = AUCTION_CONFIG
       d.blocked ? 'BLOCKED' : d.outcome, d.ms + 'ms');
     diag.push(d);
   }
-  /* пошуковий discovery: кандидати не обмежені трьома доменами */
-  const sd = await searchDiscovery(V, opts, cfg);
-  diag.push(sd.diag);
-  /* безкоштовні дзеркала за шаблоном марка/модель (без VIN-хардкоду) стоять
-     ПЕРШИМИ: їхні фото лежать на відкритому CDN (cs.copart.com), тоді як
-     фото інших дзеркал часто за тим самим антиботом, що й лот */
-  const head = [];
+  /* ШТАТНИЙ general discovery: Serper за точним VIN. Повторний прохід по
+     закешованій found-події Serper НЕ викликає (opts.skipSerper) */
+  const sp = opts.skipSerper
+    ? { candidates: [], diag: { source: 'serper', step: 'discovery', status: 'skipped_cache', found: false, queries: 0, ms: 0 } }
+    : await serperDiscovery(V, opts, cfg);
+  diag.push(sp.diag);
+  /* DDG: лише optional fallback, коли Serper недоступний і нічого нема */
+  let ddgCandidates = [];
+  if (sp.diag.status === 'no_api_key' || (!out.length && !sp.candidates.length)) {
+    const sd = await searchDiscovery(V, opts, cfg);
+    diag.push(sd.diag);
+    ddgCandidates = sd.candidates;
+  }
+  /* RANKING: (1) підтверджені source-specific знахідки; (2) Serper з
+     відомих historical-доменів; (3) інші strong exact-VIN кандидати;
+     (4) DDG-fallback; (5) шаблонні (guessed) дзеркала ОСТАННІМИ: платний
+     виклик не має йти на мертве дзеркало поперед реального запису */
+  const serperHist = sp.candidates.filter(c => c.known_historical);
+  const serperOther = sp.candidates.filter(c => !c.known_historical);
+  const tail = [];
   for (const m of cfg.MIRRORS) {
     const u = m.url(V, opts.nhtsa);
-    if (u) head.push({ source: m.name, url: u });
+    if (u) tail.push({ source: m.name, url: u, synthetic: true });
   }
-  const merged = [...head, ...out];
-  for (const c of sd.candidates) {
+  const merged = [];
+  for (const c of [...out, ...serperHist, ...serperOther, ...ddgCandidates, ...tail]) {
     if (!merged.some(x => x.url === c.url)) merged.push(c);
   }
   return { candidates: merged, diagnostics: diag, discovery_ms: Date.now() - t0 };
@@ -412,6 +495,29 @@ export async function findAuctionRecord(vin, nhtsa, opts = {}, cfg = AUCTION_CON
   const t0 = Date.now();
   const disco = await discoverVinCandidates(vin, opts, cfg);
   const diagnostics = [...disco.diagnostics];
+
+  /* заблокований discovery-endpoint bid.cars: ОДИН платний виклик пошуку
+     дозволений ЛИШЕ коли Serper/інші кроки не дали жодного historical-
+     кандидата (не палимо кредити, коли реальний lot URL уже знайдено).
+     Це discovery, тому justification: discovery_blocked */
+  const bidDiag = disco.diagnostics.find(d => d.source === 'bid.cars' && d.step === 'discovery');
+  const hasHistoricalCandidate = disco.candidates.some(c => !c.synthetic && (c.known_historical || !/^serper:/.test(c.source) && c.source !== 'search' && !/^search:/.test(c.source)));
+  if (bidDiag && bidDiag.outcome === 'blocked' && !hasHistoricalCandidate
+    && opts.allowPaid !== false && process.env.ZENROWS_API_KEY) {
+    const zd = await zenrowsFetch(cfg.SOURCES[0].searchUrl(String(vin).toUpperCase()), { missing_reason: 'discovery_blocked', missing_fact_required: true }, opts, cfg);
+    if (!zd.skipped && zd.status === 200) {
+      try {
+        const j = JSON.parse(zd.body);
+        if (j && j.url && cfg.SOURCES[0].lotUrlPattern.test(j.url) && !disco.candidates.some(c => c.url === j.url)) {
+          disco.candidates.unshift({ source: 'bid.cars', url: j.url });
+          bidDiag.outcome = 'candidate';
+          bidDiag.found = true;
+          diagnostics.push({ source: 'bid.cars', step: 'discovery_unblock', status: 200, found: true, paid: true, ms: 0 });
+          console.log('[auction] source=bid.cars step=discovery_unblock кандидат через zenrows');
+        }
+      } catch (e) { /* JSON не розпарсився: лишається blocked */ }
+    }
+  }
   /* СТРОГИЙ absent: рахується лише коли КОЖНЕ джерело ланцюга успішно
      відповіло відсутністю запису. Ранній вихід дозволений лише при found.
      Будь-який таймаут, блокування чи нерозпарсена відповідь хоч одного

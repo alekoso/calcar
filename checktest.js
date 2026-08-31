@@ -659,6 +659,30 @@ const REPORTS = [
   if (!/current_visual_flawless: true СТАВ ЛИШЕ/.test(api)) errs.push('нема строгого правила flawless');
 }
 
+/* ---- imported_used, history gap і позитивний доказ ---- */
+{
+  const src = grab(api, 'extractHistoryFacts');
+  const fns = new Function(src + '\nreturn { extractHistoryFacts };')();
+  const t1 = 'за офіційними відкритими державними даними 1 власник Остання операція Первинна реєстрація Б/В ТЗ ввезене по ВМД';
+  const hf1 = fns.extractHistoryFacts(t1);
+  if (hf1.imported_used !== true) errs.push('ввезене по ВМД не дало imported_used');
+  if (hf1.us_import_record !== false) errs.push('ввезене по ВМД помилково стало US-імпортом');
+  const hf2 = fns.extractHistoryFacts('Пригнано з США, стан гарний');
+  if (hf2.us_import_record !== true) errs.push('явний пригін зі США загубився');
+  const hf3 = fns.extractHistoryFacts('машина куплена в салоні в Україні');
+  if (hf3.imported_used !== false) errs.push('локальна машина стала imported_used');
+  /* history gap рахується детерміновано в handler */
+  if (!/history_gap_detected = coverageInputs\.imported_used === true/.test(api)) errs.push('нема детермінованого history_gap_detected');
+  if (!/extendedSearch/.test(api)) errs.push('imported/gap не вмикає extended search');
+  if (!/skipSerper: true/.test(api)) errs.push('cache-hit повтор не пропускає Serper');
+  /* позитивний доказ головніший за відсутність у джерелі: generic-правило */
+  if (!/ПОЗИТИВНИЙ ДОКАЗ ГОЛОВНІШИЙ ЗА ВІДСУТНІСТЬ У ДЖЕРЕЛІ/.test(api)) errs.push('нема правила позитивного доказу');
+  if (/hardcode.*AUTO\.RIA.*ДТП не зареєстровано/.test(api)) errs.push('правило захардкожене під RIA');
+  /* negative-кеш: читання auction_checks і файл міграції для власника */
+  if (!/auction_checks\?vin=eq\./.test(api)) errs.push('negative-кеш не читається');
+  if (!fs.existsSync('supabase-auction-cache.sql')) errs.push('нема SQL-файла auction_checks для власника');
+}
+
 if (errs.length) { console.log('FAILED:', errs); process.exit(1); }
   console.log('нормалізація одна · збіг за URL і за VIN · значущий query не клеїться · гість без перевірки · повтор свідомий, insert · правки звіту');
   console.log('CHECK DUP TEST PASSED');

@@ -78,8 +78,18 @@ function makeFetch(map) {
   /* марка або модель розійшлись: запис геть */
   const wrongMake = A.verifyLotIdentity({ url: LOT_URL, html: '<title>2018 Audi A6 ' + VIN + '</title>' }, VIN, NHTSA);
   if (wrongMake.matched) errs.push('чужа марка пройшла ідентичність');
+  /* точний VIN головніший за naming моделі: "540i" проти "5 Series 540 XI"
+     НЕ відкидається (диагностований false negative), але позначається */
+  const naming = A.verifyLotIdentity({ url: 'https://bid.cars/en/lot/1-49495925/2017-BMW-5-Series-' + VIN, html: '<title>2017 BMW 5 Series, 540 XI | ' + VIN + ' | Bid History</title>' }, VIN, { Make: 'BMW', Model: '540i', ModelYear: '2017' });
+  if (!naming.matched) errs.push('540i проти "5 Series 540 XI" відкинуто: false negative лишився');
+  if (naming.confidence !== 'reduced' || naming.model_naming_mismatch !== true) errs.push('naming-розбіжність не позначена: ' + JSON.stringify(naming));
+  /* naming-розбіжність (X5 при декодованому 740i) при точному VIN: приймаємо
+     зі зниженою впевненістю і прапорцем, НЕ мовчки довіряємо trim */
   const wrongModel = A.verifyLotIdentity({ url: LOT_URL, html: '<title>2018 BMW X5 ' + VIN + '</title>' }, VIN, { ...NHTSA, Model: '740i' });
-  if (wrongModel.matched) errs.push('чужа модель пройшла ідентичність');
+  if (!wrongModel.matched || wrongModel.model_naming_mismatch !== true || wrongModel.confidence !== 'reduced') errs.push('naming-конфлікт не дав reduced+flag: ' + JSON.stringify(wrongModel));
+  /* ІНШИЙ VIN на сторінці: reject як і раніше */
+  const otherVin = A.verifyLotIdentity({ url: 'https://x/lot/2', html: '<title>2018 BMW 530e WBAJA9C51KB111111</title>' }, VIN, NHTSA);
+  if (otherVin.matched) errs.push('чужий VIN пройшов ідентичність');
   /* рік +-1 законний, більший розліт = знижена впевненість, не відкидання */
   const y1 = A.verifyLotIdentity({ url: LOT_URL, html: '<title>2017 BMW 530e ' + VIN + '</title>' }, VIN, NHTSA);
   if (!y1.matched || y1.confidence !== 'high') errs.push('рік у допуску +-1 не пройшов як high');
@@ -274,8 +284,85 @@ function makeFetch(map) {
   const noPaid = await quiet(() => A.findAuctionRecord(VIN, NHTSA, { fetchImpl: allBlk, allowPaid: false }));
   if (noPaid.status !== 'unknown') errs.push('без платної сходинки блок не дав unknown: ' + noPaid.status);
 
+
+  /* ===== Serper discovery: штатний general-крок ===== */
+  process.env.SERPER_API_KEY = 'test-key-for-mock';
+  const SERPER_LOT = 'https://bid.cars/en/lot/1-49495925/2017-BMW-5-Series-' + VIN;
+  let serperCalls = 0;
+  const serperOk = async (url, init) => {
+    serperCalls++;
+    return { status: 200, headers: { get: () => 'application/json' }, text: async () => JSON.stringify({ organic: [
+      { link: SERPER_LOT, title: '2017 BMW 5 Series ' + VIN, snippet: 'salvage, front end, 98,997 mi' },
+      { link: 'https://randomforum.example/thread/123', title: 'форум', snippet: 'бачив ' + VIN + ' в продажу' },
+      { link: 'https://nothing.example/other', title: 'без VIN', snippet: 'просто сторінка' },
+    ] }) };
+  };
+  const allBlockedT = makeFetch([[/./, { status: 403, body: 'Just a moment...' }]]);
+  let discoT = await quiet(() => A.discoverVinCandidates(VIN, { fetchImpl: allBlockedT, serperFetchImpl: serperOk, nhtsa: NHTSA }));
+  const urlsT = discoT.candidates.map(c => c.url);
+  if (!urlsT.includes(SERPER_LOT)) errs.push('Serper-кандидат з точним VIN не зʼявився');
+  if (!urlsT.includes('https://randomforum.example/thread/123')) errs.push('strong candidate за VIN у snippet не зʼявився');
+  if (urlsT.includes('https://nothing.example/other')) errs.push('кандидат без VIN пройшов');
+  /* ranking: реальний historical-кандидат ВИЩЕ шаблонного дзеркала */
+  const iBid = urlsT.indexOf(SERPER_LOT);
+  const iMirror = urlsT.findIndex(u => /americamotors/.test(u));
+  if (iMirror >= 0 && iBid > iMirror) errs.push('шаблонне дзеркало вище реального historical-кандидата');
+  if (serperCalls !== 1) errs.push('без extendedSearch мав бути 1 Serper-запит, а не ' + serperCalls);
+  /* extended search: лише imported/gap і лише коли перший запит без historical */
+  serperCalls = 0;
+  const serperEmptyThenExt = async () => { serperCalls++; return { status: 200, headers: { get: () => null }, text: async () => JSON.stringify({ organic: [] }) }; };
+  await quiet(() => A.discoverVinCandidates(VIN, { fetchImpl: allBlockedT, serperFetchImpl: serperEmptyThenExt, nhtsa: NHTSA, extendedSearch: true }));
+  if (serperCalls !== 2) errs.push('extendedSearch: мало бути 2 запити, а не ' + serperCalls);
+  /* skipSerper (повтор по кешу): нуль викликів */
+  serperCalls = 0;
+  await quiet(() => A.discoverVinCandidates(VIN, { fetchImpl: allBlockedT, serperFetchImpl: serperOk, nhtsa: NHTSA, skipSerper: true }));
+  if (serperCalls !== 0) errs.push('skipSerper не запобіг повторному Serper-виклику');
+
+  /* ===== сніпет НЕ evidence: сторінка недоступна -> unreachable, нуль фактів ===== */
+  rec = await quiet(() => A.findAuctionRecord(VIN, NHTSA, { fetchImpl: allBlockedT, serperFetchImpl: serperOk, allowPaid: false }));
+  if (rec.status !== 'unknown' || rec.reason !== 'source_unreachable') errs.push('Serper-кандидат + blocked fetch: мав бути source_unreachable, а не ' + rec.status + '/' + rec.reason);
+  if (rec.meta || (rec.photo_urls || []).length) errs.push('факти зі сніпета просочились без fetch');
+
+  /* ===== 200-челендж (качки DDG) = blocked, не порожній пошук ===== */
+  process.env.SERPER_API_KEY = '';
+  const duckChallenge = makeFetch([
+    [/duckduckgo/, { status: 200, body: '<html>DuckDuckGo Unfortunately, bots use DuckDuckGo too. Please complete the following challenge. Select all squares containing a duck</html>' }],
+    [/./, { status: 403, body: 'Just a moment...' }],
+  ]);
+  discoT = await quiet(() => A.discoverVinCandidates(VIN, { fetchImpl: duckChallenge, nhtsa: NHTSA }));
+  const ddgDiag = discoT.diagnostics.find(d => d.source === 'search');
+  if (!ddgDiag || ddgDiag.blocked !== true) errs.push('200-челендж DDG не розпізнаний як blocked: ' + JSON.stringify(ddgDiag));
+  process.env.SERPER_API_KEY = 'test-key-for-mock';
+
+  /* ===== ZenRows для заблокованого discovery-endpoint bid.cars ===== */
+  process.env.ZENROWS_API_KEY = 'test-zen';
+  const serperEmpty = async () => ({ status: 200, headers: { get: () => null }, text: async () => JSON.stringify({ organic: [] }) });
+  let zenUrls = [];
+  const zenMock = async (apiUrl) => {
+    zenUrls.push(decodeURIComponent(String(apiUrl)));
+    if (/app%2Fsearch|app\/search/.test(String(apiUrl))) {
+      return { status: 200, headers: { get: () => null }, text: async () => JSON.stringify({ results: 1, url: LOT_URL }) };
+    }
+    return { status: 200, headers: { get: () => null }, text: async () => LOT_HTML };
+  };
+  rec = await quiet(() => A.findAuctionRecord(VIN, NHTSA, { fetchImpl: allBlockedT, serperFetchImpl: serperEmpty, zenrowsFetchImpl: zenMock, allowSlowEnrich: true }));
+  if (rec.status !== 'found') errs.push('discovery-unblock через ZenRows не знайшов лот: ' + rec.status + '/' + rec.reason);
+  if (!zenUrls.some(u => /app\/search/.test(u))) errs.push('ZenRows не викликався для discovery-endpoint');
+  /* коли Serper УЖЕ дав historical-кандидата: discovery-unblock НЕ палиться */
+  zenUrls = [];
+  const directLotOk = makeFetch([
+    [/bid\.cars\/en\/lot\//, { body: LOT_HTML.replace(/0-42107936/g, '1-49495925') }],
+    [/./, { status: 403, body: 'Just a moment...' }],
+  ]);
+  const serperBid = async () => ({ status: 200, headers: { get: () => null }, text: async () => JSON.stringify({ organic: [{ link: LOT_URL, title: VIN, snippet: '' }] }) });
+  rec = await quiet(() => A.findAuctionRecord(VIN, NHTSA, { fetchImpl: directLotOk, serperFetchImpl: serperBid, zenrowsFetchImpl: zenMock }));
+  if (rec.status !== 'found') errs.push('Serper-кандидат + прямий fetch лота: мав бути found');
+  if (zenUrls.length) errs.push('ZenRows витрачено попри готового кандидата і успішний прямий fetch: ' + zenUrls.length);
+  delete process.env.ZENROWS_API_KEY;
+  delete process.env.SERPER_API_KEY;
+
   if (errs.length) { console.log('FAILED:', errs); process.exit(1); }
-  console.log('повний шлях · ідентичність · absent проти unreachable · ліміти фото · TTL кешу · пошуковий discovery · ZenRows подвійна умова');
+  console.log('повний шлях · ідентичність (VIN > naming) · absent проти unreachable · ліміти фото · TTL кешу · Serper discovery і ranking · сніпет не evidence · 200-челендж · ZenRows discovery-unblock і подвійна умова');
   console.log('AUCTION TEST PASSED');
   fs.unlinkSync(tmp);
 })().catch(e => { console.log('FAILED:', e.stack || e.message); process.exit(1); });

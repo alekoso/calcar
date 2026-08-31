@@ -591,6 +591,25 @@ const THIN = {
   if (!b.applied_hard_caps.some(c => c.name.includes('STRUCTURAL_UNRESOLVED'))) errs.push('non-Vision structural перестав давати кап');
   if (b.accident_events[0].derived_severity !== 'severe') errs.push('non-Vision structural перестав давати severe');
 
+  /* ===== 19г2. history gap: пізня локальна реєстрація не дає фейкових 10 ===== */
+  /* ввезена вживаною, одна пізня реєстрація, аукціон недосяжний: History і
+     Damage&Repair чесно недоступні, НЕ 10.0 */
+  const GAP_COV = { identity_confirmed: true, photos_count: 30, basics_known: true, mileage_known: true, historical_listings_count: 0, mileage_observation_count: 0, auction_record_exists: false, auction_us_signal: false, auction_sources_unreachable: true, registration_data_exists: true, imported_used: true, history_gap_detected: true };
+  b = score([], GAP_COV);
+  if (b.score_dimensions.history.score_available !== false) errs.push('history gap: Історія показала число замість прочерка: ' + JSON.stringify(b.score_dimensions.history));
+  if (b.score_dimensions.damage_repair.score_available !== false) errs.push('history gap: Пошкодження показали число замість прочерка');
+  /* gap це НЕ штраф: основний Score не карається, лише стеля покриття */
+  if (b.raw_quality !== 10) errs.push('history gap оштрафував raw_quality: ' + b.raw_quality);
+  /* справжній evidence знімає недоступність: found-аукціон */
+  b = score([], { ...GAP_COV, auction_record_exists: true, auction_sources_unreachable: false });
+  if (b.score_dimensions.history.score_available !== true) errs.push('gap + found-аукціон: Історія мала стати доступною');
+  /* checked_absent теж meaningful-покриття */
+  b = score([], { ...GAP_COV, auction_us_signal: true, auction_checked: true, auction_sources_unreachable: false });
+  if (b.score_dimensions.history.score_available !== true) errs.push('gap + checked_absent: Історія мала стати доступною');
+  /* БЕЗ gap реєстраційні дані як і раніше відкривають вісь */
+  b = score([], { ...GAP_COV, imported_used: false, history_gap_detected: false });
+  if (b.score_dimensions.history.score_available !== true || b.score_dimensions.history.score !== 10) errs.push('без gap перевірена чиста історія зламалась');
+
   /* ===== 20. дайджест для AI-висновку: точні бекенд-числа ===== */
   const digest = buildScoreDigest(sevCase);
   if (!digest) errs.push('дайджест не побудований');
