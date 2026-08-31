@@ -528,6 +528,9 @@ async function readAuctionCache(vin) {
           const rows2 = await r2.json();
           const c = Array.isArray(rows2) && rows2[0] ? rows2[0] : null;
           if (c && c.status === 'absent') return { status: 'absent', source: null, lot_url: null, checked_at: c.checked_at, record: c.record || {} };
+          /* found без канонічного lot_id (запис не потрапив у auction_events,
+             напр. vincheck-джерело): теж кеш, повторний Serper не потрібен */
+          if (c && c.status === 'found' && c.lot_url) return { status: 'found', source: c.source || null, lot_url: c.lot_url, checked_at: c.checked_at, record: c.record || {} };
         }
       } catch (e) { /* negative-кеш опційний */ }
       return null;

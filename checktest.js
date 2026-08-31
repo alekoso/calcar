@@ -680,6 +680,7 @@ const REPORTS = [
   if (/hardcode.*AUTO\.RIA.*ДТП не зареєстровано/.test(api)) errs.push('правило захардкожене під RIA');
   /* negative-кеш: читання auction_checks і файл міграції для власника */
   if (!/auction_checks\?vin=eq\./.test(api)) errs.push('negative-кеш не читається');
+  if (!/c\.status === 'found' && c\.lot_url/.test(api)) errs.push('found-кеш без канонічного lot_id не читається з auction_checks');
   if (!fs.existsSync('supabase-auction-cache.sql')) errs.push('нема SQL-файла auction_checks для власника');
 }
 
