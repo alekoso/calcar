@@ -1897,12 +1897,15 @@ export default async function handler(req, res) {
       .filter(u => ldPhotoSet.has(u) || (auction && auction.from_ria && /riastatic\.com\/photos\/auto\/usa\//.test(u)) || photoHasProvenance(u, listing.vin, auctionLotId));
     /* безкоштовно завантажувані йдуть Vision як URL (як і раніше);
        захищені проходять серверну лестницю і йдуть як base64-байти */
-    /* кадрів більше за ліміт: беремо рівномірно по всій галереї, інакше
-       перші 8 = самий екстерʼєр, а салон (докази подушок) не доїжджає */
+    /* Галерея лота невелика (Copart/IAAI дають ~12 кадрів), і коли вона
+       завантажується напряму, кадри безкоштовні. Рівномірне проріджування
+       тут шкідливе: воно викидало саме той кадр салону, де видно розкриту
+       подушку, і severity лишалась moderate при severe-евіденсі. Тому
+       безкоштовну галерею беремо ПОВНІСТЮ до AUCTION_VISION_MAX; платний
+       транспорт як і раніше обмежений (кадри там коштують грошей) */
+    const AUCTION_VISION_MAX = 12;
     const directCandidates = photoCandidates.filter(visionDirect);
-    let auctionPhotos = directCandidates.length > 8
-      ? pickEvenIndexes(directCandidates.length, 8).map(i => directCandidates[i])
-      : directCandidates.slice(0, 8);
+    let auctionPhotos = directCandidates.slice(0, AUCTION_VISION_MAX);
     let historicalPhotoStats = null;
     if (auction && photoCandidates.length && auctionPhotos.length < 3 && !cachedHv) {
       try {
@@ -1913,7 +1916,7 @@ export default async function handler(req, res) {
           auctionPhotos.push('data:' + (ph.type || 'image/jpeg') + ';base64,' + ph.buf.toString('base64'));
           photoOriginByData.set(auctionPhotos[auctionPhotos.length - 1], ph.url);
         }
-        auctionPhotos = auctionPhotos.slice(0, 8);
+        auctionPhotos = auctionPhotos.slice(0, AUCTION_VISION_MAX);
       } catch (e) { console.log('[check] historical photo transport failed:', e.message); }
     }
     if (auction) auction.photos_sent = auctionPhotos.length;

@@ -752,7 +752,10 @@ const REPORTS = [
   const noParts = fn({ srs_visual_status: 'no_deployment_visible', airbags_visible_parts: ['driver'] }, 3);
   if (noParts.airbags_visible_parts.length) errs.push('деталізація подушок без deployed_visible');
   /* кадри беруться рівномірно по галереї, а не перші 8 екстерʼєрних */
-  if (!/pickEvenIndexes\(directCandidates\.length, 8\)/.test(api)) errs.push('кадри не відбираються рівномірно по галереї');
+  /* безкоштовна галерея лота йде у Vision повністю: проріджування
+     викидало саме кадр салону з розкритою подушкою */
+  if (!/AUCTION_VISION_MAX = 12/.test(api)) errs.push('ліміт кадрів лота не піднятий до повної галереї');
+  if (/pickEvenIndexes\(directCandidates/.test(api)) errs.push('проріджування безкоштовної галереї лишилось');
 }
 
 if (errs.length) { console.log('FAILED:', errs); process.exit(1); }
