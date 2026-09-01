@@ -81,6 +81,33 @@ for (const f of PAGES) {
   /* у звітах chat-docked знімає max-width шапки, поля не лишається: там у рядок */
   if (!/body:not\(\.chat-docked\)/.test(s)) errs.push('нема захисту від chat-docked у ' + f);
 
+  /* 5б. картки компактні: жодних окремих CTA і другого рядка опису. Уся картка
+     Import сама є посиланням, тож кнопка всередині посилання це і зайвий шум,
+     і вкладена інтерактивність */
+  if (/lnc-cta|lnc-note/.test(s)) errs.push('CTA або другий рядок повернулись у картку: ' + f);
+  if (!/a\.lnc-item:hover\{background:var\(--surface-2\)\}/.test(s)) errs.push('нема підсвітки картки на наведення: ' + f);
+  if (!/\.lnc-item\{[^}]*cursor:pointer/.test(s)) errs.push('нема cursor:pointer на картці: ' + f);
+
+  /* 5в. відкриття наведенням: місток над панеллю плюс затримка, інакше меню
+     зникає, поки курсор іде від кнопки до нього. Затримка мусить бути в межах
+     150-250ms: менше не встигає курсор, більше меню висить після відведення */
+  if (!/\.lnc-panel::before\{content:"";position:absolute;left:0;right:0;bottom:100%/.test(s)) errs.push('нема містка під панеллю: ' + f);
+  const delay = /hoverTimer = setTimeout\(function \(\) \{ hoverTimer = null; if \(!pinned\) close\(false\); \}, (\d+)\)/.exec(s);
+  if (!delay) errs.push('нема відкладеного закриття по відведенню миші: ' + f);
+  else if (+delay[1] < 150 || +delay[1] > 250) errs.push(f + ': затримка закриття ' + delay[1] + 'ms, треба 150-250ms');
+  if (!/hover:hover\) and \(pointer:fine/.test(s)) errs.push('наведення не обмежене мишею, на тачі меню відкриється саме: ' + f);
+  /* наведення не має забирати фокус: людина його не просила */
+  if (!/if \(!open\) setOpen\(true, false\)/.test(s)) errs.push('наведення забирає фокус у панель: ' + f);
+  if (!/setOpen\(true, true\); pinned = true/.test(s)) errs.push('клік не віддає фокус панелі: ' + f);
+
+  /* 5г. мовне меню відкривається наведенням так само, меню кабінету не чіпали */
+  if (!/\.lang-dd:hover \.lang-menu,\.lang-dd:focus-within \.lang-menu\{display:block\}/.test(s)) errs.push('нема наведення для мовного меню: ' + f);
+  if (!s.includes('.acc-wrap:hover .acc-menu,.acc-wrap:focus-within .acc-menu{display:block}')) errs.push('меню кабінету змінилось у ' + f);
+
+  /* 5д. переїзд кнопки в правий кластер, коли поля ліворуч немає */
+  if (!/rail\.insertBefore\(btn, rail\.firstChild\)/.test(s)) errs.push('нема переїзду кнопки в правий кластер: ' + f);
+  if (!/getComputedStyle\(btn\)\.position !== 'absolute'/.test(s)) errs.push('переїзд не звіряється з обчисленим стилем: ' + f);
+
   /* 6. вітрина лишається одним продуктом: старий перемикач не повернувся */
   if (/class="switch"|calcarProduct|kind-badge/.test(s)) errs.push('старий перемикач Check/Import повернувся у ' + f);
 
@@ -122,7 +149,9 @@ function resolveProduct(pathname) {
   });
   const byId = { lncBtn: el({}), lncPanel: panel, lncBackdrop: el({}) };
   const sandbox = {
-    document: { getElementById: (i) => byId[i] || null, addEventListener() {}, documentElement: { classList: { toggle() {} } }, activeElement: null },
+    /* querySelector повертає null: правого кластера в заглушці немає, тож
+       переїзд кнопки не виконується і тест лишається саме про продукт */
+    document: { getElementById: (i) => byId[i] || null, querySelector: () => null, addEventListener() {}, documentElement: { classList: { toggle() {} } }, body: el({}), activeElement: null },
     location: { pathname },
     window: { matchMedia: () => ({ matches: false }), addEventListener() {}, innerWidth: 1200 }
   };
@@ -153,7 +182,7 @@ if (!fs.existsSync('import.html')) errs.push('немає import.html, вести
 
 /* 9. нові рядки інтерфейсу мусять бути в обох словниках, інакше RU/EN сторінка стане мішаною */
 const KEYS = ['Продукти CalCar', 'Перевірка авто перед купівлею', 'Поточний продукт',
-              'Скільки обійдеться авто зі США в Україні', 'Ремонт, розмитнення та підсумкова вартість', 'Відкрити'];
+              'Скільки обійдеться авто зі США в Україні'];
 for (const d of ['i18n/ru.js', 'i18n/en.js']) {
   const s = fs.readFileSync(d, 'utf8');
   for (const k of KEYS) if (!s.includes("'" + k + "':")) errs.push('нема ключа "' + k + '" у ' + d);

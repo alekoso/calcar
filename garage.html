@@ -195,45 +195,51 @@ header{background:rgba(255,255,255,.88);backdrop-filter:blur(10px);-webkit-backd
   html.lnc-locked,html.lnc-locked body{overflow:hidden}
 
   .lnc-backdrop{position:fixed;inset:0;background:rgba(20,22,25,.32);z-index:45;display:none}
+
+  /* Місток під панеллю: між кнопкою і панеллю 10px порожнечі, і без нього курсор
+     на шляху вниз виходив би за межі обох, а меню закривалося б по дорозі.
+     Той самий прийом, що вже тримає меню кабінету (.acc-wrap::after). */
+  .lnc-panel::before{content:"";position:absolute;left:0;right:0;bottom:100%;height:12px}
+
+  /* Мовне меню відкривається наведенням так само, як меню кабінету поруч.
+     Тільки для миші: на тачі hover залипає. Клік і .open лишаються як були,
+     :focus-within дає те саме з клавіатури. */
+  @media(hover:hover) and (pointer:fine){
+    .lang-dd::after{content:"";position:absolute;left:0;right:0;top:100%;height:8px}
+    .lang-dd:hover .lang-menu,.lang-dd:focus-within .lang-menu{display:block}
+  }
   .lnc-backdrop.open{display:block}
 
   .lnc-panel{
     position:fixed;left:var(--lnc-x,20px);top:var(--lnc-y,64px);width:344px;z-index:410;
-    background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px;
+    background:var(--card);border:1px solid var(--line);border-radius:18px;padding:10px;
     box-shadow:0 14px 40px rgba(20,22,25,.13),0 2px 6px rgba(20,22,25,.05);display:none;
   }
   .lnc-panel.open{display:block}
   .lnc-panel:focus{outline:none}
   .lnc-grab{display:none;width:38px;height:4px;border-radius:4px;background:var(--line-strong);margin:2px auto 10px}
-  .lnc-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:2px 4px 12px}
+  .lnc-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:4px 6px 8px}
   .lnc-title{font-size:14px;font-weight:700;color:var(--ink);letter-spacing:.01em}
   .lnc-x{display:none;border:none;background:transparent;color:var(--muted);cursor:pointer;padding:6px;margin:-6px;border-radius:8px;font-family:inherit}
   .lnc-x:hover{background:var(--surface-2);color:var(--ink)}
-  .lnc-list{display:flex;flex-direction:column;gap:8px}
+  .lnc-list{display:flex;flex-direction:column;gap:6px}
 
   .lnc-item{
-    display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:start;
-    padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--card);
-    color:var(--ink);text-decoration:none;transition:background .15s,border-color .15s;
+    display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:center;
+    padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--card);
+    color:var(--ink);text-decoration:none;cursor:pointer;transition:background .15s,border-color .15s;
   }
   a.lnc-item:hover{background:var(--surface-2)}
   a.lnc-item[data-prod="import"]:hover{background:var(--brand-soft);border-color:#DCEFAE}
   .lnc-item:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
   /* поточний продукт це статус, а не заклик до дії: без CTA і без наведення */
   .lnc-item.is-current{background:var(--brand-soft);border-color:#DCEFAE}
-  .lnc-item.is-current .lnc-cta{display:none}
   .lnc-item:not(.is-current) .lnc-badge{display:none}
-  .lnc-ic{display:block;width:44px;height:44px;flex:0 0 auto}
-  .lnc-ic svg{display:block;width:44px;height:44px}
+  .lnc-ic{display:block;width:38px;height:38px;flex:0 0 auto}
+  .lnc-ic svg{display:block;width:38px;height:38px}
   .lnc-name{display:block;font-size:14.5px;font-weight:700;line-height:1.25}
-  .lnc-desc{display:block;font-size:13px;color:var(--muted);margin-top:3px;line-height:1.35}
-  .lnc-note{display:block;font-size:12.5px;color:var(--faint);margin-top:7px;line-height:1.35}
-  .lnc-badge{display:inline-block;margin-top:9px;padding:2px 9px;font-size:11.5px;font-weight:600;color:var(--brand-ink);background:var(--card);border:1px solid #DCEFAE;border-radius:20px}
-  .lnc-cta{
-    grid-column:2;justify-self:end;display:inline-flex;align-items:center;gap:7px;margin-top:2px;
-    padding:7px 13px;border-radius:10px;background:var(--brand);color:var(--ink);font-size:13px;font-weight:700;
-  }
-  a.lnc-item:hover .lnc-cta{background:var(--brand-hover)}
+  .lnc-desc{display:block;font-size:12.5px;color:var(--muted);margin-top:2px;line-height:1.3}
+  .lnc-badge{display:inline-block;margin-top:6px;padding:1px 8px;font-size:11px;font-weight:600;color:var(--brand-ink);background:var(--card);border:1px solid #DCEFAE;border-radius:20px}
 
   /* Логотип мусить стояти рівно там, де стояв до лаунчера. У контейнері 1160px
      ліворуч від логотипа є лише 20px падінгу, а кнопці треба 50px, тому в рядку
@@ -263,15 +269,14 @@ header{background:rgba(255,255,255,.88);backdrop-filter:blur(10px);-webkit-backd
     }
     .lnc-panel.open{animation:lnc-up .18s ease-out}
     .lnc-grab,.lnc-x{display:block}
+    .lnc-panel::before{display:none}
     .lnc-x{display:inline-flex;align-items:center;justify-content:center}
     .lnc-head{margin:2px 2px 12px}
     .lnc-title{font-size:16px}
-    .lnc-item{padding:16px;gap:15px}
-    .lnc-ic,.lnc-ic svg{width:48px;height:48px}
+    .lnc-item{padding:13px;gap:14px}
+    .lnc-ic,.lnc-ic svg{width:44px;height:44px}
     .lnc-name{font-size:15.5px}
-    .lnc-desc{font-size:13.5px}
-    .lnc-note{font-size:13px}
-    .lnc-cta{padding:11px 17px;font-size:14px;margin-top:6px}
+    .lnc-desc{font-size:13.5px;margin-top:3px}
   }
   @keyframes lnc-up{from{transform:translateY(16px)}to{transform:none}}
 .lang-wrap{position:relative}
@@ -436,17 +441,14 @@ h1{font-size:27px;letter-spacing:-.01em}
         <span class="lnc-desc">Перевірка авто перед купівлею</span>
         <span class="lnc-badge">Поточний продукт</span>
       </span>
-      <span class="lnc-cta">Відкрити <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7"/></svg></span>
     </a>
     <a class="lnc-item" data-prod="import" href="/import">
       <span class="lnc-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="#141619"><path d="M160 244 L204 168 Q212 156 227 156 L299 156 Q314 156 322 168 L366 244 Z"/><rect x="76" y="238" width="360" height="58" rx="24"/><circle cx="162" cy="314" r="44"/><circle cx="350" cy="314" r="44"/></g><path d="M190 230 L228 176 Q233 170 240 170 L286 170 Q293 170 298 176 L336 230 Z" fill="#B8F23D"/></svg></span>
       <span class="lnc-body">
         <span class="lnc-name">CalCar Import</span>
         <span class="lnc-desc">Скільки обійдеться авто зі США в Україні</span>
-        <span class="lnc-note">Ремонт, розмитнення та підсумкова вартість</span>
         <span class="lnc-badge">Поточний продукт</span>
       </span>
-      <span class="lnc-cta">Відкрити <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7"/></svg></span>
     </a>
   </div>
 </div>
@@ -1226,18 +1228,63 @@ document.addEventListener('click', function (e) {
   function focusables() {
     return [].slice.call(panel.querySelectorAll('a[href],button')).filter(function (el) { return el.offsetParent !== null; });
   }
-  var open = false;
-  function setOpen(v) {
+  /* Кнопка не сміє зсувати логотип на жодній ширині. Ширше 1240px медіазапит
+     виводить її з потоку в поле ліворуч від логотипа. Коли поля немає (вужче
+     1240px або відкритий чат у звіті, який знімає max-width шапки), кнопка
+     переїжджає в правий кластер: він вирівняний по правому краю, тому росте
+     вліво і теж нікого не зсуває. На телефоні кнопка лишається біля логотипа.
+     Ознака "поля немає" береться з обчисленого стилю, а не з другої копії
+     порога в JS: правило про виніс живе тільки в CSS. */
+  var home = btn.parentNode, homeNext = btn.nextSibling;
+  var rail = document.querySelector('.header-right');
+  function mount() {
+    if (!rail) return;
+    if (btn.parentNode !== home) home.insertBefore(btn, homeNext);
+    if (mobile()) return;
+    if (getComputedStyle(btn).position !== 'absolute') rail.insertBefore(btn, rail.firstChild);
+  }
+  mount();
+  /* чат у звіті вмикається класом на body вже після завантаження */
+  if (window.MutationObserver) new MutationObserver(mount).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+
+  var open = false, pinned = false, hoverTimer = null;
+  function setOpen(v, moveFocus) {
     open = v;
+    if (!v) pinned = false;
     panel.classList.toggle('open', v);
     back.classList.toggle('open', v && mobile());
     document.documentElement.classList.toggle('lnc-locked', v && mobile());
     btn.setAttribute('aria-expanded', v ? 'true' : 'false');
-    if (v) { place(); panel.focus(); }
+    if (v) { place(); if (moveFocus) panel.focus(); }
   }
-  function close(refocus) { if (!open) return; setOpen(false); if (refocus) btn.focus(); }
+  function close(refocus) { cancelClose(); if (!open) return; setOpen(false); if (refocus) btn.focus(); }
 
-  btn.addEventListener('click', function (e) { e.preventDefault(); if (open) close(true); else setOpen(true); });
+  /* Наведення тільки для миші: на тачі hover залипає після тапа і шторка
+     відкривалася б сама. Затримка плюс місток над панеллю дають курсору
+     спокійно дійти від кнопки до меню. */
+  function hoverable() { return !mobile() && window.matchMedia('(hover:hover) and (pointer:fine)').matches; }
+  function cancelClose() { if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; } }
+  function scheduleClose() {
+    cancelClose();
+    hoverTimer = setTimeout(function () { hoverTimer = null; if (!pinned) close(false); }, 200);
+  }
+  [btn, panel].forEach(function (el) {
+    el.addEventListener('mouseenter', function () {
+      if (!hoverable()) return;
+      cancelClose();
+      /* фокус не забираємо: меню відкрилось саме, людина його не просила */
+      if (!open) setOpen(true, false);
+    });
+    el.addEventListener('mouseleave', function () { if (hoverable()) scheduleClose(); });
+  });
+
+  btn.addEventListener('click', function (e) {
+    e.preventDefault();
+    cancelClose();
+    if (!open) { setOpen(true, true); pinned = true; }
+    else if (!pinned) pinned = true;   /* меню вже відкрите наведенням: клік закріплює його */
+    else close(true);
+  });
   panel.addEventListener('click', function (e) {
     if (e.target.closest && e.target.closest('#lncClose')) { e.preventDefault(); close(true); }
   });
@@ -1264,6 +1311,7 @@ document.addEventListener('click', function (e) {
     }
   });
   window.addEventListener('resize', function () {
+    mount();
     if (!open) return;
     back.classList.toggle('open', mobile());
     document.documentElement.classList.toggle('lnc-locked', mobile());

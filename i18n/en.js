@@ -554,6 +554,4 @@ window.CALCAR_DICT = {
   'Перевірка авто перед купівлею': 'Pre-purchase car check',
   'Поточний продукт': 'Current product',
   'Скільки обійдеться авто зі США в Україні': 'What a US car really costs in Ukraine',
-  'Ремонт, розмитнення та підсумкова вартість': 'Repairs, customs and the final price',
-  'Відкрити': 'Open',
 };
