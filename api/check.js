@@ -1,12 +1,12 @@
 export const config = { maxDuration: 300 };
 
 import { computeScore } from './score.js';
-import { computeScoreV3, resolveVehicleAge } from './score-v3.js';
+import { computeScoreV3, resolveVehicleAge, SCORE_DIMENSIONS_CONFIG } from './score-v3.js';
 
 /* активна версія CalCar Score: перемикається конфігурацією без деплою коду.
    Rollback на v2 = env CALCAR_SCORE_VERSION=v2, НЕ revert коміту */
 const SCORE_VERSION = process.env.CALCAR_SCORE_VERSION === 'v2' ? 'v2' : 'v3';
-import { findAuctionRecord, shouldRecheck, discoverVinCandidates, photoHasProvenance, fetchHistoricalPhotos, extractLotMeta, verifyLotIdentity, zenrowsFetch, PARSER_VERSION, EVENT_VERSION } from './auction.js';
+import { findAuctionRecord, shouldRecheck, discoverVinCandidates, photoHasProvenance, fetchHistoricalPhotos, extractLotMeta, verifyLotIdentity, zenrowsFetch, odometerToKm, PARSER_VERSION, EVENT_VERSION } from './auction.js';
 
 /* ============================================================
    CalCar Check, рушій v1: посилання на оголошення -> звіт.
@@ -763,6 +763,213 @@ export function sanitizePurchaseDecision(pd, v2) {
   return out;
 }
 
+/* ---------- 4г2. Контекст рішення: детерміновані входи purchase_decision ----------
+   CalCar Score лишається мірою РИЗИКУ конкретного екземпляра і тут не
+   змінюється. Рішення про покупку це синтез: ризик + бажаність + пробіг +
+   комплектація + ціна + пріоритети покупця + недавні альтернативи цієї ж
+   людини. Код збирає факти детерміновано, модель ними МІРКУЄ. Жодного
+   нового числового бала цей шар не вводить. */
+
+/* значимість пробігу. Канонічні входи ті самі, що в осі Пробіг Score v3
+   (одометр, вік, reference по powertrain з SCORE_DIMENSIONS_CONFIG).
+   Формулу осі НЕ дублюємо і не міняємо: беремо км/рік і смугу
+   використання, щоб пробіг став фактором рішення, а не просто числом */
+export const MILEAGE_BANDS = [
+  ['very_low', 0.55], ['low', 0.85], ['normal', 1.20], ['high', 1.60], ['very_high', Infinity],
+];
+export function buildMileageContext(input = {}) {
+  const odo = (typeof input.odometer_km === 'number' && isFinite(input.odometer_km) && input.odometer_km >= 0)
+    ? Math.round(input.odometer_km) : null;
+  if (odo === null) return null;
+  const months = (typeof input.age_months === 'number' && isFinite(input.age_months) && input.age_months >= 6)
+    ? input.age_months : null;
+  const points = (Array.isArray(input.historical_points) ? input.historical_points : [])
+    .filter(p => p && typeof p.km === 'number' && isFinite(p.km) && p.km >= 0)
+    .map(p => ({
+      km: Math.round(p.km),
+      date: typeof p.date === 'string' ? p.date.slice(0, 10) : null,
+      source: typeof p.source === 'string' ? p.source.slice(0, 40) : null,
+    }))
+    .slice(0, 6);
+  const out = {
+    current_km: odo,
+    age_years: months ? Math.round(months / 12 * 10) / 10 : null,
+    age_source: input.age_source || null,
+    historical_points: points,
+    confirmed_by_history: points.length > 0,
+  };
+  if (months === null) {
+    out.annual_km = null; out.reference_km_year = null; out.usage_ratio = null; out.band = 'unknown';
+    return out;
+  }
+  const ref = SCORE_DIMENSIONS_CONFIG.MILEAGE_REF_KM_YEAR;
+  const pt = String(input.powertrain || '').toLowerCase();
+  const reference = ref[pt] || ref.unknown;
+  const annual = odo / (months / 12);
+  const ratio = annual / reference;
+  out.annual_km = Math.round(annual);
+  out.monthly_km = Math.round(annual / 12 / 50) * 50;
+  out.reference_km_year = reference;
+  out.powertrain_class = ref[pt] ? pt : 'unknown';
+  out.usage_ratio = Math.round(ratio * 100) / 100;
+  out.band = (MILEAGE_BANDS.find(b => ratio <= b[1]) || MILEAGE_BANDS[MILEAGE_BANDS.length - 1])[0];
+  return out;
+}
+
+/* профіль покупця. Джерело одне і вже існує: нотатка памʼяті помічника
+   (user_memory.memory), яку веде чат і якою людина керує в кабінеті.
+   Сторінка передає її лише коли користувач залогінений і памʼять увімкнена;
+   вимкнена памʼять означає, що поля тут просто нема. Пріоритети покупця
+   впливають ТІЛЬКИ на purchase_decision і ніколи на Score */
+export function sanitizeBuyerContext(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const note = (typeof raw.note === 'string' && raw.note.trim())
+    ? raw.note.trim().replace(/\u2014/g, ',').slice(0, 1800) : null;
+  if (!note) return null;
+  return { note, source: 'assistant_memory' };
+}
+
+/* недавні звіти цієї ж людини. Всю історію акаунта тягнути не можна:
+   беремо лише свіже І релевантне. Пороги: до 30 днів сильний recency-сигнал
+   (достатньо тієї ж марки або моделі), 31-90 днів лише явно той самий вибір
+   (та сама модель або марка з близькою ціною), понад 90 днів не
+   використовуємо взагалі. Дедуплікація за VIN, поточне авто виключене */
+export const RECENT_STRONG_DAYS = 30;
+export const RECENT_MAX_DAYS = 90;
+export function reportTitleParts(title) {
+  /* назви приходять із різних джерел ("BMW 5 Series 2020" зі звіту,
+     "BMW 5-Series" з декодування), тому розділювачі нормалізуємо, а рік
+     прибираємо: він до ідентичності моделі не належить */
+  const t = String(title || '').toLowerCase()
+    .replace(/\b(19|20)\d{2}\b/g, ' ')
+    .replace(/[^0-9a-zа-яіїєґё]+/gi, ' ')
+    .replace(/\s+/g, ' ').trim();
+  if (!t) return { make: null, model: null };
+  const w = t.split(' ');
+  return { make: w[0] || null, model: w.slice(1, 3).join(' ') || null };
+}
+export function selectRecentReports(rows, current = {}, nowMs = Date.now()) {
+  const cur = reportTitleParts(current.title);
+  const curVin = String(current.vin || '').toUpperCase() || null;
+  const curPrice = Number(current.price) || null;
+  const seen = new Set();
+  const out = [];
+  for (const r of Array.isArray(rows) ? rows : []) {
+    if (!r || typeof r !== 'object') continue;
+    const vin = String(r.vin || '').toUpperCase() || null;
+    if (vin && curVin && vin === curVin) continue;
+    const key = vin || String(r.title || r.id || '').toLowerCase().trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    const at = Date.parse(r.created_at || r.analyzed_at || '');
+    if (!isFinite(at)) continue;
+    const days = Math.floor((nowMs - at) / 86400000);
+    if (days < 0 || days > RECENT_MAX_DAYS) continue;
+    const p = reportTitleParts(r.title);
+    const price = Number(r.price) || null;
+    let rel = 0;
+    if (p.make && cur.make && p.make === cur.make) rel += 2;
+    if (p.model && cur.model && (p.model === cur.model || p.model.startsWith(cur.model) || cur.model.startsWith(p.model))) rel += 2;
+    if (price && curPrice && Math.abs(price - curPrice) <= curPrice * 0.35) rel += 1;
+    if (rel < (days <= RECENT_STRONG_DAYS ? 2 : 3)) continue;
+    const str = (v, n) => (typeof v === 'string' && v.trim()) ? v.trim().replace(/\u2014/g, ',').slice(0, n) : null;
+    out.push({
+      title: str(r.title, 80),
+      days_ago: days,
+      relevance: rel,
+      kind: r.kind === 'import' ? 'import' : 'check',
+      price: price,
+      odometer_km: Number(r.odometer_km) || null,
+      score: (typeof r.score === 'number' || typeof r.score === 'string') ? Number(r.score) || null : null,
+      engine: str(r.engine, 60),
+      verdict: str(r.verdict, 200),
+    });
+  }
+  out.sort((a, b) => b.relevance - a.relevance || a.days_ago - b.days_ago);
+  return out.slice(0, 3);
+}
+
+/* ---------- 4г3. Мова висновку: тяжкість і жаргон ----------
+   Тяжкість ДТП визначає РЕЗОЛВЕР (Score v3), не текст. Тут лише
+   узгодження формулювань із уже вирішеною тяжкістю: слово може стати
+   мʼякшим, ніж написала модель, але НІКОЛИ не сильнішим. Резолвер,
+   штрафи і сам бал ця функція не чіпає */
+export function maxResolvedSeverity(breakdown) {
+  const ev = (breakdown && Array.isArray(breakdown.accident_events)) ? breakdown.accident_events : [];
+  if (!ev.length) return null;
+  const rank = { minor: 1, moderate: 2, severe: 3 };
+  let best = null, bestRank = 0, indet = false;
+  for (const e of ev) {
+    const s = e && e.derived_severity;
+    if (s === 'indeterminate') { indet = true; continue; }
+    if ((rank[s] || 0) > bestRank) { bestRank = rank[s]; best = s; }
+  }
+  return best || (indet ? 'indeterminate' : null);
+}
+
+const SEV_LEX = {
+  ua: { nouns: 'удар|пошкодж|деформац|аварі', end: 'а-яіїєґ', strong: ['сильн', 'тяжк', 'важк', 'серйозн'], mid: ['помітн', 'значн', 'суттєв', 'відчутн'], moderate: 'помітн', minor: 'незначн' },
+  ru: { nouns: 'удар|поврежден|деформац|авари', end: 'а-яё', strong: ['сильн', 'тяжел', 'тяжёл', 'серьезн', 'серьёзн'], mid: ['заметн', 'значительн', 'существенн'], moderate: 'заметн', minor: 'незначительн' },
+  en: { nouns: 'impact|damage|collision|crash', end: 'a-z', strong: ['severe', 'heavy', 'serious', 'major'], mid: ['moderate', 'noticeable', 'significant'], moderate: 'moderate', minor: 'minor' },
+};
+function swapStems(text, stems, target, L) {
+  const keep = L.end === 'a-z' ? '' : '[' + L.end + ']{0,4}';
+  /* \b у JS рахує лише ASCII-літери, тому початок слова для кирилиці
+     ловимо lookbehind-ом: інакше щойно підставлене "незначн" ловилось би
+     вдруге всередині слова */
+  const re = new RegExp('(?<![\u0400-\u04FFa-zA-Z])(' + stems.join('|') + ')(' + keep + ')((?:\\s+[' + L.end + 'a-z\\-]+){0,2}\\s+(?:' + L.nouns + ')[' + L.end + ']*)', 'gi');
+  return text.replace(re, (m, adj, tail, rest) => {
+    const up = adj[0] === adj[0].toUpperCase() && adj[0] !== adj[0].toLowerCase();
+    const t = up ? target[0].toUpperCase() + target.slice(1) : target;
+    return t + (tail || '') + rest;
+  });
+}
+export function calibrateSeverityWording(text, severity, lang = 'ua') {
+  if (typeof text !== 'string' || !text) return text;
+  if (severity !== 'minor' && severity !== 'moderate') return text;
+  const L = SEV_LEX[lang] || SEV_LEX.ua;
+  let out = swapStems(text, L.strong, severity === 'minor' ? L.minor : L.moderate, L);
+  if (severity === 'minor') out = swapStems(out, L.mid, L.minor, L);
+  return out;
+}
+
+/* внутрішні технічні позначення в тексті для людини не пояснюють нічого:
+   SRS, structural, visually_consistent тощо. Заборона живе в промпті,
+   а це страхувальна сітка на випадок, коли модель усе одно їх ужила */
+/* родовий відмінок після типових слів ("стан SRS", "відновлення SRS"),
+   щоб заміна не ламала речення; в інших позиціях називний */
+const JARGON_GEN = {
+  ua: [/(?<=(?:стан|систем[а-яіїєґ]{0,3}|відновленн[а-яіїєґ]|перевірк[а-яіїєґ]|ремонт[а-яіїєґ]{0,2}|замін[а-яіїєґ]|блок[а-яіїєґ]{0,2})\s)SRS\b/gi, 'подушок безпеки'],
+  ru: [/(?<=(?:состояни[а-яё]{0,2}|систем[а-яё]{0,3}|восстановлени[а-яё]|проверк[а-яё]|ремонт[а-яё]{0,2}|замен[а-яё]|блок[а-яё]{0,2})\s)SRS\b/gi, 'подушек безопасности'],
+  en: null,
+};
+const JARGON = {
+  ua: [[/\bSRS\b/g, 'подушки безпеки'], [/\bstructural damage\b/gi, 'пошкодження силових елементів кузова'], [/\bstructural\b/gi, 'силових елементів кузова'], [/\bvisually[ _-]consistent\b/gi, 'видимих протиріч не знайдено'], [/\bairbag(?:s)?\b/gi, 'подушки безпеки'], [/\bodometer rollback\b/gi, 'скручений пробіг']],
+  ru: [[/\bSRS\b/g, 'подушки безопасности'], [/\bstructural damage\b/gi, 'повреждение силовых элементов кузова'], [/\bstructural\b/gi, 'силовых элементов кузова'], [/\bvisually[ _-]consistent\b/gi, 'видимых противоречий не найдено'], [/\bairbag(?:s)?\b/gi, 'подушки безопасности'], [/\bodometer rollback\b/gi, 'скрученный пробег']],
+  en: [[/\bSRS\b/g, 'the airbag system'], [/\bvisually[ _-]consistent\b/gi, 'no visible inconsistencies found']],
+};
+export function humanizeDecisionJargon(text, lang = 'ua') {
+  if (typeof text !== 'string' || !text) return text;
+  let out = text;
+  const gen = JARGON_GEN[lang];
+  if (gen) out = out.replace(gen[0], gen[1]);
+  for (const [re, to] of (JARGON[lang] || JARGON.ua)) out = out.replace(re, to);
+  return out;
+}
+
+/* обидва проходи по всіх текстах рішення разом */
+export function applyDecisionLanguage(pd, { severity = null, lang = 'ua' } = {}) {
+  if (!pd || typeof pd !== 'object') return pd;
+  const one = s => humanizeDecisionJargon(calibrateSeverityWording(s, severity, lang), lang);
+  for (const k of ['headline', 'summary_short', 'reasoning', 'value_context']) {
+    if (typeof pd[k] === 'string') pd[k] = one(pd[k]);
+  }
+  for (const k of ['why_consider', 'main_concerns', 'must_check', 'questions_for_seller', 'missing_but_important']) {
+    if (Array.isArray(pd[k])) pd[k] = pd[k].map(x => typeof x === 'string' ? one(x) : x);
+  }
+  return pd;
+}
+
 /* ---------- 4б2. Рівномірна вибірка кадрів для Vision ----------
    Перші 24 підряд відрізали салон: у галереях оголошень екстерʼєр іде
    першим, а торпедо, консоль і сидіння лежать у хвості. Тому і кадри
@@ -1395,30 +1602,48 @@ const DECISION_RULES = `
 - канцелярит і переказ фактів без позиції;
 - універсальні агрегатні списки в must_check: КОЖЕН пункт привʼязаний до знайденого факту або конкретної діри в даних ЦІЄЇ машини. Пункт, що пасує будь-якому авто цієї моделі, це брак;
 - однакові кінцівки на кшталт "перевірити X, Y, Z на СТО";
-- міркування, що не спираються на жоден здобутий CalCar факт: загальні знання про модель дозволені ЛИШЕ у звʼязці з фактами цього екземпляра (аукціонні фото, хронологія, розбіжності, покриття даних).
+- міркування, що не спираються на жоден здобутий CalCar факт: загальні знання про модель дозволені ЛИШЕ у звʼязці з фактами цього екземпляра (аукціонні фото, хронологія, розбіжності, покриття даних);
+- будь-які НОВІ числові оцінки, бали, відсотки привабливості чи "оцінка вигідності": рішення це якісний синтез, єдина цифра звіту це Оцінка CalCar.
 УЗГОДЖЕНІСТЬ: purchase_decision спирається на score_facts і зібрані факти, суперечити їм не можна: "історія чиста", коли джерела історії не підтверджені, це брак. recommendation мусить бути сумісним із загальною картиною ризиків звіту.
 
-ГОЛОВНЕ ПИТАННЯ ВИСНОВКУ: не "що знайшли", а "чи варто розглядати САМЕ ЦЕЙ екземпляр і чому". Звіт вище вже перелічив факти; висновок мусить їх ЗВАЖИТИ. Перш ніж писати, збери для себе (НЕ виводь ці списки у відповідь, вони лише для якісного синтезу):
+ГОЛОВНЕ ПИТАННЯ ВИСНОВКУ: не "що знайшли", а "чи варто цій людині розглядати САМЕ ЦЕЙ екземпляр і чому". Звіт вище вже перелічив факти; висновок мусить їх ЗВАЖИТИ. Перш ніж писати, збери для себе (НЕ виводь ці списки у відповідь, вони лише для якісного синтезу):
 - decision_positives: чим цей екземпляр реально кращий за середню альтернативу;
 - decision_negatives: що тягне його вниз;
 - decision_unknowns: критичні факти, яких бракує;
 - deal_breakers: те, що робить покупку нерозумною за будь-якої ціни;
-- reasons_to_choose_this_car: заради чого розумна людина все одно може взяти саме його.
-І обовʼязково дай відповідь у тексті на пʼять питань: (1) чому цей екземпляр брати НЕ варто; (2) чому розумний покупець усе одно може обрати саме його; (3) що він отримує взамін додаткових ризиків; (4) які 1-3 речі мусять підтвердитись, щоб покупка стала раціональною; (5) якщо плюси не компенсують ризики, чому машину краще пропустити.
+- reasons_to_choose_this_car: заради чого розумна людина все одно може взяти саме його;
+- conditions_that_change_decision: за яких підтверджень чи спростувань рішення перевертається.
+І обовʼязково дай відповідь у тексті на шість питань: (1) що реально тягне цей екземпляр вниз; (2) що реально тягне його вгору; (3) чому розумний покупець може обрати саме його; (4) що він отримує взамін додаткових ризиків; (5) які 1-3 невідомі речі справді змінюють рішення; (6) чого тут врешті більше, плюсів чи мінусів.
 
-ЩО ЗВАЖУВАТИ (усе одразу, а не лише ризики):
-- РИЗИКИ: ДТП і його тяжкість, подушки/SRS, структурні ознаки, невідома чи погана якість відновлення, пробіг і його історія, технічні знахідки, слабкі місця саме цієї версії при цьому пробігу, розбіжності джерел, критичні непідтверджені факти.
-- ПЛЮСИ: сильна ЗАВОДСЬКА комплектація, дорогі і значущі опції, бажана версія чи двигун, підтверджений пробіг або хороша історія, добрий поточний стан за фото, документоване обслуговування, якісні доробки там, де вони справді плюс.
-- ЦІННІСТЬ: ціна і її позиція за structured price_context, наскільки відомі недоліки ВЖЕ враховані в ціні, наскільки легко знайти рівноцінну заміну такому екземпляру.
+ВАГА ФАКТОРІВ (найважливіше правило тексту): не всі знайдені факти рівні. Обсяг тексту, витрачений на фактор, має приблизно відповідати його реальній вазі в рішенні. Маленький підтверджений пробіг на немолодій машині, вдала версія двигуна, сильна заводська комплектація чи, навпаки, спрацьовані подушки і структурний удар це фактори ПЕРШОГО порядку. Декоративна опція, дрібна подряпина, відсутність одного запису це фактори ТРЕТЬОГО порядку, і місця в тексті їм майже не потрібно. ЗАБОРОНЕНО присвячувати левову частку висновку невеликому ДТП, коли в машини є кілька набагато вагоміших плюсів; так само заборонено топити серйозний структурний удар у переліку опцій. Якщо фактор не змінює рішення, у висновку його або нема, або він в одному підрядному реченні.
 
-КОМПЛЕКТАЦІЯ ЯК ФАКТОР РІШЕННЯ (а не декорація): опції НЕ рівноцінні. Базові в рішенні майже не важать. Дорогі і бажані (value_tier high_value: преміальна акустика, вентиляція і масаж сидінь, комфортні крісла, проекційний дисплей, просунуті асистенти, дорога оптика, комфорт для задніх пасажирів тощо) можуть бути САМОСТІЙНОЮ причиною розглядати саме цей екземпляр. Називай 2-4 найвагоміші ПІДТВЕРДЖЕНІ опції, а не весь перелік. Рівень підтвердження має значення: vehicle_data і seller_and_visual сильніші за голе seller. РІДКІСНІСТЬ на ринку стверджуй ЛИШЕ за наявними порівняльними даними; без них максимум "дуже сильна комплектація для цієї моделі".
-ЗАВОДСЬКЕ проти ДОРОБОК: retrofit НЕ видавай за заводську комплектацію (гальма чи кузовні елементи в стилістиці старшої версії, встановлена пізніше оптика). Доробки можуть підвищувати привабливість, але "у машину вклали багато грошей" НЕ означає "за машиною добре стежили" і НЕ доводить якість кузовного ремонту, справність SRS чи обслуговування. Документоване обслуговування і підтверджений якісний ремонт це окремий, справжній плюс.
+ЯК ГОВОРИТИ ПРО ДТП (тяжкість визначає ДОКАЗ, а не слово "accident"): формулювання мусить відповідати вирішеній тяжкості і побаченому evidence, і НЕ може бути драматичнішим за них.
+- локальне/дрібне пошкодження: "невелике локальне пошкодження", "легкий контакт";
+- середня тяжкість: "помітне пошкодження", "ДТП середньої тяжкості";
+- тяжке: "сильний удар", "тяжке пошкодження", і тоді кажи це прямо, без пом'якшення;
+- тяжкість визначити не вдалося: "ДТП підтверджене, але його тяжкість за доступними даними однозначно визначити не можна".
+ЗАБОРОНЕНО виводити силу удару з самих лише слів "Front end", "salvage", "accident", суми ремонту чи факту продажу на страховому аукціоні. Якщо на архівних кадрах видно переважно навісні деталі, нема глибокої деформації і нема підтвердженого пошкодження силових елементів: писати "сильний удар" НЕ можна. Якщо ж є глибока деформація, спрацьовані подушки чи структурні ознаки: не пом'якшуй, називай удар серйозним.
+
+МОВА ДЛЯ ЛЮДИНИ, НЕ ДЛЯ ІНЖЕНЕРА: у текстах для користувача ЗАБОРОНЕНІ внутрішні технічні позначки: SRS, structural, structural gate, visually_consistent, indeterminate, coverage, provenance, value_tier, high_value і подібні. Пиши по-людськи: "подушки безпеки" і "система подушок безпеки" замість SRS; "силові елементи кузова", "геометрія кузова" замість structural; "видимих протиріч на фото не знайдено" замість visually_consistent. Якщо термін справді потрібен, він має бути зрозумілий людині без автомобільної освіти.
+
+ПРОБІГ ЯК ФАКТОР РІШЕННЯ, а не число: у контексті нижче переданий блок MILEAGE_CONTEXT із поточним пробігом, віком, середнім пробігом за рік, референсом для цього типу двигуна, смугою використання (very_low, low, normal, high, very_high) і історичними точками пробігу. Використовуй саме його: не пиши "49 000 км", пиши, що це означає ("для машини цього віку це небагато, близько 8 тисяч на рік, і нижня точка підтверджується аукціонним записом"). Маленький пробіг, підтверджений незалежною історичною точкою, це САМОСТІЙНИЙ сильний плюс і має бути названий прямо. Високий пробіг це так само фактор рішення, з наслідками (ресурс вузлів, найближчі витрати). Якщо історичних точок нема, не називай пробіг підтвердженим.
+
+СИЛЬНІ СТОРОНИ ВЕРСІЇ І ДВИГУНА: висновок мусить враховувати не лише болячки, а й те, чому цю модифікацію взагалі обирають: вдалий двигун, вдала коробка, привід, практичні переваги конфігурації. Спирайся на ПІДТВЕРДЖЕНУ версію цього авто (дані оголошення, декодування, дані аукціону), а не на здогад про комплектацію. Формулюй по-людськи і без реклами: "одна з найбільш вдалих і бажаних бензинових конфігурацій цього покоління", а не "найкращий двигун усіх часів". Якщо версія рядова, не вигадуй їй переваг.
+
+КОМПЛЕКТАЦІЯ ЯК ФАКТОР РІШЕННЯ (а не декорація): опції НЕ рівноцінні. Базові в рішенні майже не важать. Дорогі і бажані (value_tier high_value: преміальна акустика, вентиляція і масаж сидінь, комфортні крісла, проекційний дисплей, просунуті асистенти, камери кругового огляду, дорога оптика, адаптивна підвіска, комфорт для задніх пасажирів тощо) можуть бути САМОСТІЙНОЮ причиною розглядати саме цей екземпляр. Називай 3-7 найвагоміших ПІДТВЕРДЖЕНИХ опцій, а не весь перелік і не 30 позицій. Рівень підтвердження має значення: vehicle_data і seller_and_visual сильніші за голе seller; чого немає в даних, того не існує, вигадувати опції ЗАБОРОНЕНО. РІДКІСНІСТЬ на ринку стверджуй ЛИШЕ за наявними порівняльними даними; без них максимум "дуже сильна комплектація для цієї моделі".
+ЗАВОДСЬКЕ проти ДОРОБОК: retrofit НЕ видавай за заводську комплектацію (гальма чи кузовні елементи в стилістиці старшої версії, встановлена пізніше оптика, диски). Доробки можуть бути справжнім плюсом привабливості для частини покупців, і повний акуратний рестайлінговий вигляд це нормальна причина хотіти саме цю машину. Але "у машину вклали багато грошей" НЕ означає "за машиною добре стежили" і НЕ доводить якість кузовного ремонту, коректне відновлення подушок безпеки чи обслуговування. Документоване обслуговування і підтверджений якісний ремонт це окремий, справжній плюс.
+
+ЦІНА І ЦІННІСТЬ: не зупиняйся на "ціна середня". Поясни, що позиція ціни означає для угоди: чи вже враховані в ній відомі недоліки, за що саме людина платить, де тут запас на торг. Наприклад: "при середньому рівні ціни машина цікава маленьким пробігом і оснащенням, але знижки за аукціонне минуле тут практично нема" або "ціна вже помітно враховує історію пошкоджень, тому ризик виглядає оплаченим". Точну справедливу ціну без достатніх даних не вигадуй, ринкові вердикти лише зі structured price_context.
+
+ПРІОРИТЕТИ ПОКУПЦЯ: якщо в контексті переданий BUYER_CONTEXT, це справжні слова цієї людини з памʼяті помічника. Пріоритет джерел: (1) те, що людина написала в цьому запиті, (2) її явні налаштування і профіль, (3) збережена памʼять, (4) якщо нічого нема, пиши для нейтрального розумного покупця. Ваги плюсів і мінусів під ці пріоритети зсувати МОЖНА і треба: тому, для кого важлива динаміка і вигляд, вдалий двигун і рестайлінг важать більше; тому, для кого головне мінімум ризику, та сама машина отримує обережніше рішення. Пріоритети покупця НЕ змінюють Оцінку CalCar, лише висновок. Не додумуй уподобань, яких у профілі нема, і не переказуй профіль людині: просто зваж із ним. Якщо BUYER_CONTEXT у контексті відсутній, про пріоритети покупця не згадуй узагалі.
+
+НЕДАВНІ АВТО ЦІЄЇ Ж ЛЮДИНИ: якщо в контексті переданий RECENT_REPORTS, там уже ВІДІБРАНІ свіжі і релевантні звіти цієї людини (нерелевантні і старі відсіяні кодом). Коротке порівняння тоді доречне і корисне: чим цей екземпляр кращий чи гірший за той, і для чиїх пріоритетів. Порівнюй НЕ балами, а по суті: ризики, ціна, пробіг, двигун і версія, комплектація, стан. Одне-два речення, у кінці міркування, лише коли воно справді щось додає. Якщо RECENT_REPORTS немає або порівняння нічого не змінює, минулі звіти НЕ згадуй взагалі.
 
 ОЦІНКА CALCAR НЕ Є ВЕРДИКТОМ ПРО ПОКУПКУ: вона міряє ризик і якість самого екземпляра, а не цінність його комплектації чи вигідність ціни. ЗАБОРОНЕНО механічно виводити "низький бал = погана покупка" чи "високий бал = хороша покупка". Низький бал через тяжке ДТП сумісний із висновком "варто розглядати за умов", якщо конфігурація сильна, ціна це вже враховує і рівноцінну заміну знайти важко. Високий бал із бідною комплектацією і зависокою ціною сумісний з "нецікава пропозиція". Якщо це доречно, коротко поясни різницю читачу.
 
 СМІЛИВІСТЬ: не закінчуй кожен висновок універсальним "перевірте на СТО" чи "краще пошукати інший варіант". Машина цікава: прямо скажи, що її варто продовжувати розглядати, і чому. Машина погана: прямо скажи, що плюси не компенсують ризики. Рішення умовне: назви умови конкретно. Перевірки мусять випливати з конкретних проблем ЦІЄЇ машини.
 
-СТРУКТУРА reasoning (2-4 абзаци, без заголовків і без нумерації): спершу сильна позиція одним рядком; далі чим авто цікаве; далі що серйозно тягне вниз; далі саме зважування цих факторів між собою; далі 1-3 конкретні речі, які мусять підтвердитись; ціновий контекст від імені площадки; і чіткий фінальний висновок. Текст має закривати роздуми покупця, а не перелічувати знахідки. Не роздувай обсяг.
+СТРУКТУРА reasoning (2-4 абзаци, без заголовків і без нумерації, без роздування обсягу): сильна позиція одним рядком; чим саме цей екземпляр цікавий (головні плюси); що реально насторожує (головні мінуси); саме зважування цих факторів між собою; 1-3 конкретні речі, які мусять підтвердитись до купівлі; ціновий контекст від імені площадки; за наявності релевантного недавнього авто коротке порівняння; чіткий фінальний висновок. Текст має закривати роздуми покупця, а не перелічувати знахідки.
 `;
 const DECISION_FEWSHOT = `
 ПРИКЛАДИ СТИЛЮ МІРКУВАННЯ (від власника продукту). Переймай СПОСІБ думати: зважування, чесні сумніви, прямоту. ЗМІСТ не копіюй: усі факти бери ЛИШЕ зі свого звіту по цьому авто. Мова прикладів не важлива, відповідай мовою користувача.
@@ -1455,7 +1680,22 @@ Tesla Model Y 2022
 ---
 `;
 
-const PROMPT = (l, nhtsa, auction, langDirective, decisionStyle, auctionMeta) => `Ти експертна система CalCar Check: незалежний розбір оголошення про продаж вживаного авто. Твоя робота: звірити те, що СТВЕРДЖУЄ продавець, із тим, що КАЖУТЬ дані і фото, і чесно відповісти, чи варто брати саме це авто.
+/* блок КОНТЕКСТ РІШЕННЯ у промпті: те, що код зібрав детерміновано
+   (значимість пробігу, профіль покупця, релевантні недавні звіти).
+   Порожні складові просто не зʼявляються: модель не має чим фантазувати */
+function renderDecisionContext(dc) {
+  if (!dc) return '';
+  const parts = [];
+  if (dc.mileage) parts.push('- MILEAGE_CONTEXT (той самий канонічний вхід, що й вісь Пробіг: одометр, вік, км/рік, референс типу двигуна, смуга використання, історичні точки): ' + JSON.stringify(dc.mileage));
+  if (dc.buyer) parts.push('- BUYER_CONTEXT (памʼять помічника: слова цієї людини з її попередніх розмов у CalCar): ' + dc.buyer.note);
+  if (dc.recent && dc.recent.length) parts.push('- RECENT_REPORTS (звіти ЦІЄЇ Ж людини, уже відібрані кодом за свіжістю і релевантністю; days_ago це вік звіту в днях, score це Оцінка CalCar того авто): ' + JSON.stringify(dc.recent));
+  if (!parts.length) return '';
+  return 'КОНТЕКСТ РІШЕННЯ (зібраний кодом, детермінований; це ВХІД для purchase_decision, а не текст для копіювання у звіт):\n'
+    + parts.join('\n')
+    + '\nЧого в цьому блоці нема, того не вигадуй: відсутній BUYER_CONTEXT означає, що про пріоритети цієї людини нам нічого не відомо, а порожній RECENT_REPORTS означає, що релевантних недавніх авто в неї нема.\n\n';
+}
+
+const PROMPT = (l, nhtsa, auction, langDirective, decisionStyle, auctionMeta, decisionContext) => `Ти експертна система CalCar Check: незалежний розбір оголошення про продаж вживаного авто. Твоя робота: звірити те, що СТВЕРДЖУЄ продавець, із тим, що КАЖУТЬ дані і фото, і чесно відповісти, чи варто брати саме це авто.
 
 ${langDirective}
 
@@ -1608,7 +1848,7 @@ POSSIBLE STRUCTURAL: якщо historical_visual.possible_structural_damage = tru
 
 ІСТОРИЧНИЙ ВІЗУАЛ І РІШЕННЯ: purchase_decision ЗОБОВʼЯЗАНИЙ враховувати historical_visual РАЗОМ з фактами історії, поточними фото, заявами продавця, пробігом і болячками моделі, і РОЗРІЗНЯТИ три різні ситуації: (1) видимі ознаки тяжкого/структурного пошкодження; (2) явних тяжких структурних ознак на доступних кадрах НЕ видно; (3) прихована структура, геометрія і SRS лишаються неперевіреними. Друга і третя співіснують: тоді формулюй "на історичному фото видно помітний удар спереду; явних ознак тяжкої деформації силової структури чи зони салону на доступному ракурсі нема, але приховані елементи, геометрію і SRS за цим фото підтвердити не можна". НЕ пиши так, ніби тяжке пошкодження вже знайдене, якщо visual evidence його не показує; і НЕ називай удар мінімальним, якщо на кадрах видно суттєве пошкодження.
 
-${DECISION_RULES}${decisionStyle === 'a' ? DECISION_FEWSHOT : ''}
+${renderDecisionContext(decisionContext)}${DECISION_RULES}${decisionStyle === 'a' ? DECISION_FEWSHOT : ''}
 Відповідай ЛИШЕ валідним JSON без markdown, точно за схемою:
 {
  "vehicle": {"title":"Марка Модель Рік","year":2018,"model_year":"рік за VIN, ЛИШЕ якщо надійно відомий і відрізняється від year, інакше null","fuel":"petrol|diesel|hybrid|electric","engine":"4.4 л бензин V8, 462 к.с. (або null)","transmission":"...","drive":"...","trim":"версія або null","mileage_note":"129 000 км"},
@@ -1958,6 +2198,53 @@ export default async function handler(req, res) {
         vin: listing.vin || null,
       }));
     }
+    /* ---- контекст рішення: детерміновані входи purchase_decision ----
+       Збирається ДО виклику моделі, бо висновок пишеться в тому ж виклику.
+       Знімки рову даних читаємо один раз і перевикористовуємо у скорингу */
+    let snaps = [];
+    try { snaps = await readSnapshots(listing.vin, url); } catch (e) { console.log('[check] snapshots read failed:', e.message); }
+    let decisionContext = null;
+    try {
+      const FUEL_NHTSA = { gasoline: 'petrol', diesel: 'diesel', electric: 'electric' };
+      const fuelRaw = String((nhtsa && nhtsa.FuelTypePrimary) || '').toLowerCase();
+      const ptGuess = Object.keys(FUEL_NHTSA).find(k => fuelRaw.includes(k));
+      /* історичні точки пробігу: наш рів даних плюс одометр знайденого лота */
+      const points = snaps.filter(r => typeof r.odometer_km === 'number' && r.odometer_km > 0)
+        .map(r => ({ km: r.odometer_km, date: r.created_at, source: 'past_listing' }));
+      if (auctionSearch && auctionSearch.status === 'found' && auctionSearch.odometer
+        && auctionSearch.odometer.value != null && auctionSearch.odometer.unit !== 'unknown') {
+        const km = odometerToKm(auctionSearch.odometer.value, auctionSearch.odometer.unit);
+        if (km != null) points.push({ km, date: auctionSearch.sale_date || null, source: 'auction_record' });
+      }
+      const ageCtx = resolveVehicleAge({ first_use_date: null, production_date: null, model_year: listing.year || null });
+      const mileage = buildMileageContext({
+        odometer_km: listing.odometer_km,
+        age_months: ageCtx.age_months,
+        age_source: ageCtx.age_source,
+        powertrain: ptGuess ? FUEL_NHTSA[ptGuess] : null,
+        historical_points: points,
+      });
+      const buyer = sanitizeBuyerContext(req.body && req.body.buyer_context);
+      /* довіряємо лише обсягу, не змісту: відбір за свіжістю і релевантністю
+         робить код нижче, а не сторінка */
+      const recentIn = Array.isArray(req.body && req.body.recent_reports) ? req.body.recent_reports.slice(0, 40) : [];
+      /* ідентичність поточного авто для порівняння: декодування VIN дає
+         канонічні марку і модель, назва оголошення це запасний варіант */
+      const curTitle = (nhtsa && nhtsa.Make && nhtsa.Model)
+        ? nhtsa.Make + ' ' + nhtsa.Model
+        : (listing.title || null);
+      const recent = selectRecentReports(recentIn, {
+        title: curTitle, vin: listing.vin || null, price: listing.price || null,
+      });
+      if (mileage || buyer || recent.length) decisionContext = { mileage, buyer, recent };
+      console.log('[decision-context]', JSON.stringify({
+        mileage_band: mileage ? mileage.band : null,
+        mileage_points: mileage ? mileage.historical_points.length : 0,
+        buyer_context: !!buyer,
+        recent_used: recent.length,
+      }));
+    } catch (e) { console.log('[check] decision context failed:', e.message); }
+
     const content = [
       { type: 'text', text: 'ФОТО З ОГОЛОШЕННЯ (стан зараз). Нумерація: photo_1..photo_' + photoUrls.length + ' у порядку подачі, на неї посилаються evidence ref. '
         + (galleryCoverageComplete
@@ -1971,7 +2258,7 @@ export default async function handler(req, res) {
       ...(cachedHv
         ? [{ type: 'text', text: 'ІСТОРИЧНИЙ ВІЗУАЛЬНИЙ РОЗБІР (готовий, з попереднього аналізу ТИХ САМИХ архівних кадрів цієї події; кадри незмінні). Використай його як historical_visual БЕЗ змін і врахуй у висновку: ' + JSON.stringify(cachedHv) }]
         : []),
-      { type: 'text', text: PROMPT(listing, nhtsa, auction, langDirective, decisionStyle, auctionSearch) },
+      { type: 'text', text: PROMPT(listing, nhtsa, auction, langDirective, decisionStyle, auctionSearch, decisionContext) },
     ];
 
     const t0 = Date.now();
@@ -2042,7 +2329,6 @@ export default async function handler(req, res) {
        (імʼя поля історичне, всередині score_version), тіньова
        зберігається поруч для калібрування ---- */
     try {
-      const snaps = await readSnapshots(listing.vin, url);
       const hf = listing.history_facts || {};
       const nhtsaMeaningful = !!(nhtsa && nhtsa.Make && (nhtsa.Model || nhtsa.ModelYear));
       const coverageInputs = {
@@ -2191,6 +2477,22 @@ export default async function handler(req, res) {
     const cleanDecision = sanitizePurchaseDecision(parsed.purchase_decision, parsed.score_v2_preview);
     if (cleanDecision) parsed.purchase_decision = cleanDecision;
     else delete parsed.purchase_decision;
+
+    /* ---- мова висновку: тяжкість і жаргон ----
+       Резолвер тяжкості, штрафи і бал НЕ чіпаються. Тут лише узгодження
+       формулювань із уже вирішеною тяжкістю (слово може стати мʼякшим за
+       написане моделлю, але ніколи сильнішим) і зняття внутрішніх позначок
+       на кшталт SRS з тексту для людини */
+    try {
+      if (parsed.purchase_decision) {
+        const sev = maxResolvedSeverity(parsed.score_breakdown);
+        const before = JSON.stringify(parsed.purchase_decision);
+        applyDecisionLanguage(parsed.purchase_decision, { severity: sev, lang });
+        if (JSON.stringify(parsed.purchase_decision) !== before) {
+          console.log('[decision-language] normalized, severity', sev || 'none');
+        }
+      }
+    } catch (e) { console.log('[check] decision language failed:', e.message); }
 
     /* ---- Фінальна фраза з точним балом ----
        Висновок пишеться головним викликом у звичайному стилі звіту, БЕЗ
@@ -2343,6 +2645,14 @@ export default async function handler(req, res) {
       /* мапи для UI і чату: технічний id кадру -> позиція у вихідній галереї */
       photo_map: { listing: photoIdx, auction: auctionPhotos.map(u => { const real = photoOriginByData.get(u) || u; return (auction && Array.isArray(auction.photos)) ? auction.photos.indexOf(real) : -1; }) },
       price_context: listing.price_context || null,
+      /* що саме отримав фінальний висновок: діагностика і контекст для чату.
+         Текст памʼяті сюди НЕ копіюється (він живе в user_memory), лише
+         прапорець використання і перелік порівнюваних недавніх авто */
+      decision_inputs: decisionContext ? {
+        mileage_context: decisionContext.mileage || null,
+        buyer_context_used: !!decisionContext.buyer,
+        recent_reports: (decisionContext.recent || []).map(r => ({ title: r.title, days_ago: r.days_ago, relevance: r.relevance })),
+      } : null,
       auction_photos_provenance: auction && auctionPhotos.length
         ? (auction.from_ria ? 'autoria_history' : auction.from_search ? 'auction_search' : 'external_archive')
         : null,

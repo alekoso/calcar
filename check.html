@@ -677,6 +677,52 @@ function makePid(){
   return out;
 }
 
+/* ---------- контекст рішення: профіль покупця і недавні авто ----------
+   Фінальний висновок звіту має зважувати не лише ризики машини, а й
+   пріоритети самої людини і те, що вона дивилась днями. Обидва джерела вже
+   існують: нотатка памʼяті помічника (user_memory) і збережені звіти
+   кабінету, обидва під RLS. Гість не має ні того, ні того. Вимкнений
+   перемикач памʼяті означає, що профіль не передається зовсім.
+   Відбір за свіжістю і релевантністю робить сервер (selectRecentReports). */
+const MEMORY_IN_REPORTS_KEY = 'calcar_memory_reports';
+function memoryInReports(){
+  try { return localStorage.getItem(MEMORY_IN_REPORTS_KEY) !== 'off'; } catch (e) { return true; }
+}
+async function collectDecisionContext(){
+  const out = {};
+  if (!SB) return out;
+  try {
+    const { data: s } = await SB.auth.getSession();
+    if (!s?.session) return out;
+    const uid = s.session.user.id;
+    if (memoryInReports()) {
+      try {
+        const { data: mem } = await SB.from('user_memory').select('memory').eq('user_id', uid).maybeSingle();
+        if (mem && typeof mem.memory === 'string' && mem.memory.trim()) {
+          out.buyer_context = { note: mem.memory.trim().slice(0, 1800) };
+        }
+      } catch (e) { /* памʼять недоступна: висновок просто без профілю */ }
+    }
+    const since = new Date(Date.now() - 90 * 86400000).toISOString();
+    const { data: rows } = await SB.from('reports')
+      .select('id,created_at,kind,title:data->vehicle->>title,vin:data->_meta->>vin,price:data->_meta->>price,odometer_km:data->_meta->>odometer_km,engine:data->vehicle->>engine,score:data->score_breakdown->>final,legacy_score:data->verdict->>score,verdict:data->purchase_decision->>headline')
+      .gte('created_at', since)
+      .order('created_at', { ascending: false })
+      .limit(20);
+    if (Array.isArray(rows) && rows.length) {
+      out.recent_reports = rows.map(r => ({
+        id: r.id, created_at: r.created_at, kind: r.kind, title: r.title, vin: r.vin,
+        price: r.price === null ? null : Number(r.price),
+        odometer_km: r.odometer_km === null ? null : Number(r.odometer_km),
+        engine: r.engine,
+        score: Number(r.score) || Number(r.legacy_score) || null,
+        verdict: r.verdict,
+      }));
+    }
+  } catch (e) { /* контекст необовʼязковий: звіт робиться і без нього */ }
+  return out;
+}
+
 async function safeJson(r) {
   try { return await r.json(); } catch (e) { return { error: t('Сервер повернув неочікувану відповідь') }; }
 }
@@ -726,10 +772,11 @@ async function run() {
   const rid = loadingStart();
 
   try {
+    const dctx = await collectDecisionContext();
     const r = await fetch('/api/check', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ url, lang: window.calcarLang() }),
+      body: JSON.stringify(Object.assign({ url, lang: window.calcarLang() }, dctx)),
     });
     const data = await safeJson(r);
     if (!r.ok || data.error) throw new Error(data.error || t('Помилка сервера'));

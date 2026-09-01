@@ -709,8 +709,10 @@ const THIN = {
   /* середній пробіг за рік: ТІ САМІ canonical-дані осі Пробіг */
   if (!/annual_mileage_km/.test(pageSrc)) errs.push('result-check: річний пробіг не з breakdown осі');
   if (!/Середній пробіг за місяць за весь строк експлуатації автомобіля\./.test(pageSrc)) errs.push('result-check: нема tooltip місячного пробігу');
-  /* реєстраційні події історії */
-  if (!/reg-badge/.test(pageSrc) || !/перереєстрац\|перерегистрац/.test(pageSrc)) errs.push('result-check: нема виділення перереєстрацій');
+  /* реєстраційні події історії: рядок лишається помітним, але generic-бейдж
+     "Перереєстрація" прибраний, бо перереєстрація не доводить зміну власника */
+  if (!/reg-badge/.test(pageSrc) || !/ownerBadges/.test(pageSrc)) errs.push('result-check: нема бейджа підтвердженого власника');
+  if (/t\('Перереєстрація'\)/.test(pageSrc)) errs.push('result-check: generic-бейдж перереєстрації лишився');
   /* старий вигляд Score відновлений: окремої картки більше нема, лише popover */
   if (/dimCard|dim-wrap|dim-track|dimLimit/.test(pageSrc)) errs.push('result-check: залишки окремої картки підоцінок');
   if (!/dim-pop/.test(pageSrc)) errs.push('result-check: popover підоцінок відсутній');

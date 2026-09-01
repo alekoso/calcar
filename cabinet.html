@@ -189,6 +189,8 @@
  .mem-save{border:none;border-radius:10px;background:var(--brand);color:var(--ink);font-weight:700;font-size:13px;padding:8px 16px;cursor:pointer;font-family:inherit}
  .mem-clear{border:1px solid var(--line-strong);border-radius:10px;background:var(--card);color:var(--muted);font-weight:600;font-size:13px;padding:8px 14px;cursor:pointer;font-family:inherit}
  .mem-clear:hover{color:var(--red);border-color:var(--red)}
+ .mem-use{display:flex;align-items:center;gap:9px;padding:0 20px 16px;font-size:13px;color:var(--muted);cursor:pointer}
+ .mem-use input{width:16px;height:16px;accent-color:var(--brand);cursor:pointer}
  .mem-status{font-size:12.5px;color:var(--muted)}
  .acc-row{display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid var(--line);font-size:14px}
  .acc-lbl{flex:0 0 90px;color:var(--muted);font-size:13px}
@@ -337,6 +339,7 @@
    <span class="mem-hint">Помічник запамʼятовує важливе з розмов: імʼя, бюджет, що шукаєш. Можеш виправити або стерти</span>
   </div>
   <textarea id="memText" rows="4" placeholder="Поки порожньо. Поговори з помічником у будь-якому звіті, і тут зʼявиться нотатка"></textarea>
+  <label class="mem-use"><input type="checkbox" id="memUse" checked><span>Враховувати памʼять у висновках звітів</span></label>
   <div class="mem-actions">
    <button class="mem-save" id="memEdit">Змінити</button>
    <button class="mem-save" id="memSave" style="display:none">Зберегти</button>
@@ -458,6 +461,18 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  if (!confirm(t('Стерти памʼять помічника? Дію не можна скасувати'))) return;
  ta.value = '';
  save(null, t('Стерто ✓'));
+ };
+
+ /* памʼять у висновках звітів: людина може лишити нотатку, але заборонити
+    використовувати її у фінальному висновку Check. Прапорець локальний для
+    браузера, схему БД не чіпає; check.html читає той самий ключ */
+ const MEMORY_IN_REPORTS_KEY = 'calcar_memory_reports';
+ const use = document.getElementById('memUse');
+ try { use.checked = localStorage.getItem(MEMORY_IN_REPORTS_KEY) !== 'off'; } catch (e) {}
+ use.onchange = () => {
+  try { localStorage.setItem(MEMORY_IN_REPORTS_KEY, use.checked ? 'on' : 'off'); } catch (e) {}
+  st.textContent = use.checked ? t('Памʼять враховується у висновках ✓') : t('Памʼять у висновках вимкнена');
+  setTimeout(() => { st.textContent = ''; }, 2600);
  };
 
  setMode(false);

@@ -237,7 +237,6 @@
 
   /* ---- report toolbar: дії конкретного звіту (спільний компонент) ---- */
   .topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:20px;position:relative}
-  .hrow.reg > span:not(.hd){font-weight:600}
   .reg-badge{background:var(--bg);border:1px solid var(--line-strong);color:var(--ink-2);margin-left:6px;vertical-align:1px}
   .spec-mo{color:var(--ink-2);font-weight:600;font-size:.93em;margin-left:6px;white-space:nowrap}
   .chat-coach{position:absolute;top:calc(100% + 10px);right:0;z-index:60;max-width:290px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 34px rgba(20,22,25,.14);padding:12px 34px 12px 14px;font-size:13px;line-height:1.45;color:var(--ink-2)}
@@ -515,6 +514,12 @@
   .pd-more{border:none;background:none;cursor:pointer;padding:0;margin-top:14px;font-size:13.5px;font-weight:600;color:var(--brand-ink);text-decoration:underline}
   .pd-reasoning{margin-top:12px;font-size:14px;line-height:1.65;color:var(--text)}
   .pd-reasoning p{margin:0 0 10px}
+  .pd-cta{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+  .pd-cta-btn{display:inline-flex;align-items:center;gap:8px;background:var(--brand);color:var(--ink);border:1px solid rgba(20,22,25,.08);border-radius:12px;height:40px;padding:0 15px;font-size:13.5px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap}
+  .pd-cta-btn:hover{background:var(--brand-hover)}
+  .pd-cta-btn:active{background:var(--brand-active)}
+  .pd-cta-hint{font-size:12.5px;color:var(--muted);line-height:1.45;flex:1;min-width:180px}
+  @media print{.pd-cta{display:none}}
   .srcline{font-size:12.5px;color:var(--muted);word-break:break-all}
   .srcline a{color:var(--brand-ink)}
   .lightbox{position:fixed;inset:0;background:rgba(10,18,28,.88);z-index:200;display:none;align-items:center;justify-content:center;cursor:zoom-out}
@@ -799,6 +804,10 @@
         <div id="pdShort"></div>
         <button class="pd-more" id="pdMoreBtn" type="button">Читати повний розбір</button>
         <div class="pd-reasoning" id="pdReasoning" style="display:none"></div>
+        <div class="pd-cta">
+          <button class="pd-cta-btn" id="pdChatBtn" type="button"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg><span>Обговорити це авто в чаті</span></button>
+          <span class="pd-cta-hint">Запитай про ДТП, пробіг, комплектацію, ризики або порівняй з іншими авто</span>
+        </div>
       </div>
       <div class="v-text" id="vText"></div>
     </div>
@@ -1077,6 +1086,29 @@ function boot(){
   document.body.classList.add('report-ready');
 }
 
+/* ---------- номер власника в історії: лише за явним доказом ----------
+   Перереєстрація САМА ПО СОБІ власника не змінює: заміна номерного знака,
+   зміна документа чи технічна перереєстрація це та сама людина. Тому бейдж
+   зʼявляється лише коли подія прямо називає власника. Номер беремо з тексту
+   події, якщо він там названий, інакше рахуємо підтверджені переходи
+   послідовно. Немає доказу зміни власника: немає і бейджа. */
+function ownerBadges(history){
+  const OWNER = '(?:власник|владел|owner)';
+  const hasOwner = new RegExp(OWNER, 'i');
+  const numRe = new RegExp('(\\d+)\\s*[-\u2011]?\\s*(?:й|я|го|ий|ый|st|nd|rd|th)?\\s*' + OWNER, 'i');
+  const ORD = [[/перш|перв|first/i, 1], [/друг|втор|second/i, 2], [/трет|third/i, 3], [/четверт|fourth/i, 4], [/пʼят|пят|fifth/i, 5]];
+  let seq = 0;
+  return (Array.isArray(history) ? history : []).map(h => {
+    const txt = String((h && h.event) || '');
+    if (!hasOwner.test(txt)) return null;
+    const m = numRe.exec(txt);
+    if (m) { seq = Math.max(seq, parseInt(m[1], 10) || 0); return parseInt(m[1], 10) || null; }
+    const ord = ORD.find(o => o[0].test(txt));
+    if (ord) { seq = Math.max(seq, ord[1]); return ord[1]; }
+    return ++seq;
+  });
+}
+
 function boot2(D){
 
   /* ---- авто: стрічка фото + факти, як в Import ---- */
@@ -1097,7 +1129,7 @@ function boot2(D){
   const monthlyKm = (dimsMil && dimsMil.score_available === true && typeof dimsMil.annual_mileage_km === 'number')
     ? Math.round(dimsMil.annual_mileage_km / 12 / 50) * 50 : null;
   const annualHtml = monthlyKm !== null
-    ? '<span class="spec-mo" title="' + esc(t('Середній пробіг за місяць за весь строк експлуатації автомобіля.')) + '">· ≈' + esc(nf(monthlyKm)) + ' ' + esc(t('км/міс')) + '</span>'
+    ? '<span class="spec-mo" title="' + esc(t('Середній пробіг за місяць за весь строк експлуатації автомобіля.')) + '">(≈' + esc(nf(monthlyKm)) + ' ' + esc(t('км/міс')) + ')</span>'
     : '';
   if (v.mileage_note) spec.push([t('Пробіг'), clean(v.mileage_note), null, annualHtml]);
   else if (M.odometer_km) spec.push([t('Пробіг'), nf(M.odometer_km) + ' ' + t('км'), null, annualHtml]);
@@ -1436,6 +1468,7 @@ function boot2(D){
   const aas = (D.score_breakdown || D.score_breakdown_v2 || {}).auction_absent_state || null;
   if (Array.isArray(D.history) && D.history.length) {
     $('histCard').style.display = '';
+    const owners = ownerBadges(D.history);
     /* connector між подіями малюється ЗАВЖДИ (крім останньої), підпис
        інтервалу опційний: невідому дату не вигадуємо заради лінії */
     $('histList').innerHTML = D.history.map((h, i) =>
@@ -1443,7 +1476,7 @@ function boot2(D){
       /* реєстраційні події видно при скануванні; бейдж лише за явну
          перереєстрацію, "зміну власника" не вигадуємо */
       + '<div class="hrow' + (/реєстрац|регистрац|registration/i.test(h.event) ? ' reg' : '') + '"><span class="hd">' + esc(h.date) + '</span><span>' + esc(h.event)
-      + (/перереєстрац|перерегистрац|re-?regist/i.test(h.event) ? ' <span class="badge reg-badge">' + esc(t('Перереєстрація')) + '</span>' : '') + '</span></div>'
+      + (owners[i] ? ' <span class="badge reg-badge">' + esc(t('{n}-й власник').replace('{n}', owners[i])) + '</span>' : '') + '</span></div>'
     ).join('')
     + (D.history_note ? '<div class="dmg-note hnote">' + esc(D.history_note) + '</div>' : '')
     /* стан аукціонної перевірки: НЕ твердження, що всі авто з США мусять
@@ -1502,6 +1535,13 @@ document.getElementById('pdfBtn').addEventListener('click', () => {
 });
 document.getElementById('askAi').addEventListener('click', () => {
   document.getElementById('chatFab').click();
+});
+
+/* CTA у кінці висновку: відкриває ТОЙ САМИЙ чат по цьому звіту, нового не
+   створює. Авто вже є контекстом чату, пояснювати машину заново не треба */
+document.getElementById('pdChatBtn').addEventListener('click', () => {
+  if (typeof window.calcarOpenChat === 'function') window.calcarOpenChat();
+  else document.getElementById('chatFab').click();
 });
 
 /* ---------- лайтбокс ---------- */
@@ -2011,7 +2051,12 @@ function chatCtx(){
     photo_findings: d.photo_findings, auction: d.auction,
     model_notes: d.model_notes, checklist: d.checklist, data_notes: d.data_notes,
     body_wrap: d.body_wrap || null,
-    _meta: { url: M.url, vin: M.vin, plate: M.plate, price: M.price, currency: M.currency, odometer_km: M.odometer_km, photo_map: M.photo_map || null, price_context: M.price_context || null },
+    /* те саме, що отримав фінальний висновок: значимість пробігу, чи
+       враховувався профіль покупця і які недавні авто цієї людини були
+       релевантними. Памʼять і самі звіти чат тягне окремо (memory, others),
+       тут лише звʼязок висновку з ними */
+    decision_inputs: M.decision_inputs || null,
+    _meta: { url: M.url, vin: M.vin, plate: M.plate, price: M.price, currency: M.currency, odometer_km: M.odometer_km, photo_map: M.photo_map || null, price_context: M.price_context || null, decision_inputs: M.decision_inputs || null },
   };
 }
 function chatMsgEl(role, text){
