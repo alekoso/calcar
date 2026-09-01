@@ -160,8 +160,17 @@
     var l = lang();
     document.documentElement.lang = meta(l).html;
     if (l !== SOURCE && ready(l)) {
+      /* локалізується лише видимий текст. Вміст SCRIPT, STYLE, TEMPLATE,
+         NOSCRIPT і TEXTAREA (код, шаблони, введений користувачем текст)
+         НІКОЛИ не підміняється, інакше збіг фрази з ключем словника
+         зламав би inline JS чи CSS */
+      var SKIP = 'script,style,template,noscript,textarea';
+      function skip(nd) {
+        var p = nd.parentNode;
+        return !!(p && p.closest && p.closest(SKIP));
+      }
       var w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null), nodes = [], n;
-      while ((n = w.nextNode())) nodes.push(n);
+      while ((n = w.nextNode())) if (!skip(n)) nodes.push(n);
       nodes.forEach(function (nd) {
         if (!norm(nd.nodeValue || '')) return;
         var v = lookup(nd.nodeValue, l);

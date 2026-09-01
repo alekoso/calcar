@@ -126,6 +126,32 @@ const read = f => fs.readFileSync(f, 'utf8');
   r = runCore({ saved: 'ua', languages: [], dicts });
   if (r.window.t('Ключ А') !== 'Ключ А') errs.push('t() ua мав повернути вихідну фразу розмітки');
 
+  /* ===== 2б. TreeWalker: код і шаблони не локалізуються ===== */
+  if (!/closest\(SKIP\)/.test(core) || !/'script,style,template,noscript,textarea'/.test(core)) errs.push('ядро не виключає script/style/template/noscript/textarea з локалізації');
+  {
+    /* пісочниця з фейковим DOM: apply() виконується одразу, TreeWalker віддає
+       текстові вузли з батьками різних тегів */
+    const mk = (text, tag) => ({ nodeValue: text, parentNode: { closest: sel => (sel.split(',').includes(tag.toLowerCase()) ? {} : null) } });
+    const nodes = [mk('Ключ А', 'P'), mk('Ключ А', 'SCRIPT'), mk('Ключ А', 'STYLE'), mk('Ключ А', 'TEXTAREA'), mk('Ключ А', 'TEMPLATE'), mk('Ключ А', 'NOSCRIPT'), mk('Ключ Б', 'SPAN')];
+    const store = { calcar_lang: 'ru' };
+    const document = {
+      documentElement: { className: '', lang: '', classList: { remove() {} } },
+      readyState: 'complete', body: {},
+      write() {}, addEventListener() {}, getElementById() { return null; }, querySelectorAll() { return []; }, title: 'Ключ Б',
+      createTreeWalker() { let i = -1; return { nextNode() { i++; return i < nodes.length ? nodes[i] : null; } }; },
+    };
+    const ctx = { window: { CALCAR_DICTS: dicts }, document, navigator: { languages: [] }, localStorage: { getItem: k => store[k] || null, setItem() {} }, setTimeout() {}, NodeFilter: { SHOW_TEXT: 4 }, location: {} };
+    vm.createContext(ctx);
+    vm.runInContext(core.replace('/* i18n-core:start */', '').replace('/* i18n-core:end */', ''), ctx);
+    if (nodes[0].nodeValue !== 'ру А') errs.push('TreeWalker: видимий текст не локалізований: ' + nodes[0].nodeValue);
+    if (nodes[6].nodeValue !== 'en B') errs.push('TreeWalker: EN-фолбек у DOM не спрацював: ' + nodes[6].nodeValue);
+    for (const [i, tag] of [[1, 'SCRIPT'], [2, 'STYLE'], [3, 'TEXTAREA'], [4, 'TEMPLATE'], [5, 'NOSCRIPT']]) {
+      if (nodes[i].nodeValue !== 'Ключ А') errs.push('TreeWalker: текст усередині ' + tag + ' підмінений: ' + nodes[i].nodeValue);
+    }
+    if (document.title !== 'en B') errs.push('title не локалізований через EN-фолбек: ' + document.title);
+    if (document.documentElement.lang !== 'ru') errs.push('html lang не виставлений: ' + document.documentElement.lang);
+  }
+
   /* ===== 3. проводка локалі в AI-потоки ===== */
   const chat = read('api/chat.js'), check = read('api/check.js'), analyze = read('api/analyze.js');
   const translate = read('api/check-translate.js'), memory = read('api/memory.js'), lot = read('api/lot.js');
