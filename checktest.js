@@ -564,7 +564,19 @@ const REPORTS = [
       if (r.visible_damage_zones.length !== 2 || r.evidence.length !== 1) errs.push('сміття у зонах/evidence не відсіяне');
       const ok = sh({ visible_damage_zones: ['капот'], visible_severity: 'moderate', structural_visual_status: 'no_obvious_severe_signs', srs_visual_status: 'not_visible', summary: 's', evidence: [] }, 2);
       if (ok.visible_severity !== 'moderate' || ok.structural_visual_status !== 'no_obvious_severe_signs') errs.push('валідний assessment попсований');
+      /* несуча деформація: strict boolean, відсутність поля = false */
+      if (ok.load_bearing_structure_deformation_visible !== false) errs.push('load_bearing без поля мав бути false');
+      const lb = sh({ visible_damage_zones: ['лонжерон'], visible_severity: 'severe', structural_visual_status: 'indeterminate', srs_visual_status: 'not_visible', load_bearing_structure_deformation_visible: true, summary: 's', evidence: [] }, 2);
+      if (lb.load_bearing_structure_deformation_visible !== true) errs.push('load_bearing=true загублений sanitize-ом');
     }
+    /* severity-корекція 2026-09-01: нове hv-поле і його семантика в промпті,
+       версія кеша ОБОВʼЯЗКОВО піднята (старий кеш без поля stale, не false) */
+    if (!api.includes('load_bearing_structure_deformation_visible (видима деформація САМЕ НЕСУЧИХ/СИЛОВИХ частин')) errs.push('check.js: нема визначення load_bearing у промпті');
+    if (!api.includes('Зімʼятий капот САМ ПО СОБІ це НЕ major_deformation')) errs.push('check.js: капот досі рахується major_deformation');
+    if (!api.includes('"load_bearing_structure_deformation_visible":false')) errs.push('check.js: схема hv без нового поля');
+    if (api.includes("HISTORICAL_VISUAL_VERSION = 'hv-2026-08-31'")) errs.push('check.js: HISTORICAL_VISUAL_VERSION не піднятий після нового hv-поля');
+    if (!api.includes('ФІКСАЦІЯ СПОСТЕРЕЖЕНЬ, а не вердикт про тяжкість')) errs.push('check.js: hv.summary не обмежений спостереженнями');
+    if (!api.includes('applyReportSeverityLanguage(parsed, { severity: sev, lang })')) errs.push('check.js: resolved severity не калібрує тексти звіту');
     /* seller_text: structured JSON-LD пріоритет, маркери fallback */
     if (!api.includes("d['@type'] === 'Vehicle' && typeof d.description === 'string'")) errs.push('check.js: seller_text без JSON-LD межі');
     if (!api.includes("'Що перевірити перед покупкою'")) errs.push('check.js: fallback без стоп-маркера площадки');

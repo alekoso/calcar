@@ -290,6 +290,23 @@ const VALID = {
       }
     }
 
+    /* ---- B. ціна: чесна атрибуція розрахунку CalCar ---- */
+    if (!/position_classifier: 'calcar_threshold'/.test(src)) errs.push('price_context не позначає, чия класифікація');
+    if (!/delta_percent/.test(src)) errs.push('price_context без відсотка відхилення');
+    if (!/смуга position \(below_average\/average\/above_average\) і delta_percent це РОЗРАХУНОК CalCar/.test(src)) errs.push('нема правила атрибуції position');
+    if (!/ЗАБОРОНЕНО приписувати нашу смугу самій площадці/.test(src)) errs.push('дозволено видавати наш поріг за категорію площадки');
+    if (/формулюй ВІД ІМЕНІ ПЛОЩАДКИ/.test(src)) errs.push('старе правило "від імені площадки" лишилось');
+
+    /* ---- C. buyer personalization: три рівні ---- */
+    if (!/HARD CONSTRAINTS: лише ЯВНО сформульовані обмеження/.test(src)) errs.push('нема рівня hard constraints');
+    if (!/ТІЛЬКИ вони можуть виключати автомобіль/.test(src)) errs.push('виключати авто може не лише hard constraint');
+    if (!/SOFT PREFERENCES:/.test(src) || !/ніколи не дають "пропустити"/.test(src)) errs.push('soft preferences можуть виключати авто');
+    if (!/CURRENT CONSIDERATION: сам факт, що людина відправила ЦЕ авто на перевірку/.test(src)) errs.push('нема правила current consideration');
+    if (!/Поточна дія сильніша за стару памʼять/.test(src)) errs.push('стара память сильніша за поточну дію');
+    if (!/ЗАБОРОНЕНО писати "ця машина вам не підходить"/.test(src)) errs.push('дозволено "не підходить вам" без hard constraint');
+    if (!/не зводь її недавні звіти в один жорсткий профіль/.test(src)) errs.push('recent reports зводяться в один профіль');
+    if (!/пропонує інший сценарій/.test(src)) errs.push('нема сценарної рамки замість відмови');
+
     /* ---- Score v3 і ретривал цією задачею не змінювались ---- */
     const v3 = fs.readFileSync('api/score-v3.js', 'utf8');
     if (/buyer_context|recent_report|decision_positives/i.test(v3)) errs.push('контекст покупця протік у Score v3');

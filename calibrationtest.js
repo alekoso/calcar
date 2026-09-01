@@ -57,11 +57,30 @@ const gold = JSON.parse(fs.readFileSync('calibration-gold.json', 'utf8'));
   if (!near(f('AXGFW9'), 8.6, 8.8)) errs.push('watchpoint moderate/unknown (AXGFW9): ' + f('AXGFW9'));
   /* moderate + подушки + непідтверджена SRS */
   if (!near(f('8FVRYG'), 8.0, 8.2)) errs.push('watchpoint moderate+SRS (8FVRYG): ' + f('8FVRYG'));
-  /* severe + подушки + unknown ремонт: помітно нижче */
-  if (!near(f('6SYMZ7'), 6.5, 6.9)) errs.push('watchpoint severe+SRS (6SYMZ7): ' + f('6SYMZ7'));
-  /* acceptance WP7V3G (свіжий Check): severe підтверджений подушками,
-     нормальна хронологія пробігу БЕЗ конфлікту і БЕЗ rollback */
-  if (!near(f('WP7V3G'), 6.5, 6.9)) errs.push('acceptance WP7V3G: ' + f('WP7V3G'));
+  /* severity-корекція 2026-09-01: подушки більше НЕ корроборують
+     major_deformation. Події "навісні панелі + подушки" свідомо
+     перекласифіковані в moderate (1.3 + SRS 0.6 = 1.9), severe тепер
+     вимагає ФІЗИЧНОГО доказу: несуча деформація, структура, зміщене
+     колесо. Старі смуги 6.5-6.9 оновлені свідомо, НЕ підгонкою */
+  if (!near(f('6SYMZ7'), 8.0, 8.2)) errs.push('watchpoint moderate+SRS після re-tier (6SYMZ7): ' + f('6SYMZ7'));
+  const syE = res['6SYMZ7'].v3.accident_events[0];
+  if (!syE || syE.derived_severity !== 'moderate') errs.push('6SYMZ7: подушки без несучої деформації мали дати moderate, а не ' + (syE && syE.derived_severity));
+  /* acceptance WP7V3G (свіжий Check): подушки + деформація навісних панелей
+     = moderate; нормальна хронологія пробігу БЕЗ конфлікту і БЕЗ rollback */
+  if (!near(f('WP7V3G'), 8.0, 8.2)) errs.push('acceptance WP7V3G: ' + f('WP7V3G'));
+  /* acceptance K530EB (WBAJA9C55JB252679): удар лише по навісних панелях +
+     розкриті подушки = moderate 8.1; до корекції давав severe 6.7 */
+  if (!near(f('K530EB'), 8.0, 8.2)) errs.push('acceptance 530e (K530EB): ' + f('K530EB'));
+  const kE = res['K530EB'].v3.accident_events[0];
+  if (!kE || kE.derived_severity !== 'moderate') errs.push('K530EB: мав бути moderate, а не ' + (kE && kE.derived_severity));
+  if (kE && kE.final_event_penalty !== 1.3) errs.push('K530EB: штраф події не 1.3: ' + kE.final_event_penalty);
+  if (!res['K530EB'].v3.unresolved_safety_concerns.some(c => c.type === 'SRS_RESTORATION_UNVERIFIED' && c.penalty === 0.6)) errs.push('K530EB: SRS restoration 0.6 загублений');
+  /* acceptance M550LB (WBAJB9C50JB049616): видима деформація НЕСУЧОЇ
+     передньої зони тримає severe без подушок-корроборації */
+  if (!near(f('M550LB'), 6.5, 6.9)) errs.push('acceptance M550i (M550LB): ' + f('M550LB'));
+  const mE = res['M550LB'].v3.accident_events[0];
+  if (!mE || mE.derived_severity !== 'severe') errs.push('M550LB: мав бути severe, а не ' + (mE && mE.derived_severity));
+  if (!mE || !mE.severity_basis.includes('load_bearing_structure_deformation_visible')) errs.push('M550LB: severe не через несучу деформацію: ' + JSON.stringify(mE && mE.severity_basis));
   if (res['WP7V3G'].v3.normalized_current_problems.some(p => /MILEAGE|ROLLBACK/.test(p.type))) errs.push('WP7V3G: нормальна хронологія оштрафована');
   /* TYTP3J: глибока деформація БЕЗ підтвердження подушками/структурою =
      moderate. Бал 8.9 -> 8.7 свідомо: visually_consistent став
@@ -84,12 +103,13 @@ const gold = JSON.parse(fs.readFileSync('calibration-gold.json', 'utf8'));
      coverage і капів. Кількість балів у смузі лишається суто
      діагностичною метрикою в звіті калібрування (друк наприкінці) */
   if (!(f('M679AQ') > f('HX8KT5'))) errs.push('причинність: чиста не вища за moderate: ' + f('M679AQ') + ' vs ' + f('HX8KT5'));
-  if (!(f('HX8KT5') > f('6SYMZ7'))) errs.push('причинність: moderate не вища за severe: ' + f('HX8KT5') + ' vs ' + f('6SYMZ7'));
+  if (!(f('HX8KT5') > f('6SYMZ7'))) errs.push('причинність: moderate без подушок не вища за moderate+SRS: ' + f('HX8KT5') + ' vs ' + f('6SYMZ7'));
+  if (!(f('K530EB') > f('M550LB'))) errs.push('причинність: навісний удар не вищий за несучу деформацію: ' + f('K530EB') + ' vs ' + f('M550LB'));
   /* moderate без unresolved SRS > moderate + unresolved SRS */
   if (!(f('HX8KT5') > f('8FVRYG'))) errs.push('причинність: moderate без SRS-concern не вища за moderate+SRS: ' + f('HX8KT5') + ' vs ' + f('8FVRYG'));
   /* severe-подія важча за moderate-подію за розміром штрафу */
   const penOf = pid => Math.max(0, ...res[pid].v3.accident_events.map(e => e.final_event_penalty));
-  if (!(penOf('6SYMZ7') > penOf('HX8KT5'))) errs.push('причинність: штраф severe не більший за moderate: ' + penOf('6SYMZ7') + ' vs ' + penOf('HX8KT5'));
+  if (!(penOf('M550LB') > penOf('HX8KT5'))) errs.push('причинність: штраф severe не більший за moderate: ' + penOf('M550LB') + ' vs ' + penOf('HX8KT5'));
   /* acceptance 2HGRSW (BMW 113 тис., 8 років, petrol): вісь Пробіг
      більше НЕ 10 за саму послідовну хронологію */
   const bmwMil = res['2HGRSW'] && res['2HGRSW'].v3.score_dimensions.mileage;
@@ -99,7 +119,8 @@ const gold = JSON.parse(fs.readFileSync('calibration-gold.json', 'utf8'));
     if (!(bmwMil.score >= 8.0 && bmwMil.score <= 8.5)) errs.push('2HGRSW: Пробіг поза low-8 смугою: ' + bmwMil.score);
     if (bmwMil.age_source !== 'model_year_midpoint') errs.push('2HGRSW: несподіване джерело віку: ' + bmwMil.age_source);
   }
-  if (res['2HGRSW'] && !near(res['2HGRSW'].v3.final, 6.0, 6.2)) errs.push('2HGRSW: фінал зʼїхав: ' + f('2HGRSW'));
+  /* re-tier 2026-09-01: фронт по навісних панелях + подушка = moderate */
+  if (res['2HGRSW'] && !near(res['2HGRSW'].v3.final, 7.4, 7.6)) errs.push('2HGRSW: фінал зʼїхав: ' + f('2HGRSW'));
 
   /* показаний бал ніколи не вище стелі чи капа */
   for (const [pid, r] of Object.entries(res)) {

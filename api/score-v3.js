@@ -201,7 +201,7 @@ function newEvent(id, year, anchored, basis, confidence) {
     merge_basis: basis ? [...basis] : [],
     merge_confidence: confidence || 'high',
     year,
-    signals: { structural: false, airbags: false, zones: 0, major_deformation: false, wheel_displacement: false, cosmetic_only: false, possible_structural: false },
+    signals: { structural: false, load_bearing: false, airbags: false, zones: 0, major_deformation: false, wheel_displacement: false, cosmetic_only: false, possible_structural: false },
     repair_statuses: [],
     evidence: [],
   };
@@ -269,6 +269,10 @@ export function resolveAccidentEvents(findings, ctx) {
       anchorZoneText += ' ' + hvZones.join(' ');
       /* структуровані ВИДИМІ ознаки, не прикметник моделі */
       if (hv.possible_structural_damage === true && hv.structural_visual_status !== 'visible_damage') auctionEvent.signals.possible_structural = true;
+      /* видима деформація НЕСУЧИХ частин (лонжерони, стакани, стійки,
+         пороги, підлога, моторний щит, каркас): сильний фізичний сигнал
+         тяжкості БЕЗ капа 5.5 (кап лишається за strict visible_damage) */
+      if (hv.load_bearing_structure_deformation_visible === true) auctionEvent.signals.load_bearing = true;
       if (hv.major_deformation_visible === true) auctionEvent.signals.major_deformation = true;
       if (hv.wheel_displacement_visible === true) auctionEvent.signals.wheel_displacement = true;
       if (hv.cosmetic_only === true) auctionEvent.signals.cosmetic_only = true;
@@ -393,10 +397,15 @@ export function deriveSeverity(ev) {
     if (rank[level] > rank[severity]) severity = level;
   };
   if (ev.signals.structural) bump('severe', 'structural_damage');
-  /* глибока видима деформація дає severe ЛИШЕ з незалежним важким
-     підтвердженням (подушки, структурні ознаки, зміщене колесо):
-     самотній visual-boolean моделі не має сили перевернути tier */
-  const majorCorroborated = ev.signals.airbags || ev.signals.structural || ev.signals.wheel_displacement;
+  /* видима деформація несучих частин: severe сама по собі */
+  if (ev.signals.load_bearing) bump('severe', 'load_bearing_structure_deformation_visible');
+  /* глибока видима деформація кузова дає severe ЛИШЕ з незалежним
+     ФІЗИЧНИМ підтвердженням тяжкості: несучі частини, структурні ознаки,
+     зміщене колесо. Подушки корроборатором НЕ є: розкриті подушки плюс
+     зімʼяті навісні панелі це штатна сигнатура БУДЬ-ЯКОГО фронтального
+     удару з порогом спрацювання, а не доказ severe. Подушки лишаються
+     самостійним moderate-сигналом нижче і окремим SRS restoration concern */
+  const majorCorroborated = ev.signals.structural || ev.signals.load_bearing || ev.signals.wheel_displacement;
   if (ev.signals.major_deformation) bump(majorCorroborated ? 'severe' : 'moderate', 'major_deformation_visible');
   if (ev.signals.airbags) bump('moderate', 'airbags_deployed');
   if (ev.signals.wheel_displacement) bump('moderate', 'wheel_displacement_visible');

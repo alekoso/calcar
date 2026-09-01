@@ -173,7 +173,8 @@
     "year": 2024,
     "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)",
     "age_source": "model_year_midpoint"
-   }
+   },
+   "retiered": "2026-09-01 severity-корекція: подушки більше не корроборують major_deformation, подія без несучої деформації/зміщеного колеса/структури стала moderate; watchpoint оновлено свідомо"
   },
   {
    "pid": "HX8KT5",
@@ -897,7 +898,8 @@
     "year": 2023,
     "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)",
     "age_source": "model_year_midpoint"
-   }
+   },
+   "retiered": "2026-09-01 severity-корекція: подушки більше не корроборують major_deformation, подія без несучої деформації/зміщеного колеса/структури стала moderate; watchpoint оновлено свідомо"
   },
   {
    "pid": "M3PKUY",
@@ -1053,7 +1055,183 @@
    "auction": null,
    "accident_recorded": true,
    "accident_note": null,
-   "v2_saved": 7
+   "v2_saved": 7,
+   "retiered": "2026-09-01 severity-корекція: подушки більше не корроборують major_deformation, подія без несучої деформації/зміщеного колеса/структури стала moderate; watchpoint оновлено свідомо"
+  },
+  {
+   "pid": "K530EB",
+   "vin": "WBAJA9C55JB252679",
+   "note": "BMW 530e 2018: фронтальний удар лише по навісних панелях (капот/бампер/оптика) + розкриті передні подушки, силові елементи не підтверджені. Регрес-кейс severity-корекції: подушки БІЛЬШЕ НЕ корроборують major_deformation, подія moderate, а не severe. Старий hv (major_deformation=true за зімʼятий капот) лишений навмисно: навіть із ним tier мусить бути moderate",
+   "refreshed": "2026-09-01 (production Check 612f5b04, до severity-корекції давав severe 6.7)",
+   "vehicle": {
+    "odometer_km": 111000,
+    "age_months": 98,
+    "powertrain": "hybrid",
+    "year": 2018,
+    "note_age": "вік зафіксований на 2026-09-01 (детермінізм теста)",
+    "age_source": "model_year_midpoint"
+   },
+   "cov": {
+    "basics_known": true,
+    "photos_count": 8,
+    "imported_used": true,
+    "mileage_known": true,
+    "auction_checked": false,
+    "auction_us_signal": true,
+    "identity_confirmed": true,
+    "seller_docs_exists": false,
+    "history_gap_detected": false,
+    "auction_record_exists": true,
+    "service_history_exists": false,
+    "registration_data_exists": true,
+    "historical_listings_count": 0,
+    "inspection_history_exists": false,
+    "mileage_observation_count": 0,
+    "auction_sources_unreachable": false
+   },
+   "findings": [
+    {
+     "type": "AIRBAGS_DEPLOYED",
+     "event_id": "accident_us_2025",
+     "severity": "high",
+     "repair_status": "unknown",
+     "maintenance_evidence": false,
+     "serious_intervention": false,
+     "evidence": [
+      {
+       "ref": "auction_photo_8",
+       "source": "us_auction",
+       "description": "На фото видны раскрытые водительская подушка в руле и передняя пассажирская подушка в торпедо."
+      }
+     ]
+    }
+   ],
+   "hv": {
+    "visible_severity": "severe",
+    "srs_visual_status": "deployed_visible",
+    "structural_visual_status": "indeterminate",
+    "major_deformation_visible": true,
+    "load_bearing_structure_deformation_visible": false,
+    "wheel_displacement_visible": false,
+    "cosmetic_only": false,
+    "possible_structural_damage": true,
+    "damage_side": "both",
+    "side_confidence": "high",
+    "visible_damage_zones": [
+     "капот",
+     "передний бампер",
+     "решетка радиатора",
+     "передняя оптика",
+     "передняя часть кузова"
+    ],
+    "evidence": [
+     {
+      "source": "us_auction",
+      "ref": "auction_photo_5",
+      "description": "Деформирован капот, повреждены передний бампер, решетки и фары."
+     }
+    ]
+   },
+   "auction": null,
+   "accident_recorded": true,
+   "accident_note": "ДТП на території США в 2025 році"
+  },
+  {
+   "pid": "M550LB",
+   "vin": "WBAJB9C50JB049616",
+   "note": "BMW M550i 2018: фронтальний удар із видимою деформацією несучої передньої зони (оголений погнутий передній каркас на архівних кадрах) + подушка. load_bearing_structure_deformation_visible=true тримає severe БЕЗ подушок-корроборації; це очікуваний вихід нового Vision-поля, звірити з прод-прогонами",
+   "refreshed": "2026-09-01 (production Check 564fe570; hv-поле load_bearing додане цією корекцією)",
+   "vehicle": {
+    "odometer_km": 125000,
+    "age_months": 98,
+    "powertrain": "petrol",
+    "year": 2018,
+    "note_age": "вік зафіксований на 2026-09-01 (детермінізм теста)",
+    "age_source": "model_year_midpoint"
+   },
+   "cov": {
+    "basics_known": true,
+    "photos_count": 22,
+    "mileage_known": true,
+    "auction_checked": false,
+    "auction_us_signal": true,
+    "identity_confirmed": true,
+    "seller_docs_exists": false,
+    "auction_record_exists": true,
+    "service_history_exists": false,
+    "registration_data_exists": true,
+    "historical_listings_count": 0,
+    "inspection_history_exists": false,
+    "mileage_observation_count": 0,
+    "auction_sources_unreachable": false
+   },
+   "findings": [
+    {
+     "type": "AIRBAGS_DEPLOYED",
+     "event_id": "accident_2020",
+     "severity": "high",
+     "repair_status": "unknown",
+     "maintenance_evidence": false,
+     "serious_intervention": false,
+     "evidence": [
+      {
+       "ref": "auction_photo_5",
+       "source": "us_auction",
+       "description": "На рулевом колесе отчетливо видна сработавшая водительская подушка безопасности."
+      }
+     ]
+    },
+    {
+     "type": "MAJOR_REPAIR_UNVERIFIED",
+     "event_id": "accident_2020",
+     "severity": "high",
+     "repair_status": "unknown",
+     "maintenance_evidence": false,
+     "serious_intervention": false,
+     "evidence": [
+      {
+       "ref": "auction_photo_1",
+       "source": "us_auction",
+       "description": "Видны деформация капота и значительное повреждение передней части кузова."
+      },
+      {
+       "ref": "photo_3",
+       "source": "current_photos",
+       "description": "После ремонта передняя часть выглядит собранной, но качество скрытого восстановления по фото не подтверждается."
+      }
+     ]
+    }
+   ],
+   "hv": {
+    "visible_severity": "severe",
+    "srs_visual_status": "deployed_visible",
+    "structural_visual_status": "indeterminate",
+    "major_deformation_visible": true,
+    "load_bearing_structure_deformation_visible": true,
+    "wheel_displacement_visible": false,
+    "cosmetic_only": false,
+    "possible_structural_damage": true,
+    "damage_side": "right",
+    "side_confidence": "high",
+    "visible_damage_zones": [
+     "капот",
+     "передний бампер",
+     "решетка радиатора",
+     "передняя часть кузова",
+     "одно переднее крыло",
+     "одна передняя фара"
+    ],
+    "evidence": [
+     {
+      "source": "us_auction",
+      "ref": "auction_photo_1",
+      "description": "Передний правый угол разрушен, несущая передняя зона оголена и деформирована."
+     }
+    ]
+   },
+   "auction": null,
+   "accident_recorded": true,
+   "accident_note": "ДТП на території США в 2019 році"
   }
  ]
 }

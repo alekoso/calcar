@@ -191,7 +191,7 @@ function auctionSearchMetaForCache(as) {
 
 /* версія екстрактора історичного візуалу: зміна семантики промпту/полів
    мусить інвалідовувати кеш historical_visual */
-export const HISTORICAL_VISUAL_VERSION = 'hv-2026-08-31';
+export const HISTORICAL_VISUAL_VERSION = 'hv-2026-09-01';
 /* стабільний відбиток набору кадрів: djb2 по відсортованих URL */
 export function photoSetFingerprint(urls, version = HISTORICAL_VISUAL_VERSION) {
   const norm = [...new Set((urls || []).filter(u => typeof u === 'string'))].sort().join('|') + '::' + version;
@@ -396,12 +396,16 @@ function extractListing(html, url) {
     const ap = /"averagePrice":(\d{3,9})/.exec(html);
     if (ap) {
       const avg = parseInt(ap[1], 10);
-      let position = 'unknown';
+      let position = 'unknown', deltaPct = null;
       if (price && avg > 0) {
         const d = (price - avg) / avg;
+        deltaPct = Math.round(d * 100);
         position = d < -0.07 ? 'below_average' : d > 0.07 ? 'above_average' : 'average';
       }
-      priceContext = { position, source_type: 'marketplace', source_name: 'AUTO.RIA', average_price: avg, listing_price: price || null, currency: currency || 'USD' };
+      /* position і delta_percent це РОЗРАХУНОК CalCar (поріг ±7% від
+         середньої площадки), а НЕ категорія самої площадки: її власна
+         цінова позначка на сторінці може мати інші межі смуг */
+      priceContext = { position, position_classifier: 'calcar_threshold', delta_percent: deltaPct, source_type: 'marketplace', source_name: 'AUTO.RIA', average_price: avg, listing_price: price || null, currency: currency || 'USD' };
     }
   }
 
@@ -924,12 +928,26 @@ function swapStems(text, stems, target, L) {
     return t + (tail || '') + rest;
   });
 }
+/* конструкції "глибоко зімʼятий/смятый": прислівник + дієприкметник, повз
+   основне правило прикметник+іменник. Замінюється лише прислівник, саме
+   дієприкметникове слово з його закінченням лишається */
+const SEV_ADV = {
+  ua: { re: /глибоко(\s+(?:зім[ʼ']?ят|деформован|пошкоджен|вм[ʼ']?ят)[а-яіїєґ]*)/gi, moderate: 'помітно', minor: 'незначно' },
+  ru: { re: /глубоко(\s+(?:смят|деформирован|повреж[дё]ен|вмят)[а-яё]*)/gi, moderate: 'заметно', minor: 'незначительно' },
+  en: { re: /deeply(\s+(?:crushed|crumpled|deformed|damaged))/gi, moderate: 'noticeably', minor: 'slightly' },
+};
 export function calibrateSeverityWording(text, severity, lang = 'ua') {
   if (typeof text !== 'string' || !text) return text;
   if (severity !== 'minor' && severity !== 'moderate') return text;
   const L = SEV_LEX[lang] || SEV_LEX.ua;
   let out = swapStems(text, L.strong, severity === 'minor' ? L.minor : L.moderate, L);
   if (severity === 'minor') out = swapStems(out, L.mid, L.minor, L);
+  const A = SEV_ADV[lang] || SEV_ADV.ua;
+  out = out.replace(A.re, (m, tail) => {
+    const w = severity === 'minor' ? A.minor : A.moderate;
+    const up = m[0] === m[0].toUpperCase() && m[0] !== m[0].toLowerCase();
+    return (up ? w[0].toUpperCase() + w.slice(1) : w) + tail;
+  });
   return out;
 }
 
@@ -968,6 +986,33 @@ export function applyDecisionLanguage(pd, { severity = null, lang = 'ua' } = {})
     if (Array.isArray(pd[k])) pd[k] = pd[k].map(x => typeof x === 'string' ? one(x) : x);
   }
   return pd;
+}
+
+/* resolved severity це ЄДИНЕ джерело правди про тяжкість ДТП для всіх
+   користувацьких текстів звіту: Score, "Історія пошкоджень", вердикт,
+   ризики, контекст чату. Vision фіксує спостереження, а не вердикт, тому
+   його прикметники калібруються під resolved severity тим самим правилом,
+   що й рішення: формулювання може стати мʼякшим, ніколи сильнішим */
+export function applyReportSeverityLanguage(parsed, { severity = null, lang = 'ua' } = {}) {
+  if (!parsed || typeof parsed !== 'object') return parsed;
+  const one = s => calibrateSeverityWording(s, severity, lang);
+  if (parsed.verdict && typeof parsed.verdict.summary === 'string') parsed.verdict.summary = one(parsed.verdict.summary);
+  if (parsed.auction && typeof parsed.auction === 'object') {
+    if (typeof parsed.auction.summary === 'string') parsed.auction.summary = one(parsed.auction.summary);
+    if (Array.isArray(parsed.auction.findings)) {
+      for (const f of parsed.auction.findings) if (f && typeof f.text === 'string') f.text = one(f.text);
+    }
+  }
+  if (parsed.historical_visual && typeof parsed.historical_visual.summary === 'string') {
+    parsed.historical_visual.summary = one(parsed.historical_visual.summary);
+  }
+  if (Array.isArray(parsed.risks)) {
+    for (const r of parsed.risks) {
+      if (!r || typeof r !== 'object') continue;
+      for (const k of ['title', 'note', 'action']) if (typeof r[k] === 'string') r[k] = one(r[k]);
+    }
+  }
+  return parsed;
 }
 
 /* ---------- 4б2. Рівномірна вибірка кадрів для Vision ----------
@@ -1146,6 +1191,10 @@ export function sanitizeHistoricalVisual(hv, photosSent) {
     visible_damage_zones: (Array.isArray(hv.visible_damage_zones) ? hv.visible_damage_zones : []).map(clean).filter(Boolean).map(z => z.slice(0, 60)).slice(0, 10),
     visible_severity: SEV.includes(hv.visible_severity) ? hv.visible_severity : 'indeterminate',
     major_deformation_visible: hv.major_deformation_visible === true,
+    /* видима деформація НЕСУЧИХ частин: суворий фізичний сигнал тяжкості.
+       Старий кеш без цього поля НЕ означає false: інвалідація йде через
+       HISTORICAL_VISUAL_VERSION, застарілий hv перераховується штатно */
+    load_bearing_structure_deformation_visible: hv.load_bearing_structure_deformation_visible === true,
     wheel_displacement_visible: hv.wheel_displacement_visible === true,
     cosmetic_only: hv.cosmetic_only === true,
     /* потенційно структурна зона БЕЗ надійно видимого силового елемента:
@@ -1635,7 +1684,12 @@ const DECISION_RULES = `
 
 ЦІНА І ЦІННІСТЬ: не зупиняйся на "ціна середня". Поясни, що позиція ціни означає для угоди: чи вже враховані в ній відомі недоліки, за що саме людина платить, де тут запас на торг. Наприклад: "при середньому рівні ціни машина цікава маленьким пробігом і оснащенням, але знижки за аукціонне минуле тут практично нема" або "ціна вже помітно враховує історію пошкоджень, тому ризик виглядає оплаченим". Точну справедливу ціну без достатніх даних не вигадуй, ринкові вердикти лише зі structured price_context.
 
-ПРІОРИТЕТИ ПОКУПЦЯ: якщо в контексті переданий BUYER_CONTEXT, це справжні слова цієї людини з памʼяті помічника. Пріоритет джерел: (1) те, що людина написала в цьому запиті, (2) її явні налаштування і профіль, (3) збережена памʼять, (4) якщо нічого нема, пиши для нейтрального розумного покупця. Ваги плюсів і мінусів під ці пріоритети зсувати МОЖНА і треба: тому, для кого важлива динаміка і вигляд, вдалий двигун і рестайлінг важать більше; тому, для кого головне мінімум ризику, та сама машина отримує обережніше рішення. Пріоритети покупця НЕ змінюють Оцінку CalCar, лише висновок. Не додумуй уподобань, яких у профілі нема, і не переказуй профіль людині: просто зваж із ним. Якщо BUYER_CONTEXT у контексті відсутній, про пріоритети покупця не згадуй узагалі.
+ПРІОРИТЕТИ ПОКУПЦЯ (три різні рівні, не змішувати): якщо в контексті переданий BUYER_CONTEXT, це справжні слова цієї людини з памʼяті помічника. Пріоритет джерел: (1) те, що людина написала в цьому запиті, (2) її явні налаштування і профіль, (3) збережена памʼять, (4) якщо нічого нема, пиши для нейтрального розумного покупця.
+- HARD CONSTRAINTS: лише ЯВНО сформульовані обмеження і deal breakers ("не розглядаю дизель", "бюджет максимум 30 тисяч", "категорично не хочу серйозно биті"). ТІЛЬКИ вони можуть виключати автомобіль чи розвертати verdict.
+- SOFT PREFERENCES: "люблю потужні", "важлива комплектація", "цінує комфорт", "подобається статусний вигляд". Це ЛИШЕ ваги і trade-offs: вони зсувають акценти висновку, але САМІ ПО СОБІ ніколи не дають "пропустити" і не роблять машину "невідповідною".
+- CURRENT CONSIDERATION: сам факт, що людина відправила ЦЕ авто на перевірку, означає, що вона реально його розглядає. Поточна дія сильніша за стару памʼять: ЗАБОРОНЕНО писати "ця машина вам не підходить" чи "краще пропустити, бо раніше ви хотіли інше", якщо явного hard constraint нема.
+Людина може паралельно розглядати РІЗНІ сценарії (потужна машина, комфортний daily, гібрид для економії, дешевша альтернатива), і це нормально: не зводь її недавні звіти в один жорсткий профіль "вона шукає лише X". Замість "ця машина гірше вам підходить, бо ви хочете понад 400 сил" пиши через сценарій: "цей екземпляр пропонує інший сценарій, ніж потужніші версії, які ви нещодавно дивились: тут акцент на економічності і щоденному використанні, а не на максимальній динаміці". Памʼять допомагає зрозуміти trade-offs, а не сперечається з самим фактом розгляду машини.
+Пріоритети покупця НЕ змінюють Оцінку CalCar, лише висновок. Не додумуй уподобань, яких у профілі нема, і не переказуй профіль людині: просто зваж із ним. Якщо BUYER_CONTEXT у контексті відсутній, про пріоритети покупця не згадуй узагалі.
 
 НЕДАВНІ АВТО ЦІЄЇ Ж ЛЮДИНИ: якщо в контексті переданий RECENT_REPORTS, там уже ВІДІБРАНІ свіжі і релевантні звіти цієї людини (нерелевантні і старі відсіяні кодом). Коротке порівняння тоді доречне і корисне: чим цей екземпляр кращий чи гірший за той, і для чиїх пріоритетів. Порівнюй НЕ балами, а по суті: ризики, ціна, пробіг, двигун і версія, комплектація, стан. Одне-два речення, у кінці міркування, лише коли воно справді щось додає. Якщо RECENT_REPORTS немає або порівняння нічого не змінює, минулі звіти НЕ згадуй взагалі.
 
@@ -1643,7 +1697,7 @@ const DECISION_RULES = `
 
 СМІЛИВІСТЬ: не закінчуй кожен висновок універсальним "перевірте на СТО" чи "краще пошукати інший варіант". Машина цікава: прямо скажи, що її варто продовжувати розглядати, і чому. Машина погана: прямо скажи, що плюси не компенсують ризики. Рішення умовне: назви умови конкретно. Перевірки мусять випливати з конкретних проблем ЦІЄЇ машини.
 
-СТРУКТУРА reasoning (2-4 абзаци, без заголовків і без нумерації, без роздування обсягу): сильна позиція одним рядком; чим саме цей екземпляр цікавий (головні плюси); що реально насторожує (головні мінуси); саме зважування цих факторів між собою; 1-3 конкретні речі, які мусять підтвердитись до купівлі; ціновий контекст від імені площадки; за наявності релевантного недавнього авто коротке порівняння; чіткий фінальний висновок. Текст має закривати роздуми покупця, а не перелічувати знахідки.
+СТРУКТУРА reasoning (2-4 абзаци, без заголовків і без нумерації, без роздування обсягу): сильна позиція одним рядком; чим саме цей екземпляр цікавий (головні плюси); що реально насторожує (головні мінуси); саме зважування цих факторів між собою; 1-3 конкретні речі, які мусять підтвердитись до купівлі; ціновий контекст із чесною атрибуцією (розрахунок CalCar за даними площадки); за наявності релевантного недавнього авто коротке порівняння; чіткий фінальний висновок. Текст має закривати роздуми покупця, а не перелічувати знахідки.
 `;
 const DECISION_FEWSHOT = `
 ПРИКЛАДИ СТИЛЮ МІРКУВАННЯ (від власника продукту). Переймай СПОСІБ думати: зважування, чесні сумніви, прямоту. ЗМІСТ не копіюй: усі факти бери ЛИШЕ зі свого звіту по цьому авто. Мова прикладів не важлива, відповідай мовою користувача.
@@ -1720,8 +1774,9 @@ ${auction && auction.photos_sent ? `
 ІСТОРИЧНИЙ ВІЗУАЛЬНИЙ АНАЛІЗ ("historical_visual"): заповнюй ЛИШЕ коли історичні кадри реально передані. Оцінюй те, що РЕАЛЬНО видно САМЕ на цих кадрах, а не типовий сценарій ДТП:
 - visible_damage_zones: зони з ВИДИМИМ пошкодженням.
 - visible_severity за видимим обсягом: minor (косметика) | moderate (помітний удар, деформовані навісні елементи) | severe (очевидно тяжка деформація) | indeterminate. Це wording для звіту; тяжкість у формулі рахує код зі структурованих ознак нижче.
-- СТРУКТУРОВАНІ ВИДИМІ ОЗНАКИ (booleans, СТАВ true ЛИШЕ коли ознака реально видима на кадрі): major_deformation_visible (глибока деформація металу: зімʼятий капот/крило/стійка, зміщені панелі кузова, а не подряпини чи тріснутий пластик), wheel_displacement_visible (колесо явно зміщене/вивернуте зі свого положення, видимий обвал підвіски), cosmetic_only (УСІ видимі пошкодження обмежені косметикою навісних панелей: подряпини, дрібні вмʼятини, тріснутий бампер).
+- СТРУКТУРОВАНІ ВИДИМІ ОЗНАКИ (booleans, СТАВ true ЛИШЕ коли ознака реально видима на кадрі): major_deformation_visible (глибока деформація КУЗОВА, що виходить за межі однієї замінної навісної панелі: кілька суміжних панелей глибоко деформовані, панелі зміщені відносно одна одної, порушені лінії кузова. Зімʼятий капот САМ ПО СОБІ це НЕ major_deformation: капот, бампер, крило, фара і решітка це замінні навісні деталі і штатні зони поглинання удару; їх сминання без деформації самого кузова лишає major_deformation_visible: false), load_bearing_structure_deformation_visible (видима деформація САМЕ НЕСУЧИХ/СИЛОВИХ частин: лонжерони, стакани/чашки амортизаторів, стійки кузова, пороги/rocker, підлога, моторний щит, зони кріплення підрамника, очевидна глибока деформація кузовного каркаса. Зімʼяті капот, бампер, крило, фара чи решітка самі по собі НІКОЛИ не дають true: потрібно бачити деформованим сам несучий елемент), wheel_displacement_visible (колесо явно зміщене/вивернуте зі свого положення, видимий обвал підвіски), cosmetic_only (УСІ видимі пошкодження обмежені косметикою навісних панелей: подряпини, дрібні вмʼятини, тріснутий бампер).
 - structural_visual_status: "no_obvious_severe_signs" означає ЛИШЕ "на доступних кадрах нема явних візуальних ознак тяжкої деформації силової структури" і НІКОЛИ не дорівнює "структура ціла". "visible_damage" СТАВ ЛИШЕ за STRONG structural evidence, коли ОДНОЧАСНО: (1) конкретно ідентифікований силовий елемент (внутрішній силовий поріг/sill, стійка A/B/C, лонжерон/frame rail, стакан/strut tower, силова підлога, інший явно названий structural member, або очевидне зміщення геометрії силової частини); (2) цей елемент достатньо видимий на кадрі; (3) видима деформація САМЕ силового елемента, а не сусідньої зовнішньої панелі. НЕДОСТАТНЬО: "сильно пошкоджений поріг", "зімʼята боковина", "сильний удар", "деформація в районі стійки", будь-який прикметник тяжкості без ідентифікованого силового елемента. Ракурс не дозволяє судити або силову частину від зовнішньої панелі відрізнити не можна: "indeterminate".
+- historical_visual.summary і descriptions в evidence це ФІКСАЦІЯ СПОСТЕРЕЖЕНЬ, а не вердикт про тяжкість: перелічуй, ЩО видно і чого не видно ("капот помітно деформований, пошкоджені бампер і оптика, видно розкриті передні подушки; явних ознак деформації силових елементів на кадрах не видно"), БЕЗ підсумкових прикметників тяжкості ("сильний удар", "тяжке ДТП", "глибоко зімʼятий передок" про передок цілком). Єдиним джерелом тяжкості для всіх текстів звіту є resolved severity, який рахує код зі структурованих ознак; прикметник visible_severity лишається службовим полем і в тексти не переноситься.
 - damage_side: сторона АВТОМОБІЛЯ з видимим пошкодженням за правилом сторін вище: "left|right|both|center|unknown"; side_confidence: "high" ЛИШЕ за надійної орієнтації (видно кермо/номер/написи), інакше "medium" чи "low". Не можеш надійно: "unknown".
 - possible_structural_damage (boolean): true, коли пошкодження лежить у ПОТЕНЦІЙНО структурній зоні (зона порога/rocker, зона стійки, передня/задня зона лонжеронів), але надійно відрізнити зовнішню панель від силового елемента за фото не можна. Тоді structural_visual_status = "indeterminate" + possible_structural_damage: true. Цей сигнал НЕ є підтвердженим структурним пошкодженням.
 - srs_visual_status: "deployed_visible" СТАВ ЛИШЕ за ПРЯМИМ візуальним доказом РОЗКРИТОЇ подушки на кадрі: видима біла/сіра тканина подушки з керма, торпедо, шторка вздовж даху, колінна подушка, подушка сидіння. Пошкоджений салон, розібрана торпедо, зірвана обшивка, спрацьовані ремені чи сам факт сильного удару подушок НЕ доводять і "deployed_visible" НЕ дають. "no_deployment_visible" означає лише "спрацювання не видно на доступних кадрах", НЕ "SRS справна". Салон у кадр не потрапив: "not_visible".
@@ -1835,7 +1890,7 @@ METADATA EXACT-LOT (надійний historical, джерело ${auctionMeta.so
 ЦІНОВІ ВИСНОВКИ ЛИШЕ ЗІ STRUCTURED PRICE EVIDENCE${l.price_context ? ' (нижче переданий price_context від площадки)' : ' (price_context ВІДСУТНІЙ)'}:
 ${l.price_context ? '- price_context: ' + JSON.stringify(l.price_context) : ''}
 - БЕЗ structured price_context ЗАБОРОНЕНІ впевнені ринкові оцінки ціни: "дорого", "дешево", "вигідно", "завищено", "приваблива ціна", "вимоглива ціна", "нижче ринку", "вище ринку" і аналогічні. Сама ціна, факт ДТП, пробіг, тюнінг чи твої загальні знання ринку ринковим доказом НЕ є: тоді чесно не давай цінового вердикту.
-- З price_context формулюй ВІД ІМЕНІ ПЛОЩАДКИ: "за оцінкою площадки ціна на середньому рівні серед порівнянних пропозицій" (position average), не "CalCar вважає ціну середньою".
+- АТРИБУЦІЯ З price_context: середня ціна (average_price) це ДАНІ ПЛОЩАДКИ, а смуга position (below_average/average/above_average) і delta_percent це РОЗРАХУНОК CalCar за порогом ±7%. Тому формулюй так: "за розрахунком CalCar ціна приблизно на 16% нижча за середній орієнтир порівнянних за даними площадки". ЗАБОРОНЕНО приписувати нашу смугу самій площадці ("за оцінкою площадки ціна нижча за середню"): власна цінова позначка площадки на сторінці може мати інші межі, і їй суперечити не можна. Якщо в тексті сторінки видно власну цінову позначку площадки ("Середня ціна" тощо), можеш назвати її окремо саме як позначку площадки, поруч зі своїм розрахунком у відсотках: це не суперечність, а дві різні шкали.
 - Заявлені продавцем витрати на Stage, гальма, світло, плівку та інші доробки НЕ додаються до ринкової вартості автомобіля автоматично.
 
 СУТТЄВИЙ ТЮНІНГ СИЛОВОЇ ЧАСТИНИ: заявлені продавцем суттєві модифікації (Stage, прошивка АКПП, downpipe) це нормальний вхід аналізу. Provenance-aware формулювання: "Продавець заявляє Stage 2 і прошивку АКПП", БЕЗ постійного дисклеймера "можливо, продавець бреше". Але точну потужність, момент чи версію прошивки не подавай як незалежно виміряний факт без відповідного доказу. При суттєвому тюнінгу рішення має ДВА ОКРЕМІ напрями аналізу: (1) ДТП, якість відновлення, SRS; (2) модифікована силова частина: діагностика двигуна і АКПП, помилки, якість hardware-модифікацій, хто виконував налаштування і що саме прошито, відповідність заявленої конфігурації фактичній, обслуговування після модифікації. НЕ зводь увесь висновок лише до ДТП і не дублюй однакові рекомендації у трьох різних блоках звіту. Тюнінг сам по собі не робить машину поганою; косметичні модифікації не стають technical risk автоматично; для класифікації використовуй наявну логіку MODIFICATION_TECHNICAL_CONCERN.
@@ -1854,7 +1909,7 @@ ${renderDecisionContext(decisionContext)}${DECISION_RULES}${decisionStyle === 'a
  "vehicle": {"title":"Марка Модель Рік","year":2018,"model_year":"рік за VIN, ЛИШЕ якщо надійно відомий і відрізняється від year, інакше null","fuel":"petrol|diesel|hybrid|electric","engine":"4.4 л бензин V8, 462 к.с. (або null)","transmission":"...","drive":"...","trim":"версія або null","mileage_note":"129 000 км"},
  "auction": {"found":true,"summary":"2-4 речення: що сталося з авто в США за архівом, реальний обсяг пошкоджень по фото, чи чесно продавець його описує","findings":[{"status":"ok|warn|bad|unknown","text":"порівняння до/після, 1 речення"}]},
  "body_wrap": {"present":false,"scope":"full|partial|unknown","sources":["seller","visual","historical"],"inspection_visibility":"limited|normal"},
- "historical_visual": {"visible_damage_zones":["капот","передній бампер"],"visible_severity":"minor|moderate|severe|indeterminate","major_deformation_visible":false,"wheel_displacement_visible":false,"cosmetic_only":false,"possible_structural_damage":false,"damage_side":"left|right|both|center|unknown","side_confidence":"high|medium|low","structural_visual_status":"no_obvious_severe_signs|possible|visible_damage|indeterminate","srs_visual_status":"deployed_visible|no_deployment_visible|not_visible|indeterminate","airbags_visible_parts":["driver"],"summary":"2-3 речення: що реально видно і що лишається невідомим","evidence":[{"source":"us_auction","ref":"auction_photo_1","description":"зім'ятий капот"}]},
+ "historical_visual": {"visible_damage_zones":["капот","передній бампер"],"visible_severity":"minor|moderate|severe|indeterminate","major_deformation_visible":false,"load_bearing_structure_deformation_visible":false,"wheel_displacement_visible":false,"cosmetic_only":false,"possible_structural_damage":false,"damage_side":"left|right|both|center|unknown","side_confidence":"high|medium|low","structural_visual_status":"no_obvious_severe_signs|possible|visible_damage|indeterminate","srs_visual_status":"deployed_visible|no_deployment_visible|not_visible|indeterminate","airbags_visible_parts":["driver"],"summary":"2-3 речення: що реально видно і що лишається невідомим","evidence":[{"source":"us_auction","ref":"auction_photo_1","description":"зім'ятий капот"}]},
  "risks":[{"title":"назва ризику","level":"high|med|low","note":"1-2 речення: чому це головна стаття витрат чи ризику саме тут","action":"конкретна перевірка до покупки, 1 рядок"}],
  "equipment_v2":[{"name":"вентиляція передніх сидінь","category":"comfort|interior|multimedia|assist|exterior|performance","confidence_level":"vehicle_data|seller_and_visual|visual|seller, або null лише для суто історичної","highlight":false,"retrofit":false,"retrofit_basis":null,"historical_claim":false,"value_tier":"standard|notable|high_value","evidence":[{"source":"vehicle_data|current_photos|seller_claim|listing_data|historical","ref":"photo_7 чи vin_decode чи назва історичного джерела","sign":"конкретна ознака на кадрі чи коротка цитата джерела"}]}],
  "discrepancies":[{"severity":"high|med|low","title":"коротка назва розбіжності","detail":"2-3 речення: що стверджується, що знайдено, звідки","sources":["опис продавця","перевірка площадки","фото","VIN"]}],
@@ -2484,14 +2539,16 @@ export default async function handler(req, res) {
        написане моделлю, але ніколи сильнішим) і зняття внутрішніх позначок
        на кшталт SRS з тексту для людини */
     try {
+      const sev = maxResolvedSeverity(parsed.score_breakdown);
       if (parsed.purchase_decision) {
-        const sev = maxResolvedSeverity(parsed.score_breakdown);
         const before = JSON.stringify(parsed.purchase_decision);
         applyDecisionLanguage(parsed.purchase_decision, { severity: sev, lang });
         if (JSON.stringify(parsed.purchase_decision) !== before) {
           console.log('[decision-language] normalized, severity', sev || 'none');
         }
       }
+      /* тяжкість у всіх інших користувацьких текстах: той самий resolver */
+      applyReportSeverityLanguage(parsed, { severity: sev, lang });
     } catch (e) { console.log('[check] decision language failed:', e.message); }
 
     /* ---- Фінальна фраза з точним балом ----

@@ -126,7 +126,7 @@ const THIN = {
 
   /* ===== 4. severity: код виводить tier зі СПОСТЕРЕЖУВАНИХ ознак; LLM
      лише витягує ознаки, прикметник visible_severity в математику не входить */
-  const SIG = o => ({ signals: { structural: false, airbags: false, zones: 0, major_deformation: false, wheel_displacement: false, cosmetic_only: false, ...o } });
+  const SIG = o => ({ signals: { structural: false, load_bearing: false, airbags: false, zones: 0, major_deformation: false, wheel_displacement: false, cosmetic_only: false, ...o } });
   let sv = deriveSeverity(SIG({ structural: true }));
   if (sv.severity !== 'severe' || !sv.basis.includes('structural_damage')) errs.push('structural мав дати severe: ' + JSON.stringify(sv));
   sv = deriveSeverity(SIG({ major_deformation: true }));
@@ -143,8 +143,18 @@ const THIN = {
   if (sv.severity !== 'minor') errs.push('косметика мала дати minor: ' + sv.severity);
   sv = deriveSeverity(SIG({}));
   if (sv.severity !== 'indeterminate') errs.push('без ознак мало бути indeterminate: ' + sv.severity);
+  /* severity-корекція 2026-09-01: подушки НЕ корроборують major_deformation.
+     Розкриті подушки + зімʼяті панелі це штатна сигнатура будь-якого
+     фронтального удару з порогом спрацювання, а не доказ severe */
   sv = deriveSeverity(SIG({ airbags: true, major_deformation: true }));
-  if (sv.severity !== 'severe') errs.push('деформація + подушки мали дати severe: ' + sv.severity);
+  if (sv.severity !== 'moderate') errs.push('деформація + подушки мали дати moderate (подушки не корроборатор): ' + sv.severity);
+  /* видима деформація НЕСУЧИХ частин: severe сама по собі і як корроборатор */
+  sv = deriveSeverity(SIG({ load_bearing: true }));
+  if (sv.severity !== 'severe' || !sv.basis.includes('load_bearing_structure_deformation_visible')) errs.push('несуча деформація мала дати severe: ' + JSON.stringify(sv));
+  sv = deriveSeverity(SIG({ major_deformation: true, load_bearing: true }));
+  if (sv.severity !== 'severe') errs.push('деформація + несуча мали дати severe: ' + sv.severity);
+  sv = deriveSeverity(SIG({ airbags: true, major_deformation: true, load_bearing: true }));
+  if (sv.severity !== 'severe') errs.push('несуча деформація з подушками мала лишитись severe: ' + sv.severity);
   /* прикметник моделі САМ не піднімає tier */
   sv = deriveSeverity({ signals: { structural: false, airbags: false, zones: 0, major_deformation: false, wheel_displacement: false, cosmetic_only: false, visual_severity: 'severe' } });
   if (sv.severity !== 'indeterminate') errs.push('прикметник visible_severity потрапив у математику: ' + sv.severity);
@@ -631,11 +641,21 @@ const THIN = {
   let evb = score([], RICH, { auctionMeta: AM, historicalVisual: { ...hvBase, srs_visual_status: 'not_visible' } }).accident_events[0];
   if (evb.derived_severity !== 'moderate') errs.push('без кадрів салону мало лишитись moderate: ' + evb.derived_severity);
   if (evb.airbags !== false) errs.push('подушки з нічого стали true');
-  /* кадр салону з розкритою подушкою -> airbags true -> severe (формула не змінена) */
+  /* кадр салону з розкритою подушкою -> airbags true; tier лишається
+     moderate (подушки не корроборатор із severity-корекції 2026-09-01),
+     сигнал при цьому ДОЇЖДЖАЄ до резолвера і живить SRS-concern */
   evb = score([], RICH, { auctionMeta: AM, historicalVisual: { ...hvBase, srs_visual_status: 'deployed_visible' } }).accident_events[0];
   if (evb.airbags !== true) errs.push('deployed_visible не доїхав до резолвера');
-  if (evb.derived_severity !== 'severe') errs.push('major_deformation + подушки мали дати severe: ' + evb.derived_severity);
+  if (evb.derived_severity !== 'moderate') errs.push('major_deformation + подушки мали дати moderate: ' + evb.derived_severity);
   if (!evb.severity_basis.includes('airbags_deployed')) errs.push('airbags_deployed нема в basis');
+  /* несуча деформація на кадрах того ж лота піднімає до severe */
+  evb = score([], RICH, { auctionMeta: AM, historicalVisual: { ...hvBase, srs_visual_status: 'deployed_visible', load_bearing_structure_deformation_visible: true } }).accident_events[0];
+  if (evb.derived_severity !== 'severe') errs.push('load_bearing з hv не дав severe: ' + evb.derived_severity);
+  if (!evb.severity_basis.includes('load_bearing_structure_deformation_visible')) errs.push('load_bearing нема в basis');
+  /* несуча деформація це НЕ strict structural: капа 5.5 нема */
+  const lbRun = score([], RICH, { auctionMeta: AM, historicalVisual: { ...hvBase, load_bearing_structure_deformation_visible: true } });
+  if (lbRun.applied_hard_caps.some(c => c.name.includes('STRUCTURAL'))) errs.push('load_bearing активував structural кап');
+  if (lbRun.accident_events[0].signals && lbRun.accident_events[0].signals.structural) errs.push('load_bearing став structural');
   /* "салон пошкоджений" без розкритої подушки severity НЕ піднімає */
   evb = score([], RICH, { auctionMeta: AM, historicalVisual: { ...hvBase, srs_visual_status: 'no_deployment_visible' } }).accident_events[0];
   if (evb.derived_severity !== 'moderate') errs.push('no_deployment_visible підняв severity');
