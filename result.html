@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="uk">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CalCar: прорахунок лота</title>
+<title>CalCar: lot estimate</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -24,10 +24,10 @@
      нема й його, вихідна фраза розмітки. Вихідна фраза ніколи не є
      user-facing фолбеком, поки існує англійський варіант.
    - Словники /i18n/<code>.js реєструються у window.CALCAR_DICTS[code];
-     вантажаться обрана мова і, окремо, англійська як фолбек. */
+     вантажиться лише обрана мова: фолбек (англійська) і є мовою розмітки. */
 (function () {
   var LS = 'calcar_lang';
-  var SOURCE = 'ua';
+  var SOURCE = 'en';
   var DEFAULT_LOCALE = 'en';
   var FALLBACK_LOCALE = 'en';
   var LANGS = [
@@ -35,7 +35,7 @@
     { code: 'ru', label: 'Русский',    short: 'RU', locale: 'ru-RU', html: 'ru' },
     { code: 'en', label: 'English',    short: 'EN', locale: 'en-US', html: 'en' },
   ];
-  var DICT_V = '4';           /* міняти при зміні словників чи їх формату, щоб скинути кеш */
+  var DICT_V = '5';           /* міняти при зміні словників чи їх формату, щоб скинути кеш */
 
   /* єдиний резолвер локалі: явна підтримувана -> нормалізований код, усе
      інше -> null (той, хто викликає, підставляє DEFAULT чи FALLBACK).
@@ -94,7 +94,8 @@
     document.write('<scr' + 'ipt src="/i18n/' + code + '.js?v=' + DICT_V + '"></scr' + 'ipt>');
   }
   if (cur !== SOURCE) load(cur);
-  if (cur !== SOURCE && cur !== FALLBACK_LOCALE) load(FALLBACK_LOCALE);
+  /* фолбек-словник потрібен лише коли фолбек не є мовою самої розмітки */
+  if (cur !== SOURCE && cur !== FALLBACK_LOCALE && FALLBACK_LOCALE !== SOURCE) load(FALLBACK_LOCALE);
 
   function norm(s) { return String(s).replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, ''); }
 
@@ -124,7 +125,7 @@
     if (v === null) return null;
     return (s.match(/^\s*/) || [''])[0] + v + (s.match(/\s*$/) || [''])[0];
   }
-  function ready(l) { return l === SOURCE || !!(window.CALCAR_DICTS[l] || window.CALCAR_DICTS[FALLBACK_LOCALE]); }
+  function ready(l) { return l === SOURCE || !!window.CALCAR_DICTS[l] || (FALLBACK_LOCALE !== SOURCE && !!window.CALCAR_DICTS[FALLBACK_LOCALE]); }
   window.t = function (s, l) {
     l = resolveLocale(l) || lang();
     if (l === SOURCE) return s;
@@ -833,7 +834,7 @@
 
 <header>
   <div class="header-in">
-    <button class="lnc-btn" type="button" id="lncBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="lncPanel" title="Продукти CalCar" aria-label="Продукти CalCar"><svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor" aria-hidden="true"><rect x="0" y="0" width="4" height="4" rx="1.2"/><rect x="7" y="0" width="4" height="4" rx="1.2"/><rect x="14" y="0" width="4" height="4" rx="1.2"/><rect x="0" y="7" width="4" height="4" rx="1.2"/><rect x="7" y="7" width="4" height="4" rx="1.2"/><rect x="14" y="7" width="4" height="4" rx="1.2"/><rect x="0" y="14" width="4" height="4" rx="1.2"/><rect x="7" y="14" width="4" height="4" rx="1.2"/><rect x="14" y="14" width="4" height="4" rx="1.2"/></svg></button>
+    <button class="lnc-btn" type="button" id="lncBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="lncPanel" title="CalCar products" aria-label="CalCar products"><svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor" aria-hidden="true"><rect x="0" y="0" width="4" height="4" rx="1.2"/><rect x="7" y="0" width="4" height="4" rx="1.2"/><rect x="14" y="0" width="4" height="4" rx="1.2"/><rect x="0" y="7" width="4" height="4" rx="1.2"/><rect x="7" y="7" width="4" height="4" rx="1.2"/><rect x="14" y="7" width="4" height="4" rx="1.2"/><rect x="0" y="14" width="4" height="4" rx="1.2"/><rect x="7" y="14" width="4" height="4" rx="1.2"/><rect x="14" y="14" width="4" height="4" rx="1.2"/></svg></button>
     <a class="logo" href="/import"><span class="l">Cal</span><span class="r">Car</span></a>
     <div class="beta">beta</div>
     <div class="header-right">
@@ -849,13 +850,13 @@
       <div class="acc-wrap">
         <a class="btn-auth" href="/cabinet.html">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg>
-          Кабінет
+          My account
         </a>
       <div class="acc-menu">
-        <a href="/garage">Гараж</a>
-        <a href="/cabinet.html#reports">Звіти</a>
-        <a href="/cabinet.html#memory">Памʼять помічника</a>
-        <a href="/cabinet.html#account">Налаштування акаунта</a>
+        <a href="/garage">Garage</a>
+        <a href="/cabinet.html#reports">Reports</a>
+        <a href="/cabinet.html#memory">Assistant memory</a>
+        <a href="/cabinet.html#account">Account settings</a>
       </div>
       </div>
     </div>
@@ -863,27 +864,27 @@
 </header>
 
 <div class="lnc-backdrop" id="lncBackdrop"></div>
-<div class="lnc-panel" id="lncPanel" role="dialog" tabindex="-1" aria-label="Продукти CalCar">
+<div class="lnc-panel" id="lncPanel" role="dialog" tabindex="-1" aria-label="CalCar products">
   <div class="lnc-grab" aria-hidden="true"></div>
   <div class="lnc-head">
-    <div class="lnc-title">Продукти CalCar</div>
-    <button class="lnc-x" type="button" id="lncClose" title="Закрити" aria-label="Закрити"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    <div class="lnc-title">CalCar products</div>
+    <button class="lnc-x" type="button" id="lncClose" title="Close" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   </div>
   <div class="lnc-list">
     <a class="lnc-item" data-prod="check" href="/check">
       <span class="lnc-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="none" stroke="#141619" stroke-width="64" stroke-linecap="butt"><path d="M229.72 322.19 A 84 84 0 1 1 229.72 189.81"/><path d="M430.72 322.19 A 84 84 0 1 1 430.72 189.81"/></g></svg></span>
       <span class="lnc-body">
         <span class="lnc-name">CalCar Check</span>
-        <span class="lnc-desc">Перевірка авто перед купівлею</span>
-        <span class="lnc-badge">Поточний продукт</span>
+        <span class="lnc-desc">Pre-purchase car check</span>
+        <span class="lnc-badge">Current product</span>
       </span>
     </a>
     <a class="lnc-item" data-prod="import" href="/import">
       <span class="lnc-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="#141619"><path d="M160 244 L204 168 Q212 156 227 156 L299 156 Q314 156 322 168 L366 244 Z"/><rect x="76" y="238" width="360" height="58" rx="24"/><circle cx="162" cy="314" r="44"/><circle cx="350" cy="314" r="44"/></g><path d="M190 230 L228 176 Q233 170 240 170 L286 170 Q293 170 298 176 L336 230 Z" fill="#B8F23D"/></svg></span>
       <span class="lnc-body">
         <span class="lnc-name">CalCar Import</span>
-        <span class="lnc-desc">Скільки обійдеться авто зі США в Україні</span>
-        <span class="lnc-badge">Поточний продукт</span>
+        <span class="lnc-desc">What a US car really costs in Ukraine</span>
+        <span class="lnc-badge">Current product</span>
       </span>
     </a>
   </div>
@@ -911,12 +912,12 @@
   <div class="print-head"><b>CalCar</b><span id="printMeta"></span></div>
 
   <div class="topbar">
-    <a class="btn-back" href="/import">← Новий прорахунок</a>
+    <a class="btn-back" href="/import">← New estimate</a>
     <span class="hint" id="modeHint"></span>
     <span id="saveHint"></span>
     <button class="btn-chat" id="chatTopBtn" type="button">
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.9 8.9 0 0 1-3.7-.8L3 20l1-4.9a8.4 8.4 0 1 1 17-3.6z"/></svg>
-      Чат по авто
+      Car chat
     </button>
   </div>
 
@@ -925,10 +926,10 @@
     <div class="photos" id="photosGrid" style="display:none"></div>
     <div class="lot-title">
       <h1 id="lotTitle"></h1>
-      <a class="ext-link" id="lotLink" href="#" target="_blank" rel="noopener" style="display:none" title="Відкрити лот на аукціоні">
+      <a class="ext-link" id="lotLink" href="#" target="_blank" rel="noopener" style="display:none" title="Open the auction lot">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>
       </a>
-      <span class="badge blue" id="lotBadge">AI-прорахунок</span>
+      <span class="badge blue" id="lotBadge">AI estimate</span>
     </div>
     <div class="lot-meta" id="lotMeta"></div>
   </div>
@@ -936,8 +937,8 @@
   <!-- VIN spec -->
   <div class="card">
     <div class="card-head">
-      <h2>Комплектація за VIN</h2>
-      <span class="badge green">Заводські дані</span>
+      <h2>Build sheet by VIN</h2>
+      <span class="badge green">Factory data</span>
       <span class="hint" id="vinHint" style="margin-left:auto"></span>
     </div>
     <div class="card-body">
@@ -949,19 +950,19 @@
   <!-- AI damage report -->
   <div class="card">
     <div class="card-head">
-      <h2>Розбір пошкоджень</h2>
-      <span class="badge blue" id="aiBadge">AI-аналіз фото</span>
-      <span class="risk-badge" id="riskBadge" style="display:none"><span class="dot ok" id="riskDot"></span>Ризик: <b id="riskScore">–</b> <span class="risk-label" id="riskLabel"></span></span>
+      <h2>Damage analysis</h2>
+      <span class="badge blue" id="aiBadge">AI photo analysis</span>
+      <span class="risk-badge" id="riskBadge" style="display:none"><span class="dot ok" id="riskDot"></span>Risk: <b id="riskScore">–</b> <span class="risk-label" id="riskLabel"></span></span>
     </div>
     <div class="card-body">
       <div class="flags" id="flagsEl"></div>
       <div class="dmg-note" id="dmgNote"></div>
       <div class="eq-impact" id="eqImpact" style="display:none">
-        <div class="notes-t">Дорога комплектація в зоні удару</div>
+        <div class="notes-t">Premium equipment in the impact zone</div>
         <div id="eqImpactList"></div>
       </div>
       <details class="zones" id="zonesEl" style="display:none">
-        <summary>Детальний огляд зон</summary>
+        <summary>Detailed zone inspection</summary>
         <div id="zonesList"></div>
       </details>
     </div>
@@ -970,8 +971,8 @@
   <!-- MODEL NOTES: слабкі місця, вплив комплектації, чек-лист -->
   <div class="card" id="notesCard" style="display:none">
     <div class="card-head">
-      <h2>Типові слабкі місця цієї моделі</h2>
-      <span class="hint" style="margin-left:auto">На основі версії авто, двигуна та пробігу</span>
+      <h2>Common weak points of this model</h2>
+      <span class="hint" style="margin-left:auto">Based on this car’s version, engine, and mileage</span>
     </div>
     <div class="card-body">
       <div id="issuesList"></div>
@@ -981,24 +982,23 @@
   <!-- PARTS -->
   <div class="card">
     <div class="card-head">
-      <h2>Запчастини</h2>
-      <span class="hint" style="margin-left:auto">Обирайте категорію, правте ціну, вимикайте або видаляйте позиції</span>
+      <h2>Parts</h2>
+      <span class="hint" style="margin-left:auto">Pick a category, edit prices, toggle or delete items</span>
     </div>
     <div class="card-body" style="padding-top:12px">
       <div class="est-head">
-        <div></div><div>Деталь</div><div>Категорія</div><div style="text-align:right">Ціна</div><div></div>
+        <div></div><div>Part</div><div>Category</div><div style="text-align:right">Price</div><div></div>
       </div>
       <div id="partRows"></div>
-      <button class="btn-ghost" id="addPart">+ Додати запчастину</button>
+      <button class="btn-ghost" id="addPart">+ Add part</button>
       <div class="subtotal">
-        <span>Запчастини разом</span>
+        <span>Parts total</span>
         <span class="num" id="partsTotal">$0</span>
       </div>
       <div class="cat-legend">
-        <b>Нова оригінал</b>: де прочерк, у продажу відсутня. ·
-        <b>Нова аналог</b>: нова неоригінальна деталь (Тайвань, TYC, Depo та ін.). ·
-        <b>Б/в оригінал</b>: заводська деталь з розборки або авто-донора.
-        Ціни орієнтовні, розраховані платформою, будь-яку можна змінити вручну.
+        <b>New OEM</b>: a dash means not available for sale. ·
+        <b>New aftermarket</b>: a new aftermarket part (Taiwan, TYC, Depo, etc.). ·
+        <b>Used OEM</b>: a factory part from a salvage yard or donor car. Prices are platform estimates, any of them can be edited manually.
       </div>
     </div>
   </div>
@@ -1006,17 +1006,17 @@
   <!-- WORKS -->
   <div class="card">
     <div class="card-head">
-      <h2>Роботи</h2>
-      <span class="hint" style="margin-left:auto">Впишіть ціни свого майстра, ми даємо лише орієнтир</span>
+      <h2>Labor</h2>
+      <span class="hint" style="margin-left:auto">Enter your mechanic prices, ours are only a guide</span>
     </div>
     <div class="card-body" style="padding-top:12px">
       <div class="est-head simple">
-        <div></div><div>Робота</div><div style="text-align:right">Ціна</div><div></div>
+        <div></div><div>Work</div><div style="text-align:right">Price</div><div></div>
       </div>
       <div id="workRows"></div>
-      <button class="btn-ghost" id="addWork">+ Додати роботу</button>
+      <button class="btn-ghost" id="addWork">+ Add labor item</button>
       <div class="subtotal">
-        <span>Роботи разом</span>
+        <span>Labor total</span>
         <span class="num" id="worksTotal">$0</span>
       </div>
     </div>
@@ -1025,17 +1025,17 @@
   <!-- maintenance -->
   <div class="card" id="maintCard" style="display:none">
     <div class="card-head">
-      <h2>Обслуговування за пробігом</h2>
-      <span class="hint" style="margin-left:auto">Рекомендовано під пробіг цього авто, вимикай зайве</span>
+      <h2>Mileage-based maintenance</h2>
+      <span class="hint" style="margin-left:auto">Recommended for this mileage, toggle off what you do not need</span>
     </div>
     <div class="card-body" style="padding-top:12px">
       <div class="est-head simple">
-        <div></div><div>Позиція</div><div style="text-align:right">Ціна</div><div></div>
+        <div></div><div>Item</div><div style="text-align:right">Price</div><div></div>
       </div>
       <div id="maintRows"></div>
-      <button class="btn-ghost" id="addMaint">+ Додати позицію</button>
+      <button class="btn-ghost" id="addMaint">+ Add item</button>
       <div class="subtotal">
-        <span>Обслуговування разом</span>
+        <span>Maintenance total</span>
         <span class="num" id="maintTotal">$0</span>
       </div>
     </div>
@@ -1044,98 +1044,98 @@
   <!-- logistics & customs -->
   <div class="card">
     <div class="card-head">
-      <h2>Лот, доставка та розмитнення</h2>
-      <span class="hint" style="margin-left:auto">Мито, акциз і ПДВ рахуються від ставки. Усі поля можна редагувати</span>
+      <h2>Lot, delivery, and customs</h2>
+      <span class="hint" style="margin-left:auto">Duty, excise, and VAT are calculated from the bid. All fields are editable</span>
     </div>
     <div class="card-body">
       <div class="calc-controls">
         <div class="cc-item cc-bid">
-          <label for="bid">Твоя ставка на аукціоні, $</label>
+          <label for="bid">Your auction bid, $</label>
           <input id="bid" type="number" value="" placeholder="0" min="0">
-          <span class="cc-sub" id="bidSub">Впиши суму, за яку плануєш виграти лот</span>
+          <span class="cc-sub" id="bidSub">Enter the amount you plan to win the lot for</span>
         </div>
         <div class="cc-item">
-          <label for="usState">Штат складу лота</label>
+          <label for="usState">Lot warehouse state</label>
           <select class="state-select" id="usState">
-              <option value="">Оберіть штат</option>
-              <option value="FL">Флорида (FL)</option>
-              <option value="GA">Джорджія (GA)</option>
-              <option value="SC">Пд. Кароліна (SC)</option>
-              <option value="NC">Пн. Кароліна (NC)</option>
-              <option value="VA">Вірджинія (VA)</option>
-              <option value="MD">Меріленд (MD)</option>
-              <option value="NJ">Нью-Джерсі (NJ)</option>
-              <option value="NY">Нью-Йорк (NY)</option>
-              <option value="PA">Пенсильванія (PA)</option>
-              <option value="MA">Массачусетс (MA)</option>
-              <option value="CT">Коннектикут (CT)</option>
-              <option value="TX">Техас (TX)</option>
-              <option value="OK">Оклахома (OK)</option>
-              <option value="LA">Луїзіана (LA)</option>
-              <option value="AL">Алабама (AL)</option>
-              <option value="TN">Теннессі (TN)</option>
-              <option value="OH">Огайо (OH)</option>
-              <option value="MI">Мічиган (MI)</option>
-              <option value="IN">Індіана (IN)</option>
-              <option value="IL">Іллінойс (IL)</option>
-              <option value="MO">Міссурі (MO)</option>
-              <option value="WI">Вісконсин (WI)</option>
-              <option value="MN">Міннесота (MN)</option>
-              <option value="CO">Колорадо (CO)</option>
-              <option value="UT">Юта (UT)</option>
-              <option value="AZ">Аризона (AZ)</option>
-              <option value="NV">Невада (NV)</option>
-              <option value="CA">Каліфорнія (CA)</option>
-              <option value="OR">Орегон (OR)</option>
-              <option value="WA">Вашингтон (WA)</option>
+              <option value="">Select a state</option>
+              <option value="FL">Florida (FL)</option>
+              <option value="GA">Georgia (GA)</option>
+              <option value="SC">South Carolina (SC)</option>
+              <option value="NC">North Carolina (NC)</option>
+              <option value="VA">Virginia (VA)</option>
+              <option value="MD">Maryland (MD)</option>
+              <option value="NJ">New Jersey (NJ)</option>
+              <option value="NY">New York (NY)</option>
+              <option value="PA">Pennsylvania (PA)</option>
+              <option value="MA">Massachusetts (MA)</option>
+              <option value="CT">Connecticut (CT)</option>
+              <option value="TX">Texas (TX)</option>
+              <option value="OK">Oklahoma (OK)</option>
+              <option value="LA">Louisiana (LA)</option>
+              <option value="AL">Alabama (AL)</option>
+              <option value="TN">Tennessee (TN)</option>
+              <option value="OH">Ohio (OH)</option>
+              <option value="MI">Michigan (MI)</option>
+              <option value="IN">Indiana (IN)</option>
+              <option value="IL">Illinois (IL)</option>
+              <option value="MO">Missouri (MO)</option>
+              <option value="WI">Wisconsin (WI)</option>
+              <option value="MN">Minnesota (MN)</option>
+              <option value="CO">Colorado (CO)</option>
+              <option value="UT">Utah (UT)</option>
+              <option value="AZ">Arizona (AZ)</option>
+              <option value="NV">Nevada (NV)</option>
+              <option value="CA">California (CA)</option>
+              <option value="OR">Oregon (OR)</option>
+              <option value="WA">Washington (WA)</option>
             </select>
-          <span class="cc-sub">Підставить типову доставку і фрахт</span>
+          <span class="cc-sub">Sets typical delivery and freight</span>
         </div>
       </div>
       <div class="log-grid">
         <div>
           <div class="cost-row">
-            <div class="lbl">Збори аукціону<span>Комісія, gate fee, інтернет-ставка</span></div>
+            <div class="lbl">Auction fees<span>Commission, gate fee, online bid fee</span></div>
             <div class="money"><input id="auctionFees" type="number" value="0" min="0"></div>
           </div>
           <div class="cost-row">
-            <div class="lbl">Доставка по США до порту</div>
+            <div class="lbl">US inland delivery to port</div>
             <div class="money"><input id="usDelivery" type="number" value="450" min="0"></div>
           </div>
           <div class="cost-row">
-            <div class="lbl">Морський фрахт до Одеси</div>
+            <div class="lbl">Sea freight to Odesa</div>
             <div class="money"><input id="freight" type="number" value="1250" min="0"></div>
           </div>
           <div class="cost-row">
-            <div class="lbl">Порт, експедитор, розвантаження</div>
+            <div class="lbl">Port, forwarder, unloading</div>
             <div class="money"><input id="port" type="number" value="350" min="0"></div>
           </div>
         </div>
         <div>
           <div class="cost-row">
-            <div class="lbl">Ввізне мито 10%</div>
+            <div class="lbl">Import duty 10%</div>
             <div class="money"><input id="duty" type="number" value="0" min="0"></div>
           </div>
           <div class="cost-row">
-            <div class="lbl">Акциз <span id="exciseNote"></span></div>
+            <div class="lbl">Excise <span id="exciseNote"></span></div>
             <div class="money"><input id="excise" type="number" value="0" min="0"></div>
           </div>
           <div class="cost-row">
-            <div class="lbl">ПДВ 20%</div>
+            <div class="lbl">VAT 20%</div>
             <div class="money"><input id="vat" type="number" value="0" min="0"></div>
           </div>
           <div class="cost-row">
-            <div class="lbl">Брокер</div>
+            <div class="lbl">Broker</div>
             <div class="money"><input id="broker" type="number" value="300" min="0"></div>
           </div>
           <div class="cost-row">
-            <div class="lbl">Сертифікація, облік, доставка по Україні</div>
+            <div class="lbl">Certification, registration, delivery within Ukraine</div>
             <div class="money"><input id="uaFinal" type="number" value="670" min="0"></div>
           </div>
         </div>
       </div>
       <div class="subtotal">
-        <span>Лот + логістика + розмитнення</span>
+        <span>Lot + logistics + customs</span>
         <span class="num" id="logisticsTotal">$0</span>
       </div>
     </div>
@@ -1143,18 +1143,18 @@
 
   <!-- verdict -->
   <div class="card">
-    <div class="card-head"><h2>Підсумок</h2></div>
+    <div class="card-head"><h2>Summary</h2></div>
     <div class="card-body">
       <div class="verdict-grid">
         <div class="v-cell">
-          <div class="lbl">Під ключ в Україні</div>
+          <div class="lbl">Landed cost in Ukraine</div>
           <div class="val num" id="grandTotal">$0</div>
-          <div class="no-bid-note" id="noBidNote" style="display:none">без ціни лота: ставку не вказано</div>
+          <div class="no-bid-note" id="noBidNote" style="display:none">excludes lot price: no bid entered</div>
         </div>
       </div>
-      <div class="safety-strike" id="safetyStrike">⚠ Подушки безпеки виключені з кошторису. Авто без відновлених подушок небезпечне, це позначення залишиться у вердикті та PDF.</div>
+      <div class="safety-strike" id="safetyStrike">⚠ Airbags are excluded from the estimate. A car without restored airbags is unsafe; this note stays in the verdict and the PDF.</div>
       <div class="v-actions">
-        <button class="btn-primary">Завантажити PDF</button>
+        <button class="btn-primary">Download PDF</button>
       </div>
     </div>
   </div>
@@ -1163,14 +1163,14 @@
 
 <!-- чат-агент по цьому авто -->
 <button id="chatFab" style="display:none" hidden></button>
-<button class="chat-selask" id="chatSelAsk" type="button">Спитати про це</button>
+<button class="chat-selask" id="chatSelAsk" type="button">Ask about this</button>
 <div class="chat-overlay" id="chatOverlay"></div>
 <div class="chat-panel" id="chatPanel">
   <div class="chat-head">
     <div class="ttl">
-      <b>Асистент CalCar</b>
+      <b>CalCar Assistant</b>
     </div>
-    <button class="chat-close" id="chatClose" title="Згорнути" aria-label="Згорнути">
+    <button class="chat-close" id="chatClose" title="Collapse" aria-label="Collapse">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
     </button>
   </div>
@@ -1180,42 +1180,42 @@
   <div class="chat-canvas">
     <div class="chat-msgs" id="chatMsgs"></div>
     <div class="chat-sugg" id="chatSugg" style="display:none">
-      <button>Чи варто брати це авто?</button>
-      <button>Що найдорожче в ремонті?</button>
-      <button>Яку максимальну ставку давати?</button>
-      <button>Які приховані ризики?</button>
+      <button>Is this car worth buying?</button>
+      <button>What is most expensive to repair?</button>
+      <button>What is my maximum bid?</button>
+      <button>What are the hidden risks?</button>
     </div>
   </div>
 
   <div class="chat-composer">
     <div class="chat-mention" id="chatMention" style="display:none">
-      <input type="text" id="mentionSearch" placeholder="Пошук звіту за назвою…" autocomplete="off">
+      <input type="text" id="mentionSearch" placeholder="Search reports by name…" autocomplete="off">
       <div class="chat-mention-list" id="mentionList"></div>
     </div>
     <div class="chat-quote" id="chatQuote" style="display:none">
       <span id="chatQuoteText"></span>
-      <button type="button" id="chatQuoteX" aria-label="Прибрати цитату">✕</button>
+      <button type="button" id="chatQuoteX" aria-label="Remove quote">✕</button>
     </div>
     <div class="chat-files" id="chatFiles" style="display:none"></div>
     <div class="chat-box">
       <div class="chat-ta-wrap">
-        <textarea id="chatText" rows="1" placeholder="Постав питання… @ щоб додати звіт для порівняння"></textarea>
+        <textarea id="chatText" rows="1" placeholder="Ask a question… @ to add a report for comparison"></textarea>
         <div class="chat-ta-overlay" id="chatTaOverlay" aria-hidden="true"></div>
       </div>
       <div class="chat-box-row">
-        <button class="chat-attach" id="chatAttach" type="button" title="Додати файл: Carfax, фото, інший звіт" aria-label="Прикріпити файл">
+        <button class="chat-attach" id="chatAttach" type="button" title="Attach a file: Carfax, photos, another report" aria-label="Attach a file">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05 12.25 20.24a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
         </button>
-        <button class="chat-attach at" id="chatAtBtn" type="button" title="Додати звіт для порівняння" aria-label="Додати звіт для порівняння">@</button>
+        <button class="chat-attach at" id="chatAtBtn" type="button" title="Add a report for comparison" aria-label="Add a report for comparison">@</button>
         <input type="file" id="chatFile" accept="application/pdf,image/jpeg,image/png,image/webp" multiple hidden>
-        <button class="chat-send" id="chatSend" title="Надіслати" aria-label="Надіслати">
+        <button class="chat-send" id="chatSend" title="Send" aria-label="Send">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
         </button>
       </div>
     </div>
     <div class="chat-note">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-      CalCar бачить дані лота, фото і твій кошторис
+      CalCar sees the lot data, photos and your estimate
     </div>
   </div>
 </div>
@@ -1264,7 +1264,7 @@ if (DATA._meta?.lot_url) {
 const LIVE = true;
 
 /* ================= стан рядків ================= */
-const catLabels = {orig:t('Нова оригінал'), alt:t('Нова аналог'), used:t('Б/в оригінал')};
+const catLabels = {orig:t('New OEM'), alt:t('New aftermarket'), used:t('Used OEM')};
 let rowId = 0;
 const partRows = [];
 const workRows = [];
@@ -1291,7 +1291,7 @@ if (US) {
 } else {
   (DATA.parts || []).forEach(cfg => {
     const r = makeRow({
-      name: cfg.name || t('Деталь'),
+      name: cfg.name || t('Part'),
       sub: cfg.sub || '',
       conf: cfg.conf === 'likely' ? 'likely' : 'sure',
       prices: cfg.prices || {},
@@ -1304,13 +1304,13 @@ if (US) {
   });
 
   (DATA.works || []).forEach(cfg => {
-    workRows.push(makeRow({ name: cfg.name || t('Робота'), sub: cfg.sub || '', price: Number(cfg.price) || 0 }));
+    workRows.push(makeRow({ name: cfg.name || t('Work'), sub: cfg.sub || '', price: Number(cfg.price) || 0 }));
   });
   if (DATA.reserve) {
-    workRows.push(makeRow({ name:t('Резерв на приховані пошкодження'), sub:t('Запас під те, що відкриється після розбирання'), price:Number(DATA.reserve)||0 }));
+    workRows.push(makeRow({ name:t('Hidden damage reserve'), sub:t('Reserve for what teardown will reveal'), price:Number(DATA.reserve)||0 }));
   }
   (DATA.maintenance || []).forEach(cfg => {
-    maintRows.push(makeRow({ name: cfg.name || t('Позиція'), sub: cfg.sub || '', price: Number(cfg.price) || 0 }));
+    maintRows.push(makeRow({ name: cfg.name || t('Item'), sub: cfg.sub || '', price: Number(cfg.price) || 0 }));
   });
 }
 
@@ -1319,21 +1319,21 @@ function esc(s){ return String(s ?? '').replace(/\s*\u2014\s*/g, ', ').replace(/
 
 function renderHeaderBlocks(){
   const v = DATA.vehicle || {};
-  document.getElementById('lotTitle').textContent = v.title || t('Авто');
-  document.getElementById('lotBadge').textContent = t('AI-прорахунок');
-  document.getElementById('modeHint').textContent = t('Прорахунок на основі ваших фото. Ціни орієнтовні, уточнюйте перед торгами');
+  document.getElementById('lotTitle').textContent = v.title || t('Vehicle');
+  document.getElementById('lotBadge').textContent = t('AI estimate');
+  document.getElementById('modeHint').textContent = t('Estimate based on your photos. Prices are approximate, verify before bidding');
 
   const vinVal = DATA._meta?.vin || DATA.vin || '';
   const vinFromPhoto = DATA._meta?.vin_source === 'photo';
   const meta = [];
-  if (vinVal) meta.push(`<span class="vin-line">VIN ${esc(vinVal)}</span>${vinFromPhoto ? ' <span class="badge blue">' + t('зчитано з фото') + '</span>' : ''}`);
-  if (v.mileage_note) meta.push(`Пробіг <b>${esc(v.mileage_note)}</b>`);
-  if (DATA._meta?.damage) meta.push(`Пошкодження <b>${esc(DATA._meta.damage)}</b>`);
-  if (DATA._meta?.title_code) meta.push(`Тайтл <b>${esc(DATA._meta.title_code)}</b>`);
-  if (DATA._meta?.run_and_drive === false) meta.push(`<b style="color:var(--amber)">Не Run &amp; Drive</b>`);
-  if (DATA._meta?.keys === 'NO') meta.push(`<b style="color:var(--amber)">Без ключів</b>`);
-  if (/deploy/i.test(String(DATA._meta?.airbags || ''))) meta.push(`<b style="color:var(--red)">Подушки спрацювали (дані аукціону)</b>`);
-  if (DATA._meta?.lot_number) meta.push(`Лот <b>${esc(DATA._meta.lot_number)}</b>`);
+  if (vinVal) meta.push(`<span class="vin-line">VIN ${esc(vinVal)}</span>${vinFromPhoto ? ' <span class="badge blue">' + t('read from photos') + '</span>' : ''}`);
+  if (v.mileage_note) meta.push(`Mileage <b>${esc(v.mileage_note)}</b>`);
+  if (DATA._meta?.damage) meta.push(`Damage <b>${esc(DATA._meta.damage)}</b>`);
+  if (DATA._meta?.title_code) meta.push(`Title <b>${esc(DATA._meta.title_code)}</b>`);
+  if (DATA._meta?.run_and_drive === false) meta.push(`<b style="color:var(--amber)">Not Run & Drive</b>`);
+  if (DATA._meta?.keys === 'NO') meta.push(`<b style="color:var(--amber)">No keys</b>`);
+  if (/deploy/i.test(String(DATA._meta?.airbags || ''))) meta.push(`<b style="color:var(--red)">Airbags deployed (auction data)</b>`);
+  if (DATA._meta?.lot_number) meta.push(`Lot <b>${esc(DATA._meta.lot_number)}</b>`);
   /* статус торгів: збережений звіт живе довше за лот, людина мусить бачити, на коли дані */
   (() => {
     const sd = DATA._meta?.sale_date ? new Date(DATA._meta.sale_date) : null;
@@ -1342,14 +1342,14 @@ function renderHeaderBlocks(){
       const past = sd.getTime() < Date.now();
       const dstr = sd.toLocaleDateString(calcarLocale(), { day: 'numeric', month: 'long' });
       meta.push(past
-        ? `<b style="color:var(--amber)">${t('Торги були')} ${dstr}</b>`
-        : `${t('Торги')} <b>${dstr}</b>`);
+        ? `<b style="color:var(--amber)">${t('Auction was on')} ${dstr}</b>`
+        : `${t('Auction')} <b>${dstr}</b>`);
     } else if (/sold|closed|завершен/i.test(st)) {
-      meta.push(`<b style="color:var(--amber)">${t('Торги завершено')}</b>`);
+      meta.push(`<b style="color:var(--amber)">${t('Auction closed')}</b>`);
     }
     const an = DATA._meta?.analyzed_at ? new Date(DATA._meta.analyzed_at) : null;
     if (an && !isNaN(an.getTime())) {
-      meta.push(`<span style="color:var(--faint)">${t('Дані аукціону станом на')} ${an.toLocaleDateString(calcarLocale(), { day: 'numeric', month: 'long' })}, ${an.toLocaleTimeString(calcarLocale(), { hour: '2-digit', minute: '2-digit' })}</span>`);
+      meta.push(`<span style="color:var(--faint)">${t('Auction data as of')} ${an.toLocaleDateString(calcarLocale(), { day: 'numeric', month: 'long' })}, ${an.toLocaleTimeString(calcarLocale(), { hour: '2-digit', minute: '2-digit' })}</span>`);
     }
   })();
   if (DATA.lot_notes) meta.push(`<b style="color:var(--amber)">${esc(DATA.lot_notes)}</b>`);
@@ -1414,23 +1414,23 @@ function renderHeaderBlocks(){
   })();
 
   const spec = [];
-  if (v.engine) spec.push([v.engine,t('Двигун')]);
-  if (v.transmission) spec.push([v.transmission,t('Коробка передач')]);
-  if (v.drive) spec.push([v.drive,t('Привід')]);
+  if (v.engine) spec.push([v.engine,t('Engine')]);
+  if (v.transmission) spec.push([v.transmission,t('Transmission')]);
+  if (v.drive) spec.push([v.drive,t('Drivetrain')]);
   if (v.trim) {
     let tr = String(v.trim);
     if (tr.replace(/[^A-Za-zА-Яа-яІіЇїЄє0-9]/g, '').length <= 3) {
       const mdl = String(v.title || '').split(/\s+/)[1] || '';
       if (mdl && !new RegExp('^' + mdl, 'i').test(tr)) tr = mdl + ' ' + tr;
     }
-    spec.push([tr, t('Рівень комплектації')]);
+    spec.push([tr, t('Trim level')]);
   }
   if (spec.length) document.getElementById('specGrid').innerHTML =
     spec.map(([b,s]) => `<div><b>${esc(b)}</b><span>${esc(s)}</span></div>`).join('');
   const eq = v.equipment || [];
   const premium = new Set((v.premium_options || []).map(String));
   document.getElementById('chipsEl').innerHTML = eq.map(e => premium.has(String(e))
-    ? `<div class="chip gold" title="${esc(t('Дорога опція, може суттєво впливати на вартість ремонту'))}">${esc(e)}</div>`
+    ? `<div class="chip gold" title="${esc(t('Premium option, can significantly affect repair cost'))}">${esc(e)}</div>`
     : `<div class="chip">${esc(e)}</div>`).join('');
 
   const FLAG_ORDER = {bad:0, warn:1, ok:2, unknown:3};
@@ -1443,7 +1443,7 @@ function renderHeaderBlocks(){
   const dn = document.getElementById('dmgNote');
   dn.textContent = DATA.damage_note || '';
   dn.style.display = DATA.damage_note ? '' : 'none';
-  document.getElementById('aiBadge').textContent = t('AI-аналіз ваших фото');
+  document.getElementById('aiBadge').textContent = t('AI analysis of your photos');
 
 }
 
@@ -1511,7 +1511,7 @@ function computeAndRenderRisk() {
   document.getElementById('riskScore').textContent = rk.score.toFixed(1) + ' / 10';
   document.getElementById('riskDot').className = 'dot ' + rk.cls;
   const rl = document.getElementById('riskLabel');
-  const rkText = rk.score <= 3 ? t('Низький') : rk.score <= 5 ? t('Помірний') : rk.score <= 7 ? t('Підвищений') : t('Високий');
+  const rkText = rk.score <= 3 ? t('Low') : rk.score <= 5 ? t('Moderate') : rk.score <= 7 ? t('Elevated') : t('High');
   rl.textContent = rkText;
   rl.style.background = rk.cls === 'ok' ? 'var(--green-soft)' : rk.cls === 'warn' ? 'var(--amber-soft)' : 'var(--red-soft)';
   rl.style.color = rk.cls === 'ok' ? 'var(--green)' : rk.cls === 'warn' ? 'var(--amber)' : 'var(--red)';
@@ -1527,12 +1527,12 @@ function renderPartRow(r) {
   div.className = 'est-row';
   div.id = r.id;
 
-  const confBadge = r.conf === 'sure' ? '<span class="conf sure">' + t('точно') + '</span>'
-    : r.conf === 'likely' ? '<span class="conf likely">' + t('ймовірно') + '</span>' : '';
+  const confBadge = r.conf === 'sure' ? '<span class="conf sure">' + t('confirmed') + '</span>'
+    : r.conf === 'likely' ? '<span class="conf likely">' + t('likely') + '</span>' : '';
 
-  const premBadge = r.premium ? `<span class="prem-badge">◆ ${esc(t('дорога опція'))}</span>` : '';
+  const premBadge = r.premium ? `<span class="prem-badge">◆ ${esc(t('premium option'))}</span>` : '';
   const nameCell = r.custom
-    ? `<div class="part-cell"><input class="name-input" data-field="name" value="${esc(r.name)}" placeholder="Назва деталі"></div>`
+    ? `<div class="part-cell"><input class="name-input" data-field="name" value="${esc(r.name)}" placeholder="Part name"></div>`
     : `<div class="part-cell"><div class="part-name">${esc(r.name)}${confBadge}${premBadge}</div>
        ${r.sub ? `<div class="part-sub">${esc(r.sub)}</div>` : ''}</div>`;
 
@@ -1552,7 +1552,7 @@ function renderPartRow(r) {
     ${nameCell}
     ${seg}
     <div class="money"><input type="number" data-field="price" value="${r.price}" min="0"></div>
-    <button class="del" title="Видалити позицію">✕</button>
+    <button class="del" title="Delete item">✕</button>
   `;
   return div;
 }
@@ -1563,7 +1563,7 @@ function renderWorkRow(r) {
   div.id = r.id;
 
   const nameCell = r.custom
-    ? `<div class="part-cell"><input class="name-input" data-field="name" value="${esc(r.name)}" placeholder="Назва роботи"></div>`
+    ? `<div class="part-cell"><input class="name-input" data-field="name" value="${esc(r.name)}" placeholder="Labor name"></div>`
     : `<div class="part-cell"><div class="part-name">${esc(r.name)}</div>
        ${r.sub ? `<div class="part-sub">${esc(r.sub)}</div>` : ''}</div>`;
 
@@ -1571,7 +1571,7 @@ function renderWorkRow(r) {
     <input type="checkbox" class="toggle" ${r.on ? 'checked' : ''}>
     ${nameCell}
     <div class="money"><input type="number" data-field="price" value="${r.price}" min="0"></div>
-    <button class="del" title="Видалити позицію">✕</button>
+    <button class="del" title="Delete item">✕</button>
   `;
   return div;
 }
@@ -1698,23 +1698,23 @@ function computeExcise() {
   const age = Math.min(15, Math.max(1, 2026 - year));
   const disp = Number(v.displacement_l) || 0;
   if (v.fuel === 'hybrid') {
-    document.getElementById('exciseNote').innerHTML = '<span style="font-weight:400;color:var(--muted)">' + t('гібрид: фіксований €100') + '</span>';
+    document.getElementById('exciseNote').innerHTML = '<span style="font-weight:400;color:var(--muted)">' + t('hybrid: fixed €100') + '</span>';
     return Math.round(100 * EUR);
   }
   if (v.fuel === 'electric') {
     const kwh = Number(DATA._meta?.battery_kwh) || 0;
     document.getElementById('exciseNote').innerHTML = kwh
-      ? `<span style="font-weight:400;color:var(--muted)">електро: €1 за кВт·год · батарея ${kwh} кВт·год</span>`
-      : '<span style="font-weight:400;color:var(--muted)">' + t('електро: €1 за кВт·год, впиши точно') + '</span>';
+      ? '<span style="font-weight:400;color:var(--muted)">' + t('electric: €1 per kWh · battery {kwh} kWh').replace('{kwh}', kwh) + '</span>'
+      : '<span style="font-weight:400;color:var(--muted)">' + t('EV: €1 per kWh, enter the exact value') + '</span>';
     return Math.round(kwh * EUR);
   }
   if (!disp || !year) {
-    document.getElementById('exciseNote').innerHTML = '<span style="font-weight:400;color:var(--muted)">' + t('впиши вручну') + '</span>';
+    document.getElementById('exciseNote').innerHTML = '<span style="font-weight:400;color:var(--muted)">' + t('enter manually') + '</span>';
     return 0;
   }
   const rate = v.fuel === 'diesel' ? (disp > 3.5 ? 150 : 75) : (disp > 3.0 ? 100 : 50);
   document.getElementById('exciseNote').innerHTML =
-    `<span style="font-weight:400;color:var(--muted)">${v.fuel === 'diesel' ? t('дизель') : t('бензин')} ${disp} л · вік ${age} р.</span>`;
+    '<span style="font-weight:400;color:var(--muted)">' + t('{fuel} {disp} L · {age} years old').replace('{fuel}', v.fuel === 'diesel' ? t('diesel') : t('petrol')).replace('{disp}', disp).replace('{age}', age) + '</span>';
   return Math.round(disp * rate * age * EUR);
 }
 const EXCISE = computeExcise();
@@ -1779,7 +1779,7 @@ function recalc() {
   document.getElementById('usDelivery').value = STATE_RATES[st][0];
   document.getElementById('freight').value = STATE_RATES[st][1];
   if (!stKnown) {
-    stSel.nextElementSibling.textContent = t('Штат невідомий, підставлено типовий. Обери свій, доставка оновиться');
+    stSel.nextElementSibling.textContent = t('State unknown, a typical one is set. Pick yours and delivery updates');
   }
 
   const bidEl = document.getElementById('bid');
@@ -1792,8 +1792,8 @@ function recalc() {
   bidEl.value = '';
   bidEl.placeholder = '0';
   bidSub.textContent = (meta.bid > 0)
-    ? t('Поточний бід на аукціоні: ') + '$' + Math.round(meta.bid).toLocaleString(calcarLocale()) + '. ' + t('Впиши свою очікувану ставку, підсумок перерахується')
-    : t('Ціна лота не вказана. Впиши очікувану ставку, підсумок перерахується');
+    ? t('Current auction bid: ') + '$' + Math.round(meta.bid).toLocaleString(calcarLocale()) + '. ' + t('Enter your expected bid and the total recalculates')
+    : t('No lot price yet. Enter your expected bid and the total recalculates');
   document.querySelector('.cc-bid').classList.add('pulse');
 })();
 
@@ -1844,7 +1844,7 @@ function scheduleSave() {
   if (!CAN_SAVE) return;
   clearTimeout(saveTimer);
   const hint = document.getElementById('saveHint');
-  hint.textContent = t('Зберігаю…'); hint.classList.add('show');
+  hint.textContent = t('Saving…'); hint.classList.add('show');
   saveTimer = setTimeout(async () => {
     try {
       /* .select('id') повертає оновлені рядки: якщо їх нуль (немає RLS-політики
@@ -1852,11 +1852,11 @@ function scheduleSave() {
       const { data: upd, error } = await SB.from('reports')
         .update({ data: merged }).eq('id', REPORT_DB_ID).select('id');
       if (error || !upd || !upd.length) {
-        hint.textContent = t('Не збереглося');
+        hint.textContent = t('Not saved');
         setTimeout(() => hint.classList.remove('show'), 2600);
         return;
       }
-      hint.textContent = t('Збережено ✓');
+      hint.textContent = t('Saved ✓');
       setTimeout(() => hint.classList.remove('show'), 1600);
     } catch(e) { hint.classList.remove('show'); }
   }, 1200);
@@ -2017,13 +2017,13 @@ function generatePdf() {
   /* ---------- авто ---------- */
   const v = DATA.vehicle || {};
   doc.setFont('DejaVu', 'bold'); doc.setFontSize(15); setC(COLORS.text);
-  const tl = doc.splitTextToSize(v.title || t('Авто'), W);
+  const tl = doc.splitTextToSize(v.title || t('Vehicle'), W);
   ensure(tl.length * 6);
   doc.text(tl, M, y);
   y += tl.length * 6 + 1;
   const vinVal = DATA._meta?.vin || DATA.vin || '';
   const sub = [];
-  if (vinVal) sub.push('VIN ' + vinVal + (DATA._meta?.vin_source === 'photo' ? t(' (зчитано з фото)') : ''));
+  if (vinVal) sub.push('VIN ' + vinVal + (DATA._meta?.vin_source === 'photo' ? t(' (read from photos)') : ''));
   if (v.mileage_note) sub.push(v.mileage_note);
   para(sub.join('  ·  '), 8.5, COLORS.muted);
   if (DATA.lot_notes) para(DATA.lot_notes, 8.5, COLORS.warn);
@@ -2031,13 +2031,13 @@ function generatePdf() {
   /* ---------- комплектація ---------- */
   const spec = [v.engine, v.transmission, v.drive, v.trim].filter(Boolean).join('  ·  ');
   if (spec) {
-    h2(t('Комплектація'));
+    h2(t('Equipment'));
     para(spec, 9);
     if ((v.equipment || []).length) para(v.equipment.join(', '), 8, COLORS.muted);
   }
 
   /* ---------- розбір ---------- */
-  h2(t('Розбір пошкоджень'));
+  h2(t('Damage analysis'));
   (DATA.flags || []).forEach(f => dotLine(f.status, f.text, ''));
   if (DATA.damage_note) { y += 1; para(DATA.damage_note, 8.5, COLORS.muted); }
   const zones = Array.isArray(DATA.zones) ? DATA.zones : [];
@@ -2055,45 +2055,45 @@ function generatePdf() {
     : (Array.isArray(MN.equipment_impact) ? MN.equipment_impact : []);
 
   if (mnImpact.length) {
-    h2(t('Дорога комплектація в зоні удару'));
+    h2(t('Premium equipment in the impact zone'));
     mnImpact.forEach(i => tableRow(String(i.feature || ''), String(i.detail || ''), null, ''));
   }
   if (mnIssues.length) {
-    h2(t('Типові слабкі місця цієї моделі'));
+    h2(t('Common weak points of this model'));
     mnIssues.forEach(i => tableRow(
       String(i.title || ''), [i.unit, i.detail].filter(Boolean).join(' · '), null, ''));
   }
 
   const activeParts = partRows.filter(x => x.on);
   if (activeParts.length) {
-    h2(t('Запчастини'));
-    activeParts.forEach(p => tableRow(p.name, [p.sub, p.premium ? '◆ ' + t('дорога опція') : null].filter(Boolean).join(' · '), p.cat ? (catLabels[p.cat] || '') : '', money(p.price)));
-    totalRow(t('Запчастини разом'), money(sumRows(partRows)));
+    h2(t('Parts'));
+    activeParts.forEach(p => tableRow(p.name, [p.sub, p.premium ? '◆ ' + t('premium option') : null].filter(Boolean).join(' · '), p.cat ? (catLabels[p.cat] || '') : '', money(p.price)));
+    totalRow(t('Parts total'), money(sumRows(partRows)));
   }
   const activeWorks = workRows.filter(x => x.on);
   if (activeWorks.length) {
-    h2(t('Роботи'));
+    h2(t('Labor'));
     activeWorks.forEach(w => tableRow(w.name, w.sub, null, money(w.price)));
-    totalRow(t('Роботи разом'), money(sumRows(workRows)));
+    totalRow(t('Labor total'), money(sumRows(workRows)));
   }
   const activeMaint = maintRows.filter(x => x.on);
   if (activeMaint.length) {
-    h2(t('Обслуговування за пробігом'));
+    h2(t('Mileage-based maintenance'));
     activeMaint.forEach(m => tableRow(m.name, m.sub, null, money(m.price)));
-    totalRow(t('Обслуговування разом'), money(sumRows(maintRows)));
+    totalRow(t('Maintenance total'), money(sumRows(maintRows)));
   }
 
-  h2(t('Лот, доставка та розмитнення'));
+  h2(t('Lot, delivery, and customs'));
   const L = [
-    [t('Ставка на аукціоні'), val('bid')], [t('Збори аукціону'), val('auctionFees')],
-    [t('Доставка по США до порту'), val('usDelivery')], [t('Морський фрахт до Одеси'), val('freight')],
-    [t('Порт, експедитор, розвантаження'), val('port')], [t('Ввізне мито 10%'), val('duty')],
-    [t('Акциз'), val('excise')], [t('ПДВ 20%'), val('vat')], [t('Брокер'), val('broker')],
-    [t('Сертифікація, облік, доставка по Україні'), val('uaFinal')],
+    [t('Auction bid'), val('bid')], [t('Auction fees'), val('auctionFees')],
+    [t('US inland delivery to port'), val('usDelivery')], [t('Sea freight to Odesa'), val('freight')],
+    [t('Port, forwarder, unloading'), val('port')], [t('Import duty 10%'), val('duty')],
+    [t('Excise'), val('excise')], [t('VAT 20%'), val('vat')], [t('Broker'), val('broker')],
+    [t('Certification, registration, delivery within Ukraine'), val('uaFinal')],
   ];
   L.forEach(([n, s]) => tableRow(n, '', null, money(s)));
   const logistics = L.reduce((a, [, s]) => a + s, 0);
-  totalRow(t('Лот + логістика + розмитнення'), money(logistics));
+  totalRow(t('Lot + logistics + customs'), money(logistics));
 
   /* ---------- підсумок ---------- */
   const grand = logistics + sumRows(partRows) + sumRows(workRows) + sumRows(maintRows);
@@ -2102,36 +2102,36 @@ function generatePdf() {
   doc.setFillColor(244, 245, 247);
   doc.roundedRect(M, y - 5, W, 14, 2, 2, 'F');
   doc.setFont('DejaVu', 'bold'); doc.setFontSize(9); setC(COLORS.muted);
-  doc.text(t('ПІД КЛЮЧ В УКРАЇНІ'), M + 5, y + 2.5);
+  doc.text(t('LANDED COST IN UKRAINE'), M + 5, y + 2.5);
   doc.setFontSize(15); setC(COLORS.text);
   doc.text(money(grand), PW - M - 5, y + 3, { align: 'right' });
   y += 15;
   if (!(Number(document.getElementById('bid').value) > 0)) {
     doc.setFont('DejaVu', 'normal'); doc.setFontSize(8); setC(COLORS.muted);
-    doc.text(t('Ціна лота не вказана, підсумок порахований без вартості лота'), M, y);
+    doc.text(t('Lot price not set; the total excludes the lot itself'), M, y);
     y += 6;
   }
 
   const rkPdf = computeRisk();
-  dotLine(rkPdf.cls, t('Ризик покупки: ') + rkPdf.score.toFixed(1) + ' / 10', '');
+  dotLine(rkPdf.cls, t('Purchase risk: ') + rkPdf.score.toFixed(1) + ' / 10', '');
   const safetyOff = partRows.some(x => x.safety && !x.on);
-  if (safetyOff) para(t('Подушки безпеки виключені з кошторису. Авто без відновлених подушок небезпечне.'), 8.5, COLORS.bad);
+  if (safetyOff) para(t('Airbags are excluded from the estimate. A car without restored airbags is unsafe.'), 8.5, COLORS.bad);
 
   ensure(8);
   y += 3;
   doc.setFont('DejaVu', 'normal'); doc.setFontSize(7.5); setC(COLORS.unknown);
-  doc.text(t('Прорахунок згенеровано на calcar.io · ціни орієнтовні, не є офіційним кошторисом'), PW / 2, y, { align: 'center' });
+  doc.text(t('Estimate generated at calcar.io · prices are approximate and not an official quote'), PW / 2, y, { align: 'center' });
 
   return doc;
 }
 
 async function downloadPdf(btn) {
   const label = btn.textContent;
-  btn.disabled = true; btn.textContent = t('Готую PDF…');
+  btn.disabled = true; btn.textContent = t('Preparing PDF…');
   try {
     generatePdf().save(pdfName());
   } catch (e) {
-    alert(t('Не вдалося згенерувати PDF: ') + (e && e.message ? e.message : t('невідома помилка')));
+    alert(t('Could not generate the PDF: ') + (e && e.message ? e.message : t('unknown error')));
   } finally {
     btn.disabled = false; btn.textContent = label;
   }
@@ -2155,7 +2155,7 @@ document.getElementById('printMeta').textContent =
   const sendBtn = document.getElementById('chatSend');
 
   if (DATA.vehicle?.title) {
-    document.getElementById('chatCtxCar').textContent = t('Йдеться про:') + ' ' + DATA.vehicle.title;
+    document.getElementById('chatCtxCar').textContent = t('Talking about:') + ' ' + DATA.vehicle.title;
     document.getElementById('chatCtx').style.display = '';
   }
 
@@ -2201,7 +2201,7 @@ document.getElementById('printMeta').textContent =
   }
 
   /* привітання локальне, без запиту до API */
-  const GREETING = t('Привіт! Я вивчив цей лот: дані аукціону, фото, розбір пошкоджень і твій кошторис. Питай будь-що: чи варто брати, що з подушками, скільки закласти на ремонт, яку ставку не перевищувати.');
+  const GREETING = t('Hi! I have reviewed this lot: the auction data, photos, damage analysis, and your estimate. Ask me anything: whether it is worth buying, the airbag situation, how much to budget for repairs, or your maximum bid.');
   function renderHistory() {
     msgsEl.innerHTML = '';
     if (!history.length) {
@@ -2339,10 +2339,10 @@ document.getElementById('printMeta').textContent =
   attachBtn.addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', async () => {
     for (const f of Array.from(fileInput.files || [])) {
-      if (pendingFiles.length >= 3) { addMsg('ai', t('Максимум 3 файли на одне повідомлення')); break; }
+      if (pendingFiles.length >= 3) { addMsg('ai', t('Up to 3 files per message')); break; }
       try {
         if (f.type === 'application/pdf') {
-          if (f.size > 2.5 * 1024 * 1024) { addMsg('ai', t('PDF завеликий, ліміт 2.5 МБ')); continue; }
+          if (f.size > 2.5 * 1024 * 1024) { addMsg('ai', t('PDF is too large, 2.5 MB limit')); continue; }
           pendingFiles.push({ name: f.name, kind: 'pdf', data: await readAsDataURL(f) });
         } else if (/^image\//.test(f.type)) {
           pendingFiles.push({ name: f.name, kind: 'image', data: await shrinkImage(f) });
@@ -2377,7 +2377,7 @@ document.getElementById('printMeta').textContent =
         .map(r => {
           const days = Math.round((now - new Date(r.created_at).getTime()) / 86400000);
           const chatTail = (Array.isArray(r.chat) ? r.chat : []).slice(-4)
-            .map(m => (m.role === 'user' ? 'Користувач: ' : 'Помічник: ') + String(m.content || '').slice(0, 200));
+            .map(m => (m.role === 'user' ? 'User: ' : 'Assistant: ') + String(m.content || '').slice(0, 200));
           return {
             title: r.title || null, lot: r.lot || null, vin: r.vin || null,
             damage: r.dmg || null, mileage: r.mil || null,
@@ -2528,7 +2528,7 @@ document.getElementById('printMeta').textContent =
   }
   function refDays(iso){
     const d = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000));
-    return d === 0 ? t('сьогодні') : d + ' ' + t('дн. тому');
+    return d === 0 ? t('today') : d + ' ' + t('days ago');
   }
   function mentionRows(){
     const q = (document.getElementById('mentionSearch').value || '').trim().toLowerCase();
@@ -2543,7 +2543,7 @@ document.getElementById('printMeta').textContent =
     if (!rows.length) {
       const d = document.createElement('div');
       d.className = 'chat-mention-empty';
-      d.textContent = t('Звітів поки нема');
+      d.textContent = t('No reports yet');
       list.appendChild(d);
       return;
     }
@@ -2553,7 +2553,7 @@ document.getElementById('printMeta').textContent =
       b.className = 'chat-mention-item' + (i === mentionIdx ? ' on' : '');
       const nm = document.createElement('span');
       nm.className = 'ttl2';
-      nm.textContent = r.title || t('Прорахунок');
+      nm.textContent = r.title || t('Estimate');
       const age = document.createElement('span');
       age.className = 'age';
       age.textContent = refDays(r.created_at);
@@ -2650,7 +2650,7 @@ document.getElementById('printMeta').textContent =
   function pickMention(r){
     const field = document.getElementById('chatText');
     const dup = pendingRefs.some(x => x.id === r.id);
-    const picked = { id: r.id, title: r.title || t('Прорахунок'), kind: r.kind === 'check' ? 'check' : 'import' };
+    const picked = { id: r.id, title: r.title || t('Estimate'), kind: r.kind === 'check' ? 'check' : 'import' };
     if (mentionReplace >= 0 && pendingRefs[mentionReplace]) {
       /* клік по пілюлі: людина обирає іншу машину на заміну */
       if (!dup) {
@@ -2814,7 +2814,7 @@ document.getElementById('printMeta').textContent =
     resetComposer();
     /* в історії тримаємо лише текст із маркером файлів: самі файли великі,
        вони йдуть тільки з цим повідомленням і не переслідують подальші */
-    const shown = q + (atts.length ? (q ? '\n' : '') + t('Додані файли:') + ' ' + atts.map(a => a.name).join(', ') : '');
+    const shown = q + (atts.length ? (q ? '\n' : '') + t('Attached files:') + ' ' + atts.map(a => a.name).join(', ') : '');
     history.push({ role: 'user', content: shown });
     addMsg('user', shown);
     persist();
@@ -2850,9 +2850,9 @@ document.getElementById('printMeta').textContent =
       });
       let d;
       try { d = await r.json(); }
-      catch (e) { throw new Error(r.status === 504 ? t('Відповідь не встигла за відведений час') : t('Сервер повернув несподівану відповідь')); }
+      catch (e) { throw new Error(r.status === 504 ? t('The reply did not arrive in time') : t('Server returned an unexpected response')); }
       typing.remove();
-      if (!r.ok || d.error || !d.reply) throw new Error(d.error || t('Не вдалося отримати відповідь'));
+      if (!r.ok || d.error || !d.reply) throw new Error(d.error || t('Could not get a reply'));
       history.push({ role: 'assistant', content: d.reply });
       saveChatMemory(d.memory_update, shown, d.reply);
       scheduleMemoryUpdate();
@@ -2860,7 +2860,7 @@ document.getElementById('printMeta').textContent =
       persist();
     } catch (e) {
       typing.remove();
-      addMsg('ai', t('Не вийшло: ') + (e.message || t('помилка')) + t('. Спробуй ще раз'));
+      addMsg('ai', t('Failed: ') + (e.message || t('error')) + t('. Please try again'));
       /* питання лишаємо в історії, щоб повторний Enter його не загубив */
     } finally {
       busy = false;

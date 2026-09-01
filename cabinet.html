@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="uk">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Кабінет · CalCar</title>
+<title>My account · CalCar</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -24,10 +24,10 @@
      нема й його, вихідна фраза розмітки. Вихідна фраза ніколи не є
      user-facing фолбеком, поки існує англійський варіант.
    - Словники /i18n/<code>.js реєструються у window.CALCAR_DICTS[code];
-     вантажаться обрана мова і, окремо, англійська як фолбек. */
+     вантажиться лише обрана мова: фолбек (англійська) і є мовою розмітки. */
 (function () {
   var LS = 'calcar_lang';
-  var SOURCE = 'ua';
+  var SOURCE = 'en';
   var DEFAULT_LOCALE = 'en';
   var FALLBACK_LOCALE = 'en';
   var LANGS = [
@@ -35,7 +35,7 @@
     { code: 'ru', label: 'Русский',    short: 'RU', locale: 'ru-RU', html: 'ru' },
     { code: 'en', label: 'English',    short: 'EN', locale: 'en-US', html: 'en' },
   ];
-  var DICT_V = '4';           /* міняти при зміні словників чи їх формату, щоб скинути кеш */
+  var DICT_V = '5';           /* міняти при зміні словників чи їх формату, щоб скинути кеш */
 
   /* єдиний резолвер локалі: явна підтримувана -> нормалізований код, усе
      інше -> null (той, хто викликає, підставляє DEFAULT чи FALLBACK).
@@ -94,7 +94,8 @@
     document.write('<scr' + 'ipt src="/i18n/' + code + '.js?v=' + DICT_V + '"></scr' + 'ipt>');
   }
   if (cur !== SOURCE) load(cur);
-  if (cur !== SOURCE && cur !== FALLBACK_LOCALE) load(FALLBACK_LOCALE);
+  /* фолбек-словник потрібен лише коли фолбек не є мовою самої розмітки */
+  if (cur !== SOURCE && cur !== FALLBACK_LOCALE && FALLBACK_LOCALE !== SOURCE) load(FALLBACK_LOCALE);
 
   function norm(s) { return String(s).replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, ''); }
 
@@ -124,7 +125,7 @@
     if (v === null) return null;
     return (s.match(/^\s*/) || [''])[0] + v + (s.match(/\s*$/) || [''])[0];
   }
-  function ready(l) { return l === SOURCE || !!(window.CALCAR_DICTS[l] || window.CALCAR_DICTS[FALLBACK_LOCALE]); }
+  function ready(l) { return l === SOURCE || !!window.CALCAR_DICTS[l] || (FALLBACK_LOCALE !== SOURCE && !!window.CALCAR_DICTS[FALLBACK_LOCALE]); }
   window.t = function (s, l) {
     l = resolveLocale(l) || lang();
     if (l === SOURCE) return s;
@@ -410,7 +411,7 @@
 <header>
  <div class="header-in">
  <div class="hleft">
-   <button class="lnc-btn" type="button" id="lncBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="lncPanel" title="Продукти CalCar" aria-label="Продукти CalCar"><svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor" aria-hidden="true"><rect x="0" y="0" width="4" height="4" rx="1.2"/><rect x="7" y="0" width="4" height="4" rx="1.2"/><rect x="14" y="0" width="4" height="4" rx="1.2"/><rect x="0" y="7" width="4" height="4" rx="1.2"/><rect x="7" y="7" width="4" height="4" rx="1.2"/><rect x="14" y="7" width="4" height="4" rx="1.2"/><rect x="0" y="14" width="4" height="4" rx="1.2"/><rect x="7" y="14" width="4" height="4" rx="1.2"/><rect x="14" y="14" width="4" height="4" rx="1.2"/></svg></button>
+   <button class="lnc-btn" type="button" id="lncBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="lncPanel" title="CalCar products" aria-label="CalCar products"><svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor" aria-hidden="true"><rect x="0" y="0" width="4" height="4" rx="1.2"/><rect x="7" y="0" width="4" height="4" rx="1.2"/><rect x="14" y="0" width="4" height="4" rx="1.2"/><rect x="0" y="7" width="4" height="4" rx="1.2"/><rect x="7" y="7" width="4" height="4" rx="1.2"/><rect x="14" y="7" width="4" height="4" rx="1.2"/><rect x="0" y="14" width="4" height="4" rx="1.2"/><rect x="7" y="14" width="4" height="4" rx="1.2"/><rect x="14" y="14" width="4" height="4" rx="1.2"/></svg></button>
  <a class="logo" href="/"><span class="l">Cal</span><span class="r">Car</span></a>
  <div class="beta">beta</div>
  </div>
@@ -426,13 +427,13 @@
  <div class="acc-wrap">
  <a class="btn-auth" href="/cabinet.html">
  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
- Кабінет
+ My account
  </a>
  <div class="acc-menu">
- <a href="/garage">Гараж</a>
- <a href="/cabinet.html#reports">Звіти</a>
- <a href="/cabinet.html#memory">Памʼять помічника</a>
- <a href="/cabinet.html#account">Налаштування акаунта</a>
+ <a href="/garage">Garage</a>
+ <a href="/cabinet.html#reports">Reports</a>
+ <a href="/cabinet.html#memory">Assistant memory</a>
+ <a href="/cabinet.html#account">Account settings</a>
  </div>
  </div>
  </div>
@@ -440,27 +441,27 @@
 </header>
 
 <div class="lnc-backdrop" id="lncBackdrop"></div>
-<div class="lnc-panel" id="lncPanel" role="dialog" tabindex="-1" aria-label="Продукти CalCar">
+<div class="lnc-panel" id="lncPanel" role="dialog" tabindex="-1" aria-label="CalCar products">
   <div class="lnc-grab" aria-hidden="true"></div>
   <div class="lnc-head">
-    <div class="lnc-title">Продукти CalCar</div>
-    <button class="lnc-x" type="button" id="lncClose" title="Закрити" aria-label="Закрити"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    <div class="lnc-title">CalCar products</div>
+    <button class="lnc-x" type="button" id="lncClose" title="Close" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   </div>
   <div class="lnc-list">
     <a class="lnc-item" data-prod="check" href="/check">
       <span class="lnc-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="none" stroke="#141619" stroke-width="64" stroke-linecap="butt"><path d="M229.72 322.19 A 84 84 0 1 1 229.72 189.81"/><path d="M430.72 322.19 A 84 84 0 1 1 430.72 189.81"/></g></svg></span>
       <span class="lnc-body">
         <span class="lnc-name">CalCar Check</span>
-        <span class="lnc-desc">Перевірка авто перед купівлею</span>
-        <span class="lnc-badge">Поточний продукт</span>
+        <span class="lnc-desc">Pre-purchase car check</span>
+        <span class="lnc-badge">Current product</span>
       </span>
     </a>
     <a class="lnc-item" data-prod="import" href="/import">
       <span class="lnc-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="#141619"><path d="M160 244 L204 168 Q212 156 227 156 L299 156 Q314 156 322 168 L366 244 Z"/><rect x="76" y="238" width="360" height="58" rx="24"/><circle cx="162" cy="314" r="44"/><circle cx="350" cy="314" r="44"/></g><path d="M190 230 L228 176 Q233 170 240 170 L286 170 Q293 170 298 176 L336 230 Z" fill="#B8F23D"/></svg></span>
       <span class="lnc-body">
         <span class="lnc-name">CalCar Import</span>
-        <span class="lnc-desc">Скільки обійдеться авто зі США в Україні</span>
-        <span class="lnc-badge">Поточний продукт</span>
+        <span class="lnc-desc">What a US car really costs in Ukraine</span>
+        <span class="lnc-badge">Current product</span>
       </span>
     </a>
   </div>
@@ -469,53 +470,53 @@
 <div class="wrap">
  <!-- not configured -->
  <div class="card" id="noCfg" style="display:none;padding:22px">
- <b>Кабінет ще не підключено</b>
- <p class="muted" style="margin-top:6px">Потрібно вписати ключі Supabase у файл config.js. Розрахунки працюють і без цього.</p>
+ <b>Account is not connected yet</b>
+ <p class="muted" style="margin-top:6px">Add your Supabase keys to config.js. Estimates work without it.</p>
  </div>
 
  <!-- auth -->
  <div class="auth-wrap" id="authBox" style="display:none">
  <span class="logo auth-logo" aria-label="CalCar"><span class="l">Cal</span><span class="r">Car</span></span>
- <h1>Вхід у CalCar</h1>
- <div class="auth-sub">Твої прорахунки збережуться в кабінеті, до них можна буде повернутися будь-коли</div>
+ <h1>Sign in to CalCar</h1>
+ <div class="auth-sub">Your estimates are saved to your account so you can come back to them anytime</div>
  <div class="card auth-card">
  <button class="btn-google" id="googleBtn">
  <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.71-1.57 2.68-3.89 2.68-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.47.9 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/></svg>
- Продовжити з Google
+ Continue with Google
  </button>
- <div class="or"><span>або поштою</span></div>
+ <div class="or"><span>or with email</span></div>
  <input type="email" id="email" placeholder="you@example.com" autocomplete="email">
- <button class="btn" id="sendLink">Надіслати посилання для входу</button>
+ <button class="btn" id="sendLink">Send sign-in link</button>
  <div class="status" id="authStatus"></div>
  </div>
- <div class="auth-legal">Без паролів. Один прорахунок безкоштовно.</div>
+ <div class="auth-legal">No passwords. Your first estimate is free.</div>
  </div>
 
  <!-- reports -->
  <div id="listBox" style="display:none">
- <h1 id="cabTitle">Звіти</h1>
+ <h1 id="cabTitle">Reports</h1>
  <div id="tab-reports">
  <div class="search-wrap" id="searchWrap">
  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
- <input type="text" id="searchInput" placeholder="Пошук: VIN, марка, модель або номер лота" spellcheck="false" autocomplete="off">
- <button class="search-clear" id="searchClear" title="Очистити">✕</button>
+ <input type="text" id="searchInput" placeholder="Search: VIN, make, model, or lot number" spellcheck="false" autocomplete="off">
+ <button class="search-clear" id="searchClear" title="Clear">✕</button>
  </div>
- <div class="card" id="reports"><div class="empty">Завантаження…</div></div>
+ <div class="card" id="reports"><div class="empty">Loading…</div></div>
  </div>
 
  <div id="tab-memory" style="display:none">
  <div class="card" id="memCard" style="display:none">
   <div class="mem-head">
-   <b>Памʼять CalCar</b>
-   <span class="mem-hint">Помічник запамʼятовує важливе з розмов: імʼя, бюджет, що шукаєш. Можеш виправити або стерти</span>
+   <b>CalCar memory</b>
+   <span class="mem-hint">The assistant remembers what matters from your chats: name, budget, what you are looking for. You can edit or erase it</span>
   </div>
-  <textarea id="memText" rows="4" placeholder="Поки порожньо. Поговори з помічником у будь-якому звіті, і тут зʼявиться нотатка"></textarea>
-  <label class="mem-use"><input type="checkbox" id="memUse" checked><span>Враховувати памʼять у висновках звітів</span></label>
+  <textarea id="memText" rows="4" placeholder="Empty for now. Talk to the assistant in any report and a note will appear here"></textarea>
+  <label class="mem-use"><input type="checkbox" id="memUse" checked><span>Use memory in report conclusions</span></label>
   <div class="mem-actions">
-   <button class="mem-save" id="memEdit">Змінити</button>
-   <button class="mem-save" id="memSave" style="display:none">Зберегти</button>
-   <button class="mem-clear" id="memCancel" style="display:none">Скасувати</button>
-   <button class="mem-clear" id="memClear">Стерти памʼять</button>
+   <button class="mem-save" id="memEdit">Change</button>
+   <button class="mem-save" id="memSave" style="display:none">Save</button>
+   <button class="mem-clear" id="memCancel" style="display:none">Cancel</button>
+   <button class="mem-clear" id="memClear">Erase memory</button>
    <span class="mem-status" id="memStatus"></span>
   </div>
  </div>
@@ -523,10 +524,10 @@
 
  <div id="tab-account" style="display:none">
   <div class="card">
-   <div class="acc-row"><span class="acc-lbl">Пошта</span><b id="accEmail">–</b></div>
-   <div class="acc-row"><span class="acc-lbl">Вхід</span><span>Google</span></div>
+   <div class="acc-row"><span class="acc-lbl">Email</span><b id="accEmail">–</b></div>
+   <div class="acc-row"><span class="acc-lbl">Sign-in</span><span>Google</span></div>
    <div class="acc-row" style="border-bottom:none;padding-bottom:16px">
-    <button class="mem-clear" id="accSignOut">Вийти з акаунта</button>
+    <button class="mem-clear" id="accSignOut">Sign out of account</button>
    </div>
   </div>
  </div>
@@ -559,7 +560,7 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  if (error) {
  const st = document.getElementById('authStatus');
  st.className = 'status err';
- st.textContent = t('Не вдалося відкрити вхід через Google: ') + error.message;
+ st.textContent = t('Could not start Google sign-in: ') + error.message;
  }
  };
 
@@ -567,12 +568,12 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  btn.onclick = async () => {
  const email = document.getElementById('email').value.trim();
  const st = document.getElementById('authStatus');
- if (!/.+@.+\..+/.test(email)) { st.className = 'status err'; st.textContent = t('Схоже, це не пошта'); return; }
+ if (!/.+@.+\..+/.test(email)) { st.className = 'status err'; st.textContent = t('That does not look like an email'); return; }
  btn.disabled = true;
  const { error } = await SB.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + '/cabinet.html' } });
  btn.disabled = false;
- if (error) { st.className = 'status err'; st.textContent = t('Не вдалося надіслати: ') + error.message; }
- else { st.className = 'status ok'; st.textContent = t('Лист надіслано. Відкрий його і натисни посилання'); }
+ if (error) { st.className = 'status err'; st.textContent = t('Could not send: ') + error.message; }
+ else { st.className = 'status ok'; st.textContent = t('Email sent. Open it and click the link'); }
  };
  }
 
@@ -616,22 +617,22 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  }
 
  async function save(text, okMsg) {
- st.textContent = t('Зберігаю…');
+ st.textContent = t('Saving…');
  try {
  const { error } = await SB.from('user_memory').upsert({ user_id: uid, memory: text || null, updated_at: new Date().toISOString() });
- if (error) { st.textContent = t('Не збереглося'); }
+ if (error) { st.textContent = t('Not saved'); }
  else { saved = text || ''; st.textContent = okMsg; setMode(false); }
- } catch (e) { st.textContent = t('Не збереглося'); }
+ } catch (e) { st.textContent = t('Not saved'); }
  setTimeout(() => { st.textContent = ''; }, 2600);
  }
 
  bEdit.onclick = () => setMode(true);
  bCancel.onclick = () => { ta.value = saved; setMode(false); };
- bSave.onclick = () => save(ta.value.trim().slice(0, 2000), t('Збережено ✓'));
+ bSave.onclick = () => save(ta.value.trim().slice(0, 2000), t('Saved ✓'));
  document.getElementById('memClear').onclick = async () => {
- if (!confirm(t('Стерти памʼять помічника? Дію не можна скасувати'))) return;
+ if (!confirm(t('Erase the assistant memory? This cannot be undone'))) return;
  ta.value = '';
- save(null, t('Стерто ✓'));
+ save(null, t('Erased ✓'));
  };
 
  /* памʼять у висновках звітів: людина може лишити нотатку, але заборонити
@@ -642,7 +643,7 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  try { use.checked = localStorage.getItem(MEMORY_IN_REPORTS_KEY) !== 'off'; } catch (e) {}
  use.onchange = () => {
   try { localStorage.setItem(MEMORY_IN_REPORTS_KEY, use.checked ? 'on' : 'off'); } catch (e) {}
-  st.textContent = use.checked ? t('Памʼять враховується у висновках ✓') : t('Памʼять у висновках вимкнена');
+  st.textContent = use.checked ? t('Memory is used in conclusions ✓') : t('Memory in conclusions is off');
   setTimeout(() => { st.textContent = ''; }, 2600);
  };
 
@@ -654,7 +655,7 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  /* ---- вкладки кабінету: Звіти / Памʼять / Акаунт, з підтримкою #хеша ---- */
  /* розділ кабінету обирається в меню кнопки Кабінет (шапка), сторінка
     показує лише обраний. Дублювати навігацію на сторінці не потрібно */
- const TAB_TITLES = { reports: 'Звіти', memory: 'Памʼять помічника', account: 'Налаштування акаунта' };
+ const TAB_TITLES = { reports: 'Reports', memory: 'Assistant memory', account: 'Account settings' };
  function switchTab(name) {
  if (!document.getElementById('tab-' + name)) name = 'reports';
  ['reports', 'memory', 'account'].forEach(n => {
@@ -684,10 +685,10 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  if (error) ({ data: rows, error } = await SB.from('reports')
  .select('id,title,created_at,kind,vin:data->_meta->>vin')
  .order('created_at', { ascending: false }).limit(100));
- if (error) { box.innerHTML = '<div class="empty">' + t('Не вдалося завантажити список') + '</div>'; return; }
+ if (error) { box.innerHTML = '<div class="empty">' + t('Could not load the list') + '</div>'; return; }
  if (!rows.length) {
  document.getElementById('searchWrap').style.display = 'none';
- box.innerHTML = '<div class="empty">' + t('Поки що порожньо. Зроби прорахунок на головній, і він збережеться тут автоматично') + '</div>';
+ box.innerHTML = '<div class="empty">' + t('Nothing here yet. Run an estimate on the home page and it will be saved here automatically') + '</div>';
  return;
  }
  box.innerHTML = rows.map(r => `
@@ -697,8 +698,8 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  <div class="d">${new Date(r.created_at).toLocaleString(calcarLocale())}</div>
  </div>
  <span class="go">→</span>
- <button class="kebab" title="Дії">⋯</button>
- <div class="menu"><button class="del">${t('Видалити прорахунок')}</button></div>
+ <button class="kebab" title="Actions">⋯</button>
+ <div class="menu"><button class="del">${t('Delete estimate')}</button></div>
  </div>`).join('');
 
  /* ---- пошук: назва (марка, модель, лот) + VIN ---- */
@@ -720,7 +721,7 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  if (!e) {
  e = document.createElement('div');
  e.className = 'empty empty-search';
- e.textContent = t('Нічого не знайдено');
+ e.textContent = t('Nothing found');
  box.appendChild(e);
  }
  } else if (e) e.remove();
@@ -729,7 +730,7 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  sClear.addEventListener('click', () => { sInput.value = ''; applyFilter(); sInput.focus(); });
 
  box.querySelectorAll('.report').forEach((el, idx) => {
- el.querySelector('.t').textContent = rows[idx].title || t('Прорахунок');
+ el.querySelector('.t').textContent = rows[idx].title || t('Estimate');
  const vin = rows[idx].vin || '';
  if (vin) {
  const v = document.createElement('div');
@@ -758,7 +759,7 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  menu.querySelector('.del').addEventListener('click', async ev => {
  ev.stopPropagation();
  menu.classList.remove('open');
- if (!confirm(t('Видалити цей прорахунок? Дію не можна скасувати'))) return;
+ if (!confirm(t('Delete this estimate? This cannot be undone'))) return;
  await SB.from('reports').delete().eq('id', el.dataset.id);
  el.remove();
  if (!box.querySelector('.report')) showList();

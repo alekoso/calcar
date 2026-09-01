@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="uk">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Перевірка оголошення · CalCar Check</title>
-<meta name="description" content="Встав посилання на оголошення про продаж авто. CalCar звіряє слова продавця з історією авто, даними VIN і фото, показує розбіжності і каже, чи варто брати.">
+<title>Listing check · CalCar Check</title>
+<meta name="description" content="Paste a car listing link. CalCar checks the seller's claims against the car's history, VIN data and photos, shows the discrepancies and tells you whether it is worth buying.">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -25,10 +25,10 @@
      нема й його, вихідна фраза розмітки. Вихідна фраза ніколи не є
      user-facing фолбеком, поки існує англійський варіант.
    - Словники /i18n/<code>.js реєструються у window.CALCAR_DICTS[code];
-     вантажаться обрана мова і, окремо, англійська як фолбек. */
+     вантажиться лише обрана мова: фолбек (англійська) і є мовою розмітки. */
 (function () {
   var LS = 'calcar_lang';
-  var SOURCE = 'ua';
+  var SOURCE = 'en';
   var DEFAULT_LOCALE = 'en';
   var FALLBACK_LOCALE = 'en';
   var LANGS = [
@@ -36,7 +36,7 @@
     { code: 'ru', label: 'Русский',    short: 'RU', locale: 'ru-RU', html: 'ru' },
     { code: 'en', label: 'English',    short: 'EN', locale: 'en-US', html: 'en' },
   ];
-  var DICT_V = '4';           /* міняти при зміні словників чи їх формату, щоб скинути кеш */
+  var DICT_V = '5';           /* міняти при зміні словників чи їх формату, щоб скинути кеш */
 
   /* єдиний резолвер локалі: явна підтримувана -> нормалізований код, усе
      інше -> null (той, хто викликає, підставляє DEFAULT чи FALLBACK).
@@ -95,7 +95,8 @@
     document.write('<scr' + 'ipt src="/i18n/' + code + '.js?v=' + DICT_V + '"></scr' + 'ipt>');
   }
   if (cur !== SOURCE) load(cur);
-  if (cur !== SOURCE && cur !== FALLBACK_LOCALE) load(FALLBACK_LOCALE);
+  /* фолбек-словник потрібен лише коли фолбек не є мовою самої розмітки */
+  if (cur !== SOURCE && cur !== FALLBACK_LOCALE && FALLBACK_LOCALE !== SOURCE) load(FALLBACK_LOCALE);
 
   function norm(s) { return String(s).replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, ''); }
 
@@ -125,7 +126,7 @@
     if (v === null) return null;
     return (s.match(/^\s*/) || [''])[0] + v + (s.match(/\s*$/) || [''])[0];
   }
-  function ready(l) { return l === SOURCE || !!(window.CALCAR_DICTS[l] || window.CALCAR_DICTS[FALLBACK_LOCALE]); }
+  function ready(l) { return l === SOURCE || !!window.CALCAR_DICTS[l] || (FALLBACK_LOCALE !== SOURCE && !!window.CALCAR_DICTS[FALLBACK_LOCALE]); }
   window.t = function (s, l) {
     l = resolveLocale(l) || lang();
     if (l === SOURCE) return s;
@@ -843,7 +844,7 @@
 <header>
   <div class="header-in">
     <div class="hleft">
-      <button class="lnc-btn" type="button" id="lncBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="lncPanel" title="Продукти CalCar" aria-label="Продукти CalCar"><svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor" aria-hidden="true"><rect x="0" y="0" width="4" height="4" rx="1.2"/><rect x="7" y="0" width="4" height="4" rx="1.2"/><rect x="14" y="0" width="4" height="4" rx="1.2"/><rect x="0" y="7" width="4" height="4" rx="1.2"/><rect x="7" y="7" width="4" height="4" rx="1.2"/><rect x="14" y="7" width="4" height="4" rx="1.2"/><rect x="0" y="14" width="4" height="4" rx="1.2"/><rect x="7" y="14" width="4" height="4" rx="1.2"/><rect x="14" y="14" width="4" height="4" rx="1.2"/></svg></button>
+      <button class="lnc-btn" type="button" id="lncBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="lncPanel" title="CalCar products" aria-label="CalCar products"><svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor" aria-hidden="true"><rect x="0" y="0" width="4" height="4" rx="1.2"/><rect x="7" y="0" width="4" height="4" rx="1.2"/><rect x="14" y="0" width="4" height="4" rx="1.2"/><rect x="0" y="7" width="4" height="4" rx="1.2"/><rect x="7" y="7" width="4" height="4" rx="1.2"/><rect x="14" y="7" width="4" height="4" rx="1.2"/><rect x="0" y="14" width="4" height="4" rx="1.2"/><rect x="7" y="14" width="4" height="4" rx="1.2"/><rect x="14" y="14" width="4" height="4" rx="1.2"/></svg></button>
       <a class="logo" href="/"><span class="l">Cal</span><span class="r">Car</span></a>
       <div class="beta">beta</div>
     </div>
@@ -859,13 +860,13 @@
       <div class="acc-wrap">
         <a class="btn-auth" href="/cabinet.html">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg>
-          Кабінет
+          My account
         </a>
       <div class="acc-menu">
-        <a href="/garage">Гараж</a>
-        <a href="/cabinet.html#reports">Звіти</a>
-        <a href="/cabinet.html#memory">Памʼять помічника</a>
-        <a href="/cabinet.html#account">Налаштування акаунта</a>
+        <a href="/garage">Garage</a>
+        <a href="/cabinet.html#reports">Reports</a>
+        <a href="/cabinet.html#memory">Assistant memory</a>
+        <a href="/cabinet.html#account">Account settings</a>
       </div>
       </div>
     </div>
@@ -873,27 +874,27 @@
 </header>
 
 <div class="lnc-backdrop" id="lncBackdrop"></div>
-<div class="lnc-panel" id="lncPanel" role="dialog" tabindex="-1" aria-label="Продукти CalCar">
+<div class="lnc-panel" id="lncPanel" role="dialog" tabindex="-1" aria-label="CalCar products">
   <div class="lnc-grab" aria-hidden="true"></div>
   <div class="lnc-head">
-    <div class="lnc-title">Продукти CalCar</div>
-    <button class="lnc-x" type="button" id="lncClose" title="Закрити" aria-label="Закрити"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    <div class="lnc-title">CalCar products</div>
+    <button class="lnc-x" type="button" id="lncClose" title="Close" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   </div>
   <div class="lnc-list">
     <a class="lnc-item" data-prod="check" href="/check">
       <span class="lnc-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="none" stroke="#141619" stroke-width="64" stroke-linecap="butt"><path d="M229.72 322.19 A 84 84 0 1 1 229.72 189.81"/><path d="M430.72 322.19 A 84 84 0 1 1 430.72 189.81"/></g></svg></span>
       <span class="lnc-body">
         <span class="lnc-name">CalCar Check</span>
-        <span class="lnc-desc">Перевірка авто перед купівлею</span>
-        <span class="lnc-badge">Поточний продукт</span>
+        <span class="lnc-desc">Pre-purchase car check</span>
+        <span class="lnc-badge">Current product</span>
       </span>
     </a>
     <a class="lnc-item" data-prod="import" href="/import">
       <span class="lnc-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="#141619"><path d="M160 244 L204 168 Q212 156 227 156 L299 156 Q314 156 322 168 L366 244 Z"/><rect x="76" y="238" width="360" height="58" rx="24"/><circle cx="162" cy="314" r="44"/><circle cx="350" cy="314" r="44"/></g><path d="M190 230 L228 176 Q233 170 240 170 L286 170 Q293 170 298 176 L336 230 Z" fill="#B8F23D"/></svg></span>
       <span class="lnc-body">
         <span class="lnc-name">CalCar Import</span>
-        <span class="lnc-desc">Скільки обійдеться авто зі США в Україні</span>
-        <span class="lnc-badge">Поточний продукт</span>
+        <span class="lnc-desc">What a US car really costs in Ukraine</span>
+        <span class="lnc-badge">Current product</span>
       </span>
     </a>
   </div>
@@ -919,17 +920,17 @@
 <div class="wrap">
 
   <div class="trbar" id="trBar" style="display:none">
-    <span>Звіт створено іншою мовою</span>
-    <button id="trBtn" type="button">Перекласти</button>
-    <button id="trClose" type="button" class="tr-x" title="Закрити">✕</button>
+    <span>This report was created in another language</span>
+    <button id="trBtn" type="button">Translate</button>
+    <button id="trClose" type="button" class="tr-x" title="Close">✕</button>
   </div>
 
   <div class="topbar">
-    <a class="btn-back" href="/check">← Нова перевірка</a>
+    <a class="btn-back" href="/check">← New check</a>
     <span id="saveHint"></span>
     <button class="btn-chat" id="chatTopBtn" type="button">
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.9 8.9 0 0 1-3.7-.8L3 20l1-4.9a8.4 8.4 0 1 1 17-3.6z"/></svg>
-      Чат по авто
+      Car chat
     </button>
   </div>
 
@@ -938,7 +939,7 @@
     <div class="photo-strip" id="photoStrip" style="display:none"></div>
     <div class="lot-title">
       <h1 id="carTitle"></h1>
-      <a class="ext-link" id="srcLink" href="#" target="_blank" rel="noopener" style="display:none" title="Відкрити вихідне оголошення">
+      <a class="ext-link" id="srcLink" href="#" target="_blank" rel="noopener" style="display:none" title="Open the original listing">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>
       </a>
       <span id="titleChips"></span>
@@ -949,8 +950,8 @@
   <!-- комплектація -->
   <div class="card" id="eqCard" style="display:none">
     <div class="card-head">
-      <h2>Комплектація</h2>
-      <span class="sec-meta hv-legend">Дорогі опції виділені</span>
+      <h2>Equipment</h2>
+      <span class="sec-meta hv-legend">Expensive options highlighted</span>
     </div>
     <div class="card-body"><div id="eqList"></div></div>
   </div>
@@ -958,8 +959,8 @@
   <!-- вердикт -->
   <div class="card" id="verdictCard" style="display:none">
     <div class="card-head">
-      <h2>Чи варто брати</h2>
-      <span class="risk-badge" id="scoreBadge" style="display:none"><span class="dot ok" id="scoreDot"></span>Оцінка CalCar: <b id="scoreVal">–</b> <span class="risk-label" id="scoreLabel"></span><span class="score-shield" id="scoreShield" tabindex="0" role="button" aria-label="CalCar Score"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg><span class="score-tip" id="scoreTip"><b>CalCar Score</b><span id="scoreRiskLvl" style="display:none;font-weight:600"></span><span>Наша оцінка авто на основі даних, які вдалося перевірити.</span><span>Критичні ризики можуть сильніше впливати на підсумкову оцінку.</span></span></span></span>
+      <h2>Worth buying?</h2>
+      <span class="risk-badge" id="scoreBadge" style="display:none"><span class="dot ok" id="scoreDot"></span>CalCar Score: <b id="scoreVal">–</b> <span class="risk-label" id="scoreLabel"></span><span class="score-shield" id="scoreShield" tabindex="0" role="button" aria-label="CalCar Score"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg><span class="score-tip" id="scoreTip"><b>CalCar Score</b><span id="scoreRiskLvl" style="display:none;font-weight:600"></span><span>Our assessment of the car based on the data we could verify.</span><span>Critical risks can weigh more heavily on the final score.</span></span></span></span>
     </div>
     <div class="card-body">
       <div id="pdBlock" style="display:none">
@@ -967,11 +968,11 @@
           <div class="pd-headline" id="pdHeadline"></div>
         </div>
         <div id="pdShort"></div>
-        <button class="pd-more" id="pdMoreBtn" type="button">Читати повний розбір</button>
+        <button class="pd-more" id="pdMoreBtn" type="button">Read the full reasoning</button>
         <div class="pd-reasoning" id="pdReasoning" style="display:none"></div>
         <div class="pd-cta">
-          <button class="pd-cta-btn" id="pdChatBtn" type="button"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg><span>Обговорити це авто в чаті</span></button>
-          <span class="pd-cta-hint">Запитай про ДТП, пробіг, комплектацію, ризики або порівняй з іншими авто</span>
+          <button class="pd-cta-btn" id="pdChatBtn" type="button"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg><span>Discuss this car in chat</span></button>
+          <span class="pd-cta-hint">Ask about the accident, mileage, options, risks, or compare with other cars</span>
         </div>
       </div>
       <div class="v-text" id="vText"></div>
@@ -981,8 +982,8 @@
   <!-- ключові ризики -->
   <div class="card" id="risksCard" style="display:none">
     <div class="card-head">
-      <h2>Ключові ризики</h2>
-      <span class="sec-meta">Що може коштувати найбільше</span>
+      <h2>Key risks</h2>
+      <span class="sec-meta">What could cost you most</span>
     </div>
     <div class="card-body"><div id="risksList"></div></div>
   </div>
@@ -990,8 +991,8 @@
   <!-- фото зараз -->
   <div class="card" id="photoCard" style="display:none">
     <div class="card-head">
-      <h2>Поточний стан за фото оголошення</h2>
-      <span class="badge blue">AI-аналіз фото</span>
+      <h2>Current condition from listing photos</h2>
+      <span class="badge blue">AI photo analysis</span>
     </div>
     <div class="card-body"><div class="flags" id="photoFindings"></div></div>
   </div>
@@ -999,13 +1000,13 @@
   <!-- історія пошкоджень -->
   <div class="card" id="usCard" style="display:none">
     <div class="card-head">
-      <h2>Історія пошкоджень і фото з минулого</h2>
-      <a class="ext-link" id="usSrcBtn" href="#" target="_blank" rel="noopener" style="display:none" title="Відкрити джерело">
+      <h2>Damage history and past photos</h2>
+      <a class="ext-link" id="usSrcBtn" href="#" target="_blank" rel="noopener" style="display:none" title="Open the source">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>
       </a>
-      <span class="badge blue">AI-аналіз фото</span>
+      <span class="badge blue">AI photo analysis</span>
     </div>
-    <div class="ba-label" id="baBefore" style="display:none"><span class="dot bad"></span>До ремонту (аукціон США)</div>
+    <div class="ba-label" id="baBefore" style="display:none"><span class="dot bad"></span>Before repair (US auction)</div>
     <div class="photo-strip" id="auctionStrip" style="display:none"></div>
     <div class="card-body">
       <div class="dmg-note" id="usSummary" style="display:none"></div>
@@ -1017,9 +1018,9 @@
   <!-- розбіжності -->
   <div class="card" id="discCard" style="display:none">
     <div class="card-head">
-      <h2>Розбіжності між джерелами</h2>
+      <h2>Discrepancies between sources</h2>
       <span class="badge red" id="discCount"></span>
-      <span class="sec-meta">Де слова продавця не сходяться з даними чи фото</span>
+      <span class="sec-meta">Where the seller's claims conflict with data or photos</span>
     </div>
     <div class="card-body"><div id="discList"></div></div>
   </div>
@@ -1028,8 +1029,8 @@
   <!-- історія -->
   <div class="card" id="histCard" style="display:none">
     <div class="card-head">
-      <h2>Історія авто</h2>
-      <span class="sec-meta">За відкритими даними площадки і реєстрів</span>
+      <h2>Vehicle history</h2>
+      <span class="sec-meta">From open marketplace and registry data</span>
     </div>
     <div class="card-body"><div id="histList"></div></div>
   </div>
@@ -1037,8 +1038,8 @@
   <!-- слабкі місця -->
   <div class="card" id="issuesCard" style="display:none">
     <div class="card-head">
-      <h2>Типові слабкі місця цієї версії</h2>
-      <span class="sec-meta">З урахуванням двигуна та пробігу</span>
+      <h2>Known weak points of this version</h2>
+      <span class="sec-meta">Given the engine and mileage</span>
     </div>
     <div class="card-body"><div id="issuesList"></div></div>
   </div>
@@ -1046,8 +1047,8 @@
   <!-- питання продавцю -->
   <div class="card" id="qCard" style="display:none">
     <div class="card-head">
-      <h2>Питання продавцю</h2>
-      <span class="sec-meta">Що спитати до огляду</span>
+      <h2>Questions for the seller</h2>
+      <span class="sec-meta">What to ask before viewing</span>
     </div>
     <div class="card-body"><div id="qList"></div></div>
   </div>
@@ -1055,14 +1056,14 @@
   <!-- фінал: що зробити перед купівлею -->
   <div class="card" id="chkCard" style="display:none">
     <div class="card-head">
-      <h2>Що зробити перед купівлею</h2>
-      <span class="sec-meta">Конкретно для цього авто</span>
+      <h2>What to do before buying</h2>
+      <span class="sec-meta">Specific to this car</span>
     </div>
     <div class="card-body">
       <div id="chkList"></div>
       <div class="final-actions">
-        <button class="btn-primary" id="pdfBtn" type="button" style="height:44px">Завантажити PDF</button>
-        <button class="btn-back" id="askAi" type="button">Запитати CalCar про це авто</button>
+        <button class="btn-primary" id="pdfBtn" type="button" style="height:44px">Download PDF</button>
+        <button class="btn-back" id="askAi" type="button">Ask CalCar about this car</button>
       </div>
     </div>
   </div>
@@ -1072,21 +1073,21 @@
 <footer>
   <div class="footer-in">
     <a class="logo" href="/"><span class="l">Cal</span><span class="r">Car</span></a>
-    <span>beta · AI-аналіз, остаточне рішення завжди за вами</span>
+    <span>beta · AI analysis, the final decision is always yours</span>
     <span class="right">© 2026 CalCar · calcar.io</span>
   </div>
 </footer>
 
 <!-- чат по цьому авто -->
 <button id="chatFab" style="display:none" hidden></button>
-<button class="chat-selask" id="chatSelAsk" type="button">Спитати про це</button>
+<button class="chat-selask" id="chatSelAsk" type="button">Ask about this</button>
 <div class="chat-overlay" id="chatOverlay"></div>
 <div class="chat-panel" id="chatPanel">
   <div class="chat-head">
     <div class="ttl">
-      <b>Асистент CalCar</b>
+      <b>CalCar Assistant</b>
     </div>
-    <button class="chat-close" id="chatClose" title="Згорнути" aria-label="Згорнути">
+    <button class="chat-close" id="chatClose" title="Collapse" aria-label="Collapse">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
     </button>
   </div>
@@ -1096,43 +1097,43 @@
   <div class="chat-canvas">
     <div class="chat-msgs" id="chatMsgs"></div>
     <div class="chat-sugg" id="chatSugg">
-      <button>Чи варто торгуватися?</button>
-      <button>Що спитати продавця?</button>
-      <button>Які головні ризики?</button>
-      <button>Що перевірити на тест-драйві?</button>
-      <button>Порівняй з іншим авто з кабінету</button>
+      <button>Should I negotiate?</button>
+      <button>What should I ask the seller?</button>
+      <button>What are the main risks?</button>
+      <button>What to check on a test drive?</button>
+      <button>Compare with another car from my account</button>
     </div>
   </div>
 
   <div class="chat-composer">
     <div class="chat-mention" id="chatMention" style="display:none">
-      <input type="text" id="mentionSearch" placeholder="Пошук звіту за назвою…" autocomplete="off">
+      <input type="text" id="mentionSearch" placeholder="Search reports by name…" autocomplete="off">
       <div class="chat-mention-list" id="mentionList"></div>
     </div>
     <div class="chat-quote" id="chatQuote" style="display:none">
       <span id="chatQuoteText"></span>
-      <button type="button" id="chatQuoteX" aria-label="Прибрати цитату">✕</button>
+      <button type="button" id="chatQuoteX" aria-label="Remove quote">✕</button>
     </div>
     <div class="chat-files" id="chatFiles" style="display:none"></div>
     <div class="chat-box">
       <div class="chat-ta-wrap">
-        <textarea id="chatText" rows="1" placeholder="Постав питання… @ щоб додати звіт для порівняння"></textarea>
+        <textarea id="chatText" rows="1" placeholder="Ask a question… @ to add a report for comparison"></textarea>
         <div class="chat-ta-overlay" id="chatTaOverlay" aria-hidden="true"></div>
       </div>
       <div class="chat-box-row">
-        <button class="chat-attach" id="chatAttach" type="button" title="Прикріпити фото або PDF" aria-label="Прикріпити файл">
+        <button class="chat-attach" id="chatAttach" type="button" title="Attach a photo or PDF" aria-label="Attach a file">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
         </button>
-        <button class="chat-attach at" id="chatAtBtn" type="button" title="Додати звіт для порівняння" aria-label="Додати звіт для порівняння">@</button>
+        <button class="chat-attach at" id="chatAtBtn" type="button" title="Add a report for comparison" aria-label="Add a report for comparison">@</button>
         <input type="file" id="chatFile" accept="image/*,application/pdf" multiple style="display:none">
-        <button class="chat-send" id="chatSend" title="Надіслати" aria-label="Надіслати">
+        <button class="chat-send" id="chatSend" title="Send" aria-label="Send">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
         </button>
       </div>
     </div>
     <div class="chat-note">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-      CalCar бачить цей звіт і дані оголошення
+      CalCar sees this report and the listing data
     </div>
   </div>
 </div>
@@ -1213,7 +1214,7 @@ function applyTranslation(tr){
 async function translateNow(){
   const ui = window.calcarLang();
   const btn = $('trBtn');
-  btn.disabled = true; btn.textContent = t('Перекладаю…');
+  btn.disabled = true; btn.textContent = t('Translating…');
   try {
     const { _meta, translations, ...body } = DATA;
     const r = await fetch('/api/check-translate', {
@@ -1222,7 +1223,7 @@ async function translateNow(){
       body: JSON.stringify({ report: body, lang: ui }),
     });
     const data = await r.json().catch(() => ({}));
-    if (!r.ok || !data.report) throw new Error(data.error || t('Не вдалося перекласти, спробуй ще раз'));
+    if (!r.ok || !data.report) throw new Error(data.error || t('Translation failed, try again'));
     DATA.translations = Object.assign({}, DATA.translations, { [ui]: data.report });
     try { sessionStorage.setItem('calcarCheck', JSON.stringify(DATA)); } catch (e) {}
     /* кеш перекладу в збережений звіт: наступного разу миттєво */
@@ -1230,7 +1231,7 @@ async function translateNow(){
     $('trBar').style.display = 'none';
     applyTranslation(data.report);
   } catch (e) {
-    btn.disabled = false; btn.textContent = t('Перекласти');
+    btn.disabled = false; btn.textContent = t('Translate');
     alert(e.message);
   }
 }
@@ -1278,7 +1279,7 @@ function boot2(D){
 
   /* ---- авто: стрічка фото + факти, як в Import ---- */
   const v = D.vehicle || {};
-  $('carTitle').textContent = v.title || t('Авто');
+  $('carTitle').textContent = v.title || t('Vehicle');
   const ph = httpsOnly(M.photos);
   if (ph.length) {
     $('photoStrip').style.display = '';
@@ -1287,23 +1288,23 @@ function boot2(D){
   /* характеристики: label і value в одному рядку. Дані і порядок ті самі,
      змінюється лише подача. 6 полів: 4+2, менше: порівну */
   const spec = [];
-  if (M.price) spec.push([t('Ціна'), nf(M.price) + ' ' + (M.currency || ''), 'price']);
+  if (M.price) spec.push([t('Price'), nf(M.price) + ' ' + (M.currency || ''), 'price']);
   /* середній пробіг за МІСЯЦЬ: суто presentation з того самого
      canonical annual_mileage_km осі Пробіг, округлення до 50 */
   const dimsMil = ((D.score_breakdown || D.score_breakdown_v2 || {}).score_dimensions || {}).mileage;
   const monthlyKm = (dimsMil && dimsMil.score_available === true && typeof dimsMil.annual_mileage_km === 'number')
     ? Math.round(dimsMil.annual_mileage_km / 12 / 50) * 50 : null;
   const annualHtml = monthlyKm !== null
-    ? '<span class="spec-mo" title="' + esc(t('Середній пробіг за місяць за весь строк експлуатації автомобіля.')) + '">(≈' + esc(nf(monthlyKm)) + ' ' + esc(t('км/міс')) + ')</span>'
+    ? '<span class="spec-mo" title="' + esc(t('Average monthly mileage over the whole life of the vehicle.')) + '">(≈' + esc(nf(monthlyKm)) + ' ' + esc(t('km/mo')) + ')</span>'
     : '';
-  if (v.mileage_note) spec.push([t('Пробіг'), clean(v.mileage_note), null, annualHtml]);
-  else if (M.odometer_km) spec.push([t('Пробіг'), nf(M.odometer_km) + ' ' + t('км'), null, annualHtml]);
-  if (v.engine) spec.push([t('Двигун'), clean(v.engine)]);
-  if (v.transmission) spec.push([t('Коробка'), clean(v.transmission)]);
-  if (v.drive) spec.push([t('Привід'), clean(v.drive)]);
-  if (v.trim) spec.push([t('Версія'), clean(v.trim)]);
-  const FUEL = { petrol: t('Бензин'), diesel: t('Дизель'), hybrid: t('Гібрид'), electric: t('Електро') };
-  if (v.fuel && FUEL[v.fuel]) spec.push([t('Паливо'), FUEL[v.fuel]]);
+  if (v.mileage_note) spec.push([t('Mileage'), clean(v.mileage_note), null, annualHtml]);
+  else if (M.odometer_km) spec.push([t('Mileage'), nf(M.odometer_km) + ' ' + t('km'), null, annualHtml]);
+  if (v.engine) spec.push([t('Engine'), clean(v.engine)]);
+  if (v.transmission) spec.push([t('Gearbox'), clean(v.transmission)]);
+  if (v.drive) spec.push([t('Drivetrain'), clean(v.drive)]);
+  if (v.trim) spec.push([t('Trim'), clean(v.trim)]);
+  const FUEL = { petrol: t('Petrol'), diesel: t('Diesel'), hybrid: t('Hybrid'), electric: t('Electric') };
+  if (v.fuel && FUEL[v.fuel]) spec.push([t('Fuel'), FUEL[v.fuel]]);
   const specRow = r => '<div class="spec-row"><span class="spec-l">' + esc(r[0]) + '</span><span class="spec-v' + (r[2] ? ' ' + r[2] : '') + '">' + esc(r[1]) + (r[3] || '') + '</span></div>';
   /* збалансовані колонки: 5=3+2, 6=3+3, 7=4+3, 8=4+4 */
   const specCut = Math.ceil(spec.length / 2);
@@ -1311,10 +1312,10 @@ function boot2(D){
     + (spec.length > specCut ? '<div class="spec-col">' + spec.slice(specCut).map(specRow).join('') + '</div>' : '');
   /* identity-чіпи біля назви: нейтральні VIN і номер із копіюванням */
   const copySvg = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
-  const chip = (l, val) => '<span class="id-chip"><span class="id-l">' + esc(l) + '</span><span class="id-v">' + esc(val) + '</span><button class="copy-btn" type="button" data-copy="' + esc(val) + '" title="' + esc(t('Копіювати')) + '" aria-label="' + esc(t('Копіювати')) + '">' + copySvg + '</button></span>';
+  const chip = (l, val) => '<span class="id-chip"><span class="id-l">' + esc(l) + '</span><span class="id-v">' + esc(val) + '</span><button class="copy-btn" type="button" data-copy="' + esc(val) + '" title="' + esc(t('Copy')) + '" aria-label="' + esc(t('Copy')) + '">' + copySvg + '</button></span>';
   const idBits = [];
   if (M.vin) idBits.push(chip('VIN', M.vin));
-  if (M.plate) idBits.push(chip(t('Номер'), M.plate));
+  if (M.plate) idBits.push(chip(t('Plate'), M.plate));
   if (idBits.length) {
     $('titleChips').innerHTML = idBits.join('');
     $('titleChips').addEventListener('click', e => {
@@ -1322,8 +1323,8 @@ function boot2(D){
       if (!b) return;
       navigator.clipboard.writeText(b.dataset.copy).then(() => {
         b.classList.add('done');
-        b.title = t('Скопійовано');
-        setTimeout(() => { b.classList.remove('done'); b.title = t('Копіювати'); }, 1600);
+        b.title = t('Copied');
+        setTimeout(() => { b.classList.remove('done'); b.title = t('Copy'); }, 1600);
       }).catch(() => {});
     });
   }
@@ -1360,15 +1361,15 @@ function boot2(D){
     let fullHtml = pd.reasoning
       ? clean(pd.reasoning).split(/\n+/).map(p => p.trim()).filter(Boolean).map(p => '<p>' + esc(p) + '</p>').join('')
       : '';
-    if (pd.value_context) fullHtml += '<div class="pd-sec"><b>' + esc(t('Про ціну')) + '</b><p class="pd-short" style="margin:0">' + esc(pd.value_context) + '</p></div>';
+    if (pd.value_context) fullHtml += '<div class="pd-sec"><b>' + esc(t('About the price')) + '</b><p class="pd-short" style="margin:0">' + esc(pd.value_context) + '</p></div>';
     const miss = Array.isArray(pd.missing_but_important) ? pd.missing_but_important.filter(x => typeof x === 'string' && x.trim()) : [];
-    if (miss.length) fullHtml += '<div class="pd-sec"><b>' + esc(t('Чого ми не перевірили')) + '</b><ul>' + miss.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul></div>';
+    if (miss.length) fullHtml += '<div class="pd-sec"><b>' + esc(t('What we could not verify')) + '</b><ul>' + miss.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul></div>';
     if (fullHtml) {
       $('pdReasoning').innerHTML = fullHtml;
       $('pdMoreBtn').onclick = () => {
         const open = $('pdReasoning').style.display !== 'none';
         $('pdReasoning').style.display = open ? 'none' : '';
-        $('pdMoreBtn').textContent = open ? t('Читати повний розбір') : t('Згорнути розбір');
+        $('pdMoreBtn').textContent = open ? t('Read the full reasoning') : t('Collapse the reasoning');
       };
     } else {
       $('pdMoreBtn').style.display = 'none';
@@ -1386,7 +1387,7 @@ function boot2(D){
       $('scoreBadge').style.display = '';
       $('scoreDot').className = 'dot unknown';
       $('scoreVal').textContent = '';
-      $('scoreLabel').textContent = t('Недостатньо даних для оцінки');
+      $('scoreLabel').textContent = t('Not enough data to score');
     }
     const v2 = (bd2 && bd2.score_available === false) ? null
       : (bd2 && typeof bd2.final === 'number' ? bd2.final
@@ -1402,9 +1403,9 @@ function boot2(D){
       $('scoreVal').textContent = sc.toFixed(1) + ' / 10';
       $('scoreLabel').style.display = 'none';
       /* рівень ВИЯВЛЕНОГО ризику: wording, сам бал незмінний */
-      const riskLabel = sc >= 8.5 ? t('Низький виявлений ризик')
-        : sc >= 7.0 ? t('Помірний виявлений ризик')
-        : sc >= 5.5 ? t('Підвищений виявлений ризик') : t('Високий виявлений ризик');
+      const riskLabel = sc >= 8.5 ? t('Low detected risk')
+        : sc >= 7.0 ? t('Moderate detected risk')
+        : sc >= 5.5 ? t('Elevated detected risk') : t('High detected risk');
       const riskEl = document.getElementById('scoreRiskLvl');
       if (riskEl) { riskEl.textContent = riskLabel; riskEl.style.display = ''; }
       /* компактний popover підоцінок на самому бейджі Оцінки CalCar:
@@ -1415,7 +1416,7 @@ function boot2(D){
       if (dims && v2 !== null) {
         /* Технічні ризики свідомо НЕ показуються в popover: бекенд-вісь
            лишається в breakdown, це лише presentation */
-        const ORDER = [['history', 'Історія авто'], ['mileage', 'Пробіг'], ['damage_repair', 'Пошкодження та відновлення'], ['current_condition', 'Стан за фото']];
+        const ORDER = [['history', 'Vehicle history'], ['mileage', 'Mileage'], ['damage_repair', 'Damage and repair'], ['current_condition', 'Condition from photos']];
         const pop = document.createElement('span');
         pop.className = 'dim-pop';
         pop.innerHTML = ORDER.map(([k, lbl]) => {
@@ -1483,9 +1484,9 @@ function boot2(D){
       setTimeout(() => {
         const coach = document.createElement('div');
         coach.className = 'chat-coach';
-        coach.innerHTML = '<b>' + esc(t('Можна спитати про це авто')) + '</b>'
-          + esc(t('Чат допоможе розібрати ДТП, пробіг, ризики і підкаже, що перевірити перед покупкою.'))
-          + '<button class="coach-x" type="button" aria-label="' + esc(t('Закрити')) + '">×</button>';
+        coach.innerHTML = '<b>' + esc(t('You can ask about this car')) + '</b>'
+          + esc(t('The chat can walk you through the accident history, mileage and risks, and suggest what to check before buying.'))
+          + '<button class="coach-x" type="button" aria-label="' + esc(t('Close')) + '">×</button>';
         chatBtnEl.closest('.topbar').appendChild(coach);
         const dismiss = () => { markSeen(); coach.remove(); };
         coach.querySelector('.coach-x').addEventListener('click', dismiss);
@@ -1496,7 +1497,7 @@ function boot2(D){
   } catch (e) {}
 
   /* ---- ключові ризики ---- */
-  const LVL = { high: ['red', t('висока ціна помилки')], med: ['amber', t('варто уваги')], low: ['blue', t('фонове')] };
+  const LVL = { high: ['red', t('high cost of mistake')], med: ['amber', t('worth attention')], low: ['blue', t('background')] };
   fill('risksCard', 'risksList', D.risks, r => {
     const lv = LVL[r.level] || LVL.med;
     return '<div class="risk"><div class="risk-t"><b>' + esc(r.title) + '</b>'
@@ -1522,7 +1523,7 @@ function boot2(D){
     const isUS = !!(am.house || (M.auction_search && M.auction_search.status === 'found') || (M.auction_url && /bidfax|copart|iaai|bid\.cars|poctra/i.test(M.auction_url)) || (auPh.length && auPh.every(u => /riastatic\.com\/photos\/auto\/usa\//.test(u))));
     if (auPh.length) {
       $('baBefore').style.display = '';
-      $('baBefore').innerHTML = '<span class="dot bad"></span>' + esc(isUS ? t('До ремонту (аукціон США)') : t('Фото з минулого'));
+      $('baBefore').innerHTML = '<span class="dot bad"></span>' + esc(isUS ? t('Before repair (US auction)') : t('Past photos'));
       $('auctionStrip').style.display = '';
       $('auctionStrip').innerHTML = auPh.map(u => '<img loading="lazy" src="' + esc(u) + '" alt="">').join('');
     }
@@ -1533,7 +1534,7 @@ function boot2(D){
     }
     if (am.house || am.date) {
       /* паспорт джерела за зразком позначок комплектації */
-      $('usSrc').innerHTML = '<span class="badge blue">' + esc(t('Дані аукціону') + (am.house ? ' · ' + am.house : '') + (am.date ? ' · ' + am.date : '')) + '</span>';
+      $('usSrc').innerHTML = '<span class="badge blue">' + esc(t('Auction data') + (am.house ? ' · ' + am.house : '') + (am.date ? ' · ' + am.date : '')) + '</span>';
     }
     /* перехід до першоджерела запису в шапці блоку: фактичний source_url
        (сторінка запису, не CDN-картинка), спільний ext-link компонент.
@@ -1545,8 +1546,8 @@ function boot2(D){
       sb.style.display = '';
       try {
         const host = new URL(srcUrl).hostname.replace(/^www\./, '');
-        sb.title = t('Відкрити джерело') + ' · ' + host;
-      } catch (e) { sb.title = t('Відкрити джерело'); }
+        sb.title = t('Open the source') + ' · ' + host;
+      } catch (e) { sb.title = t('Open the source'); }
     }
   }
 
@@ -1558,7 +1559,7 @@ function boot2(D){
   const RANK = { high: 0, med: 1, low: 2 };
   const discs = (D.discrepancies || []).slice()
     .sort((a, b) => (RANK[a.severity] ?? 3) - (RANK[b.severity] ?? 3));
-  const SEVW = { high: t('серйозно'), med: t('варто уваги'), low: t('дрібниця') };
+  const SEVW = { high: t('serious'), med: t('worth attention'), low: t('minor') };
   fill('discCard', 'discList', discs, d =>
     '<div class="disc ' + esc(d.severity || 'low') + '">'
     + '<div class="disc-t"><span class="dot ' + (d.severity === 'high' ? 'bad' : d.severity === 'med' ? 'warn' : 'unknown') + '"></span>'
@@ -1583,8 +1584,8 @@ function boot2(D){
        вихідної галереї через _meta.photo_map */
     const pm = M.photo_map || {};
     const humanRef = ref => String(ref || '')
-      .replace(/\bauction_photo_(\d+)\b/g, (m, n) => t('архівне фото №') + (((pm.auction || [])[n - 1] >= 0) ? pm.auction[n - 1] + 1 : n))
-      .replace(/\bphoto_(\d+)\b/g, (m, n) => t('фото оголошення №') + (((pm.listing || [])[n - 1] != null) ? pm.listing[n - 1] + 1 : n));
+      .replace(/\bauction_photo_(\d+)\b/g, (m, n) => t('archive photo #') + (((pm.auction || [])[n - 1] >= 0) ? pm.auction[n - 1] + 1 : n))
+      .replace(/\bphoto_(\d+)\b/g, (m, n) => t('listing photo #') + (((pm.listing || [])[n - 1] != null) ? pm.listing[n - 1] + 1 : n));
     const chipHtml = o => {
       const meta = (o.evidence || []).map(e => [e.ref ? humanRef(e.ref) : null, e.sign].filter(Boolean).join(': ')).filter(Boolean).join(' · ');
       /* premium-опція: та сама геометрія, інша лише рамка; tooltip каже
@@ -1593,17 +1594,17 @@ function boot2(D){
       /* пояснення, чому опція виділена; без грошових цифр, бо надійних
          цінових даних нема */
       const tip = hv
-        ? (t('Дорога опція') + '. ' + t('Ця опція зазвичай помітно впливає на вартість автомобіля або вартість її ремонту чи заміни.') + (meta ? ' · ' + meta : ''))
+        ? (t('Expensive option') + '. ' + t('This option usually has a noticeable impact on the car price or on the cost of its repair or replacement.') + (meta ? ' · ' + meta : ''))
         : meta;
       return '<span class="eq-chip' + (hv ? ' hv' : '') + '"' + (tip ? ' title="' + esc(tip) + '"' : '') + '>' + esc(o.name) + '</span>';
     };
     const byNotable = (a, b) => (b.highlight === true) - (a.highlight === true);
     const EQ_SRC_GROUPS = [
-      ['seller_and_visual', t('Підтверджено')],
-      ['visual', t('Видно на фото')],
-      ['vehicle_data', t('Дані авто')],
-      ['listing_data', t('Дані оголошення')],
-      ['seller', t('Зі слів продавця')],
+      ['seller_and_visual', t('Confirmed')],
+      ['visual', t('Visible in photos')],
+      ['vehicle_data', t('Vehicle data')],
+      ['listing_data', t('Listing data')],
+      ['seller', t('Per the seller')],
     ];
     let eqHtml2 = '';
     for (const [key, titleG] of EQ_SRC_GROUPS) {
@@ -1612,14 +1613,14 @@ function boot2(D){
       eqHtml2 += '<div class="eq-group"><div class="eq-src">' + esc(titleG) + '</div><div class="eq-chips">' + items.map(chipHtml).join('') + '</div></div>';
     }
     const retro = eqV2.filter(o => o.retrofit).sort(byNotable);
-    if (retro.length) eqHtml2 += '<div class="eq-group"><div class="eq-src">' + esc(t('Встановлено пізніше / переобладнання')) + '</div><div class="eq-chips">' + retro.map(chipHtml).join('') + '</div></div>';
+    if (retro.length) eqHtml2 += '<div class="eq-group"><div class="eq-src">' + esc(t('Installed later / retrofit')) + '</div><div class="eq-chips">' + retro.map(chipHtml).join('') + '</div></div>';
     if (eqHtml2) { $('eqCard').style.display = ''; $('eqList').innerHTML = eqHtml2; }
   } else {
     const eq = D.equipment || {};
     const EQ_GROUPS = [
-      ['vin',    'green', t('Підтверджено за VIN')],
-      ['photo',  'blue',  t('Видно на фото')],
-      ['seller', 'amber', t('Зі слів продавця')],
+      ['vin',    'green', t('Confirmed by VIN')],
+      ['photo',  'blue',  t('Visible in photos')],
+      ['seller', 'amber', t('Per the seller')],
     ];
     const eqHtml = EQ_GROUPS
       .filter(g => Array.isArray(eq[g[0]]) && eq[g[0]].length)
@@ -1641,21 +1642,21 @@ function boot2(D){
       /* реєстраційні події видно при скануванні; бейдж лише за явну
          перереєстрацію, "зміну власника" не вигадуємо */
       + '<div class="hrow' + (/реєстрац|регистрац|registration/i.test(h.event) ? ' reg' : '') + '"><span class="hd">' + esc(h.date) + '</span><span>' + esc(h.event)
-      + (owners[i] ? ' <span class="badge reg-badge">' + esc(t('{n}-й власник').replace('{n}', owners[i])) + '</span>' : '') + '</span></div>'
+      + (owners[i] ? ' <span class="badge reg-badge">' + esc(t('Owner #{n}').replace('{n}', owners[i])) + '</span>' : '') + '</span></div>'
     ).join('')
     + (D.history_note ? '<div class="dmg-note hnote">' + esc(D.history_note) + '</div>' : '')
     /* стан аукціонної перевірки: НЕ твердження, що всі авто з США мусять
        бути в базах; expected лише коли незалежні дані кажуть про аукціонну
        історію, а сам запис не знайдено */
-    + (aas === 'checked_absent_neutral' ? '<div class="dmg-note hnote">' + esc(t('Аукціонних записів у перевірених джерелах не знайдено')) + '</div>' : '')
-    + (aas === 'checked_absent_expected' ? '<div class="dmg-note hnote">' + esc(t('Інші дані вказують на аукціонну історію в США, але сам запис у перевірених архівах знайти не вдалося')) + '</div>' : '');
+    + (aas === 'checked_absent_neutral' ? '<div class="dmg-note hnote">' + esc(t('No auction records found in the checked sources')) + '</div>' : '')
+    + (aas === 'checked_absent_expected' ? '<div class="dmg-note hnote">' + esc(t('Other data points to a US auction history, but the record itself was not found in the checked archives')) + '</div>' : '');
   }
 
   /* ---- болячки: без бейджа ризику, це довідка про модель ---- */
   fill('issuesCard', 'issuesList', D.model_notes?.issues, i =>
     '<div class="issue"><div class="issue-t"><b>' + esc(i.title) + '</b>'
     + (i.unit ? '<span class="u">' + esc(i.unit) + '</span>' : '')
-    + (i.seller_serviced === true ? '<span class="badge amber">' + esc(t('продавець заявляє, що вузол уже обслужений')) + '</span>' : '') + '</div>'
+    + (i.seller_serviced === true ? '<span class="badge amber">' + esc(t('seller claims this unit was already serviced')) + '</span>' : '') + '</div>'
     + '<p>' + esc(i.detail) + '</p></div>');
 
   /* питання продавцю: компактний блок у нижній частині звіту */
@@ -1725,26 +1726,26 @@ async function saveIfNeeded(){
     const { data: s } = await SB.auth.getSession();
     if (!s?.session) return;
     const hint = $('saveHint');
-    hint.textContent = t('Зберігаю…'); hint.classList.add('show');
+    hint.textContent = t('Saving…'); hint.classList.add('show');
     let ins = await SB.from('reports').insert({
       user_id: s.session.user.id, kind: 'check', public_id: makePid(),
-      title: DATA.vehicle?.title || t('Перевірка'), data: DATA,
+      title: DATA.vehicle?.title || t('Check'), data: DATA,
     }).select('id,public_id').single();
     /* міграція public_id ще не виконана: зберігаємо без нього */
     if (ins.error) ins = await SB.from('reports').insert({
       user_id: s.session.user.id, kind: 'check',
-      title: DATA.vehicle?.title || t('Перевірка'), data: DATA,
+      title: DATA.vehicle?.title || t('Check'), data: DATA,
     }).select('id').single();
     const row = ins.data;
     if (ins.error || !row?.id) {
-      hint.textContent = t('Не збереглося');
+      hint.textContent = t('Not saved');
       setTimeout(() => hint.classList.remove('show'), 2600);
       return;
     }
     sessionStorage.setItem('calcarCheckId', row.id);
     ROW_ID = row.id;
     history.replaceState(null, '', row.public_id ? '/check/' + row.public_id : '/result-check.html?id=' + row.id);
-    hint.textContent = t('Збережено ✓');
+    hint.textContent = t('Saved ✓');
     setTimeout(() => hint.classList.remove('show'), 1600);
   } catch (e) {}
 }
@@ -1889,7 +1890,7 @@ async function loadRefList(){
 }
 function refDays(iso){
   const d = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000));
-  return d === 0 ? t('сьогодні') : d + ' ' + t('дн. тому');
+  return d === 0 ? t('today') : d + ' ' + t('days ago');
 }
 function mentionRows(){
   const q = (document.getElementById('mentionSearch').value || '').trim().toLowerCase();
@@ -1904,7 +1905,7 @@ function renderMention(){
   if (!rows.length) {
     const d = document.createElement('div');
     d.className = 'chat-mention-empty';
-    d.textContent = t('Звітів поки нема');
+    d.textContent = t('No reports yet');
     list.appendChild(d);
     return;
   }
@@ -1914,7 +1915,7 @@ function renderMention(){
     b.className = 'chat-mention-item' + (i === mentionIdx ? ' on' : '');
     const nm = document.createElement('span');
     nm.className = 'ttl2';
-    nm.textContent = r.title || t('Прорахунок');
+    nm.textContent = r.title || t('Estimate');
     const age = document.createElement('span');
     age.className = 'age';
     age.textContent = refDays(r.created_at);
@@ -2011,7 +2012,7 @@ function dropErasedRefs(){
 function pickMention(r){
   const field = document.getElementById('chatText');
   const dup = pendingRefs.some(x => x.id === r.id);
-  const picked = { id: r.id, title: r.title || t('Прорахунок'), kind: r.kind === 'check' ? 'check' : 'import' };
+  const picked = { id: r.id, title: r.title || t('Estimate'), kind: r.kind === 'check' ? 'check' : 'import' };
   if (mentionReplace >= 0 && pendingRefs[mentionReplace]) {
     /* клік по пілюлі: людина обирає іншу машину на заміну */
     if (!dup) {
@@ -2176,7 +2177,7 @@ async function loadOtherReports(){
       .filter(r => r.id !== ROW_ID)
       .slice(0, 12)
       .map(r => ({
-        kind: r.kind === 'check' ? 'перевірка оголошення' : 'прорахунок пригону зі США',
+        kind: r.kind === 'check' ? 'listing check' : 'US import estimate',
         title: r.title || null,
         vin: r.vin || null,
         listing_url: r.url || null,
@@ -2195,7 +2196,7 @@ async function loadOtherReports(){
           .slice(0, 5).map(f => String(f.text || '').slice(0, 140)),
         totals: r.snap || null,
         chat_tail: (Array.isArray(r.chat) ? r.chat : []).slice(-6)
-          .map(m => (m.role === 'user' ? 'Користувач: ' : 'Помічник: ') + String(m.content || '').slice(0, 200)),
+          .map(m => (m.role === 'user' ? 'User: ' : 'Assistant: ') + String(m.content || '').slice(0, 200)),
         analyzed_at: r.created_at,
         days_ago: Math.round((now - new Date(r.created_at).getTime()) / 86400000),
       }));
@@ -2274,7 +2275,7 @@ function chatInit(){
   loadOtherReports();
   loadMemory();
   if (DATA.vehicle?.title) {
-    $('chatCtxCar').textContent = t('Йдеться про:') + ' ' + DATA.vehicle.title;
+    $('chatCtxCar').textContent = t('Talking about:') + ' ' + DATA.vehicle.title;
     $('chatCtx').style.display = '';
   }
   /* переписка живе у звіті (data._chat), як в Import: відкрив звіт на іншому
@@ -2322,10 +2323,10 @@ function chatInit(){
   $('chatFile').addEventListener('change', async () => {
     const input = $('chatFile');
     for (const f of Array.from(input.files || [])) {
-      if (pendingFiles.length >= 3) { chatMsgEl('ai', t('Максимум 3 файли на одне повідомлення')); break; }
+      if (pendingFiles.length >= 3) { chatMsgEl('ai', t('Up to 3 files per message')); break; }
       try {
         if (f.type === 'application/pdf') {
-          if (f.size > 2.5 * 1024 * 1024) { chatMsgEl('ai', t('PDF завеликий, ліміт 2.5 МБ')); continue; }
+          if (f.size > 2.5 * 1024 * 1024) { chatMsgEl('ai', t('PDF is too large, 2.5 MB limit')); continue; }
           pendingFiles.push({ name: f.name, kind: 'pdf', data: await readAsDataURL(f) });
         } else if (/^image\//.test(f.type)) {
           pendingFiles.push({ name: f.name, kind: 'image', data: await shrinkImage(f) });
@@ -2357,7 +2358,7 @@ async function sendChat(text){
   resetComposer();
   /* в історії тримаємо лише текст із маркером файлів: самі файли великі,
      вони йдуть тільки з цим повідомленням і не переслідують подальші */
-  const shown = text + (atts.length ? (text ? '\n' : '') + t('Додані файли:') + ' ' + atts.map(a => a.name).join(', ') : '');
+  const shown = text + (atts.length ? (text ? '\n' : '') + t('Attached files:') + ' ' + atts.map(a => a.name).join(', ') : '');
   chatHist.push({ role: 'user', content: shown });
   chatMsgEl('user', shown);
   const sendMessages = chatHist.slice(-12).map(m => ({ role: m.role, content: m.content }));
@@ -2398,7 +2399,7 @@ async function sendChat(text){
     });
     const data = await r.json().catch(() => ({}));
     typing.remove();
-    if (!r.ok || !data.reply) throw new Error(data.error || t('Не вдалося відповісти, спробуй ще раз'));
+    if (!r.ok || !data.reply) throw new Error(data.error || t('Could not answer, try again'));
     chatHist.push({ role: 'assistant', content: data.reply });
     chatMsgEl('ai', clean(data.reply));
     persistChat();
@@ -2407,7 +2408,7 @@ async function sendChat(text){
     try { sessionStorage.setItem('calcarCheckChat', JSON.stringify(chatHist.slice(-30))); } catch (e) {}
   } catch (e) {
     typing.remove();
-    chatMsgEl('ai', e.message || t('Не вдалося відповісти, спробуй ще раз'));
+    chatMsgEl('ai', e.message || t('Could not answer, try again'));
   } finally {
     $('chatSend').disabled = false;
   }

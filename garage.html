@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="uk">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Гараж · CalCar</title>
+<title>Garage · CalCar</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -24,10 +24,10 @@
      нема й його, вихідна фраза розмітки. Вихідна фраза ніколи не є
      user-facing фолбеком, поки існує англійський варіант.
    - Словники /i18n/<code>.js реєструються у window.CALCAR_DICTS[code];
-     вантажаться обрана мова і, окремо, англійська як фолбек. */
+     вантажиться лише обрана мова: фолбек (англійська) і є мовою розмітки. */
 (function () {
   var LS = 'calcar_lang';
-  var SOURCE = 'ua';
+  var SOURCE = 'en';
   var DEFAULT_LOCALE = 'en';
   var FALLBACK_LOCALE = 'en';
   var LANGS = [
@@ -35,7 +35,7 @@
     { code: 'ru', label: 'Русский',    short: 'RU', locale: 'ru-RU', html: 'ru' },
     { code: 'en', label: 'English',    short: 'EN', locale: 'en-US', html: 'en' },
   ];
-  var DICT_V = '4';           /* міняти при зміні словників чи їх формату, щоб скинути кеш */
+  var DICT_V = '5';           /* міняти при зміні словників чи їх формату, щоб скинути кеш */
 
   /* єдиний резолвер локалі: явна підтримувана -> нормалізований код, усе
      інше -> null (той, хто викликає, підставляє DEFAULT чи FALLBACK).
@@ -94,7 +94,8 @@
     document.write('<scr' + 'ipt src="/i18n/' + code + '.js?v=' + DICT_V + '"></scr' + 'ipt>');
   }
   if (cur !== SOURCE) load(cur);
-  if (cur !== SOURCE && cur !== FALLBACK_LOCALE) load(FALLBACK_LOCALE);
+  /* фолбек-словник потрібен лише коли фолбек не є мовою самої розмітки */
+  if (cur !== SOURCE && cur !== FALLBACK_LOCALE && FALLBACK_LOCALE !== SOURCE) load(FALLBACK_LOCALE);
 
   function norm(s) { return String(s).replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, ''); }
 
@@ -124,7 +125,7 @@
     if (v === null) return null;
     return (s.match(/^\s*/) || [''])[0] + v + (s.match(/\s*$/) || [''])[0];
   }
-  function ready(l) { return l === SOURCE || !!(window.CALCAR_DICTS[l] || window.CALCAR_DICTS[FALLBACK_LOCALE]); }
+  function ready(l) { return l === SOURCE || !!window.CALCAR_DICTS[l] || (FALLBACK_LOCALE !== SOURCE && !!window.CALCAR_DICTS[FALLBACK_LOCALE]); }
   window.t = function (s, l) {
     l = resolveLocale(l) || lang();
     if (l === SOURCE) return s;
@@ -436,7 +437,7 @@ h1{font-size:27px;letter-spacing:-.01em}
 <header>
  <div class="header-in">
  <div class="hleft">
-   <button class="lnc-btn" type="button" id="lncBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="lncPanel" title="Продукти CalCar" aria-label="Продукти CalCar"><svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor" aria-hidden="true"><rect x="0" y="0" width="4" height="4" rx="1.2"/><rect x="7" y="0" width="4" height="4" rx="1.2"/><rect x="14" y="0" width="4" height="4" rx="1.2"/><rect x="0" y="7" width="4" height="4" rx="1.2"/><rect x="7" y="7" width="4" height="4" rx="1.2"/><rect x="14" y="7" width="4" height="4" rx="1.2"/><rect x="0" y="14" width="4" height="4" rx="1.2"/><rect x="7" y="14" width="4" height="4" rx="1.2"/><rect x="14" y="14" width="4" height="4" rx="1.2"/></svg></button>
+   <button class="lnc-btn" type="button" id="lncBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="lncPanel" title="CalCar products" aria-label="CalCar products"><svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor" aria-hidden="true"><rect x="0" y="0" width="4" height="4" rx="1.2"/><rect x="7" y="0" width="4" height="4" rx="1.2"/><rect x="14" y="0" width="4" height="4" rx="1.2"/><rect x="0" y="7" width="4" height="4" rx="1.2"/><rect x="7" y="7" width="4" height="4" rx="1.2"/><rect x="14" y="7" width="4" height="4" rx="1.2"/><rect x="0" y="14" width="4" height="4" rx="1.2"/><rect x="7" y="14" width="4" height="4" rx="1.2"/><rect x="14" y="14" width="4" height="4" rx="1.2"/></svg></button>
  <a class="logo" href="/"><span class="l">Cal</span><span class="r">Car</span></a>
  <div class="beta">beta</div>
  </div>
@@ -452,13 +453,13 @@ h1{font-size:27px;letter-spacing:-.01em}
  <div class="acc-wrap">
  <a class="btn-auth" href="/cabinet.html">
  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
- Кабінет
+ My account
  </a>
  <div class="acc-menu">
- <a href="/garage" style="background:var(--brand-soft)">Гараж</a>
- <a href="/cabinet.html#reports">Звіти</a>
- <a href="/cabinet.html#memory">Памʼять помічника</a>
- <a href="/cabinet.html#account">Налаштування акаунта</a>
+ <a href="/garage" style="background:var(--brand-soft)">Garage</a>
+ <a href="/cabinet.html#reports">Reports</a>
+ <a href="/cabinet.html#memory">Assistant memory</a>
+ <a href="/cabinet.html#account">Account settings</a>
  </div>
  </div>
  </div>
@@ -466,27 +467,27 @@ h1{font-size:27px;letter-spacing:-.01em}
 </header>
 
 <div class="lnc-backdrop" id="lncBackdrop"></div>
-<div class="lnc-panel" id="lncPanel" role="dialog" tabindex="-1" aria-label="Продукти CalCar">
+<div class="lnc-panel" id="lncPanel" role="dialog" tabindex="-1" aria-label="CalCar products">
   <div class="lnc-grab" aria-hidden="true"></div>
   <div class="lnc-head">
-    <div class="lnc-title">Продукти CalCar</div>
-    <button class="lnc-x" type="button" id="lncClose" title="Закрити" aria-label="Закрити"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    <div class="lnc-title">CalCar products</div>
+    <button class="lnc-x" type="button" id="lncClose" title="Close" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   </div>
   <div class="lnc-list">
     <a class="lnc-item" data-prod="check" href="/check">
       <span class="lnc-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="none" stroke="#141619" stroke-width="64" stroke-linecap="butt"><path d="M229.72 322.19 A 84 84 0 1 1 229.72 189.81"/><path d="M430.72 322.19 A 84 84 0 1 1 430.72 189.81"/></g></svg></span>
       <span class="lnc-body">
         <span class="lnc-name">CalCar Check</span>
-        <span class="lnc-desc">Перевірка авто перед купівлею</span>
-        <span class="lnc-badge">Поточний продукт</span>
+        <span class="lnc-desc">Pre-purchase car check</span>
+        <span class="lnc-badge">Current product</span>
       </span>
     </a>
     <a class="lnc-item" data-prod="import" href="/import">
       <span class="lnc-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="#141619"><path d="M160 244 L204 168 Q212 156 227 156 L299 156 Q314 156 322 168 L366 244 Z"/><rect x="76" y="238" width="360" height="58" rx="24"/><circle cx="162" cy="314" r="44"/><circle cx="350" cy="314" r="44"/></g><path d="M190 230 L228 176 Q233 170 240 170 L286 170 Q293 170 298 176 L336 230 Z" fill="#B8F23D"/></svg></span>
       <span class="lnc-body">
         <span class="lnc-name">CalCar Import</span>
-        <span class="lnc-desc">Скільки обійдеться авто зі США в Україні</span>
-        <span class="lnc-badge">Поточний продукт</span>
+        <span class="lnc-desc">What a US car really costs in Ukraine</span>
+        <span class="lnc-badge">Current product</span>
       </span>
     </a>
   </div>
@@ -495,74 +496,74 @@ h1{font-size:27px;letter-spacing:-.01em}
 <div class="wrap">
 
   <div class="card" id="noCfg" style="display:none;padding:22px">
-    <b>Гараж ще не підключено</b>
-    <p class="muted" style="margin-top:6px">Потрібно вписати ключі Supabase у файл config.js.</p>
+    <b>Garage is not connected yet</b>
+    <p class="muted" style="margin-top:6px">Add the Supabase keys to config.js.</p>
   </div>
 
   <div class="card" id="noAuth" style="display:none;padding:34px;text-align:center">
-    <b style="font-size:17px">Увійди, щоб користуватись Гаражем</b>
-    <p class="muted" style="margin:8px auto 16px;max-width:420px">Гараж зберігає твої авто та їхню історію обслуговування. Потрібен акаунт CalCar.</p>
-    <a class="btn" href="/cabinet.html" style="max-width:220px;margin:0 auto">Увійти</a>
+    <b style="font-size:17px">Sign in to use the Garage</b>
+    <p class="muted" style="margin:8px auto 16px;max-width:420px">The Garage keeps your cars and their service history. A CalCar account is required.</p>
+    <a class="btn" href="/cabinet.html" style="max-width:220px;margin:0 auto">Sign in</a>
   </div>
 
   <div id="listView" style="display:none">
     <div class="page-head">
       <div>
-        <h1>Гараж</h1>
-        <div class="sub">Твої автомобілі та їхня історія</div>
+        <h1>Garage</h1>
+        <div class="sub">Your cars and their history</div>
       </div>
-      <button class="btn" id="btnAddCar">+ Додати авто</button>
+      <button class="btn" id="btnAddCar">+ Add car</button>
     </div>
     <div id="carList"></div>
     <div class="card empty" id="emptyGarage" style="display:none">
-      <b>У гаражі поки порожньо</b>
-      <p class="muted" style="margin:8px auto 16px;max-width:430px">Додай своє авто: VIN і пробіг. CalCar сам визначить марку, модель і характеристики, а далі ти зможеш вести журнал обслуговування.</p>
-      <button class="btn" id="btnAddCar2" style="max-width:220px;margin:0 auto">+ Додати авто</button>
+      <b>Your garage is empty</b>
+      <p class="muted" style="margin:8px auto 16px;max-width:430px">Add your car: VIN and mileage. CalCar will identify the make, model and specs, then you can keep a service log.</p>
+      <button class="btn" id="btnAddCar2" style="max-width:220px;margin:0 auto">+ Add car</button>
     </div>
   </div>
 
   <div id="carView" style="display:none">
-    <div class="back-row"><a class="back" href="/garage">&#8592; Гараж</a></div>
+    <div class="back-row"><a class="back" href="/garage">← Garage</a></div>
     <div class="gal" id="gal" style="display:none"></div>
     <div class="gal-empty" id="galEmpty" style="display:none">
-      <button class="addlink" id="btnAddPhotos">+ Додати фотографії</button>
+      <button class="addlink" id="btnAddPhotos">+ Add photos</button>
     </div>
     <div class="title-row">
       <h1 id="carTitle"></h1>
-      <span class="badge">&#9733; Моя машина</span>
-      <button class="btn-ghost btn" id="btnEditCar" style="height:36px;padding:0 14px;font-size:12.5px;margin-left:auto">Редагувати авто</button>
+      <span class="badge">★ My car</span>
+      <button class="btn-ghost btn" id="btnEditCar" style="height:36px;padding:0 14px;font-size:12.5px;margin-left:auto">Edit car</button>
     </div>
     <div class="specs" id="specs"></div>
     <div class="vinline" id="vinLine"></div>
 
     <div class="sec">
       <div class="sec-head">
-        <h2>Журнал авто</h2>
-        <button class="addlink" id="btnAddEntry">+ Додати запис</button>
+        <h2>Service log</h2>
+        <button class="addlink" id="btnAddEntry">+ Add entry</button>
       </div>
       <div class="card" id="entries"></div>
       <div class="card empty" id="emptyJournal" style="display:none;padding:28px">
-        <b>Записів поки немає</b>
-        <p class="muted" style="margin:6px auto 14px;max-width:430px">Додай перше ТО, заміну масла чи ремонт. Можна прикріпити чек або фото, і за кілька років тут буде повна історія авто.</p>
-        <button class="btn" id="btnAddEntry2" style="max-width:230px;margin:0 auto">+ Додати запис</button>
+        <b>No entries yet</b>
+        <p class="muted" style="margin:6px auto 14px;max-width:430px">Add your first service, oil change or repair. Attach a receipt or photo, and in a few years this will be the full history of the car.</p>
+        <button class="btn" id="btnAddEntry2" style="max-width:230px;margin:0 auto">+ Add entry</button>
       </div>
     </div>
 
     <div class="sec" id="checkSec">
-      <div class="sec-head"><h2>Звіт CalCar</h2></div>
+      <div class="sec-head"><h2>CalCar report</h2></div>
       <div class="card check-cta" id="checkNone" style="display:none">
         <div>
-          <b>Що CalCar може дізнатися про це авто</b>
-          <p>Перевір історію автомобіля: минулі оголошення, пробіг, аукціонні записи США та інші доступні дані.</p>
+          <b>What CalCar can find out about this car</b>
+          <p>Check the car history: past listings, mileage, US auction records and other available data.</p>
         </div>
-        <a class="btn" id="btnCheck" href="/">Перевірити авто</a>
+        <a class="btn" id="btnCheck" href="/">Check the car</a>
       </div>
       <div class="card check-cta" id="checkDone" style="display:none">
         <div>
-          <b id="checkDoneT">Перевірка виконана</b>
-          <p id="checkDoneSub">Повний звіт відкривається окремою сторінкою.</p>
+          <b id="checkDoneT">Check completed</b>
+          <p id="checkDoneSub">The full report opens on a separate page.</p>
         </div>
-        <a class="btn" id="btnOpenReport" href="#">Відкрити повний звіт</a>
+        <a class="btn" id="btnOpenReport" href="#">Open full report</a>
       </div>
     </div>
   </div>
@@ -570,81 +571,81 @@ h1{font-size:27px;letter-spacing:-.01em}
 
 <div class="overlay" id="mAdd">
   <div class="modal">
-    <div class="m-head"><b id="mAddTitle">Додати авто</b><button class="m-x" data-close>&#10005;</button></div>
+    <div class="m-head"><b id="mAddTitle">Add car</b><button class="m-x" data-close>&#10005;</button></div>
 
     <div id="vinField" class="f">
       <label>VIN</label>
-      <input id="fVin" maxlength="17" placeholder="17 символів" autocomplete="off" spellcheck="false" style="text-transform:uppercase;font-family:ui-monospace,Menlo,monospace">
+      <input id="fVin" maxlength="17" placeholder="17 characters" autocomplete="off" spellcheck="false" style="text-transform:uppercase;font-family:ui-monospace,Menlo,monospace">
       <div class="hint" id="vinHint" style="margin-top:5px"></div>
     </div>
-    <div class="f"><label>Поточний пробіг, км</label><input id="fMileage" inputmode="numeric"></div>
-    <button class="btn" id="btnFind" style="width:100%;margin-bottom:14px">Знайти авто</button>
+    <div class="f"><label>Current mileage, km</label><input id="fMileage" inputmode="numeric"></div>
+    <button class="btn" id="btnFind" style="width:100%;margin-bottom:14px">Find car</button>
 
     <div class="knows" id="knows" style="display:none">
-      <b id="knowsTitle">CalCar визначив авто</b><span id="knowsTxt"></span>
-      <a href="#" id="fixManual" class="fix-link">Дані визначені неправильно? Змінити вручну</a>
+      <b id="knowsTitle">CalCar identified the car</b><span id="knowsTxt"></span>
+      <a href="#" id="fixManual" class="fix-link">Wrong data? Edit manually</a>
     </div>
 
     <div id="manualFields" style="display:none">
       <div class="f2">
-        <div class="f"><label>Марка</label><input id="fMake"></div>
-        <div class="f"><label>Модель</label><input id="fModel"></div>
+        <div class="f"><label>Make</label><input id="fMake"></div>
+        <div class="f"><label>Model</label><input id="fModel"></div>
       </div>
       <div class="f2">
-        <div class="f"><label>Рік</label><input id="fYear" inputmode="numeric" maxlength="4"></div>
-        <div class="f"><label>Двигун</label><input id="fEngine" placeholder="2.0 бензин"></div>
+        <div class="f"><label>Year</label><input id="fYear" inputmode="numeric" maxlength="4"></div>
+        <div class="f"><label>Engine</label><input id="fEngine" placeholder="2.0 petrol"></div>
       </div>
       <div class="f2">
-        <div class="f"><label>Коробка</label><input id="fTrans" placeholder="Автомат"></div>
-        <div class="f"><label>Привід</label><input id="fDrive"></div>
+        <div class="f"><label>Gearbox</label><input id="fTrans" placeholder="Automatic"></div>
+        <div class="f"><label>Drivetrain</label><input id="fDrive"></div>
       </div>
     </div>
 
     <div id="stepDetails" style="display:none">
       <div class="f2">
-        <div class="f"><label>Держномер <span class="opt">(необовʼязково)</span></label><input id="fPlate" style="text-transform:uppercase"></div>
-        <div class="f"><label>Дата покупки <span class="opt">(необовʼязково)</span></label><input id="fPurchase" type="date"></div>
+        <div class="f"><label>License plate <span class="opt">(optional)</span></label><input id="fPlate" style="text-transform:uppercase"></div>
+        <div class="f"><label>Purchase date <span class="opt">(optional)</span></label><input id="fPurchase" type="date"></div>
       </div>
       <div class="f">
-        <label>Фотографії авто</label>
-        <div class="filepick" id="carPick">Натисни, щоб додати фото (до 10)</div>
+        <label>Car photos</label>
+        <div class="filepick" id="carPick">Tap to add photos (up to 10)</div>
         <input id="fCarPhotos" type="file" accept="image/*" multiple style="display:none">
         <div class="fprev" id="carPickPrev"></div>
       </div>
     </div>
 
     <div class="err" id="addErr" style="display:none;margin-bottom:10px"></div>
-    <button class="btn" id="btnSaveCar" style="width:100%;display:none">Зберегти авто</button>
+    <button class="btn" id="btnSaveCar" style="width:100%;display:none">Save car</button>
   </div>
 </div>
 
 <div class="overlay" id="mEntry">
   <div class="modal">
-    <div class="m-head"><b id="mEntryTitle">Додати запис</b><button class="m-x" data-close>&#10005;</button></div>
+    <div class="m-head"><b id="mEntryTitle">Add entry</b><button class="m-x" data-close>&#10005;</button></div>
     <div class="f">
-      <label>Тип події</label>
+      <label>Event type</label>
       <select id="eType">
-        <option>Планове ТО</option><option>Масло і фільтри</option><option>Ремонт</option>
-        <option>Гальма</option><option>Шини</option><option>Підвіска</option>
-        <option>Діагностика</option><option>ДТП</option><option>Дообладнання</option><option>Інше</option>
+        <option>Scheduled service</option><option>Oil and filters</option><option>Repair</option>
+        <option>Brakes</option><option>Tires</option><option>Suspension</option>
+        <option>Diagnostics</option><option>Accident</option><option>Upgrades</option><option>Other</option>
       </select>
     </div>
     <div class="f2">
-      <div class="f"><label>Дата події</label><input id="eDate" type="date"></div>
-      <div class="f"><label>Пробіг, км</label><input id="eMileage" inputmode="numeric"></div>
+      <div class="f"><label>Event date</label><input id="eDate" type="date"></div>
+      <div class="f"><label>Mileage, km</label><input id="eMileage" inputmode="numeric"></div>
     </div>
     <div class="warn" id="eMileWarn" style="display:none;margin:-6px 0 10px"></div>
-    <div class="f"><label>Опис</label><textarea id="eDesc" placeholder="Що зробили, які деталі, де"></textarea></div>
-    <div class="f"><label>Вартість, грн (необовʼязково)</label><input id="eCost" inputmode="numeric"></div>
+    <div class="f"><label>Description</label><textarea id="eDesc" placeholder="What was done, which parts, where"></textarea></div>
+    <div class="f"><label>Cost, UAH (optional)</label><input id="eCost" inputmode="numeric"></div>
     <div class="f">
-      <label>Документи і фото</label>
+      <label>Documents and photos</label>
       <div class="fprev" id="eExisting" style="margin:0 0 8px"></div>
-      <div class="filepick" id="ePick">Чек, замовлення-наряд або фото (до 6)</div>
+      <div class="filepick" id="ePick">Receipt, work order or photo (up to 6)</div>
       <input id="eFiles" type="file" accept="image/*,application/pdf" multiple style="display:none">
       <div class="fprev" id="ePickPrev"></div>
     </div>
     <div class="err" id="eErr" style="display:none;margin-bottom:10px"></div>
-    <button class="btn" id="btnSaveEntry" style="width:100%">Зберегти запис</button>
+    <button class="btn" id="btnSaveEntry" style="width:100%">Save entry</button>
   </div>
 </div>
 
@@ -658,7 +659,7 @@ h1{font-size:27px;letter-spacing:-.01em}
   function show(id, on) { var el = $(id); if (el) el.style.display = on ? '' : 'none'; }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   var T = window.t || function (x) { return x; };
-  function fmtKm(n) { return n == null || n === '' ? '' : Number(n).toLocaleString('uk-UA') + ' ' + T('км'); }
+  function fmtKm(n) { return n == null || n === '' ? '' : Number(n).toLocaleString('uk-UA') + ' ' + T('km'); }
   function fmtDate(d) {
     if (!d) return '';
     try { return new Date(d + (String(d).length === 10 ? 'T12:00:00' : '')).toLocaleDateString((window.calcarLocale ? window.calcarLocale() : 'uk-UA'), { day: 'numeric', month: 'long', year: 'numeric' }); }
@@ -673,7 +674,7 @@ h1{font-size:27px;letter-spacing:-.01em}
   var UID = sess.session.user.id;
 
   var BUCKET = 'garage';
-  var TYPES_META = { 'Планове ТО': 1, 'Масло і фільтри': 1, 'Ремонт': 1, 'Гальма': 1, 'Шини': 1, 'Підвіска': 1, 'Діагностика': 1, 'ДТП': 1, 'Дообладнання': 1, 'Інше': 1 };
+  var TYPES_META = { 'Scheduled service': 1, 'Oil and filters': 1, 'Repair': 1, 'Brakes': 1, 'Tires': 1, 'Suspension': 1, 'Diagnostics': 1, 'Accident': 1, 'Upgrades': 1, 'Other': 1 };
   var cars = [], car = null, entries = [], editCarId = null;
   var signedCache = {};
 
@@ -709,7 +710,7 @@ h1{font-size:27px;letter-spacing:-.01em}
     var out = []; lastUploadError = null;
     for (var i = 0; i < files.length; i++) {
       var f = files[i];
-      if (f.size > 10 * 1024 * 1024) { lastUploadError = T('файл завеликий (понад 10 МБ)'); continue; }
+      if (f.size > 10 * 1024 * 1024) { lastUploadError = T('file is too large (over 10 MB)'); continue; }
       var blob = await compress(f);
       var ext = /^image\//.test(f.type) ? 'jpg' : (f.name.split('.').pop() || 'bin').toLowerCase().slice(0, 5);
       var path = UID + '/' + folder + '/' + Date.now() + '_' + i + '.' + ext;
@@ -744,14 +745,14 @@ h1{font-size:27px;letter-spacing:-.01em}
       var el = document.createElement('div');
       el.className = 'card car-row';
       el.innerHTML =
-        '<div class="car-thumb">' + (covers[i] ? '<img alt="" src="' + covers[i] + '">' : 'без фото') + '</div>' +
+        '<div class="car-thumb">' + (covers[i] ? '<img alt="" src="' + covers[i] + '">' : T('no photo')) + '</div>' +
         '<div class="car-main"><div class="car-title">' + esc((c.make || '') + ' ' + (c.model || '') + ' ' + (c.year || '')) + '</div>' +
         '<div class="car-vin">VIN ' + esc(c.vin) + '</div>' +
         '<div class="car-meta">' + fmtKm(c.current_mileage) + (c.city ? ' · ' + esc(c.city) : '') + '</div></div>' +
         '<div class="car-side">' + (last
-          ? '<div class="car-last">Останній запис<b>' + esc(last.type) + ' · ' + fmtDate(last.event_date) + '</b></div>'
-          : '<div class="car-last">' + T('Записів поки немає') + '</div>') +
-        '<div class="car-counts">' + es.length + ' ' + T('записів') + ' · ' + docs + ' ' + T('документів') + '</div></div>' +
+          ? '<div class="car-last">Last entry<b>' + esc(last.type) + ' · ' + fmtDate(last.event_date) + '</b></div>'
+          : '<div class="car-last">' + T('No entries yet') + '</div>') +
+        '<div class="car-counts">' + es.length + ' ' + T('entries') + ' · ' + docs + ' ' + T('files') + '</div></div>' +
         '<div class="chev">&#8250;</div>';
       el.onclick = function () { location.href = '/garage/' + c.id; };
       box.appendChild(el);
@@ -763,16 +764,16 @@ h1{font-size:27px;letter-spacing:-.01em}
     car = cars.find(function (c) { return c.id === id; });
     if (!car) { location.href = '/garage'; return; }
     show('listView', false); show('carView', true);
-    $('carTitle').textContent = ((car.make || '') + ' ' + (car.model || '') + ' ' + (car.year || '')).trim() || T('Авто');
-    document.title = ($('carTitle').textContent) + ' · ' + T('Гараж CalCar');
+    $('carTitle').textContent = ((car.make || '') + ' ' + (car.model || '') + ' ' + (car.year || '')).trim() || T('Vehicle');
+    document.title = ($('carTitle').textContent) + ' · ' + T('CalCar Garage');
 
     var sp = [];
-    if (car.current_mileage != null) sp.push([fmtKm(car.current_mileage), T('Пробіг')]);
-    if (car.engine) sp.push([car.engine, T('Двигун')]);
-    if (car.transmission) sp.push([car.transmission, T('Коробка')]);
-    if (car.drive) sp.push([car.drive, T('Привід')]);
+    if (car.current_mileage != null) sp.push([fmtKm(car.current_mileage), T('Mileage')]);
+    if (car.engine) sp.push([car.engine, T('Engine')]);
+    if (car.transmission) sp.push([car.transmission, T('Gearbox')]);
+    if (car.drive) sp.push([car.drive, T('Drivetrain')]);
     $('specs').innerHTML = sp.map(function (p) { return '<div class="spec"><b>' + esc(p[0]) + '</b><span>' + esc(p[1]) + '</span></div>'; }).join('');
-    $('vinLine').innerHTML = 'VIN: ' + esc(car.vin) + (car.plate ? ' &nbsp;·&nbsp; ' + T('Номер:') + ' ' + esc(car.plate) : '');
+    $('vinLine').innerHTML = 'VIN: ' + esc(car.vin) + (car.plate ? ' &nbsp;·&nbsp; ' + T('Plate:') + ' ' + esc(car.plate) : '');
 
     var ph = (car.photos || []).map(function (p) { return p.path; });
     if (ph.length) {
@@ -814,15 +815,15 @@ h1{font-size:27px;letter-spacing:-.01em}
         '<div class="e-title">' + esc(e.type) + '</div>' +
         (e.description ? '<div class="e-desc">' + esc(e.description) + '</div>' : '') +
         ((e.cost != null && e.cost !== '') || (e.files || []).length
-          ? '<div class="e-meta">' + (e.cost != null && e.cost !== '' ? Number(e.cost).toLocaleString('uk-UA') + ' грн' : '') +
+          ? '<div class="e-meta">' + (e.cost != null && e.cost !== '' ? Number(e.cost).toLocaleString('uk-UA') + ' UAH' : '') +
             ((e.cost != null && e.cost !== '') && (e.files || []).length ? ' · ' : '') +
-            ((e.files || []).length ? (e.files || []).length + ' ' + T('документів') : '') + '</div>' : '') +
+            ((e.files || []).length ? (e.files || []).length + ' ' + T('files') : '') + '</div>' : '') +
         (files ? '<div class="e-files">' + files + '</div>' : '') +
-        '<div class="e-src">' + T('Додано власником') + '</div></div>' +
+        '<div class="e-src">' + T('Added by owner') + '</div></div>' +
         '<button class="kebab" data-k="' + e.id + '">&#8942;</button>' +
         '<div class="k-menu" data-m="' + e.id + '">' +
-          '<button data-edit="' + e.id + '">' + T('Редагувати') + '</button>' +
-          '<button data-del="' + e.id + '">' + T('Видалити запис') + '</button></div>';
+          '<button data-edit="' + e.id + '">' + T('Edit') + '</button>' +
+          '<button data-del="' + e.id + '">' + T('Delete entry') + '</button></div>';
       box.appendChild(el);
     });
   }
@@ -842,7 +843,7 @@ h1{font-size:27px;letter-spacing:-.01em}
       rep = q.data && q.data[0];
     } catch (e) { rep = null; }
     if (rep) {
-      $('checkDoneT').textContent = 'Перевірка виконана ' + fmtDate(String(rep.created_at).slice(0, 10));
+      $('checkDoneT').textContent = 'Check completed ' + fmtDate(String(rep.created_at).slice(0, 10));
       $('btnOpenReport').href = rep.public_id ? '/check/' + rep.public_id : '/result-check.html?id=' + rep.id;
       if (car.check_report_id !== rep.id) {
         SB.from('garage_vehicles').update({ check_report_id: rep.id }).eq('id', car.id).then(function () {}, function () {});
@@ -865,7 +866,7 @@ h1{font-size:27px;letter-spacing:-.01em}
   function openAdd(editing) {
     editCarId = editing ? car.id : null;
     vinData = null;
-    $('mAddTitle').textContent = editing ? T('Редагувати авто') : T('Додати авто');
+    $('mAddTitle').textContent = editing ? T('Edit car') : T('Add car');
     ['fVin', 'fMake', 'fModel', 'fYear', 'fMileage', 'fEngine', 'fTrans', 'fDrive', 'fPlate', 'fPurchase'].forEach(function (id) { $(id).value = ''; });
     $('vinHint').textContent = ''; $('addErr').style.display = 'none';
     $('carPickPrev').innerHTML = ''; carFiles.length = 0;
@@ -877,19 +878,19 @@ h1{font-size:27px;letter-spacing:-.01em}
       $('fMileage').value = car.current_mileage != null ? car.current_mileage : '';
       $('fPlate').value = car.plate || '';
       $('fPurchase').value = car.purchase_date || '';
-      $('knowsTitle').textContent = T('Дані по VIN');
+      $('knowsTitle').textContent = T('VIN data');
       $('knowsTxt').textContent = vinSummary({ make: car.make, model: car.model, year: car.year, engine: car.engine, transmission: car.transmission, drive: car.drive }) + '\nVIN ' + (car.vin || '');
       show('knows', true);
       show('stepDetails', true);
-      $('btnSaveCar').textContent = T('Зберегти зміни');
+      $('btnSaveCar').textContent = T('Save changes');
       show('btnSaveCar', true);
     } else {
       /* додавання: крок 1 = VIN + пробіг + Знайти авто */
       show('vinField', true); show('btnFind', true);
-      $('knowsTitle').textContent = T('CalCar визначив авто');
+      $('knowsTitle').textContent = T('CalCar identified the car');
       show('knows', false);
       show('stepDetails', false);
-      $('btnSaveCar').textContent = T('Зберегти авто');
+      $('btnSaveCar').textContent = T('Save car');
       show('btnSaveCar', false);
     }
     $('mAdd').classList.add('open');
@@ -912,22 +913,22 @@ h1{font-size:27px;letter-spacing:-.01em}
   async function decodeVin(force) {
     var vin = $('fVin').value.trim().toUpperCase();
     $('fVin').value = vin;
-    if (vin.length !== 17) { if (force) { $('vinHint').textContent = T('VIN має містити 17 символів (без I, O, Q)'); } return; }
+    if (vin.length !== 17) { if (force) { $('vinHint').textContent = T('VIN must be 17 characters (no I, O, Q)'); } return; }
     if (vin === lastDecoded && !force) return;
     lastDecoded = vin;
-    $('vinHint').textContent = T('Визначаю авто за VIN…');
+    $('vinHint').textContent = T('Identifying the car by VIN…');
     try {
       var r = await fetch('https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/' + vin + '?format=json');
       var j = await r.json(); var v = j && j.Results && j.Results[0];
       if (!v || !v.Make) throw new Error('empty');
-      var disp = v.DisplacementL ? (Math.round(parseFloat(v.DisplacementL) * 10) / 10) + ' ' + T('л') : '';
-      var fuel = ({ 'Gasoline': T('бензин'), 'Diesel': T('дизель'), 'Electric': T('електро') })[v.FuelTypePrimary] || (v.FuelTypePrimary || '').toLowerCase();
+      var disp = v.DisplacementL ? (Math.round(parseFloat(v.DisplacementL) * 10) / 10) + ' ' + T('L') : '';
+      var fuel = ({ 'Gasoline': T('petrol'), 'Diesel': T('diesel'), 'Electric': T('electric') })[v.FuelTypePrimary] || (v.FuelTypePrimary || '').toLowerCase();
       vinData = {
         make: cap(v.Make), model: v.Model || null,
         year: parseInt(v.ModelYear, 10) || null,
         engine: (disp + ' ' + fuel).trim() || null,
-        transmission: v.TransmissionStyle ? (/auto|cvt/i.test(v.TransmissionStyle) ? T('Автомат') : (/manual/i.test(v.TransmissionStyle) ? T('Механіка') : v.TransmissionStyle)) : null,
-        drive: v.DriveType ? (/4|all|awd/i.test(v.DriveType) ? T('Повний') : (/front|fwd/i.test(v.DriveType) ? T('Передній') : (/rear|rwd/i.test(v.DriveType) ? T('Задній') : v.DriveType))) : null,
+        transmission: v.TransmissionStyle ? (/auto|cvt/i.test(v.TransmissionStyle) ? T('Automatic') : (/manual/i.test(v.TransmissionStyle) ? T('Manual') : v.TransmissionStyle)) : null,
+        drive: v.DriveType ? (/4|all|awd/i.test(v.DriveType) ? T('AWD') : (/front|fwd/i.test(v.DriveType) ? T('FWD') : (/rear|rwd/i.test(v.DriveType) ? T('RWD') : v.DriveType))) : null,
       };
       $('vinHint').textContent = '';
       $('knowsTxt').textContent = vinSummary(vinData);
@@ -936,7 +937,7 @@ h1{font-size:27px;letter-spacing:-.01em}
       stepTwo();
     } catch (e) {
       vinData = null;
-      $('vinHint').textContent = T('Не вдалося визначити автоматично, запов дані вручну');
+      $('vinHint').textContent = T('Could not identify automatically, fill in manually');
       show('knows', false);
       show('manualFields', true);
       stepTwo();
@@ -957,10 +958,10 @@ h1{font-size:27px;letter-spacing:-.01em}
       if (manualOpen()) Object.assign(row, collectVehicleData());
     } else {
       vin = $('fVin').value.trim().toUpperCase();
-      if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(vin)) { err.textContent = T('VIN має містити 17 символів (без I, O, Q)'); err.style.display = 'block'; return; }
-      if (cars.some(function (c) { return c.vin === vin; })) { err.textContent = T('Це авто вже є у твоєму гаражі'); err.style.display = 'block'; return; }
+      if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(vin)) { err.textContent = T('VIN must be 17 characters (no I, O, Q)'); err.style.display = 'block'; return; }
+      if (cars.some(function (c) { return c.vin === vin; })) { err.textContent = T('This car is already in your garage'); err.style.display = 'block'; return; }
       var vd = collectVehicleData();
-      if (!vd || (!vd.make && !vd.model)) { err.textContent = T('Спочатку натисни «Знайти авто» або запов дані вручну'); err.style.display = 'block'; return; }
+      if (!vd || (!vd.make && !vd.model)) { err.textContent = T('First tap "Find car" or fill in the data manually'); err.style.display = 'block'; return; }
       row = {
         vin: vin, user_id: UID,
         current_mileage: mil ? parseInt(mil, 10) : null,
@@ -970,7 +971,7 @@ h1{font-size:27px;letter-spacing:-.01em}
         engine: vd.engine || null, transmission: vd.transmission || null, drive: vd.drive || null,
       };
     }
-    var b = $('btnSaveCar'); b.disabled = true; b.textContent = T('Зберігаю…');
+    var b = $('btnSaveCar'); b.disabled = true; b.textContent = T('Saving…');
     try {
       var id = editCarId;
       if (editCarId) {
@@ -990,8 +991,8 @@ h1{font-size:27px;letter-spacing:-.01em}
           if (pu.error) throw pu.error;
         }
         if (lastUploadError) {
-          err.textContent = T('Частину фото не вдалося завантажити: ') + lastUploadError; err.style.display = 'block';
-          b.disabled = false; b.textContent = editCarId ? T('Зберегти зміни') : T('Зберегти авто');
+          err.textContent = T('Some photos failed to upload: ') + lastUploadError; err.style.display = 'block';
+          b.disabled = false; b.textContent = editCarId ? T('Save changes') : T('Save car');
           return; /* людина бачить причину, збереження даних уже відбулося */
         }
       }
@@ -999,9 +1000,9 @@ h1{font-size:27px;letter-spacing:-.01em}
       $('mAdd').classList.remove('open');
       location.href = '/garage/' + id;
     } catch (e) {
-      err.textContent = T('Не вдалося зберегти: ') + (e.message || e); err.style.display = 'block';
+      err.textContent = T('Could not save: ') + (e.message || e); err.style.display = 'block';
     }
-    b.disabled = false; b.textContent = editCarId ? T('Зберегти зміни') : T('Зберегти авто');
+    b.disabled = false; b.textContent = editCarId ? T('Save changes') : T('Save car');
   }
 
   /* ---------- модалка запису ---------- */  /* ---------- модалка запису ---------- */
@@ -1017,11 +1018,11 @@ h1{font-size:27px;letter-spacing:-.01em}
       } else if (isImg) {
         pv.classList.add('doc');
         var ic0 = document.createElement('i'); ic0.textContent = 'IMG';
-        var nm0 = document.createElement('span'); nm0.textContent = f.name || 'фото';
+        var nm0 = document.createElement('span'); nm0.textContent = f.name || T('photo');
         pv.append(ic0, nm0);
       } else {
         var ic = document.createElement('i'); ic.textContent = 'PDF';
-        var nm = document.createElement('span'); nm.textContent = f.name || 'документ';
+        var nm = document.createElement('span'); nm.textContent = f.name || T('document');
         pv.append(ic, nm);
       }
       var rm = document.createElement('button');
@@ -1033,8 +1034,8 @@ h1{font-size:27px;letter-spacing:-.01em}
   }
   function openEntry(entry) {
     editEntryId = entry ? entry.id : null;
-    $('mEntryTitle').textContent = editEntryId ? T('Редагувати запис') : T('Додати запис');
-    $('btnSaveEntry').textContent = editEntryId ? T('Зберегти зміни') : T('Зберегти запис');
+    $('mEntryTitle').textContent = editEntryId ? T('Edit entry') : T('Add entry');
+    $('btnSaveEntry').textContent = editEntryId ? T('Save changes') : T('Save entry');
     ['eMileage', 'eDesc', 'eCost'].forEach(function (id) { $(id).value = ''; });
     $('eType').selectedIndex = 0;
     $('eDate').value = new Date().toISOString().slice(0, 10);
@@ -1064,17 +1065,17 @@ h1{font-size:27px;letter-spacing:-.01em}
   async function saveEntry() {
     var err = $('eErr');
     var date = $('eDate').value;
-    if (!date) { err.textContent = 'Вкажи дату події'; err.style.display = 'block'; return; }
+    if (!date) { err.textContent = 'Set the event date'; err.style.display = 'block'; return; }
     var milRaw = $('eMileage').value.replace(/\D/g, '');
     var mil = milRaw ? parseInt(milRaw, 10) : null;
     var known = latestMileage();
     if (mil != null && known != null && mil < known && !mileConfirmed) {
-      $('eMileWarn').textContent = 'Пробіг менший за останній відомий (' + fmtKm(known) + '). Перевір, чи немає помилки. Натисни «Зберегти» ще раз, якщо все вірно.';
+      $('eMileWarn').textContent = 'Mileage is lower than the last known (' + fmtKm(known) + '). Check for a mistake. Tap "Save" again if it is correct.';
       $('eMileWarn').style.display = 'block';
       mileConfirmed = true;
       return;
     }
-    var b = $('btnSaveEntry'); b.disabled = true; b.textContent = T('Зберігаю…');
+    var b = $('btnSaveEntry'); b.disabled = true; b.textContent = T('Saving…');
     try {
       var fields = {
         type: $('eType').value, event_date: date, mileage: mil,
@@ -1101,8 +1102,8 @@ h1{font-size:27px;letter-spacing:-.01em}
         if (uf.error) throw uf.error;
       }
       if (lastUploadError) {
-        err.textContent = T('Частину файлів не вдалося завантажити: ') + lastUploadError; err.style.display = 'block';
-        b.disabled = false; b.textContent = editEntryId ? T('Зберегти зміни') : T('Зберегти запис');
+        err.textContent = T('Some files failed to upload: ') + lastUploadError; err.style.display = 'block';
+        b.disabled = false; b.textContent = editEntryId ? T('Save changes') : T('Save entry');
         return;
       }
       if (mil != null && (car.current_mileage == null || mil > car.current_mileage)) {
@@ -1112,9 +1113,9 @@ h1{font-size:27px;letter-spacing:-.01em}
       $('mEntry').classList.remove('open');
       await loadEntries(); renderEntries(); openCarSpecsRefresh();
     } catch (e) {
-      err.textContent = T('Не вдалося зберегти: ') + (e.message || e); err.style.display = 'block';
+      err.textContent = T('Could not save: ') + (e.message || e); err.style.display = 'block';
     }
-    b.disabled = false; b.textContent = editEntryId ? T('Зберегти зміни') : T('Зберегти запис');
+    b.disabled = false; b.textContent = editEntryId ? T('Save changes') : T('Save entry');
   }
   function openCarSpecsRefresh() {
     var sp = $('specs').querySelector('.spec b');
@@ -1140,7 +1141,7 @@ h1{font-size:27px;letter-spacing:-.01em}
     var del = t.closest('[data-del]');
     if (del) {
       var id = del.getAttribute('data-del');
-      if (confirm(T('Видалити цей запис? Прикріплені документи теж буде видалено.'))) {
+      if (confirm(T('Delete this entry? Attached documents will be deleted too.'))) {
         var e = entries.find(function (x) { return x.id === id; });
         var paths = ((e && e.files) || []).map(function (f) { return f.path; });
         SB.from('garage_entries').delete().eq('id', id).then(function () {
@@ -1174,7 +1175,7 @@ h1{font-size:27px;letter-spacing:-.01em}
     });
     if (store.length) {
       var more = document.createElement('button');
-      more.type = 'button'; more.className = 'addmore'; more.textContent = '+ ' + T('Додати ще');
+      more.type = 'button'; more.className = 'addmore'; more.textContent = '+ ' + T('Add more');
       more.onclick = function () { $(inputId).click(); };
       box.appendChild(more);
     }

@@ -21,7 +21,7 @@ if (!g.includes("data->_meta->>vin")) errs.push('пошук звіту не за
 if (!g.includes('DecodeVinValues')) errs.push('нема VIN-декодера');
 if (!g.includes("from('garage_vehicles')")) errs.push('нема запитів до garage_vehicles');
 if (!g.includes('createSignedUrls')) errs.push('нема підписаних URL для приватних фото');
-if (!g.includes('Додано власником')) errs.push('нема позначки джерела');
+if (!g.includes('Added by owner')) errs.push('нема позначки джерела');
 if (!g.includes('data-edit')) errs.push('нема редагування записів журналу');
 if (!g.includes('carFiles.length = 0')) errs.push('баг масиву фото повернувся: carFiles перепризначається');
 if (g.includes('recallsBox')) errs.push('recalls мав зникнути зі сторінки');
@@ -79,9 +79,9 @@ const q = fs.readFileSync('supabase-garage.sql','utf8');
   .forEach(k => { if (!q.includes(k)) errs.push('SQL: нема ' + k); });
 
 /* 6. словники */
-for (const f of ['i18n/ru.js','i18n/en.js']) {
+for (const f of ['i18n/ru.js','i18n/ua.js']) {
   const s = fs.readFileSync(f,'utf8');
-  if (!s.includes("'Журнал авто'")) errs.push('нема ключів гаража у ' + f);
+  if (!s.includes("'Service log'")) errs.push('нема ключів гаража у ' + f);
 }
 
 /* 7. config.js не чіпали */

@@ -252,8 +252,8 @@ async function sys(product, memory, extra) {
       if (!s.includes(el)) errs.push('сторінка ' + f + ' без елемента ' + el);
     }
     if (s.includes('chatCarTitle')) errs.push('сторінка ' + f + ' досі тримає назву авто в шапці чату');
-    if (!s.includes('<b>Асистент CalCar</b>')) errs.push('сторінка ' + f + ' без заголовка Асистент CalCar');
-    if (!s.includes('placeholder="Постав питання… @ щоб додати звіт для порівняння"')) errs.push('сторінка ' + f + ' зі старим плейсхолдером');
+    if (!s.includes('<b>CalCar Assistant</b>')) errs.push('сторінка ' + f + ' без заголовка Асистент CalCar');
+    if (!s.includes('placeholder="Ask a question… @ to add a report for comparison"')) errs.push('сторінка ' + f + ' зі старим плейсхолдером');
     if (!s.includes('pendingRefs.length >= 2')) errs.push('сторінка ' + f + ' без ліміту двох прикріплених звітів');
     if (!s.includes('bindMention();')) errs.push('сторінка ' + f + ' не підключає @-попап');
     /* вибір машини мишею: pointerdown із preventDefault ДО втрати фокуса.
@@ -370,9 +370,9 @@ async function sys(product, memory, extra) {
   }
 
   /* нові рядки інтерфейсу мусять бути в обох словниках */
-  for (const d of ['i18n/ru.js', 'i18n/en.js']) {
+  for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
     const dict = fs.readFileSync(d, 'utf8');
-    for (const k of ['Асистент CalCar', 'Йдеться про:', 'Постав питання… @ щоб додати звіт для порівняння', 'Пошук звіту за назвою…', 'Звітів поки нема', 'сьогодні', 'дн. тому', 'Додати звіт для порівняння', 'Спитати про це', 'Прибрати цитату']) {
+    for (const k of ['CalCar Assistant', 'Talking about:', 'Ask a question… @ to add a report for comparison', 'Search reports by name…', 'No reports yet', 'today', 'days ago', 'Add a report for comparison', 'Ask about this', 'Remove quote']) {
       if (!dict.includes("'" + k + "'")) errs.push('нема ключа "' + k + '" у ' + d);
     }
   }

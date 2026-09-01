@@ -63,7 +63,8 @@ const read = f => fs.readFileSync(f, 'utf8');
   else if (new Set(cores).size !== 1) errs.push('ядро i18n НЕ побайтово однакове на шести сторінках: ' + PAGES.filter((p, i) => cores[i] !== cores[0]).join(', '));
   const core = cores[0] || '';
   const dictV = (core.match(/var DICT_V = '([^']+)'/) || [])[1];
-  if (!dictV || dictV === '3') errs.push('DICT_V не піднятий після зміни формату словників: ' + dictV);
+  if (!dictV || ['3', '4'].includes(dictV)) errs.push('DICT_V не піднятий після розвороту словників: ' + dictV);
+  if (!/var SOURCE = 'en'/.test(core)) errs.push('мова розмітки в ядрі не en');
   if (!/var DEFAULT_LOCALE = 'en'/.test(core) || !/var FALLBACK_LOCALE = 'en'/.test(core)) errs.push('ядро без DEFAULT/FALLBACK en');
   if (/localStorage\.getItem\('calcar_lang'\) \|\| 'ua'/.test(read('check.html'))) errs.push('старий flash-скрипт з фолбеком ua лишився');
   for (const p of PAGES) {
@@ -98,13 +99,13 @@ const read = f => fs.readFileSync(f, 'utf8');
   }
   let r = runCore({ saved: 'ru', languages: ['de-DE', 'de'] });
   if (r.window.calcarLang() !== 'ru') errs.push('saved ru + browser de мало дати ru: ' + r.window.calcarLang());
-  if (!/\/i18n\/ru\.js/.test(r.written) || !/\/i18n\/en\.js/.test(r.written)) errs.push('для ru не вантажаться ru + en словники: ' + r.written);
+  if (!/\/i18n\/ru\.js/.test(r.written) || /en\.js|ua\.js/.test(r.written)) errs.push('для ru мав вантажитись лише ru.js (англійська це сама розмітка): ' + r.written);
   r = runCore({ saved: null, languages: ['de-DE', 'fr'] });
   if (r.window.calcarLang() !== 'en') errs.push('browser de без збереженого вибору мало дати en: ' + r.window.calcarLang());
-  if (!/\/i18n\/en\.js/.test(r.written) || /ru\.js|ua\.js/.test(r.written)) errs.push('для en мав вантажитись лише en: ' + r.written);
+  if (r.written) errs.push('для en (мова розмітки) словники не мали вантажитись: ' + r.written);
   r = runCore({ saved: 'xx-garbage', languages: ['uk-UA'] });
   if (r.window.calcarLang() !== 'ua') errs.push('зіпсований saved мав відкинутись на браузерну uk: ' + r.window.calcarLang());
-  if (r.written) errs.push('для ua (мова розмітки) словники не мали вантажитись: ' + r.written);
+  if (!/\/i18n\/ua\.js/.test(r.written) || /en\.js|ru\.js/.test(r.written)) errs.push('для ua мав вантажитись лише ua.js: ' + r.written);
   r = runCore({ saved: 'uk', languages: ['en'] });
   if (r.window.calcarLang() !== 'ua') errs.push('saved uk не нормалізований в ua');
   r = runCore({ saved: null, languages: ['ru-RU'] });
@@ -114,17 +115,16 @@ const read = f => fs.readFileSync(f, 'utf8');
   r = runCore({ saved: 'en', languages: ['uk'] });
   if (r.window.calcarLang() !== 'en') errs.push('явний en слабший за браузерну uk');
   if (r.window.calcarResolveLocale('de') !== 'en' || r.window.calcarResolveLocale('uk') !== 'ua') errs.push('calcarResolveLocale не нормалізує');
-  /* t(): обрана мова -> англійська -> вихідна фраза */
-  const dicts = { ru: { 'Ключ А': 'ру А' }, en: { 'Ключ А': 'en A', 'Ключ Б': 'en B' } };
+  /* t(): обрана мова -> англійська фраза розмітки (вона і є фолбек) */
+  const dicts = { ru: { 'Key A': 'ру А' }, ua: { 'Key A': 'укр А', 'Key B': 'укр Б' } };
   r = runCore({ saved: 'ru', languages: [], dicts });
-  if (r.window.t('Ключ А') !== 'ру А') errs.push('t() ru не взяв російський переклад');
-  if (r.window.t('Ключ Б') !== 'en B') errs.push('t() ru без перекладу мав взяти англійський, а не ключ: ' + r.window.t('Ключ Б'));
-  if (r.window.t('Ключ В') !== 'Ключ В') errs.push('t() без жодного перекладу мав повернути фразу');
-  if (r.window.t(' Ключ Б ') !== ' en B ') errs.push('t() не зберіг пробіли по краях');
-  r = runCore({ saved: 'en', languages: [], dicts });
-  if (r.window.t('Ключ Б') !== 'en B') errs.push('t() en не взяв англійський');
+  if (r.window.t('Key A') !== 'ру А') errs.push('t() ru не взяв російський переклад');
+  if (r.window.t('Key B') !== 'Key B') errs.push('t() ru без перекладу мав повернути англійську фразу: ' + r.window.t('Key B'));
+  if (r.window.t(' Key A ') !== ' ру А ') errs.push('t() не зберіг пробіли по краях');
   r = runCore({ saved: 'ua', languages: [], dicts });
-  if (r.window.t('Ключ А') !== 'Ключ А') errs.push('t() ua мав повернути вихідну фразу розмітки');
+  if (r.window.t('Key B') !== 'укр Б') errs.push('t() ua не взяв український переклад');
+  r = runCore({ saved: 'en', languages: [], dicts });
+  if (r.window.t('Key A') !== 'Key A') errs.push('t() en мав повернути вихідну англійську фразу');
 
   /* ===== 2б. TreeWalker: код і шаблони не локалізуються ===== */
   if (!/closest\(SKIP\)/.test(core) || !/'script,style,template,noscript,textarea'/.test(core)) errs.push('ядро не виключає script/style/template/noscript/textarea з локалізації');
@@ -132,23 +132,23 @@ const read = f => fs.readFileSync(f, 'utf8');
     /* пісочниця з фейковим DOM: apply() виконується одразу, TreeWalker віддає
        текстові вузли з батьками різних тегів */
     const mk = (text, tag) => ({ nodeValue: text, parentNode: { closest: sel => (sel.split(',').includes(tag.toLowerCase()) ? {} : null) } });
-    const nodes = [mk('Ключ А', 'P'), mk('Ключ А', 'SCRIPT'), mk('Ключ А', 'STYLE'), mk('Ключ А', 'TEXTAREA'), mk('Ключ А', 'TEMPLATE'), mk('Ключ А', 'NOSCRIPT'), mk('Ключ Б', 'SPAN')];
+    const nodes = [mk('Key A', 'P'), mk('Key A', 'SCRIPT'), mk('Key A', 'STYLE'), mk('Key A', 'TEXTAREA'), mk('Key A', 'TEMPLATE'), mk('Key A', 'NOSCRIPT'), mk('Key B', 'SPAN')];
     const store = { calcar_lang: 'ru' };
     const document = {
       documentElement: { className: '', lang: '', classList: { remove() {} } },
       readyState: 'complete', body: {},
-      write() {}, addEventListener() {}, getElementById() { return null; }, querySelectorAll() { return []; }, title: 'Ключ Б',
+      write() {}, addEventListener() {}, getElementById() { return null; }, querySelectorAll() { return []; }, title: 'Key A',
       createTreeWalker() { let i = -1; return { nextNode() { i++; return i < nodes.length ? nodes[i] : null; } }; },
     };
     const ctx = { window: { CALCAR_DICTS: dicts }, document, navigator: { languages: [] }, localStorage: { getItem: k => store[k] || null, setItem() {} }, setTimeout() {}, NodeFilter: { SHOW_TEXT: 4 }, location: {} };
     vm.createContext(ctx);
     vm.runInContext(core.replace('/* i18n-core:start */', '').replace('/* i18n-core:end */', ''), ctx);
     if (nodes[0].nodeValue !== 'ру А') errs.push('TreeWalker: видимий текст не локалізований: ' + nodes[0].nodeValue);
-    if (nodes[6].nodeValue !== 'en B') errs.push('TreeWalker: EN-фолбек у DOM не спрацював: ' + nodes[6].nodeValue);
+    if (nodes[6].nodeValue !== 'Key B') errs.push('TreeWalker: фраза без перекладу мала лишитись англійською: ' + nodes[6].nodeValue);
     for (const [i, tag] of [[1, 'SCRIPT'], [2, 'STYLE'], [3, 'TEXTAREA'], [4, 'TEMPLATE'], [5, 'NOSCRIPT']]) {
-      if (nodes[i].nodeValue !== 'Ключ А') errs.push('TreeWalker: текст усередині ' + tag + ' підмінений: ' + nodes[i].nodeValue);
+      if (nodes[i].nodeValue !== 'Key A') errs.push('TreeWalker: текст усередині ' + tag + ' підмінений: ' + nodes[i].nodeValue);
     }
-    if (document.title !== 'en B') errs.push('title не локалізований через EN-фолбек: ' + document.title);
+    if (document.title !== 'ру А') errs.push('title не локалізований: ' + document.title);
     if (document.documentElement.lang !== 'ru') errs.push('html lang не виставлений: ' + document.documentElement.lang);
   }
 
@@ -191,54 +191,78 @@ const read = f => fs.readFileSync(f, 'utf8');
     if (bad.length) errs.push('api/' + f + ': українська помилка мимо локалі: ' + bad[0].slice(0, 70));
   }
 
-  /* ===== 4. словники: English повна база ===== */
+  /* ===== 4. словники: English це фізична база (ключ = англійська фраза розмітки) ===== */
   const loadDict = code => { const w = { CALCAR_DICTS: {} }; vm.runInNewContext(read('i18n/' + code + '.js'), { window: w }); return w.CALCAR_DICTS[code] || null; };
   const EN = loadDict('en'), RU = loadDict('ru'), UA = loadDict('ua');
   if (!EN || !RU || !UA) errs.push('словники не реєструються у window.CALCAR_DICTS[code]');
+  if (Object.keys(EN || {}).length) errs.push('en.js має переклади: англійська це сама розмітка, окремого словника бути не повинно');
   const norm = s => String(s).replace(/\s+/g, ' ').trim();
-  /* ядро нормалізує ключі (обрізає пробіли по краях), тому ключ на кшталт
-     'Не вийшло: ' легітимний. Помилка це ДВА ключі, що нормалізуються в один:
-     один із них мертвий і ніколи не читається */
+  const cyr = /[а-яёєіїґ]/i;
   const normSet = d => { const out = new Set(); for (const k of Object.keys(d || {})) out.add(norm(k)); return out; };
-  for (const [code, d] of [['en', EN], ['ru', RU], ['ua', UA]]) {
+  for (const [code, d] of [['ru', RU], ['ua', UA]]) {
     const seen = new Map();
     for (const k of Object.keys(d || {})) {
       const n = norm(k);
+      if (cyr.test(k)) errs.push(code + '.js: ключ не англійський (старий шар): "' + k.slice(0, 60) + '"');
       if (seen.has(n)) errs.push(code + '.js: два ключі нормалізуються в один (мертвий дубль): "' + seen.get(n) + '" і "' + k + '"');
       seen.set(n, k);
       if (typeof d[k] !== 'string' || !d[k].trim()) errs.push(code + '.js: порожнє значення для "' + k.slice(0, 50) + '"');
     }
   }
-  const ENN = normSet(EN), RUN = normSet(RU), UAN = normSet(UA);
-  /* кожен ключ UA/RU має English base */
-  for (const k of RUN) if (!ENN.has(k)) errs.push('RU-ключ без English base: "' + k.slice(0, 70) + '"');
-  for (const k of UAN) if (!ENN.has(k)) errs.push('UA-ключ без English base: "' + k.slice(0, 70) + '"');
-  /* кожен t()-ключ і кожна статична фраза розмітки мають English */
+  const RUN = normSet(RU), UAN = normSet(UA);
+  /* raw-розмітка англійська: жодної кирилиці у видимому тексті, атрибутах,
+     title чи meta поза script/style, крім назв мов у перемикачі */
   const SWITCHER = new Set(['Українська', 'Русский', 'English']);
   const decode = s => s.replace(/&#(\d+);/g, (m, n) => String.fromCharCode(+n)).replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ');
-  const cyr = /[а-яёєіїґ]/i;
+  /* бренди і технічні токени, що свідомо не перекладаються */
+  const UNTRANSLATED = /^(Cal|Car|beta|UA|RU|EN|English|CalCar( Check| Import| Score)?|Google|VIN|you@example\.com|OK|PDF|AI)$/;
   const need = new Map();
   for (const p of PAGES) {
     const s = read(p);
+    if (!/<html lang="en">/.test(s)) errs.push(p + ': html lang не en');
+    const title = (s.match(/<title>([^<]*)<\/title>/) || [])[1] || '';
+    if (cyr.test(title)) errs.push(p + ': <title> не англійський: ' + title);
+    const meta = (s.match(/<meta name="description" content="([^"]*)"/) || [])[1] || '';
+    if (cyr.test(meta)) errs.push(p + ': meta description не англійський');
     let m; const re = /\bt\(\s*'((?:[^'\\]|\\.)*)'/g;
     while ((m = re.exec(s))) need.set(norm(m[1].replace(/\\'/g, "'")), p + ' t()');
     const body = s.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '');
-    for (const raw of body.split(/<[^>]*>/)) { const t = norm(decode(raw)); if (t && cyr.test(t) && !SWITCHER.has(t)) need.set(t, p + ' markup'); }
+    for (const raw of body.split(/<[^>]*>/)) {
+      const t = norm(decode(raw)); if (!t) continue;
+      if (cyr.test(t) && !SWITCHER.has(t)) errs.push(p + ': кирилиця у raw-розмітці: "' + t.slice(0, 60) + '"');
+      if (/[a-z]/i.test(t) && !SWITCHER.has(t)) need.set(t, p + ' markup');
+    }
     for (const attr of ['placeholder', 'title', 'aria-label', 'alt']) {
       const ra = new RegExp(attr + '="([^"]+)"', 'g');
-      while ((m = ra.exec(body))) { const t = norm(decode(m[1])); if (t && cyr.test(t)) need.set(t, p + ' @' + attr); }
+      while ((m = ra.exec(body))) { const t = norm(decode(m[1])); if (cyr.test(t)) errs.push(p + ': кирилиця в @' + attr + ': ' + t.slice(0, 50)); if (/[a-z]/i.test(t)) need.set(t, p + ' @' + attr); }
     }
-    const title = (s.match(/<title>([^<]*)<\/title>/) || [])[1];
-    if (title && cyr.test(title)) need.set(norm(title), p + ' <title>');
+    if (title) need.set(norm(title), p + ' <title>');
+    /* inline JS: жодного кириличного літерала поза t()/T() і поза регулярками
+       (вони матчать дані користувача українською чи російською) */
+    const js = s.replace(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g, (mm, code) => code).replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"\\])\/\/[^\n]*/g, '$1');
+    const lit = /(['"`])((?:\\.|(?!\1)[^\\\n])*)\1/g; let x;
+    while ((x = lit.exec(js))) {
+      if (!cyr.test(x[2])) continue;
+      if (SWITCHER.has(x[2])) continue;   /* назви мов у перемикачі свідомо не перекладаються */
+      const before = js.slice(Math.max(0, x.index - 12), x.index);
+      if (/(?:^|[^A-Za-z_$])[tT]\(\s*$/.test(before)) continue;
+      if (/RegExp\(\s*$/.test(before) || /\(\?:/.test(x[2]) || /\\[sdw]/.test(x[2])) continue;
+      errs.push(p + ': кириличний JS-літерал поза t(): "' + x[2].slice(0, 50) + '"');
+    }
   }
+  /* повнота UA і RU тримається на нинішньому рівні: кожна вживана фраза,
+     крім свідомо неперекладних токенів, має обидва переклади. Інші мови
+     в майбутньому можуть бути неповними і падати в англійську */
   for (const [k, where] of need) {
-    if (!ENN.has(k)) errs.push('English відсутній для "' + k.slice(0, 70) + '" (' + where + ')');
-    if (!RUN.has(k)) errs.push('RU-повнота зламана: нема "' + k.slice(0, 70) + '" (' + where + ')');
+    if (UNTRANSLATED.test(k) || !/[a-z]{2}/i.test(k)) continue;
+    if (!UAN.has(k)) errs.push('UA-переклад відсутній для "' + k.slice(0, 70) + '" (' + where + ')');
+    if (!RUN.has(k)) errs.push('RU-переклад відсутній для "' + k.slice(0, 70) + '" (' + where + ')');
   }
-  if ('Комплектація за VIN ' in RU) errs.push('мертвий ключ із хвостовим пробілом лишився в ru.js');
+  for (const k of UAN) if (!RUN.has(k)) errs.push('ключ є в ua.js, нема в ru.js: "' + k.slice(0, 60) + '"');
+  for (const k of RUN) if (!UAN.has(k)) errs.push('ключ є в ru.js, нема в ua.js: "' + k.slice(0, 60) + '"');
 
   fs.rmSync(dir, { recursive: true, force: true });
   if (errs.length) { console.log('LOCALE TEST FAILED:'); errs.forEach(e => console.log('  - ' + e)); process.exit(1); }
-  console.log('resolveLocale · помилки трьома мовами · ядро побайтово одне · saved > browser > en · t() з EN-фолбеком · локаль у Check/Import/Chat/Memory/Translate · EN повна база (' + need.size + ' фраз)');
+  console.log('resolveLocale · помилки трьома мовами · ядро побайтово одне · saved > browser > en · t() з EN-фолбеком · локаль у Check/Import/Chat/Memory/Translate · English фізична база: raw без кирилиці, UA/RU повні (' + need.size + ' фраз)');
   console.log('LOCALE TEST PASSED');
 })().catch(e => { console.log('LOCALE TEST CRASHED:', e.stack || e.message); process.exit(1); });

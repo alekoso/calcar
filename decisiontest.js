@@ -79,10 +79,10 @@ const VALID = {
   /* екран на v2 із фолбеком на легасі для старих звітів, підпис на місці */
   if (!page.includes('D.score_v2_preview')) errs.push('result-check.html: екран не читає score_v2_preview');
   if (!page.includes("typeof vd.score === 'number'")) errs.push('result-check.html: зник фолбек на легасі оцінку');
-  if (!page.includes('Наша оцінка авто на основі даних, які вдалося перевірити.')) errs.push('result-check.html: нема пояснення оцінки в tooltip');
-  for (const d of ['i18n/ru.js', 'i18n/en.js']) {
+  if (!page.includes('Our assessment of the car based on the data we could verify.')) errs.push('result-check.html: нема пояснення оцінки в tooltip');
+  for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
     const dict = fs.readFileSync(d, 'utf8');
-    for (const k of ['Читати повний розбір', 'Питання продавцю', 'Чого ми не перевірили', 'Наша оцінка авто на основі даних, які вдалося перевірити.']) {
+    for (const k of ['Read the full reasoning', 'Questions for the seller', 'What we could not verify', 'Our assessment of the car based on the data we could verify.']) {
       if (!dict.includes("'" + k + "'")) errs.push('нема ключа "' + k + '" у ' + d);
     }
   }
@@ -262,7 +262,7 @@ const VALID = {
     if (!/decision_inputs/.test(chat)) errs.push('api/chat.js не знає про входи рішення');
 
     /* ---- 19/20. UI: формат пробігу і бейдж власника ---- */
-    if (!/\(≈' \+ esc\(nf\(monthlyKm\)\)/.test(page) || !/esc\(t\('км\/міс'\)\) \+ '\)<\/span>'/.test(page)) errs.push('19: місячний пробіг не в дужках');
+    if (!/\(≈' \+ esc\(nf\(monthlyKm\)\)/.test(page) || !/esc\(t\('km\/mo'\)\) \+ '\)<\/span>'/.test(page)) errs.push('19: місячний пробіг не в дужках');
     if (/">· ≈'/.test(page)) errs.push('19: крапка перед місячним пробігом лишилась');
     if (/\.hrow\.reg > span:not\(\.hd\)\{font-weight:600\}/.test(page)) errs.push('20: реєстраційні події досі жирні');
     const obIdx = page.indexOf('function ownerBadges');
@@ -272,7 +272,7 @@ const VALID = {
       const ownerBadges = new Function(page.slice(obIdx, obEnd) + '\nreturn ownerBadges;')();
       const badges = ownerBadges([
         { event: 'Перша реєстрація в Україні' },
-        { event: 'Перереєстрація' },
+        { event: 'Re-registration' },
         { event: 'Заміна номерного знака, перереєстрація' },
         { event: 'Перереєстрація: 2-й власник' },
         { event: 'Зміна власника' },
@@ -283,9 +283,9 @@ const VALID = {
       if (badges[4] !== 3) errs.push('L: підтверджена зміна власника не пронумерована: ' + badges[4]);
       if (badges[5] !== null) errs.push('L: минуле оголошення прирівняне до зміни власника');
     }
-    for (const d of ['i18n/ru.js', 'i18n/en.js']) {
+    for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
       const dict = fs.readFileSync(d, 'utf8');
-      for (const k of ['{n}-й власник', 'Обговорити це авто в чаті', 'Враховувати памʼять у висновках звітів']) {
+      for (const k of ['Owner #{n}', 'Discuss this car in chat', 'Use memory in report conclusions']) {
         if (!dict.includes("'" + k + "'")) errs.push('нема ключа "' + k + '" у ' + d);
       }
     }

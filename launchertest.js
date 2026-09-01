@@ -181,9 +181,9 @@ if (!vercel.rewrites.some(r => r.source === '/import' && r.destination === '/imp
 if (!fs.existsSync('import.html')) errs.push('немає import.html, вести нікуди');
 
 /* 9. нові рядки інтерфейсу мусять бути в обох словниках, інакше RU/EN сторінка стане мішаною */
-const KEYS = ['Продукти CalCar', 'Перевірка авто перед купівлею', 'Поточний продукт',
-              'Скільки обійдеться авто зі США в Україні'];
-for (const d of ['i18n/ru.js', 'i18n/en.js']) {
+const KEYS = ['CalCar products', 'Pre-purchase car check', 'Current product',
+              'What a US car really costs in Ukraine'];
+for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
   const s = fs.readFileSync(d, 'utf8');
   for (const k of KEYS) if (!s.includes("'" + k + "':")) errs.push('нема ключа "' + k + '" у ' + d);
 }

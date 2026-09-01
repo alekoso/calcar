@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="uk">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CalCar Check: чи варто брати саме це авто</title>
-<meta name="description" content="Встав посилання на оголошення про продаж авто. CalCar звіряє слова продавця з історією авто, даними VIN і фото, показує розбіжності і каже, чи варто брати.">
+<title>CalCar Check: is this exact car worth buying</title>
+<meta name="description" content="Paste a car listing link. CalCar checks the seller's claims against the car's history, VIN data and photos, shows the discrepancies and tells you whether it is worth buying.">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -25,10 +25,10 @@
      нема й його, вихідна фраза розмітки. Вихідна фраза ніколи не є
      user-facing фолбеком, поки існує англійський варіант.
    - Словники /i18n/<code>.js реєструються у window.CALCAR_DICTS[code];
-     вантажаться обрана мова і, окремо, англійська як фолбек. */
+     вантажиться лише обрана мова: фолбек (англійська) і є мовою розмітки. */
 (function () {
   var LS = 'calcar_lang';
-  var SOURCE = 'ua';
+  var SOURCE = 'en';
   var DEFAULT_LOCALE = 'en';
   var FALLBACK_LOCALE = 'en';
   var LANGS = [
@@ -36,7 +36,7 @@
     { code: 'ru', label: 'Русский',    short: 'RU', locale: 'ru-RU', html: 'ru' },
     { code: 'en', label: 'English',    short: 'EN', locale: 'en-US', html: 'en' },
   ];
-  var DICT_V = '4';           /* міняти при зміні словників чи їх формату, щоб скинути кеш */
+  var DICT_V = '5';           /* міняти при зміні словників чи їх формату, щоб скинути кеш */
 
   /* єдиний резолвер локалі: явна підтримувана -> нормалізований код, усе
      інше -> null (той, хто викликає, підставляє DEFAULT чи FALLBACK).
@@ -95,7 +95,8 @@
     document.write('<scr' + 'ipt src="/i18n/' + code + '.js?v=' + DICT_V + '"></scr' + 'ipt>');
   }
   if (cur !== SOURCE) load(cur);
-  if (cur !== SOURCE && cur !== FALLBACK_LOCALE) load(FALLBACK_LOCALE);
+  /* фолбек-словник потрібен лише коли фолбек не є мовою самої розмітки */
+  if (cur !== SOURCE && cur !== FALLBACK_LOCALE && FALLBACK_LOCALE !== SOURCE) load(FALLBACK_LOCALE);
 
   function norm(s) { return String(s).replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, ''); }
 
@@ -125,7 +126,7 @@
     if (v === null) return null;
     return (s.match(/^\s*/) || [''])[0] + v + (s.match(/\s*$/) || [''])[0];
   }
-  function ready(l) { return l === SOURCE || !!(window.CALCAR_DICTS[l] || window.CALCAR_DICTS[FALLBACK_LOCALE]); }
+  function ready(l) { return l === SOURCE || !!window.CALCAR_DICTS[l] || (FALLBACK_LOCALE !== SOURCE && !!window.CALCAR_DICTS[FALLBACK_LOCALE]); }
   window.t = function (s, l) {
     l = resolveLocale(l) || lang();
     if (l === SOURCE) return s;
@@ -548,7 +549,7 @@
 <header>
   <div class="header-in">
     <div class="hleft">
-      <button class="lnc-btn" type="button" id="lncBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="lncPanel" title="Продукти CalCar" aria-label="Продукти CalCar"><svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor" aria-hidden="true"><rect x="0" y="0" width="4" height="4" rx="1.2"/><rect x="7" y="0" width="4" height="4" rx="1.2"/><rect x="14" y="0" width="4" height="4" rx="1.2"/><rect x="0" y="7" width="4" height="4" rx="1.2"/><rect x="7" y="7" width="4" height="4" rx="1.2"/><rect x="14" y="7" width="4" height="4" rx="1.2"/><rect x="0" y="14" width="4" height="4" rx="1.2"/><rect x="7" y="14" width="4" height="4" rx="1.2"/><rect x="14" y="14" width="4" height="4" rx="1.2"/></svg></button>
+      <button class="lnc-btn" type="button" id="lncBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="lncPanel" title="CalCar products" aria-label="CalCar products"><svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor" aria-hidden="true"><rect x="0" y="0" width="4" height="4" rx="1.2"/><rect x="7" y="0" width="4" height="4" rx="1.2"/><rect x="14" y="0" width="4" height="4" rx="1.2"/><rect x="0" y="7" width="4" height="4" rx="1.2"/><rect x="7" y="7" width="4" height="4" rx="1.2"/><rect x="14" y="7" width="4" height="4" rx="1.2"/><rect x="0" y="14" width="4" height="4" rx="1.2"/><rect x="7" y="14" width="4" height="4" rx="1.2"/><rect x="14" y="14" width="4" height="4" rx="1.2"/></svg></button>
       <a class="logo" href="/"><span class="l">Cal</span><span class="r">Car</span></a>
       <div class="beta">beta</div>
     </div>
@@ -564,13 +565,13 @@
       <div class="acc-wrap">
         <a class="btn-auth" href="/cabinet.html" id="authLink">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg>
-          <span id="authLabel">Увійти</span>
+          <span id="authLabel">Sign in</span>
         </a>
       <div class="acc-menu">
-        <a href="/garage">Гараж</a>
-        <a href="/cabinet.html#reports">Звіти</a>
-        <a href="/cabinet.html#memory">Памʼять помічника</a>
-        <a href="/cabinet.html#account">Налаштування акаунта</a>
+        <a href="/garage">Garage</a>
+        <a href="/cabinet.html#reports">Reports</a>
+        <a href="/cabinet.html#memory">Assistant memory</a>
+        <a href="/cabinet.html#account">Account settings</a>
       </div>
       </div>
     </div>
@@ -578,27 +579,27 @@
 </header>
 
 <div class="lnc-backdrop" id="lncBackdrop"></div>
-<div class="lnc-panel" id="lncPanel" role="dialog" tabindex="-1" aria-label="Продукти CalCar">
+<div class="lnc-panel" id="lncPanel" role="dialog" tabindex="-1" aria-label="CalCar products">
   <div class="lnc-grab" aria-hidden="true"></div>
   <div class="lnc-head">
-    <div class="lnc-title">Продукти CalCar</div>
-    <button class="lnc-x" type="button" id="lncClose" title="Закрити" aria-label="Закрити"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    <div class="lnc-title">CalCar products</div>
+    <button class="lnc-x" type="button" id="lncClose" title="Close" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   </div>
   <div class="lnc-list">
     <a class="lnc-item" data-prod="check" href="/check">
       <span class="lnc-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="none" stroke="#141619" stroke-width="64" stroke-linecap="butt"><path d="M229.72 322.19 A 84 84 0 1 1 229.72 189.81"/><path d="M430.72 322.19 A 84 84 0 1 1 430.72 189.81"/></g></svg></span>
       <span class="lnc-body">
         <span class="lnc-name">CalCar Check</span>
-        <span class="lnc-desc">Перевірка авто перед купівлею</span>
-        <span class="lnc-badge">Поточний продукт</span>
+        <span class="lnc-desc">Pre-purchase car check</span>
+        <span class="lnc-badge">Current product</span>
       </span>
     </a>
     <a class="lnc-item" data-prod="import" href="/import">
       <span class="lnc-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="#141619"><path d="M160 244 L204 168 Q212 156 227 156 L299 156 Q314 156 322 168 L366 244 Z"/><rect x="76" y="238" width="360" height="58" rx="24"/><circle cx="162" cy="314" r="44"/><circle cx="350" cy="314" r="44"/></g><path d="M190 230 L228 176 Q233 170 240 170 L286 170 Q293 170 298 176 L336 230 Z" fill="#B8F23D"/></svg></span>
       <span class="lnc-body">
         <span class="lnc-name">CalCar Import</span>
-        <span class="lnc-desc">Скільки обійдеться авто зі США в Україні</span>
-        <span class="lnc-badge">Поточний продукт</span>
+        <span class="lnc-desc">What a US car really costs in Ukraine</span>
+        <span class="lnc-badge">Current product</span>
       </span>
     </a>
   </div>
@@ -606,45 +607,45 @@
 
 <div class="hero">
   <div class="hero-in">
-    <h1>Точно чи варто брати<br><em>саме цю машину?</em></h1>
-    <p class="sub">Встав посилання на оголошення. CalCar звіряє слова продавця з історією авто, заводськими даними за VIN і фото, показує розбіжності і дає підсумок.</p>
+    <h1>Is it really worth buying<br><em>this exact car?</em></h1>
+    <p class="sub">Paste a listing link. CalCar cross-checks the seller's claims against the car's history, factory VIN data and photos, shows discrepancies and gives a verdict.</p>
 
     <div class="hero-form">
       <div class="hf-row">
-        <input type="text" id="urlInput" placeholder="Посилання на оголошення" spellcheck="false">
-        <button class="btn-primary" id="goBtn" type="button">Перевірити</button>
+        <input type="text" id="urlInput" placeholder="Listing link" spellcheck="false">
+        <button class="btn-primary" id="goBtn" type="button">Check it</button>
       </div>
       <div class="hf-status" id="status"></div>
       <div class="ld" id="loadBox"></div>
       <div class="hf-note">
-        <span><b>Безкоштовна перевірка</b></span>
-        <span>VIN знайдемо самі</span>
-        <span>Результат за ~1–2 хв</span>
+        <span><b>Free check</b></span>
+        <span>We'll find the VIN</span>
+        <span>Result in ~1–2 min</span>
       </div>
-      <div class="manual"><span class="summary">Перевірка лише за VIN зʼявиться скоро</span></div>
+      <div class="manual"><span class="summary">VIN-only check is coming soon</span></div>
     </div>
   </div>
 </div>
 
 <div class="wrap-sec">
   <section style="padding-bottom:0">
-    <h2 class="sec">Що перевіряє CalCar</h2>
-    <p class="sec-sub">Збираємо дані з різних джерел, зіставляємо їх з оголошенням і показуємо те, на що варто звернути увагу.</p>
+    <h2 class="sec">What CalCar checks</h2>
+    <p class="sec-sub">We gather data from multiple sources, cross-check it against the listing and highlight what deserves attention.</p>
     <div class="feats">
       <div class="feat">
         <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M11 8v3l2 2"/></svg></div>
-        <div><b>Розбіжності</b>
-        <p>Звіряємо слова продавця з історією авто і показуємо невідповідності.</p></div>
+        <div><b>Discrepancies</b>
+        <p>We cross-check the seller's claims against the car's history and show mismatches.</p></div>
       </div>
       <div class="feat">
         <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg></div>
-        <div><b>Пробіг і власники</b>
-        <p>Зіставляємо минулі пробіги, продажі та зміни власників.</p></div>
+        <div><b>Mileage & owners</b>
+        <p>We match past mileages, sales and ownership changes.</p></div>
       </div>
       <div class="feat">
         <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="m21 15-4-4-6 6"/></svg></div>
-        <div><b>Фото і слабкі місця</b>
-        <p>Шукаємо ознаки ремонту на фото і ризики саме цієї версії авто.</p></div>
+        <div><b>Photos & weak points</b>
+        <p>We look for repair signs in photos and risks of this exact version.</p></div>
       </div>
     </div>
   </section>
@@ -652,14 +653,14 @@
 
 <div class="wrap-sec">
   <section>
-    <h2 class="sec">Як виглядає результат</h2>
+    <h2 class="sec">What the result looks like</h2>
     <div class="sample">
       <div class="card">
         <div class="card-body">
-      <div class="sline"><span class="dot bad"></span><span><b>Продавець: «без ДТП».</b> Офіційна перевірка показує страховий випадок у США та запис аукціону.</span></div>
-      <div class="sline"><span class="dot warn"></span><span><b>4 власники за 5 років,</b> остання покупка 5 місяців тому: схоже на перепродаж.</span></div>
-      <div class="sline"><span class="dot warn"></span><span><b>Пробіг 129 тис. км</b> проти 109 тис. в оголошенні 2024 року: хронологія збігається.</span></div>
-      <div class="sline"><span class="dot ok"></span><span><b>Комплектація підтверджена</b> заводськими даними за VIN.</span></div>
+      <div class="sline"><span class="dot bad"></span><span><b>Seller: "no accidents".</b> The official check shows a US insurance claim and an auction record.</span></div>
+      <div class="sline"><span class="dot warn"></span><span><b>4 owners in 5 years,</b> last purchase 5 months ago: looks like a flip.</span></div>
+      <div class="sline"><span class="dot warn"></span><span><b>Mileage 129k km</b> vs 109k in a 2024 listing: the timeline is consistent.</span></div>
+      <div class="sline"><span class="dot ok"></span><span><b>Equipment confirmed</b> by factory VIN data.</span></div>
         </div>
       </div>
     </div>
@@ -668,16 +669,16 @@
 
 <div class="cta-wrap">
   <div class="cta">
-    <h3>Перевір оголошення перед тим, як їхати дивитись</h3>
-    <p>Одна хвилина, і ти знаєш, що продавець не договорює.</p>
-    <button class="btn-primary" id="ctaBtn">Перевірити авто</button>
+    <h3>Check the listing before you go see the car</h3>
+    <p>One minute, and you know what the seller left out.</p>
+    <button class="btn-primary" id="ctaBtn">Check the car</button>
   </div>
 </div>
 
 <footer>
   <div class="footer-in">
     <a class="logo" href="/"><span class="l">Cal</span><span class="r">Car</span></a>
-    <span>beta · AI-аналіз, остаточне рішення завжди за вами</span>
+    <span>beta · AI analysis, the final decision is always yours</span>
     <span class="right">© 2026 CalCar · calcar.io</span>
   </div>
 </footer>
@@ -690,7 +691,7 @@ const SB = (typeof supabase !== 'undefined' && window.CALCAR_SUPABASE?.url)
   : null;
 if (SB) {
   SB.auth.getSession().then(({ data }) => {
-    if (data?.session) document.getElementById('authLabel').textContent = t('Кабінет');
+    if (data?.session) document.getElementById('authLabel').textContent = t('My account');
   });
 }
 
@@ -708,10 +709,10 @@ const statusEl = document.getElementById('status');
 /* підписи звірені з реальним пайплайном: обіцянок неіснуючих функцій
    (пошук минулих продажів/старих оголошень) тут свідомо нема */
 const LOAD_STAGES = [
-  { title: 'Аналізуємо автомобіль', subs: ['читаємо дані оголошення', 'перевіряємо VIN і модифікацію', 'розбираємо опис і комплектацію'] },
-  { title: 'Перевіряємо історію', subs: ['звіряємо реєстрації і власників', 'перевіряємо історію пробігу', 'перевіряємо ДТП та історичні записи'] },
-  { title: 'Аналізуємо фотографії', subs: ['відбираємо інформативні ракурси', 'перевіряємо кузов', 'вивчаємо салон', 'визначаємо комплектацію', 'шукаємо візуальні розбіжності'] },
-  { title: 'Формуємо висновок', subs: ['зіставляємо дані з різних джерел', 'визначаємо ризики саме цього авто', 'рахуємо Оцінку CalCar', 'формуємо підсумковий висновок'] },
+  { title: 'Analyzing the car', subs: ['reading the listing data', 'checking the VIN and trim', 'parsing the description and equipment'] },
+  { title: 'Checking the history', subs: ['checking registrations and owners', 'checking the mileage history', 'checking accidents and history records'] },
+  { title: 'Analyzing the photos', subs: ['selecting informative frames', 'inspecting the body', 'reviewing the interior', 'identifying the equipment', 'looking for visual mismatches'] },
+  { title: 'Preparing the verdict', subs: ['cross-checking the sources', 'identifying this car specific risks', 'calculating the CalCar Score', 'preparing the final verdict'] },
 ];
 /* старти стадій у мс: хореографія під типовий Check ~2-3 хв */
 const LOAD_STAGE_AT = [0, 12000, 45000, 110000];
@@ -724,7 +725,7 @@ function loadingStart() {
   const box = document.getElementById('loadBox');
   box.innerHTML = LOAD_STAGES.map((st, i) =>
     '<div class="ld-row" data-i="' + i + '"><span class="ld-ico">✓</span><div class="ld-body"><div class="ld-t">' + esc(t(st.title)) + '</div><div class="ld-sub"></div></div></div>'
-  ).join('') + '<div class="ld-note" id="ldNote">' + esc(t('Аналіз займає трохи більше часу. Деякі автомобілі потребують додаткових перевірок.')) + '</div>';
+  ).join('') + '<div class="ld-note" id="ldNote">' + esc(t('The analysis is taking a bit longer. Some cars need extra checks.')) + '</div>';
   box.className = 'ld on';
   ld = { rid, stage: -1, subIdx: 0, timers: [], rot: null, done: false };
   const setStage = i => {
@@ -781,7 +782,7 @@ function loadingError(rid, msg) {
   loadingStop();
   console.log('[check-load]', rid, 'error', msg);
   const box = document.getElementById('loadBox');
-  box.innerHTML = '<div class="ld-err">' + esc(msg) + ' <a href="#" id="ldRetry">' + esc(t('Спробувати ще раз')) + '</a></div>';
+  box.innerHTML = '<div class="ld-err">' + esc(msg) + ' <a href="#" id="ldRetry">' + esc(t('Try again')) + '</a></div>';
   document.getElementById('ldRetry').onclick = ev => { ev.preventDefault(); run(); };
 }
 
@@ -889,7 +890,7 @@ async function collectDecisionContext(){
 }
 
 async function safeJson(r) {
-  try { return await r.json(); } catch (e) { return { error: t('Сервер повернув неочікувану відповідь') }; }
+  try { return await r.json(); } catch (e) { return { error: t('The server returned an unexpected response') }; }
 }
 
 /* нижня кнопка не дублює логіку, а веде до тієї самої форми */
@@ -904,7 +905,7 @@ input.addEventListener('keydown', e => { if (e.key === 'Enter') run(); });
 async function run() {
   const url = input.value.trim();
   if (!/^https?:\/\/.+\..+/.test(url)) {
-    setStatus(t('Встав повне посилання на оголошення, разом із https://'), true);
+    setStatus(t('Paste the full listing link, including https://'), true);
     return;
   }
   btn.disabled = true;
@@ -920,9 +921,9 @@ async function run() {
       const when = new Date(existing.created_at).toLocaleDateString(window.calcarLocale());
       const href = existing.public_id ? '/check/' + existing.public_id : '/result-check.html?id=' + existing.id;
       statusEl.className = 'hf-status on';
-      statusEl.innerHTML = esc(t('Ти вже перевіряв це авто') + ' (' + when + '). ')
-        + '<a href="' + href + '">' + esc(t('Відкрити звіт')) + '</a> ' + esc(t('або')) + ' '
-        + '<a href="#" id="recheckLink">' + esc(t('перевірити заново')) + '</a>';
+      statusEl.innerHTML = esc(t('You already checked this car') + ' (' + when + '). ')
+        + '<a href="' + href + '">' + esc(t('Open report')) + '</a> ' + esc(t('or')) + ' '
+        + '<a href="#" id="recheckLink">' + esc(t('check again')) + '</a>';
       document.getElementById('recheckLink').onclick = ev => {
         ev.preventDefault();
         window.__forceReanalyze = true;
@@ -944,7 +945,7 @@ async function run() {
       body: JSON.stringify(Object.assign({ url, lang: window.calcarLang() }, dctx)),
     });
     const data = await safeJson(r);
-    if (!r.ok || data.error) throw new Error(data.error || t('Помилка сервера'));
+    if (!r.ok || data.error) throw new Error(data.error || t('Server error'));
 
     const finPromise = loadingFinish(rid);
     sessionStorage.setItem('calcarCheck', JSON.stringify(data));
@@ -958,7 +959,7 @@ async function run() {
       if (SB) {
         const { data: s } = await SB.auth.getSession();
         if (s?.session) {
-          const title = data.vehicle?.title || t('Перевірка');
+          const title = data.vehicle?.title || t('Check');
           const pid = makePid();
           let ins = await SB.from('reports').insert({
             user_id: s.session.user.id, kind: 'check', public_id: pid, title, data,
@@ -979,7 +980,7 @@ async function run() {
     await finPromise;
     location.href = dest;
   } catch (e) {
-    loadingError(rid, e.message || t('Щось пішло не так, спробуй ще раз'));
+    loadingError(rid, e.message || t('Something went wrong, please try again'));
   } finally {
     btn.disabled = false;
   }

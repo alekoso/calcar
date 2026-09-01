@@ -17,8 +17,8 @@ for (const f of files) {
 
 /* ключі словників це точні українські рядки зі сторінок: розходження = мовчазна
    втрата перекладу, саме тому правка тире у сторінці мусить іти разом зі словником */
-const pageKeys = ['Кабінет · CalCar', 'Без паролів. Один прорахунок безкоштовно.'];
-for (const d of ['i18n/ru.js', 'i18n/en.js']) {
+const pageKeys = ['My account · CalCar', 'No passwords. Your first estimate is free.'];
+for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
   const s = fs.readFileSync(d, 'utf8');
   pageKeys.forEach(k => { if (!s.includes("'" + k + "'")) errs.push('нема ключа "' + k + '" у ' + d); });
 }

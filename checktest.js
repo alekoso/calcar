@@ -133,25 +133,25 @@ const REPORTS = [
       if (!page.includes("console.log('[check-load]', rid, " + ev)) errs.push('нема lifecycle-логу ' + ev);
     }
     /* довгий аналіз: нейтральний текст без обіцянок секунд */
-    if (!page.includes('Аналіз займає трохи більше часу')) errs.push('нема нейтрального тексту довгого аналізу');
+    if (!page.includes('The analysis is taking a bit longer. Some cars need extra checks.')) errs.push('нема нейтрального тексту довгого аналізу');
     if (/ще кілька секунд/.test(page)) errs.push('обіцянка "ще кілька секунд" присутня');
     /* retry при помилці */
-    if (!page.includes('id="ldRetry"') || !page.includes('Спробувати ще раз')) errs.push('нема retry при помилці');
+    if (!page.includes('id="ldRetry"') || !page.includes('Try again')) errs.push('нема retry при помилці');
     /* добіг швидкий: кроки добігу <= 250 мс */
     const fin = /}, i \* (\d+)\)/.exec(page);
     if (!fin || +fin[1] > 250) errs.push('добіг фіналу повільний або відсутній');
-    for (const d of ['i18n/ru.js', 'i18n/en.js']) {
+    for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
       const dict = fs.readFileSync(d, 'utf8');
-      for (const k of ['Аналізуємо автомобіль', 'Перевіряємо історію', 'Аналізуємо фотографії', 'Формуємо висновок', 'перевіряємо кузов', 'Спробувати ще раз', 'Аналіз займає трохи більше часу. Деякі автомобілі потребують додаткових перевірок.']) {
+      for (const k of ['Analyzing the car', 'Checking the history', 'Analyzing the photos', 'Preparing the verdict', 'inspecting the body', 'Try again', 'The analysis is taking a bit longer. Some cars need extra checks.']) {
         if (!dict.includes("'" + k + "'")) errs.push('нема ключа "' + k + '" у ' + d);
       }
     }
   }
 
   /* 5. словники */
-  for (const d of ['i18n/ru.js', 'i18n/en.js']) {
+  for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
     const dict = fs.readFileSync(d, 'utf8');
-    for (const k of ['Ти вже перевіряв це авто', 'перевірити заново']) {
+    for (const k of ['You already checked this car', 'check again']) {
       if (!dict.includes("'" + k + "'")) errs.push('нема ключа "' + k + '" у ' + d);
     }
   }
@@ -212,9 +212,9 @@ const REPORTS = [
     if (!api.includes('photos.slice(0, 120)')) errs.push('кап екстракції фото не піднятий');
     /* перейменування оцінки */
     const pgS = fs.readFileSync('result-check.html', 'utf8');
-    if (!pgS.includes('Оцінка CalCar:')) errs.push('бейдж не перейменований в Оцінка CalCar');
-    for (const d of ['i18n/ru.js', 'i18n/en.js']) {
-      if (!fs.readFileSync(d, 'utf8').includes("'Оцінка CalCar:'")) errs.push('нема ключа "Оцінка CalCar:" у ' + d);
+    if (!pgS.includes('CalCar Score:')) errs.push('бейдж не перейменований в Оцінка CalCar');
+    for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
+      if (!fs.readFileSync(d, 'utf8').includes("'CalCar Score:'")) errs.push('нема ключа "Оцінка CalCar:" у ' + d);
     }
   }
 
@@ -298,7 +298,7 @@ const REPORTS = [
     if (!api.includes('equipment_verifier: eqVerifier')) errs.push('check.js: діагностика верифікатора не в _meta');
     /* сторінка: новий рендер + легасі фолбек */
     const page2 = fs.readFileSync('result-check.html', 'utf8');
-    for (const el of ['equipment_v2', 'class="eq-chip', "t('Підтверджено')", "t('Дані авто')", 'Встановлено пізніше / переобладнання', 'Підтверджено за VIN']) {
+    for (const el of ['equipment_v2', 'class="eq-chip', "t('Confirmed')", "t('Vehicle data')", 'Installed later / retrofit', 'Confirmed by VIN']) {
       if (!page2.includes(el)) errs.push('result-check.html: нема ' + el);
     }
     /* компактність: без повнорядкових опцій, retrofit не дублюється, опис продавця без кнопки */
@@ -307,9 +307,9 @@ const REPORTS = [
     if (page2.includes('id="descBtn"') || page2.includes('id="sellerDesc"')) errs.push('кнопка опису продавця лишилась в UI');
     if (page2.includes('cursor:help')) errs.push('щит досі з cursor:help (курсор-знак питання)');
     if (page2.includes('background:var(--surface-2);font-size:12.5px;font-weight:600')) errs.push('sec-meta досі з сірою заливкою');
-    for (const d of ['i18n/ru.js', 'i18n/en.js']) {
+    for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
       const dict = fs.readFileSync(d, 'utf8');
-      for (const k of ['Підтверджено', 'Дані авто', 'Встановлено пізніше / переобладнання']) {
+      for (const k of ['Confirmed', 'Vehicle data', 'Installed later / retrofit']) {
         if (!dict.includes("'" + k + "'")) errs.push('нема ключа "' + k + '" у ' + d);
       }
     }
@@ -332,7 +332,7 @@ const REPORTS = [
     if (page.includes('id="idLine"')) errs.push('нижній identity-рядок лишився');
     if (!page.includes('class="id-chip"')) errs.push('нема identity-чіпів біля назви');
     if (!page.includes("contains('open') ? close() : open()")) errs.push('чат не перемикається повторним кліком');
-    if (!page.includes('id="scoreTip"') || !page.includes('Критичні ризики можуть сильніше впливати')) errs.push('нема premium tooltip щита');
+    if (!page.includes('id="scoreTip"') || !page.includes('Critical risks can weigh more heavily on the final score.')) errs.push('нема premium tooltip щита');
     if (/score-shield[^>]*title=/.test(page)) errs.push('щит досі з browser-title');
     if (page.includes("t('після перевірок')")) errs.push('grade-бейдж біля оцінки лишився');
     if (page.includes('id="vHint"')) errs.push('рядок-підпис під оцінкою лишився');
@@ -346,7 +346,7 @@ const REPORTS = [
     if (!page.includes('questions_for_seller')) errs.push('питання продавцю зникли зі сторінки');
     if (!page.includes('id="qCard"')) errs.push('нема окремого блоку питань продавцю');
     /* історичний блок: глобальна назва, без failure-текстів і сирих URL */
-    if (!page.includes('Історія пошкоджень і фото з минулого')) errs.push('нема нової назви історичного блоку');
+    if (!page.includes('Damage history and past photos')) errs.push('нема нової назви історичного блоку');
     if (page.includes('Авто в США: до ремонту і зараз')) errs.push('стара назва блоку лишилась');
     if (page.includes('Фото з архіву не вдалося завантажити')) errs.push('failure-текст про фото лишився');
     if (!page.includes('au.found === true')) errs.push('блок історії не звіряється з found');
@@ -424,12 +424,12 @@ const REPORTS = [
     if (!chatApi.includes('пріоритет у provenance')) errs.push('chat.js: structured provenance не пріоритетний');
     if (!chatApi.includes('не посилайся на why_consider')) errs.push('chat.js: why_consider не виключений як доказ');
     const pg3 = fs.readFileSync('result-check.html', 'utf8');
-    if (!pg3.includes("['listing_data', t('Дані оголошення')]")) errs.push('нема групи Дані оголошення');
+    if (!pg3.includes("['listing_data', t('Listing data')]")) errs.push('нема групи Дані оголошення');
     if (!pg3.includes('.eq-chip.hv')) errs.push('нема premium-позначення high_value');
     if (!pg3.includes("factory_status: o.factory_status")) errs.push('чат не отримує структуровану комплектацію');
-    for (const d of ['i18n/ru.js', 'i18n/en.js']) {
+    for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
       const dict = fs.readFileSync(d, 'utf8');
-      for (const k of ['Дані оголошення', 'Дорога опція']) {
+      for (const k of ['Listing data', 'Expensive option']) {
         if (!dict.includes("'" + k + "'")) errs.push('нема ключа "' + k + '" у ' + d);
       }
     }
@@ -491,8 +491,8 @@ const REPORTS = [
     if (pg4.includes('eq-star') || pg4.includes('hvGrad')) errs.push('зірка не видалена повністю');
     if (!pg4.includes('.eq-chip.hv{border-color:transparent;background:linear-gradient(var(--card),var(--card)) padding-box')) errs.push('premium-опція без градієнтної рамки');
     if (/\.eq-chip\.hv\{[^}]*(padding(?!-box)|width|height|margin)/.test(pg4)) errs.push('premium-chip змінює геометрію');
-    if (!pg4.includes("t('Дорога опція')")) errs.push('tooltip не Дорога опція');
-    if (!pg4.includes('Дорогі опції виділені')) errs.push('нема підпису Дорогі опції виділені');
+    if (!pg4.includes("t('Expensive option')")) errs.push('tooltip не Дорога опція');
+    if (!pg4.includes('Expensive options highlighted')) errs.push('нема підпису Дорогі опції виділені');
     if (pg4.includes("t('Цінна опція')")) errs.push('старий tooltip лишився');
     /* без першої особи */
     if (!api.includes('БЕЗ ПЕРШОЇ ОСОБИ')) errs.push('нема заборони першої особи в рішенні');
@@ -512,12 +512,12 @@ const REPORTS = [
     if (!chat4.includes('без price_context чесно кажи')) errs.push('чат дає ринковий вердикт без evidence');
     /* loading: без неіснуючих функцій */
     if (page.includes('минулі продажі') || page.includes('попередні оголошення')) errs.push('loading обіцяє пошук минулих продажів');
-    for (const sub of ['відбираємо інформативні ракурси', 'рахуємо Оцінку CalCar', 'перевіряємо ДТП та історичні записи']) {
+    for (const sub of ['selecting informative frames', 'calculating the CalCar Score', 'checking accidents and history records']) {
       if (!page.includes(sub)) errs.push('нема підпису стадії: ' + sub);
     }
-    for (const d of ['i18n/ru.js', 'i18n/en.js']) {
+    for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
       const dict = fs.readFileSync(d, 'utf8');
-      for (const k of ['фото оголошення №', 'архівне фото №', 'відбираємо інформативні ракурси', 'рахуємо Оцінку CalCar']) {
+      for (const k of ['listing photo #', 'archive photo #', 'selecting informative frames', 'calculating the CalCar Score']) {
         if (!dict.includes("'" + k + "'")) errs.push('нема ключа "' + k + '" у ' + d);
       }
     }
@@ -708,9 +708,9 @@ const REPORTS = [
   if (!api.includes('ані перевірку, ані питання продавцю')) errs.push('check.js: дисципліна не поширена на must_check і питання');
   if (!api.includes('технічну недоступність архіву чи фото НЕ згадуй НІДЕ')) errs.push('check.js: недоступність архіву ще згадується у звіті');
   /* 8. словники: нові рядки */
-  for (const d of ['i18n/ru.js', 'i18n/en.js']) {
+  for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
     const dict = fs.readFileSync(d, 'utf8');
-    for (const k of ['Історія пошкоджень і фото з минулого', 'Копіювати', 'Скопійовано', 'Відкрити джерело', 'Фото з минулого', 'продавець заявляє, що вузол уже обслужений', 'Наша оцінка авто на основі даних, які вдалося перевірити.', 'Критичні ризики можуть сильніше впливати на підсумкову оцінку.', 'Що спитати до огляду']) {
+    for (const k of ['Damage history and past photos', 'Copy', 'Copied', 'Open the source', 'Past photos', 'seller claims this unit was already serviced', 'Our assessment of the car based on the data we could verify.', 'Critical risks can weigh more heavily on the final score.', 'What to ask before viewing']) {
       if (!dict.includes("'" + k + "'")) errs.push('нема ключа "' + k + '" у ' + d);
     }
   }

@@ -728,8 +728,8 @@ const THIN = {
   if (!/delete c\.score_breakdown;/.test(chatSrc)) errs.push('chat.js: канонічний breakdown не вирізається з контексту чату');
   const pageSrc = fs.readFileSync('result-check.html', 'utf8');
   if (!/D\.score_breakdown \|\| D\.score_breakdown_v2/.test(pageSrc)) errs.push('result-check: читач не переведений на канонічне поле з alias-фолбеком');
-  if (!/Низький виявлений ризик/.test(pageSrc)) errs.push('result-check: risk-wording рівня нема');
-  if (!/Аукціонних записів у перевірених джерелах не знайдено/.test(pageSrc)) errs.push('result-check: нейтральне повідомлення checked_absent нема');
+  if (!/Low detected risk/.test(pageSrc)) errs.push('result-check: risk-wording рівня нема');
+  if (!/No auction records found in the checked sources/.test(pageSrc)) errs.push('result-check: нейтральне повідомлення checked_absent нема');
   /* AI-висновок: старий стиль головного виклику; числові підоцінки в текст
      не вплітаються; в кінці ОДНА фраза з точним бекенд-балом */
   if (/buildScoreDigest|nPrompt/.test(checkSrc)) errs.push('check.js: залишки narrative-переписування');
@@ -739,8 +739,8 @@ const THIN = {
   if (!/vehicle: vehicleV3/.test(checkSrc)) errs.push('check.js: vehicle-вхід осі Пробіг не передається');
   /* картка підоцінок: пʼять міток на сторінці і в обох словниках */
   const ruDict = fs.readFileSync('i18n/ru.js', 'utf8');
-  const enDict = fs.readFileSync('i18n/en.js', 'utf8');
-  for (const lbl of ['Історія авто', 'Пробіг', 'Пошкодження та відновлення', 'Стан за фото']) {
+  const enDict = fs.readFileSync('i18n/ua.js', 'utf8');
+  for (const lbl of ['Vehicle history', 'Mileage', 'Damage and repair', 'Condition from photos']) {
     if (!pageSrc.includes("'" + lbl + "'")) errs.push('result-check: мітка осі відсутня: ' + lbl);
     if (!ruDict.includes("'" + lbl + "'")) errs.push('ru.js: нема перекладу мітки ' + lbl);
     if (!enDict.includes("'" + lbl + "'")) errs.push('en.js: нема перекладу мітки ' + lbl);
@@ -753,14 +753,14 @@ const THIN = {
   if (!/shieldEl\.contains\(e\.target\)/.test(pageSrc)) errs.push('result-check: межі подій щита не розділені');
   /* coachmark чату: одноразовий, з localStorage-прапорцем */
   if (!/calcar_chat_hint_seen/.test(pageSrc)) errs.push('result-check: coachmark без localStorage-прапорця');
-  if (!/Можна спитати про це авто/.test(pageSrc)) errs.push('result-check: нема тексту coachmark');
+  if (!/You can ask about this car/.test(pageSrc)) errs.push('result-check: нема тексту coachmark');
   /* середній пробіг за рік: ТІ САМІ canonical-дані осі Пробіг */
   if (!/annual_mileage_km/.test(pageSrc)) errs.push('result-check: річний пробіг не з breakdown осі');
-  if (!/Середній пробіг за місяць за весь строк експлуатації автомобіля\./.test(pageSrc)) errs.push('result-check: нема tooltip місячного пробігу');
+  if (!/Average monthly mileage over the whole life of the vehicle\./.test(pageSrc)) errs.push('result-check: нема tooltip місячного пробігу');
   /* реєстраційні події історії: рядок лишається помітним, але generic-бейдж
      "Перереєстрація" прибраний, бо перереєстрація не доводить зміну власника */
   if (!/reg-badge/.test(pageSrc) || !/ownerBadges/.test(pageSrc)) errs.push('result-check: нема бейджа підтвердженого власника');
-  if (/t\('Перереєстрація'\)/.test(pageSrc)) errs.push('result-check: generic-бейдж перереєстрації лишився');
+  if (/t\('Re-registration'\)/.test(pageSrc)) errs.push('result-check: generic-бейдж перереєстрації лишився');
   /* старий вигляд Score відновлений: окремої картки більше нема, лише popover */
   if (/dimCard|dim-wrap|dim-track|dimLimit/.test(pageSrc)) errs.push('result-check: залишки окремої картки підоцінок');
   if (!/dim-pop/.test(pageSrc)) errs.push('result-check: popover підоцінок відсутній');
@@ -771,7 +771,7 @@ const THIN = {
   if (!/"сильно пошкоджений поріг"/.test(checkSrc)) errs.push('check.js: нема явного прикладу недостатнього evidence (поріг)');
   if (!/Потенційно структурна зона удару/.test(checkSrc)) errs.push('check.js: нема детермінованого fallback-ризику possible structural');
   if (!/possible_structural_damage: hv\.possible_structural_damage === true && hv\.structural_visual_status !== 'visible_damage'/.test(checkSrc)) errs.push('check.js: sanitize не гейтить possible проти visible_damage');
-  for (const key of ['Стан за фото']) {
+  for (const key of ['Condition from photos']) {
     if (!ruDict.includes("'" + key + "'")) errs.push('ru.js: нема перекладу ' + key);
     if (!enDict.includes("'" + key + "'")) errs.push('en.js: нема перекладу ' + key);
   }
