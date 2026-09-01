@@ -553,7 +553,7 @@ window.CALCAR_DICT = {
   'Продукти CalCar': 'CalCar products',
   'Перевірка авто перед купівлею': 'Pre-purchase car check',
   'Поточний продукт': 'Current product',
-  'Авто зі США під ключ': 'Turnkey car import from the USA',
-  'Розрахунок ремонту, розмитнення і підсумкової вартості': 'Repair, customs and final cost estimate',
+  'Скільки обійдеться авто зі США в Україні': 'What a US car really costs in Ukraine',
+  'Ремонт, розмитнення та підсумкова вартість': 'Repairs, customs and the final price',
   'Відкрити': 'Open',
 };

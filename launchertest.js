@@ -54,6 +54,33 @@ for (const f of PAGES) {
   /* 5. на телефоні звільняємо місце чипом beta, інакше шапка стає дворядковою */
   if (!/@media\(max-width:620px\)\{[\s\S]{0,600}header \.beta\{display:none\}/.test(s)) errs.push('нема мобільного правила header .beta: ' + f);
 
+  /* 5а. логотип не має зсуватися: на широкому екрані кнопка виходить із потоку
+     у поле поруч із контейнером. Зсув -30px це не магічне число, а
+     падінг шапки мінус (ширина кнопки + зазор до логотипа): якщо змінити
+     розмір кнопки чи зазор і забути про зсув, логотип поїде або кнопка
+     наїде на нього. Поріг медіазапиту мусить лишати кнопці поле від краю */
+  const pad = +(/\.header-in\{[^}]*padding:0 (\d+)px/.exec(s) || [])[1];
+  /* result.html має окрему flex-шапку без .hleft: там зазор живе на .header-in */
+  const gapM = /\.hleft\{[^}]*gap:(\d+)px/.exec(s) || /\.header-in\{[^}]*gap:(\d+)px/.exec(s);
+  const gap = gapM ? +gapM[1] : 0;
+  const btnW = +(/\.lnc-btn\{[^}]*width:(\d+)px/.exec(s) || [])[1];
+  const shift = /body:not\(\.chat-docked\) \.lnc-btn\{position:absolute;left:(-?\d+)px/.exec(s);
+  const mq = /@media\(min-width:(\d+)px\)\{\s*header \.header-in\{position:relative\}/.exec(s);
+  if (!pad || !gap || !btnW) errs.push('не читаються розміри шапки у ' + f);
+  else if (!shift) errs.push('нема desktop-правила виносу кнопки з потоку: ' + f);
+  else {
+    const want = pad - (btnW + gap);
+    if (+shift[1] !== want) errs.push(f + ': зсув кнопки ' + shift[1] + 'px, а за розмірами шапки має бути ' + want + 'px');
+    if (!mq) errs.push('нема порога медіазапиту для виносу кнопки: ' + f);
+    else {
+      /* 1160 це max-width контейнера; кнопці треба поле |зсув| плюс 10px від краю */
+      const need = 1160 + 2 * (Math.abs(want) + 10);
+      if (+mq[1] < need) errs.push(f + ': поріг ' + mq[1] + 'px замалий, кнопка впреться в край вікна; треба від ' + need + 'px');
+    }
+  }
+  /* у звітах chat-docked знімає max-width шапки, поля не лишається: там у рядок */
+  if (!/body:not\(\.chat-docked\)/.test(s)) errs.push('нема захисту від chat-docked у ' + f);
+
   /* 6. вітрина лишається одним продуктом: старий перемикач не повернувся */
   if (/class="switch"|calcarProduct|kind-badge/.test(s)) errs.push('старий перемикач Check/Import повернувся у ' + f);
 
@@ -126,7 +153,7 @@ if (!fs.existsSync('import.html')) errs.push('немає import.html, вести
 
 /* 9. нові рядки інтерфейсу мусять бути в обох словниках, інакше RU/EN сторінка стане мішаною */
 const KEYS = ['Продукти CalCar', 'Перевірка авто перед купівлею', 'Поточний продукт',
-              'Авто зі США під ключ', 'Розрахунок ремонту, розмитнення і підсумкової вартості', 'Відкрити'];
+              'Скільки обійдеться авто зі США в Україні', 'Ремонт, розмитнення та підсумкова вартість', 'Відкрити'];
 for (const d of ['i18n/ru.js', 'i18n/en.js']) {
   const s = fs.readFileSync(d, 'utf8');
   for (const k of KEYS) if (!s.includes("'" + k + "':")) errs.push('нема ключа "' + k + '" у ' + d);

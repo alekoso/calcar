@@ -274,6 +274,20 @@
   }
   a.lnc-item:hover .lnc-cta{background:var(--brand-hover)}
 
+  /* Логотип мусить стояти рівно там, де стояв до лаунчера. У контейнері 1160px
+     ліворуч від логотипа є лише 20px падінгу, а кнопці треба 50px, тому в рядку
+     вона неминуче зсуває логотип. На широкому екрані виводимо кнопку з потоку
+     в поле поруч із контейнером: логотип повертається на свій x, кнопка лишається
+     ліворуч від нього з тим самим зазором 14px, а панель якориться до кнопки, бо
+     позицію рахує JS від її rect. Поріг 1240px це 1160 + 2x40: рівно стільки поля
+     треба, щоб кнопка не влізла у край вікна. Вужче поля фізично немає, і кнопка
+     лишається в рядку, як була. chat-docked знімає max-width у шапки звіту, поле
+     зникає разом із ним: там теж лишаємо в рядку. */
+  @media(min-width:1240px){
+    header .header-in{position:relative}
+    body:not(.chat-docked) .lnc-btn{position:absolute;left:-30px;top:50%;margin-top:-18px}
+  }
+
   @media(max-width:620px){
     /* лаунчер це новий елемент шапки, і на телефоні рядок шапки від нього
        переносився: 56px перетворювались на 95px на кожній сторінці. Місце
@@ -513,8 +527,8 @@
       <span class="lnc-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="#141619"><path d="M160 244 L204 168 Q212 156 227 156 L299 156 Q314 156 322 168 L366 244 Z"/><rect x="76" y="238" width="360" height="58" rx="24"/><circle cx="162" cy="314" r="44"/><circle cx="350" cy="314" r="44"/></g><path d="M190 230 L228 176 Q233 170 240 170 L286 170 Q293 170 298 176 L336 230 Z" fill="#B8F23D"/></svg></span>
       <span class="lnc-body">
         <span class="lnc-name">CalCar Import</span>
-        <span class="lnc-desc">Авто зі США під ключ</span>
-        <span class="lnc-note">Розрахунок ремонту, розмитнення і підсумкової вартості</span>
+        <span class="lnc-desc">Скільки обійдеться авто зі США в Україні</span>
+        <span class="lnc-note">Ремонт, розмитнення та підсумкова вартість</span>
         <span class="lnc-badge">Поточний продукт</span>
       </span>
       <span class="lnc-cta">Відкрити <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7"/></svg></span>
