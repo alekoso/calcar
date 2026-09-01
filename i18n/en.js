@@ -1,6 +1,8 @@
 /* CalCar: словник English. Ключі це точні українські рядки зі сторінок.
-   Файл вантажиться лише коли обрано цю мову. */
-window.CALCAR_DICT = {
+   Файл вантажиться, коли обрано цю мову; англійський словник вантажиться
+   додатково як фолбек для будь-якої іншої мови. */
+window.CALCAR_DICTS = window.CALCAR_DICTS || {};
+window.CALCAR_DICTS.en = {
     'Кабінет': 'My account', 'Увійти': 'Sign in', 'Вийти': 'Sign out',
     'Мої прорахунки': 'My estimates', 'Прорахунок': 'Estimate',
     'beta · ціни в прорахунках орієнтовні': 'beta · estimate prices are approximate',
@@ -444,7 +446,7 @@ window.CALCAR_DICT = {
   '+ Додати авто': '+ Add car',
   'У гаражі поки порожньо': 'Your garage is empty',
   'Додай своє авто: VIN і пробіг. CalCar сам визначить марку, модель і характеристики, а далі ти зможеш вести журнал обслуговування.': 'Add your car: VIN and mileage. CalCar will identify the make, model and specs, then you can keep a service log.',
-  '&#8592; Гараж': '&#8592; Garage',
+  '← Гараж': '← Garage',
   'Моя машина': 'My car',
   'Редагувати авто': 'Edit car',
   '+ Додати фотографії': '+ Add photos',
@@ -554,4 +556,14 @@ window.CALCAR_DICT = {
   'Перевірка авто перед купівлею': 'Pre-purchase car check',
   'Поточний продукт': 'Current product',
   'Скільки обійдеться авто зі США в Україні': 'What a US car really costs in Ukraine',
+  /* ---- закриття прогалин покриття (аудит мовного фундаменту) ---- */
+  'Гараж · CalCar': 'Garage · CalCar',
+  'Гараж ще не підключено': 'Garage is not connected yet',
+  'Потрібно вписати ключі Supabase у файл config.js.': 'Add the Supabase keys to config.js.',
+  'Увійди, щоб користуватись Гаражем': 'Sign in to use the Garage',
+  'Гараж зберігає твої авто та їхню історію обслуговування. Потрібен акаунт CalCar.': 'The Garage keeps your cars and their service history. A CalCar account is required.',
+  '★ Моя машина': '★ My car',
+  '2.0 бензин': '2.0 petrol',
+  'Посилання на оголошення': 'Listing link',
+  'Прикріпити файл': 'Attach a file',
 };

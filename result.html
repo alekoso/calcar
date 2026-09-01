@@ -12,98 +12,123 @@
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@800&display=swap&text=CalCar" rel="stylesheet">
 <style>html.i18n-wait body{visibility:hidden}</style>
 <script>
-/* Спалах мови: сторінка написана українською, а словник застосовується вже
-   після розбору DOM. Ховаємо вміст на ці мілісекунди, щоб людина не бачила
-   підміну тексту. Страховка: якщо щось піде не так, показуємо через 400 мс. */
-(function(){
-  try {
-    var l = localStorage.getItem('calcar_lang') || 'ua';
-    if (l === 'ua') return;
-    document.documentElement.className += ' i18n-wait';
-    setTimeout(function(){ document.documentElement.classList.remove('i18n-wait'); }, 400);
-  } catch (e) {}
-})();
-</script>
-<script>
-/* CalCar i18n, ядро. Вбудовується у сторінку (маленьке, не росте з кількістю мов).
-   Словники лежать окремо: /i18n/<code>.js, вантажиться РІВНО ОДИН, обраний.
-   Українська це базова мова: для неї не вантажиться нічого.
-   Якщо файл словника недоступний, сторінка просто лишається українською. */
+/* i18n-core:start */
+/* CalCar i18n, ядро. Вбудоване в кожну сторінку ПОБАЙТОВО однаково між
+   маркерами i18n-core:start/end; localetest.js звіряє копії. Семантика:
+   - SOURCE: мова самої розмітки.
+   - DEFAULT_LOCALE і FALLBACK_LOCALE: англійська. Явно збережений вибір
+     користувача сильніший за мову браузера; невідома, зіпсована чи
+     непідтримувана мова ніколи не показує нічого, крім англійської.
+     Жодного визначення за IP чи країною.
+   - t(): переклад обраною мовою, інакше АНГЛІЙСЬКИЙ переклад, і лише коли
+     нема й його, вихідна фраза розмітки. Вихідна фраза ніколи не є
+     user-facing фолбеком, поки існує англійський варіант.
+   - Словники /i18n/<code>.js реєструються у window.CALCAR_DICTS[code];
+     вантажаться обрана мова і, окремо, англійська як фолбек. */
 (function () {
   var LS = 'calcar_lang';
+  var SOURCE = 'ua';
+  var DEFAULT_LOCALE = 'en';
+  var FALLBACK_LOCALE = 'en';
   var LANGS = [
     { code: 'ua', label: 'Українська', short: 'UA', locale: 'uk-UA', html: 'uk' },
     { code: 'ru', label: 'Русский',    short: 'RU', locale: 'ru-RU', html: 'ru' },
     { code: 'en', label: 'English',    short: 'EN', locale: 'en-US', html: 'en' },
   ];
-  var DICT_V = '3';           /* міняти при зміні словників, щоб скинути кеш */
+  var DICT_V = '4';           /* міняти при зміні словників чи їх формату, щоб скинути кеш */
 
+  /* єдиний резолвер локалі: явна підтримувана -> нормалізований код, усе
+     інше -> null (той, хто викликає, підставляє DEFAULT чи FALLBACK).
+     Внутрішній код української лишається 'ua' (localStorage, _meta.lang,
+     кеш перекладів); 'uk' і 'uk-UA' нормалізуються в нього */
+  function resolveLocale(raw) {
+    var n = String(raw == null ? '' : raw).toLowerCase().replace(/^\s+|\s+$/g, '');
+    if (!n) return null;
+    if (n === 'ua' || n === 'uk' || n.indexOf('uk-') === 0 || n.indexOf('ua-') === 0) return 'ua';
+    if (n === 'ru' || n.indexOf('ru-') === 0) return 'ru';
+    if (n === 'en' || n.indexOf('en-') === 0) return 'en';
+    return null;
+  }
   function meta(c) {
     for (var i = 0; i < LANGS.length; i++) if (LANGS[i].code === c) return LANGS[i];
-    return LANGS[0];
+    return meta(FALLBACK_LOCALE);
   }
-  /* Мова браузера, якщо користувач ще нічого не обирав:
-     uk → українська, ru → російська, будь-що інше → англійська.
-     Тобто відвідувач з Іспанії одразу бачить англійську, а не українську. */
+  function saved() {
+    var v = null;
+    try { v = localStorage.getItem(LS); } catch (e) {}
+    return resolveLocale(v);
+  }
+  /* мова браузера, лише якщо вона підтримувана; інакше нічого не вгадуємо */
   function detect() {
     var list = [];
     try {
       list = (navigator.languages && navigator.languages.length)
         ? navigator.languages : [navigator.language || ''];
-    } catch (e) { list = ['']; }
+    } catch (e) { list = []; }
     for (var i = 0; i < list.length; i++) {
-      var n = String(list[i]).toLowerCase();
-      if (n.indexOf('uk') === 0) return 'ua';
-      if (n.indexOf('ru') === 0) return 'ru';
-      if (n.indexOf('en') === 0) return 'en';
+      var r = resolveLocale(list[i]);
+      if (r) return r;
     }
-    return 'en';
+    return null;
   }
-  function known(c) {
-    for (var i = 0; i < LANGS.length; i++) if (LANGS[i].code === c) return true;
-    return false;
-  }
-  function lang() {
-    var v = null;
-    try { v = localStorage.getItem(LS); } catch (e) {}
-    return known(v) ? v : detect();
-  }
+  /* пріоритет: явний збережений вибір -> підтримувана мова браузера -> en */
+  function lang() { return saved() || detect() || DEFAULT_LOCALE; }
   window.CALCAR_LANGS = LANGS;
   window.calcarLang = lang;
   window.calcarLocale = function () { return meta(lang()).locale; };
+  window.calcarResolveLocale = function (raw) { return resolveLocale(raw) || FALLBACK_LOCALE; };
 
-  /* Синхронне довантаження словника: тег пишеться під час парсингу head,
-     тому переклад готовий ще до першого рендера, без миготіння. */
   var cur = lang();
-  if (cur !== 'ua') {
-    document.write('<scr' + 'ipt src="/i18n/' + cur + '.js?v=' + DICT_V + '"></scr' + 'ipt>');
+  /* розмітка не мовою користувача: ховаємо вміст до застосування перекладу,
+     страховка 400 мс, щоб сторінка ніколи не лишилась порожньою */
+  if (cur !== SOURCE) {
+    try {
+      document.documentElement.className += ' i18n-wait';
+      setTimeout(function () { document.documentElement.classList.remove('i18n-wait'); }, 400);
+    } catch (e) {}
   }
+  /* синхронне довантаження словників: тег пишеться під час парсингу head,
+     тому переклад готовий ще до першого рендера, без миготіння */
+  window.CALCAR_DICTS = window.CALCAR_DICTS || {};
+  function load(code) {
+    document.write('<scr' + 'ipt src="/i18n/' + code + '.js?v=' + DICT_V + '"></scr' + 'ipt>');
+  }
+  if (cur !== SOURCE) load(cur);
+  if (cur !== SOURCE && cur !== FALLBACK_LOCALE) load(FALLBACK_LOCALE);
 
-  function norm(s) { return String(s).replace(/\s+/g, ' ').trim(); }
+  function norm(s) { return String(s).replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, ''); }
 
-  /* Ключі словника нормалізуються один раз: у розмітці той самий рядок може мати
-     пробіли по краях або перенос рядка. Пробіли навколо збігу зберігаються. */
-  var _idx = null;
-  function dict() {
-    var raw = window.CALCAR_DICT;
+  /* ключі словника нормалізуються один раз на мову: у розмітці той самий
+     рядок може мати пробіли по краях або перенос рядка */
+  var _idx = {};
+  function dict(code) {
+    var raw = window.CALCAR_DICTS[code];
     if (!raw) return null;
-    if (_idx && _idx.__src === raw) return _idx;
+    if (_idx[code] && _idx[code].__src === raw) return _idx[code];
     var out = { __src: raw };
     for (var k in raw) if (Object.prototype.hasOwnProperty.call(raw, k)) out[norm(k)] = raw[k];
-    _idx = out;
+    _idx[code] = out;
     return out;
   }
-  function lookup(s) {
-    var d = dict();
+  function lookupIn(code, s) {
+    var d = dict(code);
     if (!d) return null;
     var v = d[norm(s)];
-    if (v === undefined || v === null) return null;
+    return (v === undefined || v === null) ? null : v;
+  }
+  /* переклад обраною мовою, інакше англійський; пробіли по краях збережені */
+  function lookup(s, l) {
+    if (l === SOURCE) return null;
+    var v = lookupIn(l, s);
+    if (v === null && l !== FALLBACK_LOCALE) v = lookupIn(FALLBACK_LOCALE, s);
+    if (v === null) return null;
     return (s.match(/^\s*/) || [''])[0] + v + (s.match(/\s*$/) || [''])[0];
   }
+  function ready(l) { return l === SOURCE || !!(window.CALCAR_DICTS[l] || window.CALCAR_DICTS[FALLBACK_LOCALE]); }
   window.t = function (s, l) {
-    l = l || lang();
-    if (l === 'ua') return s;
-    return lookup(s) || s;
+    l = resolveLocale(l) || lang();
+    if (l === SOURCE) return s;
+    return lookup(s, l) || s;
   };
 
   /* перемикач: делегування на document, працює незалежно від моменту рендера */
@@ -113,7 +138,7 @@
     var pick = e.target.closest('.lang-menu button');
     if (pick && pick.dataset.lang) {
       e.preventDefault();
-      try { localStorage.setItem(LS, pick.dataset.lang); } catch (err) {}
+      try { localStorage.setItem(LS, resolveLocale(pick.dataset.lang) || DEFAULT_LOCALE); } catch (err) {}
       location.reload();
       return;
     }
@@ -131,32 +156,35 @@
   }
 
   function apply() {
-    var l = lang(), d = window.CALCAR_DICT;
+    var l = lang();
     document.documentElement.lang = meta(l).html;
-    if (l !== 'ua' && d) {
+    if (l !== SOURCE && ready(l)) {
       var w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null), nodes = [], n;
       while ((n = w.nextNode())) nodes.push(n);
       nodes.forEach(function (nd) {
         if (!norm(nd.nodeValue || '')) return;
-        var v = lookup(nd.nodeValue);
+        var v = lookup(nd.nodeValue, l);
         if (v) nd.nodeValue = v;
       });
       ['placeholder', 'title', 'aria-label', 'alt'].forEach(function (a) {
         document.querySelectorAll('[' + a + ']').forEach(function (el) {
-          var v = lookup(el.getAttribute(a) || '');
-          if (v) el.setAttribute(a, v.trim());
+          var v = lookup(el.getAttribute(a) || '', l);
+          if (v) el.setAttribute(a, v.replace(/^\s+|\s+$/g, ''));
         });
       });
-      var dt = lookup(document.title);
-      if (dt) document.title = dt.trim();
+      var dt = lookup(document.title, l);
+      if (dt) document.title = dt.replace(/^\s+|\s+$/g, '');
     }
     markSwitch();
-    if (lang() === 'ua' || window.CALCAR_DICT) document.documentElement.classList.remove('i18n-wait');
+    /* показуємо сторінку лише коли переклад реально застосовано:
+       перший виклик apply() може статися ще до завантаження словника */
+    if (ready(l)) document.documentElement.classList.remove('i18n-wait');
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply);
   else apply();
 })();
+/* i18n-core:end */
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
@@ -2751,7 +2779,7 @@ document.getElementById('printMeta').textContent =
         const r = await fetch('/api/memory', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ memory: MEMORY, messages: history.slice(-10) }),
+          body: JSON.stringify({ memory: MEMORY, messages: history.slice(-10), lang: window.calcarLang() }),
         });
         const data = await r.json().catch(() => ({}));
         if (!r.ok || typeof data.memory !== 'string') return;
@@ -2808,6 +2836,7 @@ document.getElementById('printMeta').textContent =
           recent_turns: RECENT_TURNS,
           referenced_reports: refs,
           quoted_text: quote,
+          lang: window.calcarLang(),
         }),
       });
       let d;

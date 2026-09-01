@@ -17,6 +17,8 @@ const MEM = ['Імʼя: Олексій, Київ.',
 const src = fs.readFileSync('api/chat.js', 'utf8');
 const tmp = path.join(os.tmpdir(), 'calcar_chattest.mjs');
 fs.writeFileSync(tmp, src);
+/* chat.js імпортує ./locale.js: кладемо поруч */
+fs.writeFileSync(path.join(os.tmpdir(), 'locale.js'), fs.readFileSync('api/locale.js', 'utf8'));
 
 /* збираємо запит, який пішов би в модель, замість реального виклику;
    modelReply дозволяє підмінити текст відповіді моделі в конкретній перевірці */

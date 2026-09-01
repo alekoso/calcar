@@ -1,3 +1,4 @@
+import { resolveLocale, languageDirective, errText } from './locale.js';
 export const config = { maxDuration: 300 };
 
 const PROMPT = (vin, nhtsa, damage, lot, langDirective) => `Ти експертна система calcar, яка оцінює пошкоджені авто з американських страхових аукціонів (Copart/IAAI) для пригону в Україну.
@@ -94,14 +95,14 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
   if (!process.env.OPENAI_API_KEY) {
-    return res.status(500).json({ error: 'OPENAI_API_KEY не налаштований у Vercel' });
+    return res.status(500).json({ error: errText(resolveLocale(req.body?.lang), 'ai_not_configured') });
   }
 
+  /* явна локаль CalCar для всього user-facing контенту розбору; невідома -> English */
+  const lang = resolveLocale(req.body?.lang);
   try {
     const { vin, images, damage, state, bid, lot } = req.body || {};
-    const lang = ['ua', 'ru', 'en'].includes(req.body?.lang) ? req.body.lang : 'ua';
-    const LANG_NAME = { ua: 'українською', ru: 'російською', en: 'англійською (English)' };
-    const langDirective = 'МОВА ВІДПОВІДІ: усі текстові значення (title, назви деталей і робіт, тексти прапорців, зони, нотатки, damage_note, mileage_note, equipment) пиши ' + LANG_NAME[lang] + '. Ключі JSON та enum-значення (fuel, status, cat, mode) залишай точно за схемою, латиницею.';
+    const langDirective = languageDirective(lang) + ' Це стосується title, назв деталей і робіт, текстів прапорців, зон, нотаток, damage_note, mileage_note, equipment.'
     const bidNum = (Number(bid) > 0 && Number(bid) < 1000000) ? Math.round(Number(bid)) : null;
     const damageStr = (typeof damage === 'string' && damage.trim()) ? damage.trim().slice(0, 60) : null;
     const stateStr = (typeof state === 'string' && /^[A-Z]{2}$/.test(state)) ? state : null;
@@ -159,10 +160,10 @@ export default async function handler(req, res) {
     const hasVin = typeof vin === 'string' && vin.length === 17;
     const photoCount = imgs.length || lotPhotoUrls.length;
     if (photoCount === 0 && !hasVin && !lot) {
-      return res.status(400).json({ error: 'Додай фото лота або повний VIN (17 символів)' });
+      return res.status(400).json({ error: errText(lang, 'analyze_need_input') });
     }
     if (!lot && imgs.length > 0 && imgs.length < 3) {
-      return res.status(400).json({ error: 'Для розбору пошкоджень потрібно щонайменше 3 фото. Або залиш лише VIN, порахуємо без розбору' });
+      return res.status(400).json({ error: errText(lang, 'analyze_need_3_photos') });
     }
 
     /* --- VIN decode via NHTSA (безкоштовно) --- */
@@ -189,7 +190,7 @@ export default async function handler(req, res) {
     /* --- лише VIN, без фото: комплектація + калькулятор, без AI --- */
     if (imgs.length === 0 && lotPhotoUrls.length === 0) {
       if (!nhtsa) {
-        return res.status(400).json({ error: 'VIN не декодувався. Перевір символи або додай фото' });
+        return res.status(400).json({ error: errText(lang, 'vin_decode_failed') });
       }
       const fuelRaw = ((nhtsa.FuelTypePrimary || '') + ' ' + (nhtsa.ElectrificationLevel || '')).toLowerCase();
       const fuel = /hev|hybrid/.test(fuelRaw) ? 'hybrid'
@@ -309,7 +310,7 @@ export default async function handler(req, res) {
       '| tokens', JSON.stringify(data?.usage || {}));
 
     if (data.error) {
-      return res.status(502).json({ error: 'AI: ' + (data.error.message || 'помилка запиту') });
+      return res.status(502).json({ error: 'AI: ' + (data.error.message || errText(lang, 'ai_request_failed')) });
     }
 
     const text = data.choices?.[0]?.message?.content || '';
@@ -318,7 +319,7 @@ export default async function handler(req, res) {
     try {
       parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
     } catch (e) {
-      return res.status(502).json({ error: 'AI повернув невалідну відповідь, спробуй ще раз' });
+      return res.status(502).json({ error: errText(lang, 'ai_invalid_response') });
     }
 
     const detected = (typeof parsed.vin_detected === 'string' && parsed.vin_detected.length === 17)
@@ -347,8 +348,8 @@ export default async function handler(req, res) {
     return res.status(200).json(parsed);
   } catch (e) {
     if (e.name === 'AbortError') {
-      return res.status(504).json({ error: 'Аналіз не встиг завершитись. Спробуй ще раз, зазвичай з другої спроби швидше' });
+      return res.status(504).json({ error: errText(lang, 'check_timeout') });
     }
-    return res.status(500).json({ error: 'Внутрішня помилка: ' + e.message });
+    return res.status(500).json({ error: errText(lang, 'internal', e.message) });
   }
 }

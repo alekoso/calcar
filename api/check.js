@@ -1,6 +1,7 @@
 export const config = { maxDuration: 300 };
 
 import { computeScore } from './score.js';
+import { resolveLocale, languageDirective, errText } from './locale.js';
 import { computeScoreV3, resolveVehicleAge, SCORE_DIMENSIONS_CONFIG } from './score-v3.js';
 
 /* активна версія CalCar Score: перемикається конфігурацією без деплою коду.
@@ -30,6 +31,9 @@ async function fetchPage(url, opts = {}) {
            віддає заглушку або 403 */
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
         'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        /* СВІДОМО: це мова, якою ПЛОЩАДКА віддає сторінку оголошення для
+           парсингу (джерело), а не локаль користувача. Мову звіту задає
+           лише явна локаль CalCar через languageDirective */
         'accept-language': 'uk,ru;q=0.9,en;q=0.8',
         'upgrade-insecure-requests': '1',
         'sec-fetch-dest': 'document',
@@ -936,13 +940,13 @@ const SEV_ADV = {
   ru: { re: /глубоко(\s+(?:смят|деформирован|повреж[дё]ен|вмят)[а-яё]*)/gi, moderate: 'заметно', minor: 'незначительно' },
   en: { re: /deeply(\s+(?:crushed|crumpled|deformed|damaged))/gi, moderate: 'noticeably', minor: 'slightly' },
 };
-export function calibrateSeverityWording(text, severity, lang = 'ua') {
+export function calibrateSeverityWording(text, severity, lang = 'en') {
   if (typeof text !== 'string' || !text) return text;
   if (severity !== 'minor' && severity !== 'moderate') return text;
-  const L = SEV_LEX[lang] || SEV_LEX.ua;
+  const L = SEV_LEX[lang] || SEV_LEX.en;
   let out = swapStems(text, L.strong, severity === 'minor' ? L.minor : L.moderate, L);
   if (severity === 'minor') out = swapStems(out, L.mid, L.minor, L);
-  const A = SEV_ADV[lang] || SEV_ADV.ua;
+  const A = SEV_ADV[lang] || SEV_ADV.en;
   out = out.replace(A.re, (m, tail) => {
     const w = severity === 'minor' ? A.minor : A.moderate;
     const up = m[0] === m[0].toUpperCase() && m[0] !== m[0].toLowerCase();
@@ -966,17 +970,17 @@ const JARGON = {
   ru: [[/\bSRS\b/g, 'подушки безопасности'], [/\bstructural damage\b/gi, 'повреждение силовых элементов кузова'], [/\bstructural\b/gi, 'силовых элементов кузова'], [/\bvisually[ _-]consistent\b/gi, 'видимых противоречий не найдено'], [/\bairbag(?:s)?\b/gi, 'подушки безопасности'], [/\bodometer rollback\b/gi, 'скрученный пробег']],
   en: [[/\bSRS\b/g, 'the airbag system'], [/\bvisually[ _-]consistent\b/gi, 'no visible inconsistencies found']],
 };
-export function humanizeDecisionJargon(text, lang = 'ua') {
+export function humanizeDecisionJargon(text, lang = 'en') {
   if (typeof text !== 'string' || !text) return text;
   let out = text;
   const gen = JARGON_GEN[lang];
   if (gen) out = out.replace(gen[0], gen[1]);
-  for (const [re, to] of (JARGON[lang] || JARGON.ua)) out = out.replace(re, to);
+  for (const [re, to] of (JARGON[lang] || JARGON.en)) out = out.replace(re, to);
   return out;
 }
 
 /* обидва проходи по всіх текстах рішення разом */
-export function applyDecisionLanguage(pd, { severity = null, lang = 'ua' } = {}) {
+export function applyDecisionLanguage(pd, { severity = null, lang = 'en' } = {}) {
   if (!pd || typeof pd !== 'object') return pd;
   const one = s => humanizeDecisionJargon(calibrateSeverityWording(s, severity, lang), lang);
   for (const k of ['headline', 'summary_short', 'reasoning', 'value_context']) {
@@ -993,7 +997,7 @@ export function applyDecisionLanguage(pd, { severity = null, lang = 'ua' } = {})
    ризики, контекст чату. Vision фіксує спостереження, а не вердикт, тому
    його прикметники калібруються під resolved severity тим самим правилом,
    що й рішення: формулювання може стати мʼякшим, ніколи сильнішим */
-export function applyReportSeverityLanguage(parsed, { severity = null, lang = 'ua' } = {}) {
+export function applyReportSeverityLanguage(parsed, { severity = null, lang = 'en' } = {}) {
   if (!parsed || typeof parsed !== 'object') return parsed;
   const one = s => calibrateSeverityWording(s, severity, lang);
   if (parsed.verdict && typeof parsed.verdict.summary === 'string') parsed.verdict.summary = one(parsed.verdict.summary);
@@ -1780,7 +1784,7 @@ const DECISION_RULES = `
 СТРУКТУРА reasoning (2-4 абзаци, без заголовків і без нумерації, без роздування обсягу): сильна позиція одним рядком; чим саме цей екземпляр цікавий (головні плюси); що реально насторожує (головні мінуси); саме зважування цих факторів між собою; 1-3 конкретні речі, які мусять підтвердитись до купівлі; ціновий контекст із чесною атрибуцією (розрахунок CalCar за даними площадки); за наявності релевантного недавнього авто коротке порівняння; чіткий фінальний висновок. Текст має закривати роздуми покупця, а не перелічувати знахідки.
 `;
 const DECISION_FEWSHOT = `
-ПРИКЛАДИ СТИЛЮ МІРКУВАННЯ (від власника продукту). Переймай СПОСІБ думати: зважування, чесні сумніви, прямоту. ЗМІСТ не копіюй: усі факти бери ЛИШЕ зі свого звіту по цьому авто. Мова прикладів не важлива, відповідай мовою користувача.
+ПРИКЛАДИ СТИЛЮ МІРКУВАННЯ (від власника продукту). Переймай СПОСІБ думати: зважування, чесні сумніви, прямоту. ЗМІСТ не копіюй: усі факти бери ЛИШЕ зі свого звіту по цьому авто. Мова прикладів не важлива: мову відповіді задає лише директива МОВА ВІДПОВІДІ вище.
 ---
 BMW 5 Series 2017
 По фотографиям все нормально: внешне машина выглядит нормально, внутри тоже. Но машина не в М пакете , это большой минус, потому что многие эти модели переодевают в М пакет, и они выглядят намного лучше.
@@ -2018,17 +2022,19 @@ ${renderDecisionContext(decisionContext)}${DECISION_RULES}${decisionStyle === 'a
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   if (!process.env.OPENAI_API_KEY) {
-    return res.status(500).json({ error: 'OPENAI_API_KEY не налаштований у Vercel' });
+    return res.status(500).json({ error: errText(resolveLocale(req.body?.lang), 'ai_not_configured') });
   }
 
+  /* єдине джерело правди про мову всього user-facing контенту звіту:
+     явна локаль CalCar; невідома чи відсутня -> English */
+  const lang = resolveLocale(req.body?.lang);
   try {
     const rawUrl = String((req.body || {}).url || '').trim();
-    const lang = ['ua', 'ru', 'en'].includes(req.body?.lang) ? req.body.lang : 'ua';
     const decisionStyle = ['a', 'b'].includes(req.body?.decision_style)
       ? req.body.decision_style
       : (process.env.DECISION_STYLE === 'b' ? 'b' : 'a');
     if (!/^https?:\/\/.+\..+/.test(rawUrl)) {
-      return res.status(400).json({ error: 'Встав повне посилання на оголошення, з https://' });
+      return res.status(400).json({ error: errText(lang, 'bad_listing_url') });
     }
     const url = rawUrl.split('#')[0];
 
@@ -2047,7 +2053,7 @@ export default async function handler(req, res) {
     const listing = extractListing(html, url);
     listing.history_facts = extractHistoryFacts(listing.text);
     if (!listing.photos.length && !listing.vin && !listing.text) {
-      return res.status(422).json({ error: 'Зі сторінки не вдалося витягнути дані оголошення. Надішли інше посилання' });
+      return res.status(422).json({ error: errText(lang, 'listing_extract_failed') });
     }
 
     /* --- NHTSA decode: той самий безкоштовний шлях, що в Import --- */
@@ -2196,8 +2202,7 @@ export default async function handler(req, res) {
     const cachedHv = (auctionSearch && auctionSearch.cached_historical_visual) || null;
 
     /* --- AI --- */
-    const LANG_NAME = { ua: 'українською', ru: 'російською', en: 'англійською (English)' };
-    const langDirective = 'МОВА ВІДПОВІДІ: усі текстові значення пиши ' + LANG_NAME[lang] + '. Ключі JSON та enum-значення (status, severity, verdict, grade, fuel) залишай латиницею точно за схемою.';
+    const langDirective = languageDirective(lang);
 
     const EFFORT = process.env.REASONING_EFFORT || 'high';
     const modelBody = (c, withEffort = true) => {
@@ -2425,13 +2430,13 @@ export default async function handler(req, res) {
       '| tokens', JSON.stringify(data?.usage || {}));
 
     if (data.error) {
-      return res.status(502).json({ error: 'AI: ' + (data.error.message || 'помилка запиту') });
+      return res.status(502).json({ error: 'AI: ' + (data.error.message || errText(lang, 'ai_request_failed')) });
     }
     let parsed;
     try {
       parsed = JSON.parse((data.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim());
     } catch (e) {
-      return res.status(502).json({ error: 'AI повернув невалідну відповідь, спробуй ще раз' });
+      return res.status(502).json({ error: errText(lang, 'ai_invalid_response') });
     }
 
     /* хибні spec-розбіжності (рік виробництва/модельний рік, потужність
@@ -2715,7 +2720,7 @@ export default async function handler(req, res) {
 
     /* людські номери кадрів у текстах: N = позиція у вихідній галереї */
     const auctionOrigIdx = auctionPhotos.map(u => { const real = photoOriginByData.get(u) || u; return (auction && Array.isArray(auction.photos)) ? auction.photos.indexOf(real) : -1; });
-    localizePhotoRefs(parsed, photoIdx, auctionOrigIdx, PHOTO_LABELS[lang] || PHOTO_LABELS.ua);
+    localizePhotoRefs(parsed, photoIdx, auctionOrigIdx, PHOTO_LABELS[lang] || PHOTO_LABELS.en);
 
     /* ---- комплектація: детермінована валідація + скептична перевірка ----
        Максимум ОДИН додатковий виклик, максимум 6 claims, лише важливі і
@@ -2824,8 +2829,8 @@ export default async function handler(req, res) {
     return res.status(200).json(parsed);
   } catch (e) {
     if (e.name === 'AbortError') {
-      return res.status(504).json({ error: 'Аналіз не встиг завершитись. Спробуй ще раз, зазвичай з другої спроби швидше' });
+      return res.status(504).json({ error: errText(lang, 'check_timeout') });
     }
-    return res.status(500).json({ error: 'Внутрішня помилка: ' + e.message });
+    return res.status(500).json({ error: errText(lang, 'internal', e.message) });
   }
 }

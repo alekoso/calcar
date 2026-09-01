@@ -4,6 +4,8 @@
 
 export const config = { maxDuration: 60 };
 
+import { resolveLocale, errText } from './locale.js';
+
 const MODEL = process.env.CHAT_MODEL || process.env.OPENAI_MODEL || 'gpt-5.6-terra';
 
 /* Специфікація нотатки памʼяті. УВАГА: точна копія цієї константи живе
@@ -45,7 +47,8 @@ ${NOTE_SPEC}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
-  if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: 'OPENAI_API_KEY не налаштовано' });
+  const lang = resolveLocale(req.body?.lang);
+  if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: errText(lang, 'ai_not_configured') });
 
   try {
     const { memory, messages } = req.body || {};
@@ -54,7 +57,7 @@ export default async function handler(req, res) {
       .slice(-10)
       .map(m => (m.role === 'user' ? 'Користувач: ' : 'Помічник: ') + m.content.slice(0, 500))
       .join('\n');
-    if (!hist) return res.status(400).json({ error: 'Порожня розмова' });
+    if (!hist) return res.status(400).json({ error: errText(lang, 'memory_empty') });
 
     const cur = typeof memory === 'string' ? memory.slice(0, 3000) : '';
 
@@ -81,13 +84,13 @@ export default async function handler(req, res) {
       data = await r.json();
     } finally { clearTimeout(t); }
 
-    if (data?.error) return res.status(502).json({ error: 'AI: ' + (data.error.message || 'помилка') });
+    if (data?.error) return res.status(502).json({ error: 'AI: ' + (data.error.message || errText(lang, 'ai_request_failed')) });
     let out = (data?.choices?.[0]?.message?.content || '').trim();
     /* модель інколи обгортає лапками або пише "(порожня)": чистимо */
     out = out.replace(/^["'`]+|["'`]+$/g, '').replace(/^\(порожня\)$/i, '').slice(0, 2800);
     return res.status(200).json({ memory: out });
   } catch (e) {
-    if (e.name === 'AbortError') return res.status(504).json({ error: 'Не встигли, спробуй пізніше' });
-    return res.status(500).json({ error: 'Внутрішня помилка: ' + e.message });
+    if (e.name === 'AbortError') return res.status(504).json({ error: errText(lang, 'memory_timeout') });
+    return res.status(500).json({ error: errText(lang, 'internal', e.message) });
   }
 }

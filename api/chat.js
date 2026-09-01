@@ -1,5 +1,7 @@
 export const config = { maxDuration: 60 };
 
+import { resolveLocale, LANG_NAME, errText } from './locale.js';
+
 /* Один помічник на обидва продукти CalCar. Відрізняється лише предметна
    область: прорахунок пригону з аукціону США (import) чи перевірка оголошення
    на вторинному ринку (check). Уся механіка спільна. */
@@ -107,7 +109,7 @@ const QUOTE_TASK = q => `ЦИТАТА ЗІ ЗВІТУ:
 "${q}"
 - Користувач виділив САМЕ цей фрагмент звіту і питає про нього. Відповідай про цей фрагмент у контексті всього звіту, а не загальними словами про авто.`;
 
-const SYSTEM = (product, memory, wantMemory, turns, hasRefs, quote) => `${product === 'check' ? DOMAIN_CHECK : DOMAIN_IMPORT}
+const SYSTEM = (product, memory, wantMemory, turns, hasRefs, quote, lang) => `${product === 'check' ? DOMAIN_CHECK : DOMAIN_IMPORT}
 
 ${OWNER(memory)}
 ${TURNS(turns) ? '\n' + TURNS(turns) + '\n' : ''}${hasRefs ? '\n' + REFS_TASK + '\n' : ''}${quote ? '\n' + QUOTE_TASK(quote) + '\n' : ''}
@@ -120,7 +122,7 @@ ${TURNS(turns) ? '\n' + TURNS(turns) + '\n' : ''}${hasRefs ? '\n' + REFS_TASK + 
 - Якщо звітів нема в context, значить людина не залогінена або інших прорахунків не існує: не вигадуй їх.
 
 Правила:
-- Відповідай тією мовою, якою користувач поставив останнє питання: російською на російське, українською на українське, англійською на англійське. Тексти звіту можуть бути українською, російською або англійською, це не впливає на мову твоєї відповіді.
+- МОВА ВІДПОВІДІ: ${LANG_NAME[lang]}. Це обрана мова інтерфейсу CalCar і єдине джерело правди: відповідай нею ЗАВЖДИ, навіть якщо питання поставлене іншою мовою, а тексти звіту, памʼять чи оголошення написані ще іншою. Мова питання, мова звіту і мова джерел мову відповіді НЕ визначають.
 - Коротко і по суті: 1-4 речення на просте питання. Списки лише коли їх реально просять або без них незрозуміло.
 - Спирайся на передані дані, фото, прикріплені файли і профіль власника. Не вигадуй фактів про це авто. Якщо чогось у даних немає або по фото не видно, скажи прямо і порадь, як перевірити.
 - Усі ціни в доларах США, орієнтовні для ринку України. Підсумок "під ключ" вже порахований у totals, використовуй його.
@@ -132,9 +134,11 @@ ${TURNS(turns) ? '\n' + TURNS(turns) + '\n' : ''}${hasRefs ? '\n' + REFS_TASK + 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   if (!process.env.OPENAI_API_KEY) {
-    return res.status(500).json({ error: 'OPENAI_API_KEY не налаштований у Vercel' });
+    return res.status(500).json({ error: errText(resolveLocale(req.body?.lang), 'ai_not_configured') });
   }
 
+  /* обрана локаль CalCar: єдине джерело правди про мову відповіді чату */
+  const lang = resolveLocale(req.body?.lang);
   try {
     const body = req.body || {};
     /* сторінка Check шле report/others окремими полями, сторінка Import
@@ -238,7 +242,7 @@ export default async function handler(req, res) {
       })
       .filter(Boolean);
     if (!hist.length || hist[hist.length - 1].role !== 'user') {
-      return res.status(400).json({ error: 'Порожнє питання' });
+      return res.status(400).json({ error: errText(lang, 'chat_empty_question') });
     }
 
     /* фото: https-посилання аукціону дешеві (detail low), data:-фото обмежуємо трьома */
@@ -267,7 +271,7 @@ export default async function handler(req, res) {
         model: process.env.CHAT_MODEL || process.env.OPENAI_MODEL || 'gpt-5.6-terra',
         max_completion_tokens: 2500,
         messages: [
-          { role: 'system', content: SYSTEM(product, memory, wantMemory, turns, refs.length > 0, quoted) },
+          { role: 'system', content: SYSTEM(product, memory, wantMemory, turns, refs.length > 0, quoted, lang) },
           primer,
           { role: 'assistant', content: 'Прийняв, я вивчив дані і фото цього авто. Питай.' },
           ...hist,
@@ -312,7 +316,7 @@ export default async function handler(req, res) {
       '| tokens', JSON.stringify(data?.usage || {}));
 
     if (data.error) {
-      return res.status(502).json({ error: 'AI: ' + (data.error.message || 'помилка запиту') });
+      return res.status(502).json({ error: 'AI: ' + (data.error.message || errText(lang, 'ai_request_failed')) });
     }
     let reply = (data.choices?.[0]?.message?.content || '').trim();
     /* службовий блок памʼяті: все після маркера це нотатка, користувачу її не показуємо.
@@ -325,13 +329,13 @@ export default async function handler(req, res) {
       if (note && note !== memory) memoryUpdate = note;
     }
     if (!reply) {
-      return res.status(502).json({ error: 'AI повернув порожню відповідь, спробуй ще раз' });
+      return res.status(502).json({ error: errText(lang, 'chat_empty_reply') });
     }
     return res.status(200).json(memoryUpdate ? { reply, memory_update: memoryUpdate } : { reply });
   } catch (e) {
     if (e.name === 'AbortError') {
-      return res.status(504).json({ error: 'Відповідь не встигла за відведений час, спробуй ще раз' });
+      return res.status(504).json({ error: errText(lang, 'chat_timeout') });
     }
-    return res.status(500).json({ error: 'Внутрішня помилка: ' + e.message });
+    return res.status(500).json({ error: errText(lang, 'internal', e.message) });
   }
 }

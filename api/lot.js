@@ -1,3 +1,4 @@
+import { resolveLocale, errText } from './locale.js';
 export const config = { maxDuration: 300 };
 
 /* Ланцюг акторів: пробуємо по черзі, поки хтось не поверне лот із фото.
@@ -413,13 +414,14 @@ async function runActor(actor, inputs, token, url, toLot) {
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  const lang = resolveLocale(req.body?.lang);
   if (!process.env.APIFY_TOKEN) {
-    return res.status(500).json({ error: 'APIFY_TOKEN не налаштований у Vercel' });
+    return res.status(500).json({ error: errText(lang, 'apify_not_configured') });
   }
 
   try {
     const q = String((req.body || {}).query || '').trim();
-    if (!q) return res.status(400).json({ error: 'Вкажи посилання на лот або номер лота' });
+    if (!q) return res.status(400).json({ error: errText(lang, 'lot_need_ref') });
 
     const cleaned = q.replace(/\s/g, '');
     const digits = cleaned.replace(/\D/g, '');
@@ -429,7 +431,7 @@ export default async function handler(req, res) {
     let url;
     if (isIaai || isCopart) url = cleaned.split('?')[0];
     else if (digits.length >= 7 && digits.length <= 9) url = 'https://www.copart.com/lot/' + digits;
-    else return res.status(400).json({ error: 'Встав посилання на лот Copart чи IAAI' });
+    else return res.status(400).json({ error: errText(lang, 'lot_need_copart_iaai') });
 
     /* Точні поля входу, підтверджені реальними запусками:
        - IAAI (easyapi): робоче поле detailUrls (масив рядків), startUrls актор ігнорує
@@ -529,13 +531,13 @@ export default async function handler(req, res) {
     }
     if (!lot) {
       return res.status(404).json({
-        error: 'Фото лота не отримані, жоден із джерел не відповів. Завантаж фото вручну',
+        error: errText(lang, 'lot_no_photos'),
         detail: failures.join(' | ').slice(0, 400),
       });
     }
     lot.lot_url = lot.lot_url || url;
     return res.status(200).json({ lot });
   } catch (e) {
-    return res.status(502).json({ error: 'Не вдалося отримати дані лота: ' + e.message });
+    return res.status(502).json({ error: errText(lang, 'lot_fetch_failed', e.message) });
   }
 }

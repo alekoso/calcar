@@ -1,3 +1,4 @@
+import { resolveLocale, errText } from './locale.js';
 /* CalCar Check: діагностика джерел фото.
    Відкривається у браузері звичайним посиланням:
    https://calcar.io/api/check-debug?url=ПОСИЛАННЯ_НА_ОГОЛОШЕННЯ
@@ -50,7 +51,7 @@ function groupImages(html) {
 
 export default async function handler(req, res) {
   const url = (req.query?.url || '').trim();
-  if (!url) return res.status(400).json({ error: 'Додай ?url=посилання_на_оголошення' });
+  if (!url) return res.status(400).json({ error: errText(resolveLocale(req.query?.lang), 'debug_need_url') });
 
   const page = await grab(url);
   const out = {
