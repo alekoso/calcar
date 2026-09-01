@@ -89,12 +89,17 @@ const gold = JSON.parse(fs.readFileSync('calibration-gold.json', 'utf8'));
   const kHv = gold.cases.find(c => c.pid === 'K530EB').hv;
   if (kHv.major_deformation_visible !== true) errs.push('K530EB: легасі-прапорець прибрали з кейса, регрес більше нічого не доводить');
   if (kE && kE.severity_basis.some(b => /major_deformation/.test(b))) errs.push('K530EB: major_deformation досі в severity_basis');
-  /* "розібраний передок" без деформації внутрішніх елементів: НЕ severe */
+  /* "розібраний передок" БЕЗ підтвердженої деформації внутрішніх елементів:
+     НЕ severe. Стан внутрішніх компонентів у цих кейсах за кадрами не
+     визначається, тому обсяг чесно indeterminate (а не none: невідомо
+     не дорівнює "деформації нема") */
   for (const pid of ['TYTP3J', '2HGRSW', 'AXGFW9']) {
     const e = res[pid].v3.accident_events[0];
     if (!e) { errs.push(pid + ': подія зникла'); continue; }
-    if (e.derived_severity === 'severe') errs.push(pid + ': вскритий передок без деформації став severe');
-    if (!e.severity_basis.includes('inner_module_exposed_without_deformation')) errs.push(pid + ': нема ознаки "вскрито без деформації": ' + JSON.stringify(e.severity_basis));
+    if (e.derived_severity === 'severe') errs.push(pid + ': вскритий передок без підтвердженої деформації став severe');
+    if (!e.severity_basis.includes('inner_module_extent_indeterminate')) errs.push(pid + ': обсяг внутрішнього ушкодження мав лишитись невизначеним: ' + JSON.stringify(e.severity_basis));
+    const hvP = gold.cases.find(c => c.pid === pid).hv;
+    if (hvP.inner_component_damage_extent === 'none') errs.push(pid + ': "не можу визначити" перетворилось на "деформації нема"');
   }
   if (res['WP7V3G'].v3.normalized_current_problems.some(p => /MILEAGE|ROLLBACK/.test(p.type))) errs.push('WP7V3G: нормальна хронологія оштрафована');
   /* TYTP3J: глибока деформація БЕЗ підтвердження подушками/структурою =

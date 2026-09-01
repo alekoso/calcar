@@ -564,7 +564,8 @@ const REPORTS = [
       const DEPTH_CONSTS = "const DAMAGE_DEPTH_LEVELS = ['indeterminate','exterior_panels_only','inner_structure_or_module','load_bearing_structure','cabin_intrusion'];"
         + "const INNER_EXTENT_LEVELS = ['none','localized','substantial','indeterminate'];"
         + "const FASCIA_STATUSES = ['intact_mounted','damaged_but_mounted','detached_or_missing','not_visible'];"
-        + "const OUTER_EXTENT_LEVELS = ['none','single_panel','multiple_panels','indeterminate'];";
+        + "const OUTER_EXTENT_LEVELS = ['none','single_panel','multiple_panels','indeterminate'];"
+        + (grab(api, 'innerDeformationState') || '').replace(/export /g, '');
       hvLibShared = DEPTH_CONSTS + (depthSrc || '').replace(/export /g, '') + '\n' + sanHv;
       const sh = new Function(hvLibShared + '\nreturn sanitizeHistoricalVisual;')();
       /* без переданих кадрів поле не існує */
@@ -587,7 +588,8 @@ const REPORTS = [
     else {
       const lvl = "const DAMAGE_DEPTH_LEVELS = ['indeterminate','exterior_panels_only','inner_structure_or_module','load_bearing_structure','cabin_intrusion'];"
         + "const INNER_EXTENT_LEVELS = ['none','localized','substantial','indeterminate'];"
-        + "const FASCIA_STATUSES = ['intact_mounted','damaged_but_mounted','detached_or_missing','not_visible'];";
+        + "const FASCIA_STATUSES = ['intact_mounted','damaged_but_mounted','detached_or_missing','not_visible'];"
+        + (grab(api, 'innerDeformationState') || '').replace(/export /g, '');
       const rd = new Function(lvl + depthFn.replace(/export /g, '') + '\nreturn resolveDamageDepth;')();
       /* заявлений рівень НЕ може бути вищим за обґрунтований спостереженнями */
       let r = rd({ damage_depth: 'load_bearing_structure', fascia_status: 'detached_or_missing', inner_components_exposed: true, inner_component_deformation_visible: true, inner_component_damage_extent: 'substantial' });
@@ -599,15 +601,34 @@ const REPORTS = [
       /* exterior_only теж твердження: без видимої зони удару це indeterminate */
       r = rd({ damage_depth: 'exterior_panels_only', fascia_status: 'not_visible' });
       if (r.damage_depth !== 'indeterminate') errs.push('exterior_only без видимої облицовки не став indeterminate: ' + r.damage_depth);
-      /* обсяг має сенс лише з видимою деформацією: інакше none */
+      /* обсяг має сенс лише з ПІДТВЕРДЖЕНОЮ деформацією: заявлений
+         substantial при невизначеному стані компонентів не проходить */
       r = rd({ damage_depth: 'inner_structure_or_module', fascia_status: 'detached_or_missing', inner_components_exposed: true, inner_component_damage_extent: 'substantial' });
-      if (r.inner_component_damage_extent !== 'none') errs.push('"розібрано" з substantial не обнулене: ' + r.inner_component_damage_extent);
+      if (r.inner_component_damage_extent !== 'indeterminate') errs.push('"розібрано" з substantial не знято: ' + r.inner_component_damage_extent);
+      r = rd({ damage_depth: 'inner_structure_or_module', fascia_status: 'detached_or_missing', inner_components_exposed: true, inner_component_deformation_visible: 'not_visible', inner_component_damage_extent: 'substantial' });
+      if (r.inner_component_damage_extent !== 'none') errs.push('цілі внутрішні елементи з substantial не обнулені: ' + r.inner_component_damage_extent);
       /* деформація є, обсяг не названий: indeterminate, не none */
       r = rd({ damage_depth: 'inner_structure_or_module', fascia_status: 'detached_or_missing', inner_component_deformation_visible: true, inner_component_damage_extent: 'none' });
       if (r.inner_component_damage_extent !== 'indeterminate') errs.push('суперечність deformation+none не знята: ' + r.inner_component_damage_extent);
       /* нижча заявлена глибина поважається: консервативно вниз, не вгору */
       r = rd({ damage_depth: 'indeterminate', fascia_status: 'detached_or_missing', inner_component_deformation_visible: true, inner_component_damage_extent: 'substantial' });
       if (r.damage_depth !== 'indeterminate') errs.push('нижчий claim підняли вгору: ' + r.damage_depth);
+      /* ---- НЕВІДОМО НЕ ДОРІВНЮЄ НЕМА: три стани деформації ---- */
+      const inner = { damage_depth: 'inner_structure_or_module', fascia_status: 'detached_or_missing', inner_components_exposed: true };
+      r = rd({ ...inner, inner_component_deformation_visible: 'indeterminate' });
+      if (r.inner_component_damage_extent !== 'indeterminate') errs.push('"визначити не можна" перетворилось на "' + r.inner_component_damage_extent + '"');
+      if (r.inner_component_deformation_visible !== 'indeterminate') errs.push('стан деформації не збережений як indeterminate');
+      /* поля взагалі нема: теж невідомо, а не "деформації нема" */
+      r = rd({ ...inner });
+      if (r.inner_component_damage_extent !== 'indeterminate') errs.push('відсутнє поле стало "деформації нема": ' + r.inner_component_damage_extent);
+      /* not_visible означає рівно одне: елементи видно і вони цілі */
+      r = rd({ ...inner, inner_component_deformation_visible: 'not_visible' });
+      if (r.inner_component_damage_extent !== 'none') errs.push('not_visible не дав none: ' + r.inner_component_damage_extent);
+      /* легасі boolean приймається */
+      r = rd({ ...inner, inner_component_deformation_visible: true, inner_component_damage_extent: 'substantial' });
+      if (r.inner_component_deformation_visible !== 'visible' || r.inner_component_damage_extent !== 'substantial') errs.push('легасі true не нормалізований: ' + JSON.stringify(r));
+      r = rd({ ...inner, inner_component_deformation_visible: false });
+      if (r.inner_component_deformation_visible !== 'not_visible') errs.push('легасі false не нормалізований');
     }
     /* ---- наскрізь: sirий вихід моделі -> sanitize -> Score ---- */
     {
@@ -645,6 +666,13 @@ const REPORTS = [
     if (!api.includes('ГЛИБИНА ПОШКОДЖЕННЯ (damage_depth) це ОКРЕМЕ поняття')) errs.push('check.js: нема визначення damage_depth у промпті');
     if (!api.includes('ОБСЯГ УШКОДЖЕННЯ ВНУТРІШНЬОЇ ЗОНИ (inner_component_damage_extent)')) errs.push('check.js: нема визначення обсягу внутрішнього ушкодження');
     if (!api.includes('деталі зняті чи відсутні це НЕ доказ тяжкого удару')) errs.push('check.js: "розібраний передок" не відділений від деформації');
+    /* корінь нестабільності: модель переносила відповідь про лонжерони на
+       внутрішній модуль. Обидва переліки і пряма заборона переносу */
+    if (!api.includes('ДВА РІЗНІ ПИТАННЯ, ЯКІ НЕ МОЖНА ЗМІШУВАТИ')) errs.push('check.js: внутрішній модуль і несуча структура не розведені');
+    if (!api.includes('ПРЯМА ЗАБОРОНА ПЕРЕНОСУ ВІДПОВІДІ')) errs.push('check.js: нема заборони переносити відповідь про лонжерони на внутрішній модуль');
+    if (!api.includes('ЯКЩО ВНУТРІШНІЙ МОДУЛЬ ВІДКРИТИЙ')) errs.push('check.js: нема вимоги окремо відповісти про відкритий внутрішній модуль');
+    if (!api.includes('НЕВІДОМО ЦЕ НЕ "НЕМА"')) errs.push('check.js: нема правила "невідомо не дорівнює нема"');
+    if (!api.includes('"inner_component_deformation_visible":"visible|not_visible|indeterminate"')) errs.push('check.js: схема без tri-state деформації');
     if (!api.includes('ЗАЯВЛЕНА ГЛИБИНА ПЕРЕВІРЯЄТЬСЯ КОДОМ')) errs.push('check.js: модель не попереджена про валідацію глибини кодом');
     if (!api.includes('"damage_depth":"exterior_panels_only|inner_structure_or_module')) errs.push('check.js: схема hv без damage_depth');
     if (!api.includes('"inner_component_damage_extent":"none|localized|substantial|indeterminate"')) errs.push('check.js: схема hv без обсягу');

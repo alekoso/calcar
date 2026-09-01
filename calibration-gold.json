@@ -164,7 +164,7 @@
     "fascia_status": "damaged_but_mounted",
     "outer_panel_damage_extent": "multiple_panels",
     "inner_components_exposed": false,
-    "inner_component_deformation_visible": false,
+    "inner_component_deformation_visible": "indeterminate",
     "inner_component_damage_extent": "none",
     "load_bearing_structure_deformation_visible": false,
     "cabin_intrusion_visible": false
@@ -225,7 +225,7 @@
     "fascia_status": "damaged_but_mounted",
     "outer_panel_damage_extent": "multiple_panels",
     "inner_components_exposed": false,
-    "inner_component_deformation_visible": false,
+    "inner_component_deformation_visible": "indeterminate",
     "inner_component_damage_extent": "none",
     "load_bearing_structure_deformation_visible": false,
     "cabin_intrusion_visible": false
@@ -314,7 +314,7 @@
     "fascia_status": "not_visible",
     "outer_panel_damage_extent": "multiple_panels",
     "inner_components_exposed": false,
-    "inner_component_deformation_visible": false,
+    "inner_component_deformation_visible": "indeterminate",
     "inner_component_damage_extent": "none",
     "load_bearing_structure_deformation_visible": false,
     "cabin_intrusion_visible": false
@@ -392,7 +392,7 @@
     "fascia_status": "not_visible",
     "outer_panel_damage_extent": "multiple_panels",
     "inner_components_exposed": false,
-    "inner_component_deformation_visible": false,
+    "inner_component_deformation_visible": "indeterminate",
     "inner_component_damage_extent": "none",
     "load_bearing_structure_deformation_visible": false,
     "cabin_intrusion_visible": false
@@ -449,8 +449,8 @@
     "fascia_status": "detached_or_missing",
     "outer_panel_damage_extent": "multiple_panels",
     "inner_components_exposed": true,
-    "inner_component_deformation_visible": false,
-    "inner_component_damage_extent": "none",
+    "inner_component_deformation_visible": "indeterminate",
+    "inner_component_damage_extent": "indeterminate",
     "load_bearing_structure_deformation_visible": false,
     "cabin_intrusion_visible": false
    },
@@ -466,7 +466,7 @@
     "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)",
     "age_source": "model_year_midpoint"
    },
-   "depth_basis": "бампер і фара ВІДСУТНІ: внутрішня зона вскрита, але деформації внутрішніх елементів evidence не показує"
+   "depth_basis": "бампер і фара ВІДСУТНІ: внутрішня зона вскрита, але деформації внутрішніх елементів evidence не показує; стан внутрішніх компонентів за кадрами не визначається, тому обсяг indeterminate, а не none"
   },
   {
    "pid": "8ZSUUY",
@@ -504,7 +504,7 @@
     "fascia_status": "damaged_but_mounted",
     "outer_panel_damage_extent": "multiple_panels",
     "inner_components_exposed": false,
-    "inner_component_deformation_visible": false,
+    "inner_component_deformation_visible": "indeterminate",
     "inner_component_damage_extent": "none",
     "load_bearing_structure_deformation_visible": false,
     "cabin_intrusion_visible": false
@@ -687,8 +687,8 @@
     "fascia_status": "detached_or_missing",
     "outer_panel_damage_extent": "multiple_panels",
     "inner_components_exposed": true,
-    "inner_component_deformation_visible": false,
-    "inner_component_damage_extent": "none",
+    "inner_component_deformation_visible": "indeterminate",
+    "inner_component_damage_extent": "indeterminate",
     "load_bearing_structure_deformation_visible": false,
     "cabin_intrusion_visible": false
    },
@@ -704,7 +704,7 @@
     "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)",
     "age_source": "model_year_midpoint"
    },
-   "depth_basis": "передня частина розібрана, бампера і фар нема: вскрито, але деформації внутрішніх елементів у кадрах нема"
+   "depth_basis": "передня частина розібрана, бампера і фар нема: вскрито, але деформації внутрішніх елементів у кадрах нема; стан внутрішніх компонентів за кадрами не визначається, тому обсяг indeterminate, а не none"
   },
   {
    "pid": "5GH5GA",
@@ -953,7 +953,7 @@
     "fascia_status": "damaged_but_mounted",
     "outer_panel_damage_extent": "multiple_panels",
     "inner_components_exposed": false,
-    "inner_component_deformation_visible": false,
+    "inner_component_deformation_visible": "indeterminate",
     "inner_component_damage_extent": "none",
     "load_bearing_structure_deformation_visible": false,
     "cabin_intrusion_visible": false
@@ -1127,8 +1127,8 @@
     "fascia_status": "detached_or_missing",
     "outer_panel_damage_extent": "multiple_panels",
     "inner_components_exposed": true,
-    "inner_component_deformation_visible": false,
-    "inner_component_damage_extent": "none",
+    "inner_component_deformation_visible": "indeterminate",
+    "inner_component_damage_extent": "indeterminate",
     "load_bearing_structure_deformation_visible": false,
     "cabin_intrusion_visible": false
    },
@@ -1137,7 +1137,7 @@
    "accident_note": null,
    "v2_saved": 7,
    "retiered": "2026-09-01 severity-корекція: подушки більше не корроборують major_deformation, подія без несучої деформації/зміщеного колеса/структури стала moderate; watchpoint оновлено свідомо",
-   "depth_basis": "\"відкритий передній модуль\": внутрішня зона вскрита, деформації внутрішніх елементів evidence не підтверджує, огляду лонжеронів нема"
+   "depth_basis": "\"відкритий передній модуль\": внутрішня зона вскрита, деформації внутрішніх елементів evidence не підтверджує, огляду лонжеронів нема; стан внутрішніх компонентів за кадрами не визначається, тому обсяг indeterminate, а не none"
   },
   {
    "pid": "K530EB",
@@ -1216,7 +1216,7 @@
     "fascia_status": "damaged_but_mounted",
     "outer_panel_damage_extent": "multiple_panels",
     "inner_components_exposed": false,
-    "inner_component_deformation_visible": false,
+    "inner_component_deformation_visible": "indeterminate",
     "inner_component_damage_extent": "none",
     "cabin_intrusion_visible": false
    },
@@ -1321,7 +1321,7 @@
     "fascia_status": "detached_or_missing",
     "outer_panel_damage_extent": "multiple_panels",
     "inner_components_exposed": true,
-    "inner_component_deformation_visible": true,
+    "inner_component_deformation_visible": "visible",
     "inner_component_damage_extent": "substantial",
     "cabin_intrusion_visible": false
    },
