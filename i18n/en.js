@@ -549,4 +549,11 @@ window.CALCAR_DICT = {
   'Чат допоможе розібрати ДТП, пробіг, ризики і підкаже, що перевірити перед покупкою.': 'The chat can walk you through the accident history, mileage and risks, and suggest what to check before buying.',
   'км/міс': 'km/mo',
   'Середній пробіг за місяць за весь строк експлуатації автомобіля.': 'Average monthly mileage over the whole life of the vehicle.',
+  /* ---- лаунчер продуктів ---- */
+  'Продукти CalCar': 'CalCar products',
+  'Перевірка авто перед купівлею': 'Pre-purchase car check',
+  'Поточний продукт': 'Current product',
+  'Авто зі США під ключ': 'Turnkey car import from the USA',
+  'Розрахунок ремонту, розмитнення і підсумкової вартості': 'Repair, customs and final cost estimate',
+  'Відкрити': 'Open',
 };

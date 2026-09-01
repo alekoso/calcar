@@ -175,6 +175,89 @@
  .acc-wrap:hover .acc-menu,.acc-wrap:focus-within .acc-menu{display:block}
  .acc-menu a{display:block;padding:9px 12px;border-radius:8px;font-size:13.5px;font-weight:600;color:var(--ink);text-decoration:none}
  .acc-menu a:hover{background:var(--surface-2)}
+
+  /* ---- лаунчер продуктів CalCar ----------------------------------------
+     Спільний блок, однаковий на всіх сторінках. Панель і підкладка лежать у
+     body, а не в шапці: у header є backdrop-filter, а він робить із шапки
+     containing block для position:fixed, і мобільна шторка приліпала б до
+     шапки замість вікна. Позицію на десктопі рахує JS через --lnc-x/--lnc-y.
+     Новий продукт додається одним блоком .lnc-item, решта не міняється. */
+  .lnc-btn{
+    display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;flex:0 0 auto;
+    border:none;background:transparent;border-radius:10px;padding:0;
+    color:var(--faint);cursor:pointer;font-family:inherit;transition:background .15s,color .15s;
+  }
+  .lnc-btn:hover,.lnc-btn[aria-expanded="true"]{background:var(--surface-2);color:var(--ink)}
+  .lnc-btn:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  .lnc-btn svg{display:block}
+  html.lnc-locked,html.lnc-locked body{overflow:hidden}
+
+  .lnc-backdrop{position:fixed;inset:0;background:rgba(20,22,25,.32);z-index:45;display:none}
+  .lnc-backdrop.open{display:block}
+
+  .lnc-panel{
+    position:fixed;left:var(--lnc-x,20px);top:var(--lnc-y,64px);width:344px;z-index:410;
+    background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px;
+    box-shadow:0 14px 40px rgba(20,22,25,.13),0 2px 6px rgba(20,22,25,.05);display:none;
+  }
+  .lnc-panel.open{display:block}
+  .lnc-panel:focus{outline:none}
+  .lnc-grab{display:none;width:38px;height:4px;border-radius:4px;background:var(--line-strong);margin:2px auto 10px}
+  .lnc-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:2px 4px 12px}
+  .lnc-title{font-size:14px;font-weight:700;color:var(--ink);letter-spacing:.01em}
+  .lnc-x{display:none;border:none;background:transparent;color:var(--muted);cursor:pointer;padding:6px;margin:-6px;border-radius:8px;font-family:inherit}
+  .lnc-x:hover{background:var(--surface-2);color:var(--ink)}
+  .lnc-list{display:flex;flex-direction:column;gap:8px}
+
+  .lnc-item{
+    display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:start;
+    padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--card);
+    color:var(--ink);text-decoration:none;transition:background .15s,border-color .15s;
+  }
+  a.lnc-item:hover{background:var(--surface-2)}
+  a.lnc-item[data-prod="import"]:hover{background:var(--brand-soft);border-color:#DCEFAE}
+  .lnc-item:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  /* поточний продукт це статус, а не заклик до дії: без CTA і без наведення */
+  .lnc-item.is-current{background:var(--brand-soft);border-color:#DCEFAE}
+  .lnc-item.is-current .lnc-cta{display:none}
+  .lnc-item:not(.is-current) .lnc-badge{display:none}
+  .lnc-ic{display:block;width:44px;height:44px;flex:0 0 auto}
+  .lnc-ic svg{display:block;width:44px;height:44px}
+  .lnc-name{display:block;font-size:14.5px;font-weight:700;line-height:1.25}
+  .lnc-desc{display:block;font-size:13px;color:var(--muted);margin-top:3px;line-height:1.35}
+  .lnc-note{display:block;font-size:12.5px;color:var(--faint);margin-top:7px;line-height:1.35}
+  .lnc-badge{display:inline-block;margin-top:9px;padding:2px 9px;font-size:11.5px;font-weight:600;color:var(--brand-ink);background:var(--card);border:1px solid #DCEFAE;border-radius:20px}
+  .lnc-cta{
+    grid-column:2;justify-self:end;display:inline-flex;align-items:center;gap:7px;margin-top:2px;
+    padding:7px 13px;border-radius:10px;background:var(--brand);color:var(--ink);font-size:13px;font-weight:700;
+  }
+  a.lnc-item:hover .lnc-cta{background:var(--brand-hover)}
+
+  @media(max-width:620px){
+    /* лаунчер це новий елемент шапки, і на телефоні рядок шапки від нього
+       переносився: 56px перетворювались на 95px на кожній сторінці. Місце
+       звільняє декоративний чип beta, він лишається на десктопі. Так шапка
+       тримає один рядок від 328px, тобто на всіх реальних телефонах */
+    header .beta{display:none}
+    .lnc-panel{
+      left:0;right:0;bottom:0;top:auto;width:auto;
+      border-radius:20px 20px 0 0;border-left:0;border-right:0;border-bottom:0;
+      padding:8px 16px calc(18px + env(safe-area-inset-bottom,0px));
+      box-shadow:0 -12px 44px rgba(20,22,25,.18);
+    }
+    .lnc-panel.open{animation:lnc-up .18s ease-out}
+    .lnc-grab,.lnc-x{display:block}
+    .lnc-x{display:inline-flex;align-items:center;justify-content:center}
+    .lnc-head{margin:2px 2px 12px}
+    .lnc-title{font-size:16px}
+    .lnc-item{padding:16px;gap:15px}
+    .lnc-ic,.lnc-ic svg{width:48px;height:48px}
+    .lnc-name{font-size:15.5px}
+    .lnc-desc{font-size:13.5px}
+    .lnc-note{font-size:13px}
+    .lnc-cta{padding:11px 17px;font-size:14px;margin-top:6px}
+  }
+  @keyframes lnc-up{from{transform:translateY(16px)}to{transform:none}}
  @media(max-width:620px){
  header .header-in{display:flex;flex-wrap:wrap;height:auto;padding:10px 16px;gap:10px}
  .header-right{margin-left:auto}
@@ -269,6 +352,7 @@
 <header>
  <div class="header-in">
  <div class="hleft">
+   <button class="lnc-btn" type="button" id="lncBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="lncPanel" title="Продукти CalCar" aria-label="Продукти CalCar"><svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor" aria-hidden="true"><rect x="0" y="0" width="4" height="4" rx="1.2"/><rect x="7" y="0" width="4" height="4" rx="1.2"/><rect x="14" y="0" width="4" height="4" rx="1.2"/><rect x="0" y="7" width="4" height="4" rx="1.2"/><rect x="7" y="7" width="4" height="4" rx="1.2"/><rect x="14" y="7" width="4" height="4" rx="1.2"/><rect x="0" y="14" width="4" height="4" rx="1.2"/><rect x="7" y="14" width="4" height="4" rx="1.2"/><rect x="14" y="14" width="4" height="4" rx="1.2"/></svg></button>
  <a class="logo" href="/"><span class="l">Cal</span><span class="r">Car</span></a>
  <div class="beta">beta</div>
  </div>
@@ -296,6 +380,36 @@
  </div>
  </div>
 </header>
+
+<div class="lnc-backdrop" id="lncBackdrop"></div>
+<div class="lnc-panel" id="lncPanel" role="dialog" tabindex="-1" aria-label="Продукти CalCar">
+  <div class="lnc-grab" aria-hidden="true"></div>
+  <div class="lnc-head">
+    <div class="lnc-title">Продукти CalCar</div>
+    <button class="lnc-x" type="button" id="lncClose" title="Закрити" aria-label="Закрити"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+  <div class="lnc-list">
+    <a class="lnc-item" data-prod="check" href="/check">
+      <span class="lnc-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="none" stroke="#141619" stroke-width="64" stroke-linecap="butt"><path d="M229.72 322.19 A 84 84 0 1 1 229.72 189.81"/><path d="M430.72 322.19 A 84 84 0 1 1 430.72 189.81"/></g></svg></span>
+      <span class="lnc-body">
+        <span class="lnc-name">CalCar Check</span>
+        <span class="lnc-desc">Перевірка авто перед купівлею</span>
+        <span class="lnc-badge">Поточний продукт</span>
+      </span>
+      <span class="lnc-cta">Відкрити <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7"/></svg></span>
+    </a>
+    <a class="lnc-item" data-prod="import" href="/import">
+      <span class="lnc-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="#141619"><path d="M160 244 L204 168 Q212 156 227 156 L299 156 Q314 156 322 168 L366 244 Z"/><rect x="76" y="238" width="360" height="58" rx="24"/><circle cx="162" cy="314" r="44"/><circle cx="350" cy="314" r="44"/></g><path d="M190 230 L228 176 Q233 170 240 170 L286 170 Q293 170 298 176 L336 230 Z" fill="#B8F23D"/></svg></span>
+      <span class="lnc-body">
+        <span class="lnc-name">CalCar Import</span>
+        <span class="lnc-desc">Авто зі США під ключ</span>
+        <span class="lnc-note">Розрахунок ремонту, розмитнення і підсумкової вартості</span>
+        <span class="lnc-badge">Поточний продукт</span>
+      </span>
+      <span class="lnc-cta">Відкрити <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7"/></svg></span>
+    </a>
+  </div>
+</div>
 
 <div class="wrap">
  <!-- not configured -->
@@ -615,6 +729,87 @@ document.addEventListener('click', function (e) {
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   w.addEventListener('mouseleave', function () { m.style.display = ''; }, { once: true });
 });
+</script>
+<script>
+/* Лаунчер продуктів CalCar: спільний блок, однаковий на всіх сторінках.
+   Поточний продукт визначається зі шляху, тому розмітка скрізь та сама, а
+   позначку "Поточний продукт" ставить код. Новий продукт: додати шлях у
+   PRODUCT_PATHS і картку .lnc-item у панель, більше нічого не міняється. */
+(function () {
+  var btn = document.getElementById('lncBtn');
+  var panel = document.getElementById('lncPanel');
+  var back = document.getElementById('lncBackdrop');
+  if (!btn || !panel || !back) return;
+
+  var PRODUCT_PATHS = {
+    check: ['/', '/check', '/check.html', '/result-check.html'],
+    'import': ['/import', '/import.html', '/result.html']
+  };
+  var p = location.pathname.replace(/\/+$/, '') || '/';
+  var cur = /^\/check\//.test(p) ? 'check' : '';
+  for (var k in PRODUCT_PATHS) if (!cur && PRODUCT_PATHS[k].indexOf(p) > -1) cur = k;
+  if (cur) {
+    var card = panel.querySelector('.lnc-item[data-prod="' + cur + '"]');
+    /* поточний продукт нікуди не веде: посилання на самих себе це не навігація */
+    if (card) { card.classList.add('is-current'); card.removeAttribute('href'); card.setAttribute('aria-current', 'page'); }
+  }
+
+  function mobile() { return window.matchMedia('(max-width:620px)').matches; }
+  function place() {
+    if (mobile()) return;
+    var r = btn.getBoundingClientRect(), w = panel.offsetWidth || 344;
+    var x = Math.min(Math.max(12, r.left), Math.max(12, window.innerWidth - w - 12));
+    panel.style.setProperty('--lnc-x', Math.round(x) + 'px');
+    panel.style.setProperty('--lnc-y', Math.round(r.bottom + 10) + 'px');
+  }
+  function focusables() {
+    return [].slice.call(panel.querySelectorAll('a[href],button')).filter(function (el) { return el.offsetParent !== null; });
+  }
+  var open = false;
+  function setOpen(v) {
+    open = v;
+    panel.classList.toggle('open', v);
+    back.classList.toggle('open', v && mobile());
+    document.documentElement.classList.toggle('lnc-locked', v && mobile());
+    btn.setAttribute('aria-expanded', v ? 'true' : 'false');
+    if (v) { place(); panel.focus(); }
+  }
+  function close(refocus) { if (!open) return; setOpen(false); if (refocus) btn.focus(); }
+
+  btn.addEventListener('click', function (e) { e.preventDefault(); if (open) close(true); else setOpen(true); });
+  panel.addEventListener('click', function (e) {
+    if (e.target.closest && e.target.closest('#lncClose')) { e.preventDefault(); close(true); }
+  });
+  back.addEventListener('click', function () { close(false); });
+  /* клік поза лаунчером закриває, клік усередині нічого не робить */
+  document.addEventListener('click', function (e) {
+    if (!open || !e.target.closest) return;
+    if (e.target.closest('#lncPanel') || e.target.closest('#lncBtn')) return;
+    close(false);
+  });
+  document.addEventListener('keydown', function (e) {
+    if (!open) return;
+    if (e.key === 'Escape') { e.preventDefault(); close(true); return; }
+    if (e.key !== 'Tab') return;
+    var f = focusables();
+    if (!f.length) return;
+    var first = f[0], last = f[f.length - 1], at = document.activeElement;
+    if (mobile()) {
+      /* шторка це модальний шар: фокус ходить по колу всередині неї */
+      if (e.shiftKey && at === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && at === last) { e.preventDefault(); first.focus(); }
+    } else if ((!e.shiftKey && at === last) || (e.shiftKey && at === first)) {
+      close(false);   /* на десктопі це звичайне меню: Tab за межі просто закриває */
+    }
+  });
+  window.addEventListener('resize', function () {
+    if (!open) return;
+    back.classList.toggle('open', mobile());
+    document.documentElement.classList.toggle('lnc-locked', mobile());
+    place();
+  });
+  window.addEventListener('scroll', function () { if (open) place(); }, { passive: true });
+})();
 </script>
 </body>
 </html>
