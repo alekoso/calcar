@@ -1139,8 +1139,8 @@
   {
    "pid": "M550LB",
    "vin": "WBAJB9C50JB049616",
-   "note": "BMW M550i 2018: фронтальний удар із видимою деформацією несучої передньої зони (оголений погнутий передній каркас на архівних кадрах) + подушка. load_bearing_structure_deformation_visible=true тримає severe БЕЗ подушок-корроборації; це очікуваний вихід нового Vision-поля, звірити з прод-прогонами",
-   "refreshed": "2026-09-01 (production Check 564fe570; hv-поле load_bearing додане цією корекцією)",
+   "note": "BMW M550i 2018: watchpoint семантики резолвера: load_bearing_structure_deformation_visible=true тримає severe БЕЗ подушок-корроборації. УВАГА: у прод-прогонах 2026-09-01 (3/3) Vision на доступних кадрах 640x480 НЕ підтвердив несучу деформацію (load_bearing=false, лонжерони не ідентифікуються), тому прод-звіт цього VIN чесно дає moderate 8.1; цей кейс лишається юніт-перевіркою математики severe",
+   "refreshed": "2026-09-01 (production Check 564fe570 до корекції; hv тут синтетичний для семантики резолвера, прод 3/3 дав load_bearing=false)",
    "vehicle": {
     "odometer_km": 125000,
     "age_months": 98,
