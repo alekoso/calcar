@@ -3,8 +3,13 @@
    плюс сторожі: нормалізація одна на кодову базу, "перевірити заново" реально
    запускає новий аналіз, новий звіт це нова запис, стара не перезаписується. */
 const fs = require('fs');
+const os = require('os');
+const path = require('path');
 
 const errs = [];
+/* наскрізна перевірка sanitize -> Score чекається перед підсумком */
+let composePromise = null;
+let hvLibShared = '';
 const page = fs.readFileSync('check.html', 'utf8');
 const api = fs.readFileSync('api/check.js', 'utf8');
 
@@ -555,7 +560,13 @@ const REPORTS = [
     const sanHv = grab(api, 'sanitizeHistoricalVisual');
     if (!sanHv) errs.push('нема sanitizeHistoricalVisual');
     else {
-      const sh = new Function(sanHv + '\nreturn sanitizeHistoricalVisual;')();
+      const depthSrc = grab(api, 'resolveDamageDepth');
+      const DEPTH_CONSTS = "const DAMAGE_DEPTH_LEVELS = ['indeterminate','exterior_panels_only','inner_structure_or_module','load_bearing_structure','cabin_intrusion'];"
+        + "const INNER_EXTENT_LEVELS = ['none','localized','substantial','indeterminate'];"
+        + "const FASCIA_STATUSES = ['intact_mounted','damaged_but_mounted','detached_or_missing','not_visible'];"
+        + "const OUTER_EXTENT_LEVELS = ['none','single_panel','multiple_panels','indeterminate'];";
+      hvLibShared = DEPTH_CONSTS + (depthSrc || '').replace(/export /g, '') + '\n' + sanHv;
+      const sh = new Function(hvLibShared + '\nreturn sanitizeHistoricalVisual;')();
       /* без переданих кадрів поле не існує */
       if (sh({ visible_severity: 'severe' }, 0) !== null) errs.push('historical_visual без кадрів вижив');
       /* невалідні enum падають в indeterminate, зайве ріжеться */
@@ -566,15 +577,86 @@ const REPORTS = [
       if (ok.visible_severity !== 'moderate' || ok.structural_visual_status !== 'no_obvious_severe_signs') errs.push('валідний assessment попсований');
       /* несуча деформація: strict boolean, відсутність поля = false */
       if (ok.load_bearing_structure_deformation_visible !== false) errs.push('load_bearing без поля мав бути false');
-      const lb = sh({ visible_damage_zones: ['лонжерон'], visible_severity: 'severe', structural_visual_status: 'indeterminate', srs_visual_status: 'not_visible', load_bearing_structure_deformation_visible: true, summary: 's', evidence: [] }, 2);
+      const lb = sh({ visible_damage_zones: ['лонжерон'], visible_severity: 'severe', structural_visual_status: 'indeterminate', srs_visual_status: 'not_visible', load_bearing_structure_deformation_visible: true, damage_depth: 'load_bearing_structure', summary: 's', evidence: [] }, 2);
       if (lb.load_bearing_structure_deformation_visible !== true) errs.push('load_bearing=true загублений sanitize-ом');
+      if (lb.damage_depth !== 'load_bearing_structure') errs.push('обґрунтована глибина знижена помилково');
+    }
+    /* ---- глибина пошкодження: код валідує заявлений рівень ---- */
+    const depthFn = grab(api, 'resolveDamageDepth');
+    if (!depthFn) errs.push('нема resolveDamageDepth');
+    else {
+      const lvl = "const DAMAGE_DEPTH_LEVELS = ['indeterminate','exterior_panels_only','inner_structure_or_module','load_bearing_structure','cabin_intrusion'];"
+        + "const INNER_EXTENT_LEVELS = ['none','localized','substantial','indeterminate'];"
+        + "const FASCIA_STATUSES = ['intact_mounted','damaged_but_mounted','detached_or_missing','not_visible'];";
+      const rd = new Function(lvl + depthFn.replace(/export /g, '') + '\nreturn resolveDamageDepth;')();
+      /* заявлений рівень НЕ може бути вищим за обґрунтований спостереженнями */
+      let r = rd({ damage_depth: 'load_bearing_structure', fascia_status: 'detached_or_missing', inner_components_exposed: true, inner_component_deformation_visible: true, inner_component_damage_extent: 'substantial' });
+      if (r.damage_depth !== 'inner_structure_or_module' || !r.damage_depth_downgraded) errs.push('claim load_bearing без доказу не знижений: ' + JSON.stringify(r));
+      r = rd({ damage_depth: 'cabin_intrusion', fascia_status: 'detached_or_missing', inner_components_exposed: true });
+      if (r.damage_depth !== 'inner_structure_or_module') errs.push('claim cabin_intrusion без доказу не знижений: ' + r.damage_depth);
+      r = rd({ damage_depth: 'inner_structure_or_module', fascia_status: 'damaged_but_mounted' });
+      if (r.damage_depth !== 'exterior_panels_only') errs.push('claim inner без вскритих/деформованих елементів не знижений: ' + r.damage_depth);
+      /* exterior_only теж твердження: без видимої зони удару це indeterminate */
+      r = rd({ damage_depth: 'exterior_panels_only', fascia_status: 'not_visible' });
+      if (r.damage_depth !== 'indeterminate') errs.push('exterior_only без видимої облицовки не став indeterminate: ' + r.damage_depth);
+      /* обсяг має сенс лише з видимою деформацією: інакше none */
+      r = rd({ damage_depth: 'inner_structure_or_module', fascia_status: 'detached_or_missing', inner_components_exposed: true, inner_component_damage_extent: 'substantial' });
+      if (r.inner_component_damage_extent !== 'none') errs.push('"розібрано" з substantial не обнулене: ' + r.inner_component_damage_extent);
+      /* деформація є, обсяг не названий: indeterminate, не none */
+      r = rd({ damage_depth: 'inner_structure_or_module', fascia_status: 'detached_or_missing', inner_component_deformation_visible: true, inner_component_damage_extent: 'none' });
+      if (r.inner_component_damage_extent !== 'indeterminate') errs.push('суперечність deformation+none не знята: ' + r.inner_component_damage_extent);
+      /* нижча заявлена глибина поважається: консервативно вниз, не вгору */
+      r = rd({ damage_depth: 'indeterminate', fascia_status: 'detached_or_missing', inner_component_deformation_visible: true, inner_component_damage_extent: 'substantial' });
+      if (r.damage_depth !== 'indeterminate') errs.push('нижчий claim підняли вгору: ' + r.damage_depth);
+    }
+    /* ---- наскрізь: sirий вихід моделі -> sanitize -> Score ---- */
+    {
+      const v3src = fs.readFileSync('api/score-v3.js', 'utf8');
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'calcar_depth_'));
+      fs.mkdirSync(path.join(tmpDir, 'api'));
+      fs.writeFileSync(path.join(tmpDir, 'package.json'), '{"type":"module"}');
+      fs.writeFileSync(path.join(tmpDir, 'api', 'score-v3.js'), v3src);
+      composePromise = (async () => {
+        const { computeScoreV3 } = await import('file://' + path.join(tmpDir, 'api', 'score-v3.js'));
+        const COV = { identity_confirmed: true, photos_count: 20, basics_known: true, mileage_known: true, historical_listings_count: 1, mileage_observation_count: 1, auction_record_exists: true, auction_us_signal: true, registration_data_exists: true };
+        const meta = { lot_id: '1', house: 'IAAI', sale_date: '2025-01-01', airbags: null, primary_damage: 'FRONT END', secondary_damage: null };
+        const shFn = new Function(hvLibShared + '\nreturn sanitizeHistoricalVisual;')();
+        const run = raw => {
+          const hv = shFn(raw, 4);
+          const b = computeScoreV3({ findings: [], coverageInputs: COV, auctionMeta: meta, historicalVisual: hv });
+          return { hv, ev: b.accident_events[0] };
+        };
+        /* модель завищила глибину: код знижує і tier падає до moderate */
+        const over = run({ visible_damage_zones: ['капот', 'бампер'], visible_severity: 'severe', structural_visual_status: 'indeterminate', srs_visual_status: 'deployed_visible', damage_depth: 'load_bearing_structure', fascia_status: 'damaged_but_mounted', summary: 's', evidence: [{ source: 'us_auction', description: 'кадр' }] });
+        if (over.hv.damage_depth !== 'exterior_panels_only') errs.push('наскрізно: завищена глибина не знижена: ' + over.hv.damage_depth);
+        if (over.ev.derived_severity !== 'moderate') errs.push('наскрізно: завищена глибина дала ' + over.ev.derived_severity);
+        /* чесне суттєве ушкодження внутрішньої зони: severe без structural капа */
+        const deep = run({ visible_damage_zones: ['капот', 'бампер', 'фара'], visible_severity: 'severe', structural_visual_status: 'indeterminate', srs_visual_status: 'deployed_visible', damage_depth: 'inner_structure_or_module', fascia_status: 'detached_or_missing', inner_components_exposed: true, inner_component_deformation_visible: true, inner_component_damage_extent: 'substantial', summary: 's', evidence: [{ source: 'us_auction', description: 'кадр' }] });
+        if (deep.ev.derived_severity !== 'severe') errs.push('наскрізно: чесний inner substantial не дав severe');
+        if (deep.ev.structural !== false) errs.push('наскрізно: structural заявлений без structural evidence');
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      })();
     }
     /* severity-корекція 2026-09-01: нове hv-поле і його семантика в промпті,
        версія кеша ОБОВʼЯЗКОВО піднята (старий кеш без поля stale, не false) */
     if (!api.includes('load_bearing_structure_deformation_visible (видима деформація САМЕ НЕСУЧИХ/СИЛОВИХ частин')) errs.push('check.js: нема визначення load_bearing у промпті');
-    if (!api.includes('Зімʼятий капот САМ ПО СОБІ це НЕ major_deformation')) errs.push('check.js: капот досі рахується major_deformation');
     if (!api.includes('"load_bearing_structure_deformation_visible":false')) errs.push('check.js: схема hv без нового поля');
-    if (api.includes("HISTORICAL_VISUAL_VERSION = 'hv-2026-08-31'")) errs.push('check.js: HISTORICAL_VISUAL_VERSION не піднятий після нового hv-поля');
+    /* глибина: окреме поняття, обсяг внутрішньої зони, заборона "розібрано" */
+    if (!api.includes('ГЛИБИНА ПОШКОДЖЕННЯ (damage_depth) це ОКРЕМЕ поняття')) errs.push('check.js: нема визначення damage_depth у промпті');
+    if (!api.includes('ОБСЯГ УШКОДЖЕННЯ ВНУТРІШНЬОЇ ЗОНИ (inner_component_damage_extent)')) errs.push('check.js: нема визначення обсягу внутрішнього ушкодження');
+    if (!api.includes('деталі зняті чи відсутні це НЕ доказ тяжкого удару')) errs.push('check.js: "розібраний передок" не відділений від деформації');
+    if (!api.includes('ЗАЯВЛЕНА ГЛИБИНА ПЕРЕВІРЯЄТЬСЯ КОДОМ')) errs.push('check.js: модель не попереджена про валідацію глибини кодом');
+    if (!api.includes('"damage_depth":"exterior_panels_only|inner_structure_or_module')) errs.push('check.js: схема hv без damage_depth');
+    if (!api.includes('"inner_component_damage_extent":"none|localized|substantial|indeterminate"')) errs.push('check.js: схема hv без обсягу');
+    /* легасі-прапорець більше не бере участі в Score */
+    const v3srcGuard = fs.readFileSync('api/score-v3.js', 'utf8');
+    if (/signals\.major_deformation/.test(v3srcGuard)) errs.push('score-v3: major_deformation досі в скорингу');
+    if (!/major_deformation_visible СВІДОМО не читається/.test(v3srcGuard)) errs.push('score-v3: нема пояснення, чому легасі-поле не читається');
+    /* нові hv-поля ЗАВЖДИ вимагають нової версії: старий кеш без них
+       мусить бути stale, а не читатись як false */
+    const hvVer = (api.match(/HISTORICAL_VISUAL_VERSION = '([^']+)'/) || [])[1];
+    if (!hvVer || ['hv-2026-08-31', 'hv-2026-09-01'].includes(hvVer)) errs.push('check.js: HISTORICAL_VISUAL_VERSION не піднятий після нових hv-полів: ' + hvVer);
+    if (!/hv_version === HISTORICAL_VISUAL_VERSION/.test(api)) errs.push('check.js: кеш hv не звіряється з версією');
     if (!api.includes('ФІКСАЦІЯ СПОСТЕРЕЖЕНЬ, а не вердикт про тяжкість')) errs.push('check.js: hv.summary не обмежений спостереженнями');
     if (!api.includes('applyReportSeverityLanguage(parsed, { severity: sev, lang })')) errs.push('check.js: resolved severity не калібрує тексти звіту');
     /* seller_text: structured JSON-LD пріоритет, маркери fallback */
@@ -758,7 +840,7 @@ const REPORTS = [
   if (!/Пошкоджений салон, розібрана торпедо, зірвана обшивка[^.]*НЕ доводять/.test(api)) errs.push('нема заборони виводити подушки з пошкодженого салону');
   if (!/airbags_visible_parts/.test(api)) errs.push('нема опціональної деталізації подушок');
   /* деталізація лише за deployed_visible і лише з переліку */
-  const fn = new Function(grab(api, 'sanitizeHistoricalVisual') + '\nreturn sanitizeHistoricalVisual;')();
+  const fn = new Function(hvLibShared + '\nreturn sanitizeHistoricalVisual;')();
   const okParts = fn({ srs_visual_status: 'deployed_visible', airbags_visible_parts: ['driver', 'knee', 'вигадане'] }, 3);
   if (JSON.stringify(okParts.airbags_visible_parts) !== JSON.stringify(['driver', 'knee'])) errs.push('деталізація подушок не відфільтрована: ' + JSON.stringify(okParts.airbags_visible_parts));
   const noParts = fn({ srs_visual_status: 'no_deployment_visible', airbags_visible_parts: ['driver'] }, 3);
@@ -770,6 +852,7 @@ const REPORTS = [
   if (/pickEvenIndexes\(directCandidates/.test(api)) errs.push('проріджування безкоштовної галереї лишилось');
 }
 
+if (composePromise) await composePromise;
 if (errs.length) { console.log('FAILED:', errs); process.exit(1); }
   console.log('нормалізація одна · збіг за URL і за VIN · значущий query не клеїться · гість без перевірки · повтор свідомий, insert · правки звіту');
   console.log('CHECK DUP TEST PASSED');

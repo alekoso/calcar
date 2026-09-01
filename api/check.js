@@ -191,7 +191,7 @@ function auctionSearchMetaForCache(as) {
 
 /* версія екстрактора історичного візуалу: зміна семантики промпту/полів
    мусить інвалідовувати кеш historical_visual */
-export const HISTORICAL_VISUAL_VERSION = 'hv-2026-09-01';
+export const HISTORICAL_VISUAL_VERSION = 'hv-2026-09-01-v2';
 /* стабільний відбиток набору кадрів: djb2 по відсортованих URL */
 export function photoSetFingerprint(urls, version = HISTORICAL_VISUAL_VERSION) {
   const norm = [...new Set((urls || []).filter(u => typeof u === 'string'))].sort().join('|') + '::' + version;
@@ -1181,20 +1181,84 @@ export function isSideDiscrepancy(d) {
    no_deployment_visible не означає справну SRS. Без переданих кадрів
    поле не існує. Score v3 читає ЛИШЕ структуровані поля (статуси, зони,
    booleans-ознаки); прикметник visible_severity лишається wording звіту */
+/* ---------- 4в3а. Глибина пошкодження: код валідує заявлений рівень ----------
+   Три РІЗНІ поняття, які раніше злипались в одне:
+   (1) DAMAGE DEPTH: наскільки далеко удар пройшов за зовнішню шкіру;
+   (2) ACCIDENT SEVERITY: tier події, який рахує резолвер Score;
+   (3) STRUCTURAL DAMAGE STATUS: суворо підтверджений силовий елемент,
+       єдиний, що вмикає кап.
+   Vision віддає СПОСТЕРЕЖЕННЯ, а рівень глибини валідує код: заявлена
+   глибина ніколи не може бути вищою за обґрунтовану булевими ознаками.
+   Нижча заявлена глибина поважається (консервативно вниз, не вгору). */
+export const DAMAGE_DEPTH_LEVELS = ['indeterminate', 'exterior_panels_only', 'inner_structure_or_module', 'load_bearing_structure', 'cabin_intrusion'];
+export const INNER_EXTENT_LEVELS = ['none', 'localized', 'substantial', 'indeterminate'];
+export const FASCIA_STATUSES = ['intact_mounted', 'damaged_but_mounted', 'detached_or_missing', 'not_visible'];
+export const OUTER_EXTENT_LEVELS = ['none', 'single_panel', 'multiple_panels', 'indeterminate'];
+export function resolveDamageDepth(hv) {
+  const h = hv && typeof hv === 'object' ? hv : {};
+  const claimed = DAMAGE_DEPTH_LEVELS.includes(h.damage_depth) ? h.damage_depth : 'indeterminate';
+  const intrusion = h.cabin_intrusion_visible === true;
+  const loadBearing = h.load_bearing_structure_deformation_visible === true;
+  const innerDef = h.inner_component_deformation_visible === true;
+  const innerExposed = h.inner_components_exposed === true;
+  const fascia = FASCIA_STATUSES.includes(h.fascia_status) ? h.fascia_status : 'not_visible';
+  /* максимальний рівень, який ПІДТВЕРДЖУЮТЬ спостереження */
+  let justified;
+  if (intrusion) justified = 'cabin_intrusion';
+  else if (loadBearing) justified = 'load_bearing_structure';
+  else if (innerDef || innerExposed) justified = 'inner_structure_or_module';
+  /* exterior_only це ТЕЖ твердження: воно вимагає доказу, що удар не пройшов
+     глибше. Ціла чи лише пом'ята, але прикручена облицовка в зоні удару таким
+     доказом є; якщо зону не видно, чесна відповідь indeterminate */
+  else if (fascia === 'intact_mounted' || fascia === 'damaged_but_mounted') justified = 'exterior_panels_only';
+  else justified = 'indeterminate';
+  const rank = l => DAMAGE_DEPTH_LEVELS.indexOf(l);
+  const depth = rank(claimed) > rank(justified) ? justified : claimed;
+  /* обсяг ушкодження внутрішньої зони має сенс лише разом із видимою
+     деформацією внутрішніх елементів і лише на рівні inner і глибше */
+  let extent = INNER_EXTENT_LEVELS.includes(h.inner_component_damage_extent) ? h.inner_component_damage_extent : 'indeterminate';
+  if (!innerDef || rank(depth) < rank('inner_structure_or_module')) extent = 'none';
+  else if (extent === 'none') extent = 'indeterminate';
+  return {
+    damage_depth: depth,
+    damage_depth_claimed: claimed,
+    damage_depth_downgraded: depth !== claimed,
+    inner_component_damage_extent: extent,
+  };
+}
+
 export function sanitizeHistoricalVisual(hv, photosSent) {
   if (!photosSent || !hv || typeof hv !== 'object' || Array.isArray(hv)) return null;
   const SEV = ['minor', 'moderate', 'severe', 'indeterminate'];
   const STR = ['no_obvious_severe_signs', 'possible', 'visible_damage', 'indeterminate'];
   const SRS = ['deployed_visible', 'no_deployment_visible', 'not_visible', 'indeterminate'];
   const clean = v => (typeof v === 'string' && v.trim()) ? v.trim().replace(/\u2014/g, ',') : null;
+  const depth = resolveDamageDepth(hv);
   return {
     visible_damage_zones: (Array.isArray(hv.visible_damage_zones) ? hv.visible_damage_zones : []).map(clean).filter(Boolean).map(z => z.slice(0, 60)).slice(0, 10),
     visible_severity: SEV.includes(hv.visible_severity) ? hv.visible_severity : 'indeterminate',
+    /* ЛЕГАСІ: major_deformation_visible більше НЕ бере участі в Score.
+       Він склеював "глибоко зім'ята замінна панель" і "деформований кузов".
+       Поле лишається лише для читабельності старих обʼєктів; нові рішення
+       спираються на damage_depth і перелічені нижче спостереження */
     major_deformation_visible: hv.major_deformation_visible === true,
+    /* ГЛИБИНА: провалідована кодом проти спостережень (див. resolveDamageDepth) */
+    damage_depth: depth.damage_depth,
+    damage_depth_claimed: depth.damage_depth_claimed,
+    damage_depth_downgraded: depth.damage_depth_downgraded,
+    /* СПОСТЕРЕЖЕННЯ, що обґрунтовують глибину */
+    outer_panel_damage_extent: OUTER_EXTENT_LEVELS.includes(hv.outer_panel_damage_extent) ? hv.outer_panel_damage_extent : 'indeterminate',
+    fascia_status: FASCIA_STATUSES.includes(hv.fascia_status) ? hv.fascia_status : 'not_visible',
+    /* вскрито/знято: САМЕ ПО СОБІ тяжкості не піднімає ("розібраний передок") */
+    inner_components_exposed: hv.inner_components_exposed === true,
+    /* саме ДЕФОРМАЦІЯ внутрішніх елементів, а не їх відсутність */
+    inner_component_deformation_visible: hv.inner_component_deformation_visible === true,
+    inner_component_damage_extent: depth.inner_component_damage_extent,
     /* видима деформація НЕСУЧИХ частин: суворий фізичний сигнал тяжкості.
        Старий кеш без цього поля НЕ означає false: інвалідація йде через
        HISTORICAL_VISUAL_VERSION, застарілий hv перераховується штатно */
     load_bearing_structure_deformation_visible: hv.load_bearing_structure_deformation_visible === true,
+    cabin_intrusion_visible: hv.cabin_intrusion_visible === true,
     wheel_displacement_visible: hv.wheel_displacement_visible === true,
     cosmetic_only: hv.cosmetic_only === true,
     /* потенційно структурна зона БЕЗ надійно видимого силового елемента:
@@ -1774,7 +1838,11 @@ ${auction && auction.photos_sent ? `
 ІСТОРИЧНИЙ ВІЗУАЛЬНИЙ АНАЛІЗ ("historical_visual"): заповнюй ЛИШЕ коли історичні кадри реально передані. Оцінюй те, що РЕАЛЬНО видно САМЕ на цих кадрах, а не типовий сценарій ДТП:
 - visible_damage_zones: зони з ВИДИМИМ пошкодженням.
 - visible_severity за видимим обсягом: minor (косметика) | moderate (помітний удар, деформовані навісні елементи) | severe (очевидно тяжка деформація) | indeterminate. Це wording для звіту; тяжкість у формулі рахує код зі структурованих ознак нижче.
-- СТРУКТУРОВАНІ ВИДИМІ ОЗНАКИ (booleans, СТАВ true ЛИШЕ коли ознака реально видима на кадрі): major_deformation_visible (глибока деформація КУЗОВА, що виходить за межі однієї замінної навісної панелі: кілька суміжних панелей глибоко деформовані, панелі зміщені відносно одна одної, порушені лінії кузова. Зімʼятий капот САМ ПО СОБІ це НЕ major_deformation: капот, бампер, крило, фара і решітка це замінні навісні деталі і штатні зони поглинання удару; їх сминання без деформації самого кузова лишає major_deformation_visible: false), load_bearing_structure_deformation_visible (видима деформація САМЕ НЕСУЧИХ/СИЛОВИХ частин: лонжерони, стакани/чашки амортизаторів, стійки кузова, пороги/rocker, підлога, моторний щит, зони кріплення підрамника, очевидна глибока деформація кузовного каркаса. Зімʼяті капот, бампер, крило, фара чи решітка самі по собі НІКОЛИ не дають true: потрібно бачити деформованим сам несучий елемент), wheel_displacement_visible (колесо явно зміщене/вивернуте зі свого положення, видимий обвал підвіски), cosmetic_only (УСІ видимі пошкодження обмежені косметикою навісних панелей: подряпини, дрібні вмʼятини, тріснутий бампер).
+- ГЛИБИНА ПОШКОДЖЕННЯ (damage_depth) це ОКРЕМЕ поняття від тяжкості ДТП і від підтвердженого структурного пошкодження. Ти фіксуєш СПОСТЕРЕЖЕННЯ, тяжкість рахує код. Рівні: "exterior_panels_only" (пошкоджені лише зовнішні замінні деталі: капот, бампер, крило, фара, решітка; облицовка в зоні удару лишилась на місці, внутрішні елементи не вскриті і не пошкоджені), "inner_structure_or_module" (удар пройшов ГЛИБШЕ зовнішніх панелей: видно пошкоджені або деформовані елементи ЗА ними, наприклад підсилювач бампера, крэш-бокси, каркас радіатора чи передня панель-носій, внутрішні кронштейни і кріплення; це НЕ означає структурне пошкодження і НЕ дозволяє писати про лонжерони), "load_bearing_structure" (видно деформований САМЕ несучий елемент: лонжерон, стакан амортизатора, стійка, поріг, підлога, моторний щит, каркас), "cabin_intrusion" (деформація або проникнення в зону салону: щит, стійка, педальний вузол, порушена геометрія дверного отвору), "indeterminate" (за доступними ракурсами глибину визначити не можна).
+- ОБСЯГ УШКОДЖЕННЯ ВНУТРІШНЬОЇ ЗОНИ (inner_component_damage_extent): "none" (внутрішні елементи не пошкоджені), "localized" (локальна невелика деформація ОДНОГО внутрішнього елемента без суттєвого руйнування модуля), "substantial" (суттєва деформація чи руйнування внутрішньої зони: помітно погнутий або розірваний підсилювач, пошкоджені кілька внутрішніх елементів, зруйнована зона крэш-боксів, значно деформований носій, явна втрата геометрії внутрішнього модуля), "indeterminate" (видно, що внутрішня зона зачеплена, але обсяг за кадром не оцінити).
+- КРИТИЧНЕ РОЗРІЗНЕННЯ: "передок розібраний", деталі зняті чи відсутні це НЕ доказ тяжкого удару. inner_components_exposed (внутрішні елементи стали видимими: вскриті ударом АБО зняті) сам по собі тяжкість НЕ піднімає. Потрібно окремо бачити САМЕ ДЕФОРМАЦІЮ: inner_component_deformation_visible ставиться true ЛИШЕ коли внутрішній елемент видимо погнутий, зімʼятий, розірваний чи зміщений зі свого положення, а не просто демонтований.
+- СТРУКТУРОВАНІ ВИДИМІ ОЗНАКИ (booleans, СТАВ true ЛИШЕ коли ознака реально видима на кадрі): outer_panel_damage_extent ("none" | "single_panel" | "multiple_panels" | "indeterminate": скільки ЗОВНІШНІХ панелей пошкоджено), fascia_status (стан зовнішньої облицовки в зоні удару: "intact_mounted" ціла і на місці, "damaged_but_mounted" пошкоджена, але лишилась прикрученою, "detached_or_missing" відірвана чи відсутня, "not_visible" зону не видно; прикручена облицовка це доказ, що удар не пройшов глибше), inner_components_exposed, inner_component_deformation_visible, load_bearing_structure_deformation_visible (видима деформація САМЕ НЕСУЧИХ/СИЛОВИХ частин: лонжерони, стакани/чашки амортизаторів, стійки кузова, пороги/rocker, підлога, моторний щит, зони кріплення підрамника, очевидна глибока деформація кузовного каркаса; зімʼяті капот, бампер, крило, фара чи решітка самі по собі НІКОЛИ не дають true), cabin_intrusion_visible, wheel_displacement_visible (колесо явно зміщене/вивернуте зі свого положення, видимий обвал підвіски), cosmetic_only (УСІ видимі пошкодження обмежені косметикою навісних панелей: подряпини, дрібні вмʼятини, тріснутий бампер).
+- ЗАЯВЛЕНА ГЛИБИНА ПЕРЕВІРЯЄТЬСЯ КОДОМ проти цих ознак і може бути автоматично знижена: damage_depth "load_bearing_structure" без load_bearing_structure_deformation_visible, "cabin_intrusion" без cabin_intrusion_visible, "inner_structure_or_module" без вскритих чи деформованих внутрішніх елементів, "exterior_panels_only" без видимої облицовки в зоні удару не пройдуть. Тому не вгадуй рівень: постав той, який реально бачиш, і заповни ознаки чесно.
 - structural_visual_status: "no_obvious_severe_signs" означає ЛИШЕ "на доступних кадрах нема явних візуальних ознак тяжкої деформації силової структури" і НІКОЛИ не дорівнює "структура ціла". "visible_damage" СТАВ ЛИШЕ за STRONG structural evidence, коли ОДНОЧАСНО: (1) конкретно ідентифікований силовий елемент (внутрішній силовий поріг/sill, стійка A/B/C, лонжерон/frame rail, стакан/strut tower, силова підлога, інший явно названий structural member, або очевидне зміщення геометрії силової частини); (2) цей елемент достатньо видимий на кадрі; (3) видима деформація САМЕ силового елемента, а не сусідньої зовнішньої панелі. НЕДОСТАТНЬО: "сильно пошкоджений поріг", "зімʼята боковина", "сильний удар", "деформація в районі стійки", будь-який прикметник тяжкості без ідентифікованого силового елемента. Ракурс не дозволяє судити або силову частину від зовнішньої панелі відрізнити не можна: "indeterminate".
 - historical_visual.summary і descriptions в evidence це ФІКСАЦІЯ СПОСТЕРЕЖЕНЬ, а не вердикт про тяжкість: перелічуй, ЩО видно і чого не видно ("капот помітно деформований, пошкоджені бампер і оптика, видно розкриті передні подушки; явних ознак деформації силових елементів на кадрах не видно"), БЕЗ підсумкових прикметників тяжкості ("сильний удар", "тяжке ДТП", "глибоко зімʼятий передок" про передок цілком). Єдиним джерелом тяжкості для всіх текстів звіту є resolved severity, який рахує код зі структурованих ознак; прикметник visible_severity лишається службовим полем і в тексти не переноситься.
 - damage_side: сторона АВТОМОБІЛЯ з видимим пошкодженням за правилом сторін вище: "left|right|both|center|unknown"; side_confidence: "high" ЛИШЕ за надійної орієнтації (видно кермо/номер/написи), інакше "medium" чи "low". Не можеш надійно: "unknown".
@@ -1909,7 +1977,7 @@ ${renderDecisionContext(decisionContext)}${DECISION_RULES}${decisionStyle === 'a
  "vehicle": {"title":"Марка Модель Рік","year":2018,"model_year":"рік за VIN, ЛИШЕ якщо надійно відомий і відрізняється від year, інакше null","fuel":"petrol|diesel|hybrid|electric","engine":"4.4 л бензин V8, 462 к.с. (або null)","transmission":"...","drive":"...","trim":"версія або null","mileage_note":"129 000 км"},
  "auction": {"found":true,"summary":"2-4 речення: що сталося з авто в США за архівом, реальний обсяг пошкоджень по фото, чи чесно продавець його описує","findings":[{"status":"ok|warn|bad|unknown","text":"порівняння до/після, 1 речення"}]},
  "body_wrap": {"present":false,"scope":"full|partial|unknown","sources":["seller","visual","historical"],"inspection_visibility":"limited|normal"},
- "historical_visual": {"visible_damage_zones":["капот","передній бампер"],"visible_severity":"minor|moderate|severe|indeterminate","major_deformation_visible":false,"load_bearing_structure_deformation_visible":false,"wheel_displacement_visible":false,"cosmetic_only":false,"possible_structural_damage":false,"damage_side":"left|right|both|center|unknown","side_confidence":"high|medium|low","structural_visual_status":"no_obvious_severe_signs|possible|visible_damage|indeterminate","srs_visual_status":"deployed_visible|no_deployment_visible|not_visible|indeterminate","airbags_visible_parts":["driver"],"summary":"2-3 речення: що реально видно і що лишається невідомим","evidence":[{"source":"us_auction","ref":"auction_photo_1","description":"зім'ятий капот"}]},
+ "historical_visual": {"visible_damage_zones":["капот","передній бампер"],"visible_severity":"minor|moderate|severe|indeterminate","damage_depth":"exterior_panels_only|inner_structure_or_module|load_bearing_structure|cabin_intrusion|indeterminate","inner_component_damage_extent":"none|localized|substantial|indeterminate","outer_panel_damage_extent":"none|single_panel|multiple_panels|indeterminate","fascia_status":"intact_mounted|damaged_but_mounted|detached_or_missing|not_visible","inner_components_exposed":false,"inner_component_deformation_visible":false,"load_bearing_structure_deformation_visible":false,"cabin_intrusion_visible":false,"wheel_displacement_visible":false,"cosmetic_only":false,"possible_structural_damage":false,"damage_side":"left|right|both|center|unknown","side_confidence":"high|medium|low","structural_visual_status":"no_obvious_severe_signs|possible|visible_damage|indeterminate","srs_visual_status":"deployed_visible|no_deployment_visible|not_visible|indeterminate","airbags_visible_parts":["driver"],"summary":"2-3 речення: що реально видно і що лишається невідомим","evidence":[{"source":"us_auction","ref":"auction_photo_1","description":"зім'ятий капот"}]},
  "risks":[{"title":"назва ризику","level":"high|med|low","note":"1-2 речення: чому це головна стаття витрат чи ризику саме тут","action":"конкретна перевірка до покупки, 1 рядок"}],
  "equipment_v2":[{"name":"вентиляція передніх сидінь","category":"comfort|interior|multimedia|assist|exterior|performance","confidence_level":"vehicle_data|seller_and_visual|visual|seller, або null лише для суто історичної","highlight":false,"retrofit":false,"retrofit_basis":null,"historical_claim":false,"value_tier":"standard|notable|high_value","evidence":[{"source":"vehicle_data|current_photos|seller_claim|listing_data|historical","ref":"photo_7 чи vin_decode чи назва історичного джерела","sign":"конкретна ознака на кадрі чи коротка цитата джерела"}]}],
  "discrepancies":[{"severity":"high|med|low","title":"коротка назва розбіжності","detail":"2-3 речення: що стверджується, що знайдено, звідки","sources":["опис продавця","перевірка площадки","фото","VIN"]}],

@@ -159,7 +159,15 @@
       "description": "Сильно деформированы левое заднее крыло, левая задняя дверь и задний бампер, видна сработавшая шторка безопасности."
      }
     ],
-    "major_deformation_visible": true
+    "major_deformation_visible": true,
+    "damage_depth": "exterior_panels_only",
+    "fascia_status": "damaged_but_mounted",
+    "outer_panel_damage_extent": "multiple_panels",
+    "inner_components_exposed": false,
+    "inner_component_deformation_visible": false,
+    "inner_component_damage_extent": "none",
+    "load_bearing_structure_deformation_visible": false,
+    "cabin_intrusion_visible": false
    },
    "auction": null,
    "accident_recorded": true,
@@ -174,7 +182,8 @@
     "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)",
     "age_source": "model_year_midpoint"
    },
-   "retiered": "2026-09-01 severity-корекція: подушки більше не корроборують major_deformation, подія без несучої деформації/зміщеного колеса/структури стала moderate; watchpoint оновлено свідомо"
+   "retiered": "2026-09-01 severity-корекція: подушки більше не корроборують major_deformation, подія без несучої деформації/зміщеного колеса/структури стала moderate; watchpoint оновлено свідомо",
+   "depth_basis": "бічний/задній удар: деформовані зовнішні панелі і задній бампер, внутрішні елементи в evidence не фігурують"
   },
   {
    "pid": "HX8KT5",
@@ -211,7 +220,15 @@
       "source": "us_auction",
       "description": "Повреждены левое переднее крыло, передний бампер, левая передняя дверь."
      }
-    ]
+    ],
+    "damage_depth": "exterior_panels_only",
+    "fascia_status": "damaged_but_mounted",
+    "outer_panel_damage_extent": "multiple_panels",
+    "inner_components_exposed": false,
+    "inner_component_deformation_visible": false,
+    "inner_component_damage_extent": "none",
+    "load_bearing_structure_deformation_visible": false,
+    "cabin_intrusion_visible": false
    },
    "auction": null,
    "accident_recorded": true,
@@ -224,7 +241,8 @@
     "year": 2023,
     "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)",
     "age_source": "model_year_midpoint"
-   }
+   },
+   "depth_basis": "передньо-бічний удар по зовнішніх панелях, бампер лишився на місці, внутрішня зона не описана"
   },
   {
    "pid": "3624NJ",
@@ -291,7 +309,15 @@
       "source": "us_auction",
       "description": "Видна сработавшая водительская фронтальная подушка и коленная подушка."
      }
-    ]
+    ],
+    "damage_depth": "indeterminate",
+    "fascia_status": "not_visible",
+    "outer_panel_damage_extent": "multiple_panels",
+    "inner_components_exposed": false,
+    "inner_component_deformation_visible": false,
+    "inner_component_damage_extent": "none",
+    "load_bearing_structure_deformation_visible": false,
+    "cabin_intrusion_visible": false
    },
    "auction": null,
    "accident_recorded": true,
@@ -304,7 +330,8 @@
     "year": 2019,
     "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)",
     "age_source": "model_year_midpoint"
-   }
+   },
+   "depth_basis": "evidence описує лише подушки і перелік зон, стан облицовки і внутрішньої зони не зафіксований"
   },
   {
    "pid": "8FVRYG",
@@ -360,7 +387,15 @@
       "source": "us_auction",
       "description": "В салоне видна сработавшая боковая шторка безопасности."
      }
-    ]
+    ],
+    "damage_depth": "indeterminate",
+    "fascia_status": "not_visible",
+    "outer_panel_damage_extent": "multiple_panels",
+    "inner_components_exposed": false,
+    "inner_component_deformation_visible": false,
+    "inner_component_damage_extent": "none",
+    "load_bearing_structure_deformation_visible": false,
+    "cabin_intrusion_visible": false
    },
    "auction": null,
    "accident_recorded": true,
@@ -373,7 +408,8 @@
     "year": 2018,
     "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)",
     "age_source": "model_year_midpoint"
-   }
+   },
+   "depth_basis": "бічний удар зі шторкою, зона удару в кадрі не дає судити про глибину"
   },
   {
    "pid": "AXGFW9",
@@ -408,7 +444,15 @@
       "source": "us_auction",
       "description": "Смяты капот и левая передняя часть, отсутствуют бампер и левая фара."
      }
-    ]
+    ],
+    "damage_depth": "inner_structure_or_module",
+    "fascia_status": "detached_or_missing",
+    "outer_panel_damage_extent": "multiple_panels",
+    "inner_components_exposed": true,
+    "inner_component_deformation_visible": false,
+    "inner_component_damage_extent": "none",
+    "load_bearing_structure_deformation_visible": false,
+    "cabin_intrusion_visible": false
    },
    "auction": null,
    "accident_recorded": true,
@@ -421,7 +465,8 @@
     "year": 2018,
     "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)",
     "age_source": "model_year_midpoint"
-   }
+   },
+   "depth_basis": "бампер і фара ВІДСУТНІ: внутрішня зона вскрита, але деформації внутрішніх елементів evidence не показує"
   },
   {
    "pid": "8ZSUUY",
@@ -454,7 +499,15 @@
       "source": "us_auction",
       "description": "Крышка багажника глубоко смята, задний бампер деформирован."
      }
-    ]
+    ],
+    "damage_depth": "exterior_panels_only",
+    "fascia_status": "damaged_but_mounted",
+    "outer_panel_damage_extent": "multiple_panels",
+    "inner_components_exposed": false,
+    "inner_component_deformation_visible": false,
+    "inner_component_damage_extent": "none",
+    "load_bearing_structure_deformation_visible": false,
+    "cabin_intrusion_visible": false
    },
    "auction": null,
    "accident_recorded": true,
@@ -467,7 +520,8 @@
     "year": 2019,
     "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)",
     "age_source": "model_year_midpoint"
-   }
+   },
+   "depth_basis": "удар у зад: кришка багажника і бампер деформовані, бампер лишився на місці"
   },
   {
    "pid": "5C6HJ7",
@@ -628,7 +682,15 @@
       "ref": "auction_photo_7",
       "description": "В салоне не видно раскрытой подушки в рулевом колесе или боковой подушки переднего сиденья."
      }
-    ]
+    ],
+    "damage_depth": "inner_structure_or_module",
+    "fascia_status": "detached_or_missing",
+    "outer_panel_damage_extent": "multiple_panels",
+    "inner_components_exposed": true,
+    "inner_component_deformation_visible": false,
+    "inner_component_damage_extent": "none",
+    "load_bearing_structure_deformation_visible": false,
+    "cabin_intrusion_visible": false
    },
    "auction": null,
    "accident_recorded": true,
@@ -641,7 +703,8 @@
     "year": 2018,
     "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)",
     "age_source": "model_year_midpoint"
-   }
+   },
+   "depth_basis": "передня частина розібрана, бампера і фар нема: вскрито, але деформації внутрішніх елементів у кадрах нема"
   },
   {
    "pid": "5GH5GA",
@@ -885,7 +948,15 @@
       "ref": "auction_photo_5",
       "description": "Удар затрагивает зону правого переднего колеса, нижнего порога и передней двери, но силовой элемент отдельно не виден."
      }
-    ]
+    ],
+    "damage_depth": "exterior_panels_only",
+    "fascia_status": "damaged_but_mounted",
+    "outer_panel_damage_extent": "multiple_panels",
+    "inner_components_exposed": false,
+    "inner_component_deformation_visible": false,
+    "inner_component_damage_extent": "none",
+    "load_bearing_structure_deformation_visible": false,
+    "cabin_intrusion_visible": false
    },
    "auction": null,
    "accident_recorded": true,
@@ -899,7 +970,8 @@
     "note_age": "вік зафіксований на 2026-08-30 (детермінізм теста)",
     "age_source": "model_year_midpoint"
    },
-   "retiered": "2026-09-01 severity-корекція: подушки більше не корроборують major_deformation, подія без несучої деформації/зміщеного колеса/структури стала moderate; watchpoint оновлено свідомо"
+   "retiered": "2026-09-01 severity-корекція: подушки більше не корроборують major_deformation, подія без несучої деформації/зміщеного колеса/структури стала moderate; watchpoint оновлено свідомо",
+   "depth_basis": "удар у праву передню чверть по зовнішніх панелях, бампер деформований але на місці; зона порога лишається possible structural"
   },
   {
    "pid": "M3PKUY",
@@ -1050,18 +1122,27 @@
       "source": "us_auction",
       "description": "Подкапотное пространство доступно частично, полного обзора передних лонжеронов нет."
      }
-    ]
+    ],
+    "damage_depth": "inner_structure_or_module",
+    "fascia_status": "detached_or_missing",
+    "outer_panel_damage_extent": "multiple_panels",
+    "inner_components_exposed": true,
+    "inner_component_deformation_visible": false,
+    "inner_component_damage_extent": "none",
+    "load_bearing_structure_deformation_visible": false,
+    "cabin_intrusion_visible": false
    },
    "auction": null,
    "accident_recorded": true,
    "accident_note": null,
    "v2_saved": 7,
-   "retiered": "2026-09-01 severity-корекція: подушки більше не корроборують major_deformation, подія без несучої деформації/зміщеного колеса/структури стала moderate; watchpoint оновлено свідомо"
+   "retiered": "2026-09-01 severity-корекція: подушки більше не корроборують major_deformation, подія без несучої деформації/зміщеного колеса/структури стала moderate; watchpoint оновлено свідомо",
+   "depth_basis": "\"відкритий передній модуль\": внутрішня зона вскрита, деформації внутрішніх елементів evidence не підтверджує, огляду лонжеронів нема"
   },
   {
    "pid": "K530EB",
    "vin": "WBAJA9C55JB252679",
-   "note": "BMW 530e 2018: фронтальний удар лише по навісних панелях (капот/бампер/оптика) + розкриті передні подушки, силові елементи не підтверджені. Регрес-кейс severity-корекції: подушки БІЛЬШЕ НЕ корроборують major_deformation, подія moderate, а не severe. Старий hv (major_deformation=true за зімʼятий капот) лишений навмисно: навіть із ним tier мусить бути moderate",
+   "note": "BMW 530e 2018: удар лише по зовнішніх замінних панелях (капот, ноздря, фара) при бампері, що лишився на місці; розкриті ОБИДВІ передні подушки. Регрес-кейс: ані подушки, ані кількість зон, ані легасі major_deformation_visible=true не роблять подію severe без глибини",
    "refreshed": "2026-09-01 (production Check 612f5b04, до severity-корекції давав severe 6.7)",
    "vehicle": {
     "odometer_km": 111000,
@@ -1130,17 +1211,25 @@
       "ref": "auction_photo_5",
       "description": "Деформирован капот, повреждены передний бампер, решетки и фары."
      }
-    ]
+    ],
+    "damage_depth": "exterior_panels_only",
+    "fascia_status": "damaged_but_mounted",
+    "outer_panel_damage_extent": "multiple_panels",
+    "inner_components_exposed": false,
+    "inner_component_deformation_visible": false,
+    "inner_component_damage_extent": "none",
+    "cabin_intrusion_visible": false
    },
    "auction": null,
    "accident_recorded": true,
-   "accident_note": "ДТП на території США в 2025 році"
+   "accident_note": "ДТП на території США в 2025 році",
+   "depth_basis": "бампер лишився прикрученим і пофарбованим, за зламаною ноздрею жодного оголеного елемента: удар не пройшов глибше панелей"
   },
   {
    "pid": "M550LB",
    "vin": "WBAJB9C50JB049616",
-   "note": "BMW M550i 2018: watchpoint семантики резолвера: load_bearing_structure_deformation_visible=true тримає severe БЕЗ подушок-корроборації. УВАГА: у прод-прогонах 2026-09-01 (3/3) Vision на доступних кадрах 640x480 НЕ підтвердив несучу деформацію (load_bearing=false, лонжерони не ідентифікуються), тому прод-звіт цього VIN чесно дає moderate 8.1; цей кейс лишається юніт-перевіркою математики severe",
-   "refreshed": "2026-09-01 (production Check 564fe570 до корекції; hv тут синтетичний для семантики резолвера, прод 3/3 дав load_bearing=false)",
+   "note": "BMW M550i 2018: удар пройшов ГЛИБШЕ зовнішніх панелей. Підсилювач бампера погнутий і зміщений, зона крэш-боксів зруйнована, носій вскритий: inner_structure_or_module + substantial = severe. Несучі елементи при цьому БЕЗ підтвердженої деформації (розпірка стійок пряма, стакани цілі), тому structural лишається indeterminate і кап 5.5 не вмикається",
+   "refreshed": "2026-09-01 (evidence звірений із архівними кадрами лота вручну: погнутий підсилювач, зруйнована зона крэш-боксів, прямі несучі)",
    "vehicle": {
     "odometer_km": 125000,
     "age_months": 98,
@@ -1207,7 +1296,7 @@
     "srs_visual_status": "deployed_visible",
     "structural_visual_status": "indeterminate",
     "major_deformation_visible": true,
-    "load_bearing_structure_deformation_visible": true,
+    "load_bearing_structure_deformation_visible": false,
     "wheel_displacement_visible": false,
     "cosmetic_only": false,
     "possible_structural_damage": true,
@@ -1227,11 +1316,19 @@
       "ref": "auction_photo_1",
       "description": "Передний правый угол разрушен, несущая передняя зона оголена и деформирована."
      }
-    ]
+    ],
+    "damage_depth": "inner_structure_or_module",
+    "fascia_status": "detached_or_missing",
+    "outer_panel_damage_extent": "multiple_panels",
+    "inner_components_exposed": true,
+    "inner_component_deformation_visible": true,
+    "inner_component_damage_extent": "substantial",
+    "cabin_intrusion_visible": false
    },
    "auction": null,
    "accident_recorded": true,
-   "accident_note": "ДТП на території США в 2019 році"
+   "accident_note": "ДТП на території США в 2019 році",
+   "depth_basis": "бампера і фар нема, підсилювач помітно погнутий і зміщений, зона крэш-боксів зруйнована; при цьому розпірка стійок пряма і несучі елементи в кадрі моторного відсіку без видимої деформації"
   }
  ]
 }

@@ -126,15 +126,45 @@ const THIN = {
 
   /* ===== 4. severity: код виводить tier зі СПОСТЕРЕЖУВАНИХ ознак; LLM
      лише витягує ознаки, прикметник visible_severity в математику не входить */
-  const SIG = o => ({ signals: { structural: false, load_bearing: false, airbags: false, zones: 0, major_deformation: false, wheel_displacement: false, cosmetic_only: false, ...o } });
+  const SIG = o => ({ signals: { structural: false, load_bearing: false, cabin_intrusion: false, damage_depth: 'indeterminate', inner_extent: 'none', airbags: false, zones: 0, wheel_displacement: false, cosmetic_only: false, ...o } });
   let sv = deriveSeverity(SIG({ structural: true }));
   if (sv.severity !== 'severe' || !sv.basis.includes('structural_damage')) errs.push('structural мав дати severe: ' + JSON.stringify(sv));
-  sv = deriveSeverity(SIG({ major_deformation: true }));
-  if (sv.severity !== 'moderate' || !sv.basis.includes('major_deformation_visible')) errs.push('самотня глибока деформація мала дати moderate, не severe: ' + JSON.stringify(sv));
-  sv = deriveSeverity(SIG({ major_deformation: true, wheel_displacement: true }));
-  if (sv.severity !== 'severe') errs.push('деформація + зміщене колесо мали дати severe: ' + sv.severity);
+  /* ---- глибина пошкодження: окрема вісь від тяжкості ---- */
+  /* лише зовнішні панелі: не severe, скільки б панелей і подушок не було */
+  sv = deriveSeverity(SIG({ damage_depth: 'exterior_panels_only', airbags: true, zones: 6 }));
+  if (sv.severity !== 'moderate') errs.push('зовнішні панелі + подушки + зони мали лишитись moderate: ' + sv.severity);
+  if (!sv.basis.includes('exterior_panels_damage')) errs.push('нема ознаки exterior_panels_damage');
+  /* глибше панелей + СУТТЄВЕ ушкодження внутрішньої зони: severe */
+  sv = deriveSeverity(SIG({ damage_depth: 'inner_structure_or_module', inner_extent: 'substantial' }));
+  if (sv.severity !== 'severe' || !sv.basis.includes('inner_module_substantial_damage')) errs.push('inner + substantial мали дати severe: ' + JSON.stringify(sv));
+  /* захист від нового overcall: локальна деформація одного елемента НЕ severe */
+  sv = deriveSeverity(SIG({ damage_depth: 'inner_structure_or_module', inner_extent: 'localized', airbags: true, zones: 5 }));
+  if (sv.severity !== 'moderate') errs.push('inner + localized мали лишитись moderate: ' + sv.severity);
+  if (!sv.basis.includes('inner_module_localized_damage')) errs.push('нема ознаки inner_module_localized_damage');
+  /* обсяг невідомий: теж не severe */
+  sv = deriveSeverity(SIG({ damage_depth: 'inner_structure_or_module', inner_extent: 'indeterminate' }));
+  if (sv.severity !== 'moderate') errs.push('inner + indeterminate мали дати moderate: ' + sv.severity);
+  /* "розібраний передок" без деформації внутрішніх елементів: НЕ severe */
+  sv = deriveSeverity(SIG({ damage_depth: 'inner_structure_or_module', inner_extent: 'none', airbags: true }));
+  if (sv.severity !== 'moderate' || !sv.basis.includes('inner_module_exposed_without_deformation')) errs.push('вскрито без деформації мало дати moderate: ' + JSON.stringify(sv));
+  /* незалежний фізичний сигнал піднімає localized до severe */
+  sv = deriveSeverity(SIG({ damage_depth: 'inner_structure_or_module', inner_extent: 'localized', wheel_displacement: true }));
+  if (sv.severity !== 'severe') errs.push('inner + localized + зміщене колесо мали дати severe: ' + sv.severity);
+  /* несуча деформація і проникнення в салон: severe самі по собі */
+  sv = deriveSeverity(SIG({ damage_depth: 'load_bearing_structure', load_bearing: true }));
+  if (sv.severity !== 'severe' || !sv.basis.includes('load_bearing_structure_deformation_visible')) errs.push('несуча деформація мала дати severe: ' + JSON.stringify(sv));
+  sv = deriveSeverity(SIG({ damage_depth: 'cabin_intrusion', cabin_intrusion: true }));
+  if (sv.severity !== 'severe' || !sv.basis.includes('cabin_intrusion_visible')) errs.push('проникнення в салон мало дати severe: ' + JSON.stringify(sv));
+  /* подушки: самостійний moderate і НІКОЛИ не корроборатор severe */
   sv = deriveSeverity(SIG({ airbags: true }));
   if (sv.severity !== 'moderate' || !sv.basis.includes('airbags_deployed')) errs.push('подушки мали дати мінімум moderate: ' + JSON.stringify(sv));
+  sv = deriveSeverity(SIG({ airbags: true, damage_depth: 'exterior_panels_only', zones: 9 }));
+  if (sv.severity === 'severe') errs.push('подушки знову стали корроборатором severe');
+  /* легасі major_deformation_visible у скорингу більше не бере участі */
+  sv = deriveSeverity(SIG({ major_deformation: true }));
+  if (sv.severity !== 'indeterminate') errs.push('легасі major_deformation досі рухає tier: ' + JSON.stringify(sv));
+  sv = deriveSeverity(SIG({ major_deformation: true, airbags: true }));
+  if (sv.severity !== 'moderate' || sv.basis.some(b => /major_deformation/.test(b))) errs.push('легасі major_deformation досі в basis: ' + JSON.stringify(sv));
   sv = deriveSeverity(SIG({ wheel_displacement: true }));
   if (sv.severity !== 'moderate' || !sv.basis.includes('wheel_displacement_visible')) errs.push('зміщене колесо мало дати мінімум moderate: ' + JSON.stringify(sv));
   sv = deriveSeverity(SIG({ zones: 2 }));
@@ -143,18 +173,6 @@ const THIN = {
   if (sv.severity !== 'minor') errs.push('косметика мала дати minor: ' + sv.severity);
   sv = deriveSeverity(SIG({}));
   if (sv.severity !== 'indeterminate') errs.push('без ознак мало бути indeterminate: ' + sv.severity);
-  /* severity-корекція 2026-09-01: подушки НЕ корроборують major_deformation.
-     Розкриті подушки + зімʼяті панелі це штатна сигнатура будь-якого
-     фронтального удару з порогом спрацювання, а не доказ severe */
-  sv = deriveSeverity(SIG({ airbags: true, major_deformation: true }));
-  if (sv.severity !== 'moderate') errs.push('деформація + подушки мали дати moderate (подушки не корроборатор): ' + sv.severity);
-  /* видима деформація НЕСУЧИХ частин: severe сама по собі і як корроборатор */
-  sv = deriveSeverity(SIG({ load_bearing: true }));
-  if (sv.severity !== 'severe' || !sv.basis.includes('load_bearing_structure_deformation_visible')) errs.push('несуча деформація мала дати severe: ' + JSON.stringify(sv));
-  sv = deriveSeverity(SIG({ major_deformation: true, load_bearing: true }));
-  if (sv.severity !== 'severe') errs.push('деформація + несуча мали дати severe: ' + sv.severity);
-  sv = deriveSeverity(SIG({ airbags: true, major_deformation: true, load_bearing: true }));
-  if (sv.severity !== 'severe') errs.push('несуча деформація з подушками мала лишитись severe: ' + sv.severity);
   /* прикметник моделі САМ не піднімає tier */
   sv = deriveSeverity({ signals: { structural: false, airbags: false, zones: 0, major_deformation: false, wheel_displacement: false, cosmetic_only: false, visual_severity: 'severe' } });
   if (sv.severity !== 'indeterminate') errs.push('прикметник visible_severity потрапив у математику: ' + sv.severity);
@@ -635,7 +653,10 @@ const THIN = {
 
   /* ===== 19д. SRS-сигнал з історичних кадрів доїжджає до резолвера ===== */
   const AM = { lot_id: '49495925', house: 'Copart', sale_date: '2025-04-29', airbags: null, primary_damage: 'Front end', secondary_damage: 'Side' };
+  /* hv як його віддає sanitize: глибина вже провалідована. База тут це
+     вскритий передок БЕЗ підтвердженої деформації внутрішніх елементів */
   const hvBase = { structural_visual_status: 'indeterminate', possible_structural_damage: true, major_deformation_visible: true,
+    damage_depth: 'inner_structure_or_module', inner_components_exposed: true, inner_component_deformation_visible: false, inner_component_damage_extent: 'none', fascia_status: 'detached_or_missing',
     visible_damage_zones: ['капот', 'бампер', 'крило', 'передок', 'оптика'], evidence: [{ source: 'us_auction', description: 'кадри лота' }] };
   /* салон не переданий: подушки невідомі -> moderate (як було) */
   let evb = score([], RICH, { auctionMeta: AM, historicalVisual: { ...hvBase, srs_visual_status: 'not_visible' } }).accident_events[0];
@@ -648,6 +669,13 @@ const THIN = {
   if (evb.airbags !== true) errs.push('deployed_visible не доїхав до резолвера');
   if (evb.derived_severity !== 'moderate') errs.push('major_deformation + подушки мали дати moderate: ' + evb.derived_severity);
   if (!evb.severity_basis.includes('airbags_deployed')) errs.push('airbags_deployed нема в basis');
+  /* суттєве ушкодження внутрішньої зони на кадрах того ж лота: severe */
+  evb = score([], RICH, { auctionMeta: AM, historicalVisual: { ...hvBase, srs_visual_status: 'deployed_visible', inner_component_deformation_visible: true, inner_component_damage_extent: 'substantial' } }).accident_events[0];
+  if (evb.derived_severity !== 'severe') errs.push('inner substantial з hv не дав severe: ' + evb.derived_severity);
+  if (!evb.severity_basis.includes('inner_module_substantial_damage')) errs.push('inner substantial нема в basis');
+  /* локальна деформація внутрішнього елемента: лишається moderate */
+  evb = score([], RICH, { auctionMeta: AM, historicalVisual: { ...hvBase, srs_visual_status: 'deployed_visible', inner_component_deformation_visible: true, inner_component_damage_extent: 'localized' } }).accident_events[0];
+  if (evb.derived_severity !== 'moderate') errs.push('inner localized з hv мав лишитись moderate: ' + evb.derived_severity);
   /* несуча деформація на кадрах того ж лота піднімає до severe */
   evb = score([], RICH, { auctionMeta: AM, historicalVisual: { ...hvBase, srs_visual_status: 'deployed_visible', load_bearing_structure_deformation_visible: true } }).accident_events[0];
   if (evb.derived_severity !== 'severe') errs.push('load_bearing з hv не дав severe: ' + evb.derived_severity);

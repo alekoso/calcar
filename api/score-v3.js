@@ -201,7 +201,7 @@ function newEvent(id, year, anchored, basis, confidence) {
     merge_basis: basis ? [...basis] : [],
     merge_confidence: confidence || 'high',
     year,
-    signals: { structural: false, load_bearing: false, airbags: false, zones: 0, major_deformation: false, wheel_displacement: false, cosmetic_only: false, possible_structural: false },
+    signals: { structural: false, load_bearing: false, cabin_intrusion: false, damage_depth: 'indeterminate', inner_extent: 'none', airbags: false, zones: 0, wheel_displacement: false, cosmetic_only: false, possible_structural: false },
     repair_statuses: [],
     evidence: [],
   };
@@ -273,7 +273,17 @@ export function resolveAccidentEvents(findings, ctx) {
          пороги, підлога, моторний щит, каркас): сильний фізичний сигнал
          тяжкості БЕЗ капа 5.5 (кап лишається за strict visible_damage) */
       if (hv.load_bearing_structure_deformation_visible === true) auctionEvent.signals.load_bearing = true;
-      if (hv.major_deformation_visible === true) auctionEvent.signals.major_deformation = true;
+      if (hv.cabin_intrusion_visible === true) auctionEvent.signals.cabin_intrusion = true;
+      /* ГЛИБИНА: приходить уже провалідованою кодом (resolveDamageDepth),
+         резолвер читає її як СПОСТЕРЕЖЕННЯ, а не як вердикт про тяжкість.
+         major_deformation_visible СВІДОМО не читається: він склеював
+         деформацію замінної навісної панелі з деформацією кузова */
+      if (['exterior_panels_only', 'inner_structure_or_module', 'load_bearing_structure', 'cabin_intrusion'].includes(hv.damage_depth)) {
+        auctionEvent.signals.damage_depth = hv.damage_depth;
+      }
+      if (['localized', 'substantial', 'indeterminate'].includes(hv.inner_component_damage_extent)) {
+        auctionEvent.signals.inner_extent = hv.inner_component_damage_extent;
+      }
       if (hv.wheel_displacement_visible === true) auctionEvent.signals.wheel_displacement = true;
       if (hv.cosmetic_only === true) auctionEvent.signals.cosmetic_only = true;
     }
@@ -396,19 +406,30 @@ export function deriveSeverity(ev) {
     basis.push(why);
     if (rank[level] > rank[severity]) severity = level;
   };
-  if (ev.signals.structural) bump('severe', 'structural_damage');
-  /* видима деформація несучих частин: severe сама по собі */
-  if (ev.signals.load_bearing) bump('severe', 'load_bearing_structure_deformation_visible');
-  /* глибока видима деформація кузова дає severe ЛИШЕ з незалежним
-     ФІЗИЧНИМ підтвердженням тяжкості: несучі частини, структурні ознаки,
-     зміщене колесо. Подушки корроборатором НЕ є: розкриті подушки плюс
-     зімʼяті навісні панелі це штатна сигнатура БУДЬ-ЯКОГО фронтального
-     удару з порогом спрацювання, а не доказ severe. Подушки лишаються
-     самостійним moderate-сигналом нижче і окремим SRS restoration concern */
-  const majorCorroborated = ev.signals.structural || ev.signals.load_bearing || ev.signals.wheel_displacement;
-  if (ev.signals.major_deformation) bump(majorCorroborated ? 'severe' : 'moderate', 'major_deformation_visible');
-  if (ev.signals.airbags) bump('moderate', 'airbags_deployed');
-  if (ev.signals.wheel_displacement) bump('moderate', 'wheel_displacement_visible');
+  const s = ev.signals;
+  const deep = s.damage_depth === 'inner_structure_or_module'
+    || s.damage_depth === 'load_bearing_structure' || s.damage_depth === 'cabin_intrusion';
+  if (s.structural) bump('severe', 'structural_damage');
+  /* проникнення в зону салону і видима деформація несучих частин: severe */
+  if (s.cabin_intrusion || s.damage_depth === 'cabin_intrusion') bump('severe', 'cabin_intrusion_visible');
+  if (s.load_bearing || s.damage_depth === 'load_bearing_structure') bump('severe', 'load_bearing_structure_deformation_visible');
+  /* удар пройшов ГЛИБШЕ зовнішніх панелей: severe лише за СУТТЄВОГО обсягу
+     ушкодження внутрішньої зони. Локальна деформація одного внутрішнього
+     елемента і сам факт вскритого чи розібраного передка severe НЕ дають:
+     інакше повертається той самий overcall, лише через інше поле */
+  if (s.damage_depth === 'inner_structure_or_module') {
+    if (s.inner_extent === 'substantial') bump('severe', 'inner_module_substantial_damage');
+    else if (s.inner_extent === 'localized') bump('moderate', 'inner_module_localized_damage');
+    else if (s.inner_extent === 'none') bump('moderate', 'inner_module_exposed_without_deformation');
+    else bump('moderate', 'inner_module_extent_indeterminate');
+  }
+  /* лише зовнішні панелі: не severe, скільки б панелей не було */
+  if (s.damage_depth === 'exterior_panels_only' && !s.cosmetic_only) bump('moderate', 'exterior_panels_damage');
+  /* подушки: самостійний moderate і окремий SRS restoration concern.
+     Корроборатором severe вони НЕ є за жодних умов */
+  if (s.airbags) bump('moderate', 'airbags_deployed');
+  /* зміщене колесо: незалежний фізичний сигнал, severe у парі з глибиною */
+  if (s.wheel_displacement) bump(deep ? 'severe' : 'moderate', 'wheel_displacement_visible');
   if (ev.signals.zones >= 2) bump('moderate', 'multiple_damage_zones');
   if (ev.signals.cosmetic_only && severity === 'indeterminate') bump('minor', 'cosmetic_panels_only');
   return { severity, basis };

@@ -80,7 +80,22 @@ const gold = JSON.parse(fs.readFileSync('calibration-gold.json', 'utf8'));
   if (!near(f('M550LB'), 6.5, 6.9)) errs.push('acceptance M550i (M550LB): ' + f('M550LB'));
   const mE = res['M550LB'].v3.accident_events[0];
   if (!mE || mE.derived_severity !== 'severe') errs.push('M550LB: мав бути severe, а не ' + (mE && mE.derived_severity));
-  if (!mE || !mE.severity_basis.includes('load_bearing_structure_deformation_visible')) errs.push('M550LB: severe не через несучу деформацію: ' + JSON.stringify(mE && mE.severity_basis));
+  if (!mE || !mE.severity_basis.includes('inner_module_substantial_damage')) errs.push('M550LB: severe не через суттєве ушкодження внутрішньої зони: ' + JSON.stringify(mE && mE.severity_basis));
+  /* severe БЕЗ заявленого структурного: кап 5.5 не вмикається */
+  if (res['M550LB'].v3.applied_hard_caps.some(c => c.name.includes('STRUCTURAL'))) errs.push('M550LB: severe помилково увімкнув structural кап');
+  if (mE && mE.structural !== false) errs.push('M550LB: structural заявлений без structural evidence');
+  /* K530EB: легасі major_deformation_visible=true у кейсі Є, і саме він
+     БІЛЬШЕ не робить подію severe: глибина вирішує */
+  const kHv = gold.cases.find(c => c.pid === 'K530EB').hv;
+  if (kHv.major_deformation_visible !== true) errs.push('K530EB: легасі-прапорець прибрали з кейса, регрес більше нічого не доводить');
+  if (kE && kE.severity_basis.some(b => /major_deformation/.test(b))) errs.push('K530EB: major_deformation досі в severity_basis');
+  /* "розібраний передок" без деформації внутрішніх елементів: НЕ severe */
+  for (const pid of ['TYTP3J', '2HGRSW', 'AXGFW9']) {
+    const e = res[pid].v3.accident_events[0];
+    if (!e) { errs.push(pid + ': подія зникла'); continue; }
+    if (e.derived_severity === 'severe') errs.push(pid + ': вскритий передок без деформації став severe');
+    if (!e.severity_basis.includes('inner_module_exposed_without_deformation')) errs.push(pid + ': нема ознаки "вскрито без деформації": ' + JSON.stringify(e.severity_basis));
+  }
   if (res['WP7V3G'].v3.normalized_current_problems.some(p => /MILEAGE|ROLLBACK/.test(p.type))) errs.push('WP7V3G: нормальна хронологія оштрафована');
   /* TYTP3J: глибока деформація БЕЗ підтвердження подушками/структурою =
      moderate. Бал 8.9 -> 8.7 свідомо: visually_consistent став
