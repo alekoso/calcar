@@ -590,6 +590,8 @@
 </style>
 <!-- спільний інтерфейс контексту сторінки для помічника CalCar -->
 <script src="/context.js"></script>
+<!-- єдиний CalCar Assistant: API доступне скриптам сторінки, розмітка будується на DOMContentLoaded -->
+<script src="/chat.js"></script>
 </head>
 <body>
 
@@ -1274,7 +1276,5 @@ document.addEventListener('click', function (e) {
 /* Вітрина Import: авто ще не обране, помічник відповідає по продукту загалом. */
 if (window.CalCarContext) window.CalCarContext.register(function () { return { page_type: 'import_landing' }; });
 </script>
-<!-- спільний чат CalCar: монтується лише там, де свого чату в сторінки нема -->
-<script src="/chat.js"></script>
 </body>
 </html>

@@ -331,7 +331,7 @@ const REPORTS = [
     if (page.includes('AI-перевірка оголошення')) errs.push('плашка AI лишилась');
     if (page.includes('id="idLine"')) errs.push('нижній identity-рядок лишився');
     if (!page.includes('class="id-chip"')) errs.push('нема identity-чіпів біля назви');
-    if (!page.includes("contains('open') ? close() : open()")) errs.push('чат не перемикається повторним кліком');
+    if (!page.includes("CalCarChat.toggle()")) errs.push('чат не перемикається повторним кліком');
     if (!page.includes('id="scoreTip"') || !page.includes('Critical risks can weigh more heavily on the final score.')) errs.push('нема premium tooltip щита');
     if (/score-shield[^>]*title=/.test(page)) errs.push('щит досі з browser-title');
     if (page.includes("t('після перевірок')")) errs.push('grade-бейдж біля оцінки лишився');

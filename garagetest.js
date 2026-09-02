@@ -70,6 +70,11 @@ if (fs.existsSync('index.html')) errs.push('у корені зʼявився ind
 const impRule = v.rewrites.find(r => r.source === '/import');
 if (!impRule || !fs.existsSync(impRule.destination.slice(1))) errs.push('/import веде на неіснуючий файл');
 if (!src.includes('/garage') || !src.includes('/garage/:id')) errs.push('нема rewrites для гаража');
+/* публікації йдуть окремими маршрутами; /garage/:id лишається сторінкою авто і стоїть після них */
+if (!src.includes('/garage/post/:id') || !src.includes('/garage/article/:slug')) errs.push('нема rewrites для сторінок публікацій');
+if (src.indexOf('/garage/post/:id') > src.indexOf('/garage/:id')) errs.push('маршрут публікації стоїть після /garage/:id');
+const postRule = v.rewrites.find(r => r.source === '/garage/post/:id');
+if (!postRule || postRule.destination !== '/garage.html?post=:id') errs.push('/garage/post/:id веде не в garage.html?post=');
 /* Import прибраний з вітрини, але живий: прямі посилання і закладки працюють */
 if (!src.includes('/import')) errs.push('зник rewrite /import: закладки Import помруть');
 
@@ -96,6 +101,21 @@ if (!/class="g-tab on"[^>]*data-tab="feed"/.test(g)) errs.push('стрічка �
 if (!/<div class="g-seg" role="tablist"/.test(g)) errs.push('нема сегментованого перемикача продукту');
 if ((g.match(/class="g-tab/g) || []).length !== 2) errs.push('у головній навігації не два розділи');
 if (!/\.g-seg\{[^}]*grid-template-columns:1fr 1fr/.test(g)) errs.push('розділи навігації не рівної ширини');
+/* сегментований перемикач без чорної обводки і зеленої крапки */
+if (/\.g-tab\.on::before/.test(g)) errs.push('у навігації гаража повернулась зелена крапка');
+if (/\.g-seg\{[^}]*border:1px solid/.test(g)) errs.push('контейнер навігації знову з обводкою');
+if (!/\.g-tab\.on\{background:var\(--card\);color:var\(--ink\);border-color:var\(--line\)/.test(g)) errs.push('активний сегмент не біла пігулка з мʼякою межею');
+if (!/\.g-tab:focus-visible\{outline/.test(g)) errs.push('клавіатурний фокус навігації втрачено');
+/* сторінка публікації: превʼю у стрічці веде на повну публікацію, маршрути не бʼються з /garage/:id */
+if (!g.includes('id="postView"')) errs.push('нема контейнера сторінки публікації');
+if (!/function postHref\(p\) \{ return p\.post_type === 'article' \? '\/garage\/article\/' \+ p\.slug : '\/garage\/post\/' \+ p\.id; \}/.test(g)) errs.push('картка стрічки не веде на сторінку публікації');
+if (!/class="post-link" href="/.test(g)) errs.push('заголовок публікації не посилання');
+if (!/function renderDetail\(p\)/.test(g) || !/pd-lead|sections/.test(g)) errs.push('нема повної сторінки публікації і статті');
+if (!/slug: 'bmw-b58-after-100000-km'/.test(g)) errs.push('у статті нема slug');
+/* "Запитати CalCar" = той самий помічник із фокусом, а не окремий чат */
+if (!/CalCarChat\.open\(\{ focus: askFocus\(p\) \}\)/.test(g)) errs.push('кнопка під публікацією не передає фокус спільному помічнику');
+if (/intro:|askSuggestions/.test(g)) errs.push('у гаражі лишились окремі підказки або інтро окремого чату');
+if ((g.match(/data-action="ask-calcar">/g) || []).length !== 2) errs.push('CTA під публікацією має бути одна на картку і одна на сторінці публікації');
 if (!/\.g-nav\{position:sticky;top:var\(--hdr-h\)/.test(g)) errs.push('навігація не липне під шапкою');
 if (!/--hdr-h:56px/.test(g)) errs.push('нема токена висоти шапки');
 /* стара конструкція: великий заголовок і підзаголовок окремим hero */

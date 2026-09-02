@@ -168,7 +168,7 @@ const ROUTES = {
   '/': 'check', '/check': 'check', '/check/aB3xZ9': 'check', '/check.html': 'check',
   '/result-check.html': 'check',
   '/import': 'import', '/import.html': 'import', '/result.html': 'import',
-  '/garage': 'garage', '/garage/12': 'garage', '/garage.html': 'garage', '/cabinet.html': ''
+  '/garage': 'garage', '/garage/12': 'garage', '/garage.html': 'garage', '/garage/post/demo-1': 'garage', '/garage/article/bmw': 'garage', '/cabinet.html': ''
 };
 for (const [path, want] of Object.entries(ROUTES)) {
   const got = resolveProduct(path);

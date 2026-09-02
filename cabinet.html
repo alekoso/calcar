@@ -446,6 +446,8 @@
 </style>
 <!-- спільний інтерфейс контексту сторінки для помічника CalCar -->
 <script src="/context.js"></script>
+<!-- єдиний CalCar Assistant: API доступне скриптам сторінки, розмітка будується на DOMContentLoaded -->
+<script src="/chat.js"></script>
 </head>
 <body>
 <header>
@@ -596,6 +598,7 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  document.getElementById('noCfg').style.display = '';
 } else {
  const SB = supabase.createClient(cfg.url, cfg.anon);
+ window.SB = SB; /* спільний помічник бере той самий клієнт, а не створює другий */
 
  async function boot() {
  const { data } = await SB.auth.getSession();
@@ -1044,7 +1047,5 @@ if (window.CalCarContext) window.CalCarContext.register(function () {
   return { page_type: 'cabinet', section: (location.hash || '#reports').slice(1) };
 });
 </script>
-<!-- спільний чат CalCar: монтується лише там, де свого чату в сторінки нема -->
-<script src="/chat.js"></script>
 </body>
 </html>

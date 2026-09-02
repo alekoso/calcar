@@ -174,15 +174,17 @@ const read = f => fs.readFileSync(f, 'utf8');
   }
   if (!/LANG_NAME_ACC\[lang\]/.test(translate) || /!LANG_NAME\[lang\]/.test(translate)) errs.push('translate: невідома локаль не падає в English');
   /* фронт: кожен AI-потік шле обрану локаль */
-  const rc = read('result-check.html'), rs = read('result.html'), im = read('import.html'), ch = read('check.html');
-  const bodyOf = (src, api) => { const i = src.indexOf("fetch('" + api + "'"); return i < 0 ? '' : src.slice(i, i + 900); };
+  const rc = read('result-check.html'), rs = read('result.html'), im = read('import.html'), ch = read('check.html'), as = read('chat.js');
+  /* тіло запиту може збиратись і до виклику fetch (спільний помічник), тому дивимось навколо */
+  const bodyOf = (src, api) => { const i = src.indexOf("fetch('" + api + "'"); return i < 0 ? '' : src.slice(Math.max(0, i - 1400), i + 900); };
   for (const [name, src, api] of [
-    ['result-check chat', rc, '/api/chat'], ['result-check memory', rc, '/api/memory'], ['result-check translate', rc, '/api/check-translate'],
-    ['result chat', rs, '/api/chat'], ['result memory', rs, '/api/memory'],
+    ['assistant chat', as, '/api/chat'], ['assistant memory', as, '/api/memory'], ['result-check translate', rc, '/api/check-translate'],
     ['import analyze', im, '/api/analyze'], ['import lot', im, '/api/lot'], ['check', ch, '/api/check'],
   ]) {
-    if (!/lang: (window\.calcarLang\(\)|ui|\(window\.calcarLang \? calcarLang\(\) : 'en'\))/.test(bodyOf(src, api))) errs.push(name + ': запит без обраної локалі');
+    if (!/lang: (window\.calcarLang\(\)|ui|\(window\.calcarLang \? calcarLang\(\) : 'en'\)|window\.calcarLang \? window\.calcarLang\(\) : 'en')/.test(bodyOf(src, api))) errs.push(name + ': запит без обраної локалі');
   }
+  /* чат у звітах живе лише в спільному помічнику: власних запитів у /api/chat там нема */
+  for (const [name, src] of [['result-check', rc], ['result', rs]]) if (src.includes("fetch('/api/chat'")) errs.push(name + ': власний запит у /api/chat повз спільний помічник');
   if (/calcarLang\(\) : 'ua'/.test(im)) errs.push('import: фолбек локалі ua лишився');
   /* помилки API: жодного захардкодженого українського тексту */
   for (const f of fs.readdirSync('api').filter(x => x.endsWith('.js'))) {

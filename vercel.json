@@ -28,6 +28,14 @@
       "destination": "/garage.html"
     },
     {
+      "source": "/garage/post/:id",
+      "destination": "/garage.html?post=:id"
+    },
+    {
+      "source": "/garage/article/:slug",
+      "destination": "/garage.html?article=:slug"
+    },
+    {
       "source": "/garage/:id",
       "destination": "/garage.html?id=:id"
     }

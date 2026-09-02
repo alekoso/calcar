@@ -238,142 +238,30 @@ async function sys(product, memory, extra) {
     if (dashTail.includes('\u2014')) errs.push('довге тире просочилось із хвоста' + p);
   }
 
-  /* 12. контракт зі сторінками: memory, recent_turns, report_id і збереження нотатки */
-  for (const f of ['result.html', 'result-check.html']) {
-    const s = fs.readFileSync(f, 'utf8');
-    if (!/memory:\s*MEMORY/.test(s)) errs.push('сторінка ' + f + ' більше не шле memory у /api/chat');
-    if (!/recent_turns:\s*RECENT_TURNS/.test(s)) errs.push('сторінка ' + f + ' не шле recent_turns у /api/chat');
-    if (!/report_id:/.test(s)) errs.push('сторінка ' + f + ' не шле report_id у /api/chat');
-    if (!s.includes('saveChatMemory(')) errs.push('сторінка ' + f + ' не зберігає memory_update з відповіді');
-    if (!s.includes("select('memory,recent_turns')")) errs.push('сторінка ' + f + ' не читає recent_turns з user_memory');
-    /* інтерфейс єдиного асистента: @-попап, плашка контексту, ліміт два звіти */
-    if (!/referenced_reports:\s*refs/.test(s)) errs.push('сторінка ' + f + ' не шле referenced_reports');
-    for (const el of ['id="chatMention"', 'id="mentionSearch"', 'id="mentionList"', 'id="chatCtx"', 'id="chatCtxCar"']) {
-      if (!s.includes(el)) errs.push('сторінка ' + f + ' без елемента ' + el);
+  /* 12. контракт із єдиним помічником: памʼять, recent_turns, report_id, @-звіти
+     живуть у chat.js; сторінки звітів лише реєструють свої здатності */
+  {
+    const c = fs.readFileSync('chat.js', 'utf8');
+    if (!/memory:\s*MEMORY/.test(c)) errs.push('chat.js більше не шле memory у /api/chat');
+    if (!/recent_turns:\s*RECENT_TURNS/.test(c)) errs.push('chat.js не шле recent_turns у /api/chat');
+    if (!/report_id:/.test(c)) errs.push('chat.js не шле report_id у /api/chat');
+    if (!c.includes('saveChatMemory(')) errs.push('chat.js не зберігає memory_update з відповіді');
+    if (!c.includes("select('memory,recent_turns')")) errs.push('chat.js не читає recent_turns з user_memory');
+    if (!/referenced_reports:\s*refs/.test(c)) errs.push('chat.js не шле referenced_reports');
+    for (const el of ['id="ccMention"', 'id="ccMentionSearch"', 'id="ccMentionList"', 'id="ccFocus"']) {
+      if (!c.includes(el)) errs.push('chat.js без елемента ' + el);
     }
-    if (s.includes('chatCarTitle')) errs.push('сторінка ' + f + ' досі тримає назву авто в шапці чату');
-    if (!s.includes('<b>CalCar Assistant</b>')) errs.push('сторінка ' + f + ' без заголовка Асистент CalCar');
-    if (!s.includes('placeholder="Ask a question… @ to add a report for comparison"')) errs.push('сторінка ' + f + ' зі старим плейсхолдером');
-    if (!s.includes('pendingRefs.length >= 2')) errs.push('сторінка ' + f + ' без ліміту двох прикріплених звітів');
-    if (!s.includes('bindMention();')) errs.push('сторінка ' + f + ' не підключає @-попап');
-    /* вибір машини мишею: pointerdown із preventDefault ДО втрати фокуса.
-       Живі події без браузера не проженеш, тут страхуємо сам механізм:
-       фактичний клік мишею і клавіатура лишаються ручною перевіркою */
-    if (!/onpointerdown = e => \{ e\.preventDefault\(\); pickMention\(r\); \}/.test(s)) {
-      errs.push('сторінка ' + f + ': вибір у попапі не на pointerdown+preventDefault');
-    }
-    if (/b\.onclick = \(\) => pickMention/.test(s)) errs.push('сторінка ' + f + ': лишився вибір на click (гонка фокуса повернулась)');
-    if (/onmouseenter = \(\) => \{ mentionIdx = i; renderMention\(\); \}/.test(s)) {
-      errs.push('сторінка ' + f + ': наведення перемальовує список (вбивало вузол під кліком)');
-    }
-    /* стертий @ закриває попап; Esc закриває і з поля, і з пошуку */
-    if (!s.includes("field.value[mentionPos] !== '@')) closeMention(false)")) {
-      errs.push('сторінка ' + f + ': попап не закривається після стирання @');
-    }
-    if (!s.includes("if (e.key === 'Escape' && mentionOpenNow()) closeMention(true)")) {
-      errs.push('сторінка ' + f + ': Esc з поля не закриває попап');
-    }
-    if (!s.includes("else if (e.key === 'Escape') { e.preventDefault(); closeMention(true); }")) {
-      errs.push('сторінка ' + f + ': Esc з пошуку не закриває попап');
-    }
-    /* прикріплення живе в тексті пілюлею, чипів над composer більше нема.
-       Живі перевірки метрик і кліків без браузера неможливі, механізм
-       страхуємо на рівні коду, решта в ручній перевірці */
-    if (s.includes('chat-file-chip ref')) errs.push('сторінка ' + f + ': чип звіту над composer повернувся');
-    if (!s.includes('id="chatTaOverlay"')) errs.push('сторінка ' + f + ': нема накладки над полем');
-    if (!s.includes('.chat-box textarea,.chat-ta-overlay{')) errs.push('сторінка ' + f + ': метрики textarea і накладки не спільним правилом');
-    /* мінімальна висота поля: два рядки завжди, однакова для поля і накладки.
-       Живе тільки в спільному правилі метрик, окремих min-height бути не може */
-    const shared = (s.split('.chat-box textarea,.chat-ta-overlay{')[1] || '').split('}')[0];
-    if (!shared.includes('min-height:calc(3em + 4px)')) errs.push('сторінка ' + f + ': min-height у два рядки зник зі спільного правила');
-    /* кнопка @ відкриває ТОЙ САМИЙ попап: одна логіка, без другої копії */
-    if (!s.includes('id="chatAtBtn"')) errs.push('сторінка ' + f + ': нема кнопки @ у composer');
-    const atHandler = s.split("getElementById('chatAtBtn')")[1] || '';
-    if (!atHandler.slice(0, 400).includes('openMention(p)')) errs.push('сторінка ' + f + ': кнопка @ не відкриває спільний попап');
-    if ((s.match(/function openMention\(/g) || []).length !== 1) errs.push('сторінка ' + f + ': логіка попапа здубльована');
-    /* цитата: блок над полем, плавуча кнопка, надсилання і чистка */
-    for (const el of ['id="chatQuote"', 'id="chatQuoteText"', 'id="chatQuoteX"', 'id="chatSelAsk"']) {
-      if (!s.includes(el)) errs.push('сторінка ' + f + ' без елемента ' + el);
-    }
-    if (!/quoted_text:\s*quote/.test(s)) errs.push('сторінка ' + f + ' не шле quoted_text');
-    if (!s.includes('clearQuote();')) errs.push('сторінка ' + f + ' не чистить цитату при відправці');
-    if (!s.includes('QUOTE.slice(0, 500)')) errs.push('сторінка ' + f + ' не ріже цитату по 500');
-    if (!s.includes("addEventListener('selectionchange'")) errs.push('сторінка ' + f + ' не стежить за виділенням');
-    if (!s.includes("closest('#chatPanel, #chatSelAsk, input, textarea")) errs.push('сторінка ' + f + ' показує кнопку у чаті чи полях вводу');
-    if (!s.includes('bindSelAsk();')) errs.push('сторінка ' + f + ' не підключає кнопку виділення');
-    if (!s.includes('window.calcarOpenChat')) errs.push('сторінка ' + f + ' без гачка відкриття чату');
-    /* очищення після відправки зведене в одну функцію: половинчата чистка
-       лишала привид тексту в накладці поверх плейсхолдера */
-    if (!s.includes('function resetComposer(')) errs.push('сторінка ' + f + ': нема resetComposer');
-    if (!s.includes('resetComposer();')) errs.push('сторінка ' + f + ': шлях відправки не зве resetComposer');
-    if (s.includes("$('chatText').value = ''") || s.includes("ta.value = ''")) errs.push('сторінка ' + f + ': пряма чистка поля поза resetComposer');
-    const rc = (s.split('function resetComposer(')[1] || '').split('\n}')[0];
-    for (const need of ['renderTaOverlay();', 'clearQuote();', 'renderFiles();', "field.style.height = ''"]) {
-      if (!rc.includes(need)) errs.push('сторінка ' + f + ': resetComposer не робить ' + need);
-    }
-    /* кнопка @ у винятках "кліка мимо", інакше попап закривався миттєво */
-    if (!s.includes(".closest('#chatAtBtn') && e.target !== field) closeMention(false)")) errs.push('сторінка ' + f + ': кнопка @ не у винятках кліка мимо');
-    /* стиль @: та сама скріпка, власне правило не переозначає розмір, колір
-       і не робить гліф жирним */
-    const atRule = (s.split('.chat-attach.at{')[1] || '').split('}')[0];
-    if (!atRule) errs.push('сторінка ' + f + ': нема правила .chat-attach.at');
-    else {
-      const atProps = atRule.split(';').map(d => d.split(':')[0].trim());
-      if (atProps.some(p => ['width', 'height', 'color', 'background'].includes(p))) errs.push('сторінка ' + f + ': кнопка @ переозначає розмір чи колір скріпки');
-      if (!atRule.includes('font-weight:400')) errs.push('сторінка ' + f + ': гліф @ не тонкий');
-      if (!atRule.includes('line-height:1')) errs.push('сторінка ' + f + ': гліф @ без line-height:1 знову сяде нижче центру');
-    }
-    /* кнопка виділення: над виділенням і фірмовим лаймом */
-    if (!s.includes('r.top - h - 8')) errs.push('сторінка ' + f + ': кнопка виділення не над виділенням');
-    const selRule = (s.split('.chat-selask{')[1] || '').split('}')[0];
-    if (!selRule.includes('background:var(--brand)')) errs.push('сторінка ' + f + ': кнопка виділення не фірмовим лаймом');
-    const soloTa = (s.split('\n').find(l => l.trim().startsWith('.chat-box textarea{')) || '');
-    const soloOv = (s.split('\n').find(l => l.trim().startsWith('.chat-ta-overlay{')) || '');
-    if (soloTa.includes('min-height') || soloOv.includes('min-height')) errs.push('сторінка ' + f + ': окремий min-height поза спільним правилом, шари розʼїдуться');
-    if (!s.includes('color:transparent;caret-color:var(--text)')) errs.push('сторінка ' + f + ': текст поля не схований під накладку');
-    if (!s.includes('chat-ref-pill')) errs.push('сторінка ' + f + ': нема пілюлі згадки');
-    if (!s.includes('pendingRefs[mentionReplace] = picked')) errs.push('сторінка ' + f + ': клік по пілюлі не замінює машину');
-    /* пілюля без @: механіка (пошук, стирання, Backspace, заміна) живе на
-       самій назві, тригерний @ після вибору видаляється */
-    if (s.includes("'@' + ref.title") || s.includes("'@' + picked.title") || s.includes("'@' + old.title")) {
-      errs.push('сторінка ' + f + ': пілюля знову з @ у тексті');
-    }
-    if (!s.includes("const name = picked.title + ' ';")) errs.push('сторінка ' + f + ': вставка не чистою назвою');
-    if (!s.includes('field.value.slice(0, mentionPos) + name + field.value.slice(mentionPos + 1)')) {
-      errs.push('сторінка ' + f + ': тригерний @ не видаляється при вставці');
-    }
-    if (!s.includes('dropErasedRefs();')) errs.push('сторінка ' + f + ': стирання назви не знімає прикріплення');
-    if (!s.includes("field.addEventListener('scroll'")) errs.push('сторінка ' + f + ': нема синхронізації прокрутки накладки');
-    if (s.includes('tag.textContent')) errs.push('сторінка ' + f + ': плашка продукту в @-попапі повернулась');
-    /* попап відкривається лише свідомим кліком по пілюлі: pointerdown миттєво
-       закривався обробником "клік мимо", hover не мусить відкривати взагалі */
-    if (!s.includes("getElementById('chatTaOverlay').addEventListener('click'")) errs.push('сторінка ' + f + ': пілюля не відкриває попап кліком');
-    if (s.includes("getElementById('chatTaOverlay').addEventListener('pointerdown'")) errs.push('сторінка ' + f + ': відкриття з pointerdown повернулось (мигання)');
-    if (/onmouseenter[^\n]*openMention|mouseover[^\n]*openMention/.test(s)) errs.push('сторінка ' + f + ': відкриття попапа з наведення');
-    if (!s.includes(".closest('.chat-ref-pill') && !e.target.closest('#chatAtBtn') && e.target !== field) closeMention(false)")) errs.push('сторінка ' + f + ': клік по пілюлі рахується кліком мимо');
-    /* хрестика на пілюлі більше нема, зняття лише стиранням */
-    if (s.includes('chat-ref-x') || s.includes('removeRefPill')) errs.push('сторінка ' + f + ': хрестик на пілюлі повернувся');
-    if (!s.includes('refSpans().find(sp => sp.end === p)')) errs.push('сторінка ' + f + ': Backspace не зносить пілюлю цілком');
-    /* пілюля атомарна для стрілок в обидва боки, Shift-виділення цільне.
-       Живі натискання без браузера не проженеш: алгоритм стрибків прогнаний
-       окремою симуляцією на мок-полі, тут страхуємо наявність механізму */
-    if (!s.includes("if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;")) errs.push('сторінка ' + f + ': нема обробки стрілок біля пілюлі');
-    if (!s.includes('(back ? sp.end === p : sp.start === p)')) errs.push('сторінка ' + f + ': стрибок працює не в обидва боки');
-    if (!s.includes("q < anchor ? 'backward' : 'forward'")) errs.push('сторінка ' + f + ': Shift-виділення не захоплює пілюлю цільно');
-    /* програмна вставка смикає input: автогроу сторінки (зареєстрований
-       раніше) і накладка перераховуються, поле не схлопується */
-    if (!s.includes("dispatchEvent(new Event('input', { bubbles: true }))")) errs.push('сторінка ' + f + ': нема програмного input після вставки');
-    if (!/refSync\(\);\s*\n\s*closeMention\(true\);/.test(s)) errs.push('сторінка ' + f + ': вставка пілюлі не перераховує висоту поля');
-    const growAt = s.indexOf("addEventListener('input', ");
-    const bindAt = s.indexOf('bindMention();');
-    if (growAt === -1 || bindAt === -1 || growAt > bindAt) errs.push('сторінка ' + f + ': автогроу зареєстрований після синхронізації накладки');
-  }
-
-  /* нові рядки інтерфейсу мусять бути в обох словниках */
-  for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
-    const dict = fs.readFileSync(d, 'utf8');
-    for (const k of ['CalCar Assistant', 'Talking about:', 'Ask a question… @ to add a report for comparison', 'Search reports by name…', 'No reports yet', 'today', 'days ago', 'Add a report for comparison', 'Ask about this', 'Remove quote']) {
-      if (!dict.includes("'" + k + "'")) errs.push('нема ключа "' + k + '" у ' + d);
+    if (!c.includes('<b>CalCar Assistant</b>')) errs.push('chat.js без заголовка CalCar Assistant');
+    if (!c.includes('pendingRefs.length >= 2')) errs.push('chat.js без ліміту двох прикріплених звітів');
+    if (!c.includes('bindMention();')) errs.push('chat.js не підключає @-попап');
+    if (!/onpointerdown = function \(e\) \{ e\.preventDefault\(\); pickMention\(r\); \}/.test(c)) errs.push('вибір звіту мишею не на pointerdown із preventDefault');
+    if (!/fetch\('\/api\/memory'/.test(c)) errs.push('chat.js не оновлює нотатку памʼяті');
+    for (const f of ['result.html', 'result-check.html']) {
+      const s = fs.readFileSync(f, 'utf8');
+      if (!s.includes('CalCarChat.registerCapability(')) errs.push('сторінка ' + f + ' не реєструє здатність у спільному помічнику');
+      if (!/afterReply: \(\) => persistChat\(\)/.test(s)) errs.push('сторінка ' + f + ' не пише репліки про звіт у його рядок');
+      if (/memory:\s*MEMORY|fetch\('\/api\/chat'/.test(s)) errs.push('сторінка ' + f + ' досі має власний чат повз спільний');
+      if (s.includes('id="chatPanel"')) errs.push('сторінка ' + f + ' досі тримає власну панель чату');
     }
   }
 

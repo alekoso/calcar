@@ -445,12 +445,12 @@ h1{font-size:27px;letter-spacing:-.01em}
    під рукою при прокрутці стрічки. Фон непрозорий, інакше пости просвічують. */
 .g-nav{position:sticky;top:var(--hdr-h);z-index:40;background:var(--bg);padding:14px 0 16px;margin:-26px 0 0;display:flex;flex-direction:column;align-items:center;gap:10px}
 .g-mini{display:none;font-size:17px;font-weight:800;letter-spacing:-.01em;align-self:flex-start}
-.g-seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;width:400px;max-width:100%;padding:4px;background:var(--surface-2);border:1px solid var(--line);border-radius:14px}
-.g-tab{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:38px;border:none;border-radius:10px;background:transparent;color:var(--muted);font-family:inherit;font-size:14.5px;font-weight:700;cursor:pointer;transition:background .15s,color .15s}
+.g-seg{display:grid;grid-template-columns:1fr 1fr;gap:3px;width:400px;max-width:100%;padding:3px;background:var(--surface-2);border-radius:12px}
+.g-tab{display:inline-flex;align-items:center;justify-content:center;height:38px;border:1px solid transparent;border-radius:9px;background:transparent;color:var(--muted);font-family:inherit;font-size:14.5px;font-weight:600;cursor:pointer;transition:background .15s,color .15s,border-color .15s}
 .g-tab:hover{color:var(--ink)}
-/* активний стан: біла пігулка, лайм лише як акуратна брендова позначка */
-.g-tab.on{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(20,22,25,.10)}
-.g-tab.on::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--brand);flex:0 0 auto}
+/* активний сегмент: біла пігулка з мʼякою нейтральною межею, без крапок і жирних обводок */
+.g-tab.on{background:var(--card);color:var(--ink);border-color:var(--line);box-shadow:0 1px 2px rgba(20,22,25,.06)}
+/* клавіатурний фокус лишається доступним, але це не стан active */
 .g-tab:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
 .g-h2{font-size:20px;letter-spacing:-.01em}
 /* Стрічка центрована. Обгортка це вже сітка: коли зʼявиться контекстна панель,
@@ -490,6 +490,10 @@ h1{font-size:27px;letter-spacing:-.01em}
 .post-kind{font-size:11.5px;font-weight:700;color:var(--ink-2);background:var(--surface-2);border-radius:20px;padding:4px 10px;white-space:nowrap}
 .post-kind.is-article{background:var(--brand-soft);color:var(--brand-ink)}
 .post-title{font-size:17.5px;font-weight:800;letter-spacing:-.01em;line-height:1.3;margin:0 0 6px}
+.post-link{color:inherit;text-decoration:none}
+.post-link:hover{text-decoration:underline}
+.post[data-href]{cursor:pointer}
+.post[data-href] .post-actions{cursor:default}
 /* демо-текст показуємо прев'ю: стрічка не має перетворюватись на довгий блог */
 .post-text{font-size:14.5px;color:var(--ink-2);line-height:1.55;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
 /* Фото помітне, але не на весь екран: висота обмежена, кадр ріжеться по центру,
@@ -516,8 +520,22 @@ h1{font-size:27px;letter-spacing:-.01em}
 .post-ask{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 13px;border:1px solid var(--line-strong);border-radius:10px;background:var(--card);color:var(--ink);font-size:13.5px;font-weight:700;font-family:inherit;cursor:pointer;transition:background .15s,border-color .15s}
 .post-ask:hover{background:var(--brand-soft);border-color:#DCEFAE}
 .post-ask svg{width:16px;height:16px;color:var(--brand-active)}
+/* сторінка публікації: та сама картка, але повна */
+.pd{max-width:780px;margin:0 auto}
+.pd .back{margin-bottom:14px}
+.pd-post{padding:20px 24px 22px;cursor:default}
+.pd-title{font-size:26px;font-weight:800;letter-spacing:-.015em;line-height:1.2;margin:6px 0 12px}
+.pd-lead{font-size:17px;line-height:1.55;color:var(--ink);font-weight:500;margin:0 0 14px}
+.pd-text{font-size:15.5px;line-height:1.6;color:var(--ink-2);margin:0}
+.pd-closing{margin-top:14px}
+.pd h2{font-size:18px;font-weight:800;letter-spacing:-.01em;margin:20px 0 6px}
+.pd-post .post-photos img{max-height:480px}
+.pd-note{text-align:left;padding-top:12px}
 @media(max-width:760px){
   .wrap{padding:18px 16px 56px}
+  .pd-post{padding:16px}
+  .pd-title{font-size:22px}
+  .pd-post .post-photos img{max-height:300px}
   .g-nav{margin-top:-18px;padding:10px 0 14px;align-items:stretch}
   .g-mini{display:block}
   .g-seg{width:auto}
@@ -541,6 +559,8 @@ h1{font-size:27px;letter-spacing:-.01em}
 </style>
 <!-- спільний інтерфейс контексту сторінки для помічника CalCar -->
 <script src="/context.js"></script>
+<!-- єдиний CalCar Assistant: API доступне скриптам сторінки, розмітка будується на DOMContentLoaded -->
+<script src="/chat.js"></script>
 </head>
 <body>
 <header>
@@ -674,6 +694,9 @@ h1{font-size:27px;letter-spacing:-.01em}
       </div>
     </section>
   </div>
+
+  <!-- сторінка публікації або статті: /garage/post/:id, /garage/article/:slug -->
+  <div id="postView" hidden></div>
 
   <div id="carView" style="display:none">
     <div class="back-row"><a class="back" href="/garage#garage">← My garage</a></div>
@@ -1425,9 +1448,18 @@ h1{font-size:27px;letter-spacing:-.01em}
       photos: [{ src: '/demo/check-main-bmw-5-series.jpg', pos: '50% 60%' }],
       ai: { mode: 'note', text: t('Shaking only under braking usually points to the front discs. On the G30 the same symptom also comes from overheated or warped discs and from a sticking caliper, which wears one pad much faster. Worth measuring disc runout and thickness before replacing anything.') } },
     { id: 'demo-3', demo: true, post_type: 'article', visibility: 'public', published_at: '2026-08-28T09:00:00Z',
-      author: 'CalCar',
+      author: 'CalCar', slug: 'bmw-b58-after-100000-km',
       title: t('What to check on a BMW B58 after 100,000 km'),
       text: t('Owner posts and our checks point to four things worth a look on a high-mileage B58: the oil filter housing gasket, coolant fittings, the valve cover PCV and injector seals. What each looks like and what the repair usually costs.'),
+      /* повна стаття: лід, розділи, підсумок. Демо-контент, майбутній SEO-шар підмінить його даними */
+      lead: t('A high-mileage B58 is a strong engine, but four places deserve a look before you buy or after 100,000 km of ownership.'),
+      sections: [
+        { h: t('Oil filter housing gasket'), p: t('The most common B58 leak. Oil seeps onto the belt side of the engine and can reach the serpentine belt. Look for fresh oil around the housing and a sweet burnt smell after a drive. Gasket replacement is a routine job, but on some versions the housing itself is replaced.') },
+        { h: t('Coolant fittings and hoses'), p: t('Plastic quick-connect fittings age with heat cycles. Check for dried coolant traces around the heat management module and the hoses under the intake. A slow loss with no visible puddle usually starts here.') },
+        { h: t('Valve cover and PCV'), p: t('A whistling idle or rough cold start often points to a cracked valve cover membrane. It is part of the cover on the B58, so the whole cover is replaced.') },
+        { h: t('Injector seals'), p: t('Fuel smell in the cabin after a cold start is worth taking seriously: injector seals harden with mileage. This one is a safety item, not a comfort item.') }
+      ],
+      closing: t('What each repair usually costs depends on the region and on original versus aftermarket parts. Owner posts in the Garage are the best source of real numbers.'),
       photos: [] },
     { id: 'demo-4', demo: true, post_type: 'experience', visibility: 'public', published_at: '2026-08-24T15:00:00Z',
       vehicle: { make: 'Tesla', model: 'Model Y' }, mileage_km: 74000,
@@ -1468,14 +1500,17 @@ h1{font-size:27px;letter-spacing:-.01em}
   }
   window.CalCarFeed = { matchPost: matchPost, DEMO_POSTS: DEMO_POSTS, POST_TYPES: POST_TYPES, feeds: Object.keys(FEEDS) };
   /* стрічка розповідає помічнику, що людина зараз бачить */
-  if (window.CalCarContext) window.CalCarContext.register(function () { return { page_type: 'garage_feed', section: (state && state.feed) || 'for-you' }; });
+  if (window.CalCarContext) window.CalCarContext.register(function () { var q = new URLSearchParams(location.search); return (q.get('post') || q.get('article')) ? {} : { page_type: 'garage_feed', section: (state && state.feed) || 'for-you' }; });
 
   var home = $('garageHome');
   if (!home) return;
+  /* сторінка публікації: /garage/post/:id або /garage/article/:slug (через vercel.json) */
+  var Q = new URLSearchParams(location.search);
+  var DETAIL = Q.get('post') || Q.get('article') || '';
 
   /* Сторінка авто (/garage/:id): дім гаража ховається, лишається лише панель
      "Мій гараж", бо в ній живуть noAuth/noCfg, які показує основний скрипт. */
-  var onCarPage = /^\/garage\/[0-9a-f-]{36}/i.test(location.pathname) || !!new URLSearchParams(location.search).get('id');
+  var onCarPage = /^\/garage\/[0-9a-f-]{36}/i.test(location.pathname) || !!Q.get('id');
   if (onCarPage) {
     home.querySelector('.g-nav').hidden = true;
     $('paneFeed').hidden = true; $('paneGarage').hidden = false;
@@ -1522,6 +1557,7 @@ h1{font-size:27px;letter-spacing:-.01em}
   var ICON_CC = '<svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="none" stroke="#141619" stroke-width="64"><path d="M229.72 322.19 A 84 84 0 1 1 229.72 189.81"/><path d="M430.72 322.19 A 84 84 0 1 1 430.72 189.81"/></g></svg>';
   var ICON_AI = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3l1.8 4.7 4.7 1.8-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>';
 
+  function postHref(p) { return p.post_type === 'article' ? '/garage/article/' + p.slug : '/garage/post/' + p.id; }
   function renderPost(p) {
     var isArticle = p.post_type === 'article';
     var name = vehicleName(p);
@@ -1554,11 +1590,11 @@ h1{font-size:27px;letter-spacing:-.01em}
     }
     var own = ownedMatch(p);
     var hint = own ? '<div class="post-hint">' + ICON_AI + esc(t('Relevant for your') + ' ' + [own.make, own.model].filter(Boolean).join(' ')) + '</div>' : '';
-    return '<article class="post" data-post-id="' + esc(p.id) + '" data-post-type="' + esc(p.post_type) + '"' + (p.demo ? ' data-demo="true"' : '') + '>' +
+    return '<article class="post" data-post-id="' + esc(p.id) + '" data-post-type="' + esc(p.post_type) + '" data-href="' + esc(postHref(p)) + '"' + (p.demo ? ' data-demo="true"' : '') + '>' +
       '<header class="post-head"><div class="post-avatar">' + avatar + '</div>' +
       '<div class="post-who"><b class="post-author">' + esc(name) + '</b>' + (meta.length ? '<span class="post-meta">' + esc(meta.join(' · ')) + '</span>' : '') + '</div>' +
       '<span class="post-kind' + (isArticle ? ' is-article' : '') + '">' + esc(t(POST_TYPES[p.post_type])) + '</span></header>' +
-      '<h3 class="post-title">' + esc(p.title) + '</h3>' +
+      '<h3 class="post-title"><a class="post-link" href="' + esc(postHref(p)) + '">' + esc(p.title) + '</a></h3>' +
       '<p class="post-text">' + esc(p.text) + '</p>' +
       photos + fact + ai + hint +
       '<footer class="post-actions"><button class="post-ask" type="button" data-action="ask-calcar">' + ICON_AI + esc(t('Ask CalCar')) + '</button></footer>' +
@@ -1594,9 +1630,9 @@ h1{font-size:27px;letter-spacing:-.01em}
 
   /* Контекст публікації для помічника: рівно те, що людина бачить у картці.
      Форма конверта спільна для всієї платформи, її збирає context.js. */
-  function postContext(p) {
+  function postContext(p, pageType) {
     var c = {
-      page_type: 'garage_feed',
+      page_type: pageType || 'garage_feed',
       content_type: p.post_type === 'article' ? 'calcar_article' : 'owner_post',
       entity: { type: 'post', id: p.id },
       post_id: p.id,
@@ -1621,35 +1657,87 @@ h1{font-size:27px;letter-spacing:-.01em}
     }
     return c;
   }
-  function askSuggestions(p) {
-    var out = [];
-    if (p.post_type !== 'article') out.push(t('Is this relevant for my car?'));
-    if (p.cost_uah || p.post_type === 'repair' || p.post_type === 'issue') out.push(t('How much does such a repair cost?'));
-    if (p.post_type === 'issue') out.push(t('I have a similar symptom, what should I do?'));
-    if (p.post_type === 'article') out.push(t('What of this applies to my car?'));
-    out.push(t('Find similar cases'));
-    return out;
+  /* "Запитати CalCar" не відкриває окремого чату. Це той самий CalCar Assistant
+     з тією самою розмовою; публікація стає лише фокусом (карткою контексту). */
+  function askFocus(p) {
+    return { label: p.post_type === 'article' ? t('CalCar article') : t('Owner post'), title: vehicleName(p), subtitle: p.title, context: postContext(p, DETAIL ? 'garage_post' : 'garage_feed') };
   }
-  /* "Запитати CalCar" відкриває спільний чат CalCar і передає йому контекст
-     саме цієї публікації. Окремого чату в гаражі немає і бути не повинно. */
-  listEl.addEventListener('click', function (e) {
+  function postById(id) { return DEMO_POSTS.filter(function (x) { return x.id === id || x.slug === id; })[0] || null; }
+  document.addEventListener('click', function (e) {
     var b = e.target.closest ? e.target.closest('[data-action="ask-calcar"]') : null;
-    if (!b) return;
-    var card = b.closest('.post');
-    var p = state.posts.filter(function (x) { return x.id === card.getAttribute('data-post-id'); })[0];
-    if (!p || !window.CalCarChat) return;
-    window.CalCarChat.open({
-      context: postContext(p),
-      subtitle: vehicleName(p),
-      intro: { title: t(POST_TYPES[p.post_type]) + ' · ' + vehicleName(p), text: p.title },
-      suggestions: askSuggestions(p)
-    });
+    if (b) {
+      var card = b.closest('[data-post-id]');
+      var p = card && postById(card.getAttribute('data-post-id'));
+      if (p && window.CalCarChat) window.CalCarChat.open({ focus: askFocus(p) });
+      return;
+    }
+    /* картка у стрічці це превʼю: клік по заголовку, фото чи тексту відкриває публікацію */
+    if (e.target.closest && e.target.closest('.post-actions, button, a')) return;
+    var card2 = e.target.closest ? e.target.closest('.post[data-href]') : null;
+    if (card2) location.href = card2.getAttribute('data-href');
   });
 
-  /* авто користувача приходять від основного скрипта гаража лише для підказки "Актуально для твого ..." */
-  window.addEventListener('garage:vehicles', function (e) { state.vehicles = e.detail || []; if (state.posts.length) render(); });
+  /* ---- сторінка публікації: /garage/post/:id і /garage/article/:slug ---- */
+  function renderDetail(p) {
+    var box = $('postView');
+    var isArticle = p.post_type === 'article';
+    var name = vehicleName(p);
+    var meta = [];
+    if (p.vehicle && p.vehicle.year) meta.push(p.vehicle.year);
+    if (p.mileage_km) meta.push(num(p.mileage_km) + ' ' + t('km'));
+    if (p.published_at) meta.push(whenText(p.published_at));
+    var avatar = isArticle ? ICON_CC : (p.photos && p.photos[0]
+      ? '<img alt="" src="' + esc(p.photos[0].src) + '" style="object-position:' + esc(p.photos[0].pos || '50% 50%') + '">' : ICON_CAR);
+    var body = '';
+    if (isArticle) {
+      body = '<p class="pd-lead">' + esc(p.lead || p.text) + '</p>' +
+        (p.sections || []).map(function (sct) { return '<h2>' + esc(sct.h) + '</h2><p class="pd-text">' + esc(sct.p) + '</p>'; }).join('') +
+        (p.closing ? '<p class="pd-text pd-closing">' + esc(p.closing) + '</p>' : '');
+    } else {
+      body = '<p class="pd-text">' + esc(p.text) + '</p>';
+    }
+    var photos = '';
+    if (p.photos && p.photos.length) {
+      photos = '<div class="post-photos n' + Math.min(p.photos.length, 4) + '">' + p.photos.map(function (ph) {
+        return '<img alt="" src="' + esc(ph.src) + '" style="object-position:' + esc(ph.pos || '50% 50%') + '">';
+      }).join('') + '</div>';
+    }
+    var fact = p.fact ? '<div class="post-fact">' + esc(t(p.fact.label)) + ': <b>' + esc(num(p.fact.value) + ' ' + t('UAH')) + '</b></div>' : '';
+    var ai = '';
+    if (p.ai && p.ai.mode === 'note') ai = '<aside class="post-ai"><div class="post-ai-h">' + ICON_AI + 'CalCar AI</div><div class="post-ai-note">' + esc(p.ai.text) + '</div></aside>';
+    else if (p.ai && p.ai.mode === 'facts') {
+      var items = (p.ai.items || []).slice();
+      if (p.cost_uah) items.push(t('Cost') + ': ' + num(p.cost_uah) + ' ' + t('UAH'));
+      ai = '<aside class="post-ai"><div class="post-ai-h">' + ICON_AI + 'CalCar AI <i>' + esc(t('From this entry')) + '</i></div><ul>' + items.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul></aside>';
+    }
+    var own = ownedMatch(p);
+    var hint = own ? '<div class="post-hint">' + ICON_AI + esc(t('Relevant for your') + ' ' + [own.make, own.model].filter(Boolean).join(' ')) + '</div>' : '';
+    box.innerHTML = '<div class="pd"><a class="back" href="/garage">' + esc(t('← Feed')) + '</a>' +
+      '<article class="post pd-post" data-post-id="' + esc(p.id) + '" data-post-type="' + esc(p.post_type) + '"' + (p.demo ? ' data-demo="true"' : '') + '>' +
+      '<header class="post-head"><div class="post-avatar">' + avatar + '</div>' +
+      '<div class="post-who"><b class="post-author">' + esc(name) + '</b>' + (meta.length ? '<span class="post-meta">' + esc(meta.join(' · ')) + '</span>' : '') + '</div>' +
+      '<span class="post-kind' + (isArticle ? ' is-article' : '') + '">' + esc(t(POST_TYPES[p.post_type])) + '</span></header>' +
+      '<h1 class="pd-title">' + esc(p.title) + '</h1>' +
+      (isArticle ? body + photos : body + photos) + fact + ai + hint +
+      (p.demo ? '<p class="feed-note pd-note">' + esc(t('Example posts. Real owner posts will appear here when publishing opens.')) + '</p>' : '') +
+      '<footer class="post-actions"><button class="post-ask" type="button" data-action="ask-calcar">' + ICON_AI + esc(t('Ask CalCar')) + '</button></footer>' +
+      '</article></div>';
+    box.hidden = false;
+    document.title = p.title + ' · CalCar Garage';
+  }
+  function showDetail() {
+    var p = postById(DETAIL);
+    home.hidden = true;
+    if (!p) { $('postView').innerHTML = '<div class="pd"><a class="back" href="/garage">' + esc(t('← Feed')) + '</a><div class="feed-state" style="display:block"><b>' + esc(t('Nothing found')) + '</b><p>' + esc(t('This post does not exist or is not published yet.')) + '</p></div></div>'; $('postView').hidden = false; return; }
+    state.posts = DEMO_POSTS;
+    renderDetail(p);
+    if (window.CalCarContext) window.CalCarContext.register(function () { return postContext(p, 'garage_post'); });
+  }
 
-  loadFeed('for-you');
+  /* авто користувача приходять від основного скрипта гаража лише для підказки "Актуально для твого ..." */
+  window.addEventListener('garage:vehicles', function (e) { state.vehicles = e.detail || []; if (DETAIL) showDetail(); else if (state.posts.length) render(); });
+
+  if (DETAIL) showDetail(); else loadFeed('for-you');
 })();
 </script>
 <script>
@@ -1813,7 +1901,5 @@ document.addEventListener('click', function (e) {
   window.addEventListener('scroll', function () { if (open) place(); }, { passive: true });
 })();
 </script>
-<!-- спільний чат CalCar: монтується лише там, де свого чату в сторінки нема -->
-<script src="/chat.js"></script>
 </body>
 </html>
