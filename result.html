@@ -2027,6 +2027,29 @@ function generatePdf() {
   const logistics = L.reduce((a, [, s]) => a + s, 0);
   totalRow(t('Lot + logistics + customs'), money(logistics));
 
+  /* Рядки блока пошкоджень для PDF. Чиста функція від збереженого
+     damage_score: своєї формули у PDF немає, шкала та сама, що в інтерфейсі
+     (10 це найкращий стан). Легасі-ризик покупки сюди не потрапляє ніколи,
+     і бал з нього не виводиться. */
+  function pdfDamageLines(d) {
+    if (!d || typeof d !== 'object') {
+      return { status: 'unknown', head: t('Damage assessment was not calculated for this report'), sub: '' };
+    }
+    if (!d.score_available || typeof d.score !== 'number') {
+      return { status: 'unknown', head: t('Damage assessment') + ': ' + t('Not enough data'), sub: '' };
+    }
+    const label = t(d.label_key);
+    const status = d.label_key === 'Severe damage' ? 'bad' : d.label_key === 'Serious damage' ? 'warn' : 'ok';
+    /* підтверджене відновлення знижує залишковий ризик, але історичну
+       тяжкість не переписує: ярлик лишається, поруч окремий рядок */
+    const restored = d.restoration_confirmed && (d.max_event_severity === 'severe' || d.max_event_severity === 'moderate');
+    return {
+      status,
+      head: t('Damage assessment') + ': ' + d.score.toFixed(1) + ' / 10, ' + label,
+      sub: restored ? t('Restoration confirmed') : '',
+    };
+  }
+
   /* ---------- підсумок ---------- */
   const grand = logistics + sumRows(partRows) + sumRows(workRows) + sumRows(maintRows);
   ensure(30);
@@ -2044,8 +2067,12 @@ function generatePdf() {
     y += 6;
   }
 
-  const rkPdf = computeLegacyPurchaseRisk();
-  dotLine(rkPdf.cls, t('Purchase risk: ') + rkPdf.score.toFixed(1) + ' / 10', '');
+  /* Оцінка пошкоджень: беремо збережений бал спільного резолвера, як робить
+     інтерфейс. PDF нічого не рахує сам і легасі-ризик покупки не друкує:
+     у нього протилежна шкала, і поруч це читалось би як суперечність. */
+  const dmgPdf = pdfDamageLines(DATA.damage_score);
+  dotLine(dmgPdf.status, dmgPdf.head, '');
+  if (dmgPdf.sub) para(dmgPdf.sub, 8.5, COLORS.muted);
   const safetyOff = partRows.some(x => x.safety && !x.on);
   if (safetyOff) para(t('Airbags are excluded from the estimate. A car without restored airbags is unsafe.'), 8.5, COLORS.bad);
 

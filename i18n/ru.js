@@ -722,4 +722,6 @@ window.CALCAR_DICTS.ru = {
   'Severe damage': 'Тяжёлые повреждения',
   'Not enough data': 'Недостаточно данных',
   'restoration confirmed': 'восстановление подтверждено',
+  'Restoration confirmed': 'Восстановление подтверждено',
+  'Damage assessment was not calculated for this report': 'Оценка повреждений не рассчитывалась для этого отчёта',
 };

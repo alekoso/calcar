@@ -722,4 +722,6 @@ window.CALCAR_DICTS.ua = {
   'Severe damage': 'Тяжкі пошкодження',
   'Not enough data': 'Недостатньо даних',
   'restoration confirmed': 'відновлення підтверджено',
+  'Restoration confirmed': 'Відновлення підтверджено',
+  'Damage assessment was not calculated for this report': 'Оцінка пошкоджень не розраховувалась для цього звіту',
 };

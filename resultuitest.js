@@ -57,8 +57,40 @@ if (imp.includes('id="riskBadge"')) errs.push('бейдж ризику поку�
 {
   const card = imp.slice(imp.indexOf('<h2>Damage analysis</h2>'), imp.indexOf('</div>', imp.indexOf('id="dmgBadge"')) + 6);
   for (const bad of ['CalCar Score', 'Purchase risk', 'Risk:']) if (card.includes(bad)) errs.push('у картці пошкоджень заборонена назва: ' + bad);
-  /* у PDF legacy-ризик лишається свідомо, до окремого рішення */
-  if (!/t\('Purchase risk: '\)/.test(imp)) errs.push('legacy-ризик зник із PDF без окремого рішення');
+}
+
+/* PDF друкує ту саму метрику і ту саму шкалу, що інтерфейс */
+{
+  if (/t\('Purchase risk: '\)/.test(imp)) errs.push('легасі-ризик покупки лишився в користувацькому PDF');
+  const pdf = imp.slice(imp.indexOf('function generatePdf'), imp.indexOf('async function downloadPdf'));
+  if (!/pdfDamageLines\(DATA\.damage_score\)/.test(pdf)) errs.push('PDF не бере збережену оцінку пошкоджень');
+  for (const bad of ['computeLegacyPurchaseRisk', 'legacy_purchase_risk', '10 - ']) {
+    if (pdf.includes(bad)) errs.push('у PDF просочився легасі-ризик або його інверсія: ' + bad);
+  }
+  /* легасі лишається внутрішнім: чат, знімок */
+  if (!/function computeLegacyPurchaseRisk\(\)/.test(imp)) errs.push('легасі-функція зникла: сумісність знімків зламана');
+  if (!/risk: \(\(\) => \{ try \{ return computeLegacyPurchaseRisk\(\)\.score/.test(imp)) errs.push('_snapshot.risk більше не пишеться');
+
+  /* поведінка блока пошкоджень у PDF: три стани, без легасі-фолбека */
+  const vm = require('vm');
+  const src = imp.slice(imp.indexOf('function pdfDamageLines(d)'), imp.indexOf('/* ---------- підсумок ---------- */'));
+  const box = { t: x => x };
+  vm.createContext(box);
+  vm.runInContext(src + '\nglobalThis.__f = pdfDamageLines;', box);
+  const f = box.__f;
+  const newAvail = f({ score_available: true, score: 8.7, label_key: 'Moderate damage', max_event_severity: 'moderate', restoration_confirmed: false });
+  if (!/8\.7 \/ 10/.test(newAvail.head) || !/Moderate damage/.test(newAvail.head)) errs.push('новий звіт: PDF не друкує бал і ярлик: ' + newAvail.head);
+  if (newAvail.status !== 'ok') errs.push('статус помірних пошкоджень у PDF не ok');
+  const restored = f({ score_available: true, score: 8.3, label_key: 'Serious damage', max_event_severity: 'severe', restoration_confirmed: true });
+  if (!/8\.3 \/ 10/.test(restored.head) || !/Serious damage/.test(restored.head)) errs.push('відновлений severe: ярлик у PDF понизився: ' + restored.head);
+  if (restored.sub !== 'Restoration confirmed') errs.push('нема рядка про підтверджене відновлення');
+  const insufficient = f({ score_available: false, score: null, coverage: { sufficient: false } });
+  if (!/Not enough data/.test(insufficient.head)) errs.push('замало доказів: PDF не каже про це прямо');
+  const oldReport = f(undefined);
+  if (!/was not calculated/.test(oldReport.head)) errs.push('старий звіт: PDF не пояснює відсутність оцінки');
+  for (const r of [insufficient, oldReport]) {
+    if (/\d\.\d \/ 10/.test(r.head + r.sub)) errs.push('без бала PDF усе одно надрукував цифру: ' + r.head);
+  }
 }
 if (!/function computeLegacyPurchaseRisk\(\)/.test(imp)) errs.push('legacy-риск не позначений як legacy');
 if (/\bfunction computeRisk\(\)/.test(imp)) errs.push('стара назва computeRisk лишилась як основна');
