@@ -622,6 +622,6 @@ window.CALCAR_DICTS.ua = {
   'Examples of estimates': 'Приклади розрахунків',
   'Example vehicle': 'Приклад авто',
   '© 2026 CalCar': '© 2026 CalCar',
-  'BMW 540i xDrive 2019': 'BMW 540i xDrive 2019',
-  'BMW X5 2021': 'BMW X5 2021',
+  'BMW 5 Series': 'BMW 5 Series',
+  'Dodge Challenger': 'Dodge Challenger',
 };

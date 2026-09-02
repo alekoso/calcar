@@ -706,8 +706,8 @@
             <span class="ex-verdict">Worth considering</span>
           </div>
           <figure class="ex-fig">
-            <img class="ex-photo" src="/demo/bmw-540i.jpg" alt="" width="400" height="300" onerror="this.onerror=null;this.src='/demo/bmw-540i.svg'">
-            <figcaption><b>BMW 540i xDrive 2019</b><i>Example vehicle</i></figcaption>
+            <img class="ex-photo" src="/demo/check-main-bmw-5-series.jpg" alt="" width="960" height="720" onerror="this.onerror=null;this.removeAttribute('src')">
+            <figcaption><b>BMW 5 Series</b><i>Example vehicle</i></figcaption>
           </figure>
         </div>
         <p class="ex-sum">Low, well-documented mileage and a sound engine version outweigh a moderate accident history.</p>
@@ -1007,10 +1007,12 @@ window.calcarRenderRecent = renderRecentChecks;   /* smoke-перевірки р
    Це презентаційні дані, не записи reports: у БД не пишуться, у недавні і
    памʼять не потрапляють, нікуди не ведуть і бекенд не викликають. Як тільки
    зʼявиться перший справжній звіт, їх місце займають недавні перевірки. */
+/* фото і назви demo-авто задані власником; оцінки презентаційні і не рахуються
+   по авто на фото */
 const DEMO_CHECKS = [
-  { name: 'BMW 540i 2019', photo: '/demo/bmw-540i.jpg', score: 8.1 },
-  { name: 'Audi Q5 2020', photo: '/demo/audi-q5.jpg', score: 7.4 },
-  { name: 'Tesla Model Y 2023', photo: '/demo/tesla-model-y.jpg', score: 6.8 },
+  { name: 'Mercedes EQC', photo: '/demo/check-mercedes-eqc.jpg', score: 8.1 },
+  { name: 'Tesla Model Y', photo: '/demo/check-tesla-model-y.jpg', score: 7.4 },
+  { name: 'Audi Q5', photo: '/demo/check-audi-q5.jpg', score: 6.8 },
 ];
 function renderExampleChecks(){
   const box = document.getElementById('recent'), grid = document.getElementById('recentGrid');
@@ -1018,10 +1020,12 @@ function renderExampleChecks(){
   document.getElementById('recentTitle').textContent = t('Examples of checks');
   document.getElementById('recentAll').style.display = 'none';
   grid.innerHTML = DEMO_CHECKS.map(d => '<div class="rc rc-demo" aria-label="' + esc(t('Example')) + '">'
-    + '<span class="rc-ph"><img alt="" src="' + d.photo + '" onerror="this.onerror=null;this.src=this.src.replace(/\\.jpg$/, \'.svg\')"></span>'
+    + '<span class="rc-ph"><img alt="" src="' + d.photo + '"></span>'
     + '<span class="rc-body"><span class="rc-t">' + esc(d.name) + '</span><span class="rc-m">' + esc(t('Example')) + '</span></span>'
     + '<span class="rc-v"><span class="rc-score ' + (d.score >= 7.5 ? 'ok' : d.score >= 5.5 ? 'warn' : 'bad') + '"><b>' + d.score.toFixed(1) + '</b><small>/10</small></span></span>'
     + '</div>').join('');
+  /* битий файл фото: нейтральна заглушка, ніяких ілюстрацій */
+  grid.querySelectorAll('.rc-ph img').forEach(img => img.addEventListener('error', () => { img.parentNode.innerHTML = RC_PH; }, { once: true }));
   box.classList.add('on');
 }
 (async function loadRecentChecks(){

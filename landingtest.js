@@ -5,7 +5,6 @@
 const fs = require('fs');
 const vm = require('vm');
 const errs = [];
-const missingPhotos = new Set();
 const PAGES = { 'check.html': fs.readFileSync('check.html', 'utf8'), 'import.html': fs.readFileSync('import.html', 'utf8') };
 
 for (const [f, s] of Object.entries(PAGES)) {
@@ -50,12 +49,12 @@ for (const [f, s] of Object.entries(PAGES)) {
   const demoBlock = (() => { const st = s.indexOf('function ' + ex + '(){'); if (st < 0) return ''; let i = s.indexOf('{', st), d = 0; for (; i < s.length; i++) { if (s[i] === '{') d++; else if (s[i] === '}' && --d === 0) break; } return s.slice(st, i + 1); })();
   if (/href=|created_at|timeAgo\(/.test(demoBlock)) errs.push(f + ': demo-картки клікаються або мають дати');
   if (!/rc-demo/.test(demoBlock) || !/from\('reports'\)/.test(s.slice(s.indexOf('function loadRecent')))) errs.push(f + ': demo-картки без позначки або справжній запит зник');
-  /* demo-фото: код посилається на jpg; поки фото не додані, працює фолбек на svg,
-     і тест вимагає хоча б його. Список відсутніх jpg друкується, а не ховається */
-  for (const m of new Set(s.match(/\/demo\/[a-z0-9-]+\.jpg/g) || [])) {
-    if (!fs.existsSync(m.slice(1))) { if (!fs.existsSync(m.slice(1).replace(/\.jpg$/, '.svg'))) errs.push(f + ': нема ні фото, ні фолбека для ' + m); else missingPhotos.add(m); }
-  }
-  if (!/onerror="this\.onerror=null;this\.src=/.test(s)) errs.push(f + ': demo-фото без фолбека');
+  /* demo-фото: справжні фотографії з /demo, кожна мусить існувати; жодних svg-авто,
+     битий файл дає лише нейтральну заглушку */
+  for (const m of new Set(s.match(/\/demo\/[a-z0-9-]+\.(jpg|webp)/g) || [])) if (!fs.existsSync(m.slice(1))) errs.push(f + ': нема фото ' + m);
+  if (/\/demo\/[a-z0-9-]+\.svg/.test(s)) errs.push(f + ': повернулась векторна demo-машина');
+  if (!/onerror="this\.onerror=null;this\.removeAttribute\('src'\)"/.test(s)) errs.push(f + ': demo-фото без нейтрального фолбека');
+  if (!/grid\.querySelectorAll\('\.rc-ph img'\)\.forEach\(img => img\.addEventListener\('error', \(\) => \{ img\.parentNode\.innerHTML = RC_PH; \}/.test(s)) errs.push(f + ': demo-картки без нейтрального фолбека');
   if (!/<img class="ex-photo" src="\/demo\//.test(s)) errs.push(f + ': у прикладі результату нема demo-фото');
   if (/\.hero-badge::before/.test(s)) errs.push(f + ': крапка перед бейджем повернулась');
   if (!/\.prod\{font-size:14px;font-weight:700;font-style:italic;color:var\(--brand-active\)/.test(s) || (s.match(/^\s*\.prod\{/gm) || []).length !== 1) errs.push(f + ': назва продукту не одним lime-правилом');
@@ -79,7 +78,12 @@ for (const [f, s] of Object.entries(PAGES)) {
   const i = PAGES['import.html'];
   if ((i.match(/<span class="cost-ic">/g) || []).length !== 5) errs.push('import.html: не всі рядки кошторису з іконкою');
   if (!/\.cost\{display:flex;flex-direction:column/.test(i) || !/\.cost-row\{flex:1 1 auto/.test(i) || !/\.ex-rows\{[^}]*flex:1;display:grid;grid-auto-rows:1fr/.test(i)) errs.push('import.html: половини demo не вирівняні по висоті за побудовою');
-  if (!/<figure class="ex-car"><img class="ex-photo" src="\/demo\/bmw-x5\.jpg"/.test(i)) errs.push('import.html: фото X5 не у figure з підписом');
+  if (!/<figure class="ex-car"><img class="ex-photo" src="\/demo\/import-main-dodge-challenger\.jpg"[^>]*><figcaption><b>Dodge Challenger<\/b>/.test(i)) errs.push('import.html: demo-розрахунок не Dodge Challenger з фото');
+  if (!/<img class="ex-photo" src="\/demo\/check-main-bmw-5-series\.jpg"[\s\S]{0,200}<figcaption><b>BMW 5 Series<\/b>/.test(c)) errs.push('check.html: demo-звіт не BMW 5 Series з фото');
+  if (/540i xDrive|BMW X5 2021/.test(c + i)) errs.push('стара назва demo-авто лишилась');
+  if (!/name: 'Mercedes EQC'[\s\S]*name: 'Tesla Model Y'[\s\S]*name: 'Audi Q5'/.test(c)) errs.push('check.html: порядок або назви прикладів не ті');
+  if (!/name: 'Mazda 6'[\s\S]*name: 'Audi A7'[\s\S]*name: 'Toyota Corolla'/.test(i)) errs.push('import.html: порядок або назви прикладів не ті');
+  if (!fs.existsSync('demo') || fs.readdirSync('demo').some(x => x.endsWith('.svg'))) errs.push('у demo/ лишились svg-ілюстрації');
 }
 /* 7. Check: у прикладі категорії; Import: цифри прикладу сходяться в підсумок */
 const rows = (PAGES['check.html'].match(/<b class="ex-k">([^<]+)<\/b>/g) || []).map(x => x.replace(/<[^>]+>/g, ''));
@@ -151,7 +155,6 @@ const v = JSON.parse(fs.readFileSync('vercel.json', 'utf8'));
 if (!v.rewrites.some(r => r.source === '/' && r.destination === '/check.html')) errs.push('маршрут / не веде на check.html');
 for (const [f, s] of Object.entries(PAGES)) if (/last_product|lastProduct|calcar_product/.test(s)) errs.push(f + ': зʼявилась памʼять останнього продукту');
 
-if (missingPhotos.size) console.log('УВАГА: фото ще не додані, працює svg-фолбек: ' + [...missingPhotos].join(', '));
 if (errs.length) { console.log('FAILED:', errs); process.exit(1); }
 console.log('лендинги: форма чиста · бейдж · недавні лише з даними, максимум 3, адреси як у кабінеті · приклад сходиться · 3 картки · головна Check');
 console.log('LANDING TEST PASSED');

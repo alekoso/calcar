@@ -704,7 +704,7 @@
         <div class="cost-total"><span>Landed cost in Ukraine</span><b>$29 150</b></div>
       </div>
       <div class="ex-side">
-        <figure class="ex-car"><img class="ex-photo" src="/demo/bmw-x5.jpg" alt="" width="400" height="300" onerror="this.onerror=null;this.src='/demo/bmw-x5.svg'"><figcaption><b>BMW X5 2021</b><i>Example vehicle</i></figcaption></figure>
+        <figure class="ex-car"><img class="ex-photo" src="/demo/import-main-dodge-challenger.jpg" alt="" width="960" height="600" onerror="this.onerror=null;this.removeAttribute('src')"><figcaption><b>Dodge Challenger</b><i>Example vehicle</i></figcaption></figure>
       <ul class="ex-rows">
         <li><span class="ex-ic warn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v10"/><path d="M12 19h.01"/></svg></span><span class="ex-txt"><b class="ex-k">Repair risk</b><i>Front impact, hidden damage possible</i></span></li>
         <li><span class="ex-ic ok"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span><span class="ex-txt"><b class="ex-k">Build sheet</b><i>Options confirmed by VIN</i></span></li>
@@ -1021,10 +1021,12 @@ btn.addEventListener('click', async () => {
      розрахунків. Презентаційні дані, не записи reports: у БД не пишуться,
      нікуди не ведуть, бекенд не викликають. Перший справжній розрахунок
      займає їх місце. */
+  /* фото і назви demo-авто задані власником; підсумки презентаційні і не є
+     розрахунком авто на фото */
   const DEMO_ESTIMATES = [
-    { name: 'BMW X5 2021', photo: '/demo/bmw-x5.jpg', grand: 31840 },
-    { name: 'Tesla Model Y 2023', photo: '/demo/tesla-model-y.jpg', grand: 27120 },
-    { name: 'Mercedes C300 2020', photo: '/demo/mercedes-c300.jpg', grand: 19650 },
+    { name: 'Mazda 6', photo: '/demo/import-mazda-6.jpg', grand: 19650 },
+    { name: 'Audi A7', photo: '/demo/import-audi-a7.jpg', grand: 31840 },
+    { name: 'Toyota Corolla', photo: '/demo/import-toyota-corolla.jpg', grand: 16480 },
   ];
   function renderExampleEstimates(){
     const box = document.getElementById('recent'), grid = document.getElementById('recentGrid');
@@ -1032,10 +1034,12 @@ btn.addEventListener('click', async () => {
     document.getElementById('recentTitle').textContent = t('Examples of estimates');
     document.getElementById('recentAll').style.display = 'none';
     grid.innerHTML = DEMO_ESTIMATES.map(d => '<div class="rc rc-demo" aria-label="' + esc(t('Example')) + '">'
-      + '<span class="rc-ph"><img alt="" src="' + d.photo + '" onerror="this.onerror=null;this.src=this.src.replace(/\\.jpg$/, \'.svg\')"></span>'
+      + '<span class="rc-ph"><img alt="" src="' + d.photo + '"></span>'
       + '<span class="rc-body"><span class="rc-t">' + esc(d.name) + '</span><span class="rc-m">' + esc(t('Example')) + '</span></span>'
       + '<span class="rc-v"><span class="rc-sum">$' + esc(nf(d.grand)) + '</span><span class="rc-d">' + esc(t('landed cost')) + '</span></span>'
       + '</div>').join('');
+    /* битий файл фото: нейтральна заглушка, ніяких ілюстрацій */
+    grid.querySelectorAll('.rc-ph img').forEach(img => img.addEventListener('error', () => { img.parentNode.innerHTML = RC_PH; }, { once: true }));
     box.classList.add('on');
   }
   (async function loadRecentEstimates(){
