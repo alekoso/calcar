@@ -229,10 +229,11 @@
     --radius:12px;
   ;--hdr-h:56px;--hdr-line:1px}
   *{box-sizing:border-box;margin:0;padding:0}
+  /* каркас: футер завжди притиснутий до низу, навіть на короткій сторінці */
+  body{min-height:100vh;display:flex;flex-direction:column}
   body{
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
     background:var(--bg);color:var(--text);font-size:15px;line-height:1.45;
-    padding-bottom:32px;
   }
   .num{font-variant-numeric:tabular-nums}
 
@@ -247,7 +248,9 @@
   .header-right a{color:var(--muted);text-decoration:none}
   .avatar{width:30px;height:30px;border-radius:50%;background:var(--graphite);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
 
-  .wrap{max-width:1160px;margin:0 auto;padding:20px}
+  /* width:100%: у flex-колонці body з margin:auto контейнер брав fit-content, і стрічка фото
+     (min-content трьох кадрів) розтягувала сторінку до 418px на телефоні 375px */
+  .wrap{width:100%;max-width:1160px;margin:0 auto;padding:20px}
 
   /* ---- меню акаунта: випадає з кнопки кабінету в шапці ---- */
   .acc-wrap{position:relative;display:inline-flex}
@@ -369,6 +372,21 @@
 
   .btn-auth{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line-strong);border-radius:20px;padding:7px 14px;background:var(--card);color:var(--ink)!important;font-weight:600;font-size:13px;text-decoration:none;transition:background .15s,border-color .15s}
   .btn-auth:hover{background:var(--surface-2)}
+  /* футер: бренд з описом ліворуч, два стовпці реальних маршрутів праворуч,
+     копірайт під тонкою лінією. Фон трохи темніший за сторінку, без кнопок */
+  footer{border-top:1px solid var(--line);background:var(--surface-2);margin-top:auto}
+  .footer-in{max-width:1160px;margin:0 auto;padding:40px 20px 32px;display:flex;justify-content:space-between;align-items:flex-start;gap:32px;flex-wrap:wrap}
+  .ft-brand{max-width:380px}
+  .ft-brand .logo{font-size:14px}
+  .ft-brand p{margin:12px 0 0;font-size:13.5px;line-height:1.5;color:var(--muted)}
+  .ft-cols{display:flex;gap:56px}
+  .ft-col{display:flex;flex-direction:column;gap:8px;min-width:120px}
+  .ft-col b{font-size:13px;font-weight:700;color:var(--ink);margin-bottom:2px}
+  .ft-col a{font-size:13.5px;color:var(--muted);text-decoration:none;width:fit-content}
+  .ft-col a:hover{color:var(--ink);text-decoration:underline;text-decoration-color:var(--brand);text-decoration-thickness:2px;text-underline-offset:4px}
+  .footer-bottom{border-top:1px solid var(--line)}
+  .footer-bottom .footer-in{padding:14px 20px;font-size:12.5px;color:var(--faint)}
+  @media(max-width:620px){.footer-in{flex-direction:column;gap:24px;padding:32px 16px 24px}.ft-cols{gap:36px}.footer-bottom .footer-in{padding:12px 16px}}
     /* стани сторінки: скелетон до готовності даних, звіт одним перемиканням */
   .report-skel{max-width:1160px;margin:0 auto;padding:20px}
   body.report-ready .report-skel{display:none}
@@ -383,7 +401,7 @@
   .skel-specs .sk{width:120px;height:34px}
   @media print{.report-skel{display:none!important}}
 
-  .topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:20px}
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:20px;position:relative}
   .btn-back{
     display:inline-flex;align-items:center;background:#fff;color:var(--ink);border:1px solid var(--line-strong);
     border-radius:var(--radius);height:44px;padding:0 20px;font-size:14px;font-weight:600;cursor:pointer;text-decoration:none;
@@ -392,18 +410,20 @@
 
   .btn-primary{
     background:var(--brand);color:var(--ink);border:1px solid rgba(20,22,25,.08);border-radius:var(--radius);
-    height:48px;padding:0 24px;font-size:15px;font-weight:800;cursor:pointer;white-space:nowrap;
+    height:52px;padding:0 26px;font-size:15px;font-weight:800;cursor:pointer;white-space:nowrap;font-family:inherit;
   }
   .btn-primary:hover{background:var(--brand-hover)}
   .btn-primary:active{background:var(--brand-active)}
+  .btn-primary:disabled{opacity:.55;cursor:default}
   .btn-secondary{
     background:#fff;color:var(--ink);border:1px solid var(--line-strong);border-radius:var(--radius);
     height:44px;padding:0 20px;font-size:14px;font-weight:600;cursor:pointer;
   }
   .btn-secondary:hover{background:var(--surface-2);border-color:var(--brand)}
+  /* додати рядок: subtle-кнопка в тій самій геометрії, що .btn-back */
   .btn-ghost{
-    background:transparent;color:var(--ink-2);border:1px dashed var(--line-strong);border-radius:10px;
-    height:42px;padding:0 18px;font-size:14px;font-weight:600;cursor:pointer;width:100%;margin-top:12px;
+    background:transparent;color:var(--ink-2);border:1px dashed var(--line-strong);border-radius:var(--radius);
+    height:40px;padding:0 18px;font-size:13.5px;font-weight:600;cursor:pointer;width:100%;margin-top:10px;font-family:inherit;
   }
   .btn-ghost:hover{background:var(--surface-2);border-color:var(--brand)}
 
@@ -412,40 +432,55 @@
   .card-head h2{font-size:16px;font-weight:700}
   .card-body{padding:20px}
   .hint{font-size:12.5px;color:var(--muted)}
+  /* вторинні підписи шапок секцій: єдиний компонент, спокійна pill */
+  .sec-meta{margin-left:auto;display:inline-flex;align-items:center;padding:3px 10px;border:1px solid var(--line);border-radius:12px;background:var(--card);font-size:12.5px;font-weight:600;color:var(--text);white-space:nowrap}
+  @media (max-width:760px){.sec-meta{white-space:normal}}
 
   .badge{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:20px;letter-spacing:.2px}
   .badge.green{background:var(--green-soft);color:var(--green)}
   .badge.blue{background:var(--brand-soft);color:var(--brand-ink)}
   .badge.amber{background:var(--amber-soft);color:var(--amber)}
+  .badge.red{background:var(--red-soft);color:var(--red)}
 
-  .photos{display:grid;grid-template-columns:2fr 1fr 1fr;gap:6px;padding:6px}
-  .photos .ph{border-radius:8px;background:linear-gradient(135deg,#ECEEE9,#DDE0DA);position:relative;overflow:hidden;aspect-ratio:4/2.6}
-  .photos .ph.main{grid-row:span 2;aspect-ratio:auto}
-  .photos .ph img{width:100%;height:100%;object-fit:cover;display:block}
-  .photos .ph[data-label]::after{
-    content:attr(data-label);position:absolute;inset:auto 8px 8px auto;
-    font-size:11px;color:rgba(255,255,255,.85);background:rgba(0,0,0,.35);
-    padding:2px 8px;border-radius:12px;
-  }
-  .lot-title{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:16px 20px 4px}
+  .lot-title{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 20px 4px}
   .lot-title h1{font-size:22px;font-weight:800}
-  .lot-meta{padding:0 20px 16px;display:flex;gap:20px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
-  .lot-meta b{color:var(--text);font-weight:600}
+  /* характеристики: label і value в ОДНОМУ рядку, дві колонки на desktop.
+     Довге value переноситься всередині свого рядка, не ламаючи сусідню
+     колонку. Без вертикальних рамок: лише тонкі горизонтальні розділювачі */
+  .spec-rows{display:grid;grid-template-columns:1fr 1fr;column-gap:44px;padding:10px 20px 8px}
+  .spec-col{min-width:0}
+  .spec-row{display:flex;align-items:baseline;gap:16px;padding:6px 0}
+  .spec-l{flex:0 0 92px;font-size:13.5px;font-weight:600;color:var(--ink)}
+  .spec-v{flex:1;min-width:0;font-size:13.5px;font-weight:500;color:var(--text);overflow-wrap:break-word}
+  .spec-v.price{font-weight:700;color:var(--brand-ink)}
+  @media (max-width:760px){.spec-rows{grid-template-columns:1fr}}
+  /* identity-чіпи біля назви: нейтральні, глобальні, без стилізації під номерний знак */
+  #titleChips{display:inline-flex;gap:8px;flex-wrap:wrap;min-width:0}
+  .id-chip{display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 11px;border:1px solid var(--line);border-radius:9px;background:var(--card);font-size:12.5px;min-width:0}
+  .id-chip .id-l{font-weight:600;color:var(--ink)}
+  .id-chip .id-v{font-weight:500;color:var(--text);letter-spacing:.3px;overflow-wrap:anywhere}
+  /* Import-специфічні стани значень: попередження аукціону, дата даних */
+  .spec-v.warn{color:var(--amber);font-weight:700}
+  .spec-v.bad{color:var(--red);font-weight:700}
+  .spec-v.faint{color:var(--faint);font-weight:500}
+  .spec-rows.in-body{padding:0;margin-bottom:14px}
+  .lot-note{padding:0 20px 14px}
+  .copy-btn{border:none;background:none;cursor:pointer;padding:2px;color:var(--muted);display:inline-flex;align-items:center}
+  .copy-btn:hover{color:var(--ink)}
+  .copy-btn.done{color:var(--green)}
 
-  .chips{display:flex;flex-wrap:wrap;gap:8px}
-  .chip{background:var(--bg);border:1px solid var(--line);border-radius:20px;padding:5px 12px;font-size:13px}
-  .spec-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:16px}
-  .spec-grid div b{display:block;font-size:14px;font-weight:700}
-  .spec-grid div span{font-size:12px;color:var(--muted)}
+  .chips{display:flex;flex-wrap:wrap;gap:8px 12px}
+  .chip{position:relative;display:inline-flex;align-items:center;font-size:13px;font-weight:500;color:var(--text);background:var(--card);border:1px solid var(--line);border-radius:9px;padding:5px 11px}
 
-  .flags{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:18px}
+  .flags{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+  #flagsEl:not(:empty){margin-bottom:18px}
   .flag{display:flex;align-items:center;gap:10px;background:var(--bg);border-radius:10px;padding:10px 14px;font-size:13.5px;font-weight:600}
   .dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
   .dot.ok{background:var(--green)}
   .dot.bad{background:var(--red)}
   .dot.warn{background:var(--amber)}
   .dot.unknown{background:var(--faint)}
-  .dmg-note{background:var(--surface-2);border-radius:10px;padding:12px 16px;font-size:13.5px;color:var(--ink-2)}
+  .dmg-note{background:var(--surface-2);border-radius:10px;padding:12px 16px;font-size:13.5px;color:var(--ink-2);line-height:1.55}
 
   .est-head{
     display:grid;grid-template-columns:44px minmax(200px,1.2fr) auto 130px 36px;gap:14px;
@@ -455,7 +490,7 @@
   .est-head.simple{grid-template-columns:44px 1fr 130px 36px}
   .est-row{
     display:grid;grid-template-columns:44px minmax(200px,1.2fr) auto 130px 36px;
-    gap:14px;align-items:center;padding:13px 0;border-bottom:1px solid var(--line);
+    gap:14px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line);
   }
   .est-row.simple{grid-template-columns:44px 1fr 130px 36px}
   .est-row.off .part-cell,.est-row.off .seg,.est-row.off .money{opacity:.38}
@@ -471,7 +506,7 @@
     font-size:12.5px;cursor:pointer;color:var(--muted);font-weight:600;line-height:1.25;text-align:center;
   }
   .seg button b{display:block;font-size:13px;color:var(--text);font-weight:700}
-  .seg button.active{background:var(--brand-soft);color:var(--ink);border:1px solid #D5EEA2}
+  .seg button.active{background:var(--brand-soft);color:var(--ink);border:1px solid #DCEFAE}
   .seg button.active b{color:var(--ink)}
   .seg button:disabled{opacity:.35;cursor:default}
 
@@ -507,9 +542,10 @@
   }
   .name-input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(184,242,61,.18)}
 
+  /* підсумок секції: помітний рядок у тій самій soft-lime родині, що нові компоненти CalCar */
   .subtotal{
     display:flex;justify-content:space-between;align-items:center;
-    background:var(--bg);border-radius:10px;padding:14px 16px;margin-top:16px;font-weight:800;font-size:16px;
+    background:var(--brand-soft);border:1px solid #DCEFAE;border-radius:10px;padding:13px 16px;margin-top:16px;font-weight:800;font-size:15.5px;
   }
   .cat-legend{font-size:12.5px;color:var(--muted);margin-top:12px;line-height:1.6}
 
@@ -517,26 +553,30 @@
   @media(max-width:820px){.log-grid{grid-template-columns:1fr}}
   .cost-row{
     display:flex;align-items:center;justify-content:space-between;gap:16px;
-    height:66px;border-bottom:1px solid var(--line);
+    padding:11px 0;border-bottom:1px solid var(--line);
   }
   .cost-row:last-child{border-bottom:none}
   @media(max-width:820px){.cost-row:last-child{border-bottom:1px solid var(--line)}}
   .cost-row .lbl{font-size:14px;font-weight:600}
   .cost-row .lbl span{display:block;font-size:12px;color:var(--muted);font-weight:400;margin-top:1px}
 
-  .verdict-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-bottom:18px}
-  .v-cell{background:var(--bg);border-radius:10px;padding:16px}
-  .v-cell .lbl{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:6px}
-  .v-cell .val{font-size:26px;font-weight:800;letter-spacing:-.4px}
-  .v-cell .money input{width:100%;height:46px;font-size:19px}
-  .v-cell .money{justify-self:stretch;width:100%}
+  /* фінал: "скільки обійдеться" мусить важити стільки ж, скільки "чи варто брати" у Check */
+  .total-box{background:var(--brand-soft);border:1px solid #DCEFAE;border-radius:var(--radius);padding:18px 20px;display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  .total-l{display:block;font-size:12px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--brand-ink);margin-bottom:6px}
+  .total-v{font-size:36px;font-weight:800;letter-spacing:-.8px;line-height:1.05;color:var(--ink)}
+  .total-side{display:flex;gap:18px;flex-wrap:wrap}
+  .total-side div{min-width:110px}
+  .total-side .tl{display:block;font-size:11.5px;font-weight:600;color:var(--muted)}
+  .total-side .tv{font-size:15px;font-weight:700;color:var(--ink)}
+  /* фінальні дії */
+  .final-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
   .profit{color:var(--green)}
   .loss{color:var(--red)}
-  .calc-controls{display:flex;gap:14px;flex-wrap:wrap;background:var(--surface-2);border:1.5px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:18px}
+  .calc-controls{display:flex;gap:14px;flex-wrap:wrap;background:var(--bg);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin-bottom:18px}
   .cc-item{display:flex;flex-direction:column;gap:6px;min-width:220px;flex:1}
   .cc-item label{font-size:13px;font-weight:800}
-  .cc-item input,.cc-item select{height:44px;border:1.5px solid var(--line);border-radius:9px;padding:0 12px;font-size:15px;background:#fff;font-weight:700}
-  .cc-bid input{border-color:var(--line-strong);border-width:1.5px}
+  .cc-item input,.cc-item select{height:44px;border:1px solid var(--line-strong);border-radius:10px;padding:0 12px;font-size:15px;background:#fff;font-weight:700;font-family:inherit}
+  .cc-bid input{border-color:var(--line-strong)}
   .cc-bid.pulse input{border-color:var(--line-strong);box-shadow:0 0 0 3px rgba(184,242,61,.18)}
   .cc-bid input:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(184,242,61,.18)}
   .cc-sub{font-size:11.5px;color:var(--muted);font-weight:400}
@@ -545,6 +585,13 @@
   .risk-badge b{color:var(--text);font-size:13.5px}
   .risk-label{font-size:12px;font-weight:600;padding:2px 8px;border-radius:12px;margin-left:4px}
   .notes-sub{font-size:12.5px;color:var(--muted);margin-bottom:6px}
+  .issue{padding:12px 0;border-top:1px solid var(--line)}
+  .issue:first-child{border-top:none;padding-top:0}
+  .issue-t{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
+  .issue-t b{font-size:14.5px;font-weight:700}
+  .issue-t .u{font-size:12px;color:var(--muted)}
+  .issue p{font-size:13.5px;color:var(--ink-2);margin-top:4px;line-height:1.5}
+  .issue-t .dot{width:8px;height:8px;align-self:center}
   .no-bid-note{font-size:11.5px;font-weight:600;color:var(--amber);margin-top:4px}
   .notes-t{font-size:12px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
   .note-row{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--line)}
@@ -560,35 +607,34 @@
   ul.chk li{position:relative;padding:7px 0 7px 24px;font-size:13.5px;line-height:1.45;color:var(--ink-2)}
   ul.chk li::before{content:"";position:absolute;left:6px;top:14px;width:6px;height:6px;border-radius:50%;background:var(--brand-active)}
   .notes-foot{font-size:11.5px;color:var(--faint);border-top:1px solid var(--line);padding-top:10px}
-  .chip.gold{background:#FFF7E8;border-color:#E9C98B;color:#8A5A13;font-weight:600}
-  .chip.gold::before{content:"◆ ";font-size:9px;vertical-align:1px}
-  .eq-impact{margin:12px 0 2px;padding:10px 14px;background:#FFF7E8;border:1px solid #E9C98B;border-radius:12px}
-  .eq-impact .notes-t{color:#8A5A13;margin-bottom:4px}
-  .eq-impact .notes-t::before{content:"◆ ";font-size:10px}
-  .eq-impact .note-row{border-top-color:#F3E4C2}
-  .eq-impact .cost{color:#8A5A13}
-  .prem-badge{display:inline-block;margin-left:7px;padding:1px 7px;border-radius:9px;font-size:10.5px;font-weight:600;background:#FFF7E8;border:1px solid #E9C98B;color:#8A5A13;vertical-align:1px;white-space:nowrap}
+  /* дорога опція відрізняється лише рамкою: та сама градієнтна обводка, що в Check */
+  .chip.gold{border-color:transparent;background:linear-gradient(var(--card),var(--card)) padding-box,linear-gradient(135deg,#7C3AED 0%,#C026D3 50%,#E8A33D 100%) border-box}
+  .sec-meta.hv-legend{border-color:transparent;background:linear-gradient(var(--card),var(--card)) padding-box,linear-gradient(135deg,#7C3AED 0%,#C026D3 50%,#E8A33D 100%) border-box}
+  .eq-impact{margin:12px 0 2px;padding:10px 14px;background:var(--amber-soft);border:1px solid #F3E4C8;border-radius:var(--radius)}
+  .eq-impact .notes-t{color:var(--amber);margin-bottom:4px}
+  .eq-impact .note-row{border-top-color:#F3E4C8}
+  .eq-impact .cost{color:var(--amber)}
+  .prem-badge{display:inline-block;margin-left:7px;padding:1px 8px;border-radius:20px;font-size:11px;font-weight:700;background:var(--amber-soft);color:var(--amber);vertical-align:1px;white-space:nowrap}
   #saveHint{font-size:12.5px;color:var(--muted);opacity:0;transition:opacity .3s}
   #saveHint.show{opacity:1}
   .risk-line{display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:14px;font-weight:600}
   .safety-strike{
     display:none;background:var(--red-soft);color:var(--red);border-radius:10px;
-    padding:12px 16px;font-size:13.5px;font-weight:700;margin:14px 0 4px;
+    padding:12px 16px;font-size:13.5px;font-weight:700;margin:14px 0 0;
   }
   .safety-strike.show{display:block}
-  .v-actions{display:flex;gap:12px;margin-top:18px;flex-wrap:wrap}
 
-  @media(max-width:720px){
-    .photos{grid-template-columns:1fr 1fr}
-    .photos .ph.main{grid-column:span 2;aspect-ratio:4/2.6}
+  @media(max-width:760px){
     .est-head{display:none}
     .est-row{grid-template-columns:44px 1fr 36px !important;grid-template-areas:"t name del" ". seg seg" ". price price"}
     .est-row>.toggle{grid-area:t}
     .est-row>.part-cell{grid-area:name}
-    .est-row>.seg{grid-area:seg}
+    .est-row>.seg{grid-area:seg;flex-wrap:wrap;justify-self:stretch}
+    .seg button{flex:1 1 auto}
     .est-row>.money{grid-area:price;justify-self:start}
     .est-row>.del{grid-area:del}
-    .cost-row{height:auto;padding:12px 0}
+    .total-v{font-size:30px}
+    .total-box{padding:16px}
   }
   .zones{margin-top:14px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
   .zones summary{
@@ -603,19 +649,19 @@
   .zone-row span{color:var(--muted)}
   .print-head{display:none}
   @media print{
-    header,.topbar,.bottombar,.btn-ghost,.del,.v-actions,.toggle,.seg,.card-head .hint,.photos{display:none!important}
+    header,footer,.topbar,.bottombar,.btn-ghost,.del,.final-actions,.toggle,.seg,.card-head .hint,.card-head .sec-meta,.photo-strip{display:none!important}
     body{background:#fff;padding-bottom:0;font-size:13px}
     .card{break-inside:avoid;border-color:#d5d8dd;margin-bottom:12px}
     .est-row{grid-template-columns:1fr 120px!important;padding:8px 0}
     .est-row.off{display:none}
-    .cost-row{height:auto;padding:8px 0}
+    .cost-row{padding:8px 0}
     .money input,.name-input{border:none;padding:0;height:auto;background:transparent}
     .money::before{position:static;margin-right:2px}
     .print-head{display:flex;justify-content:space-between;align-items:baseline;padding:0 0 14px;font-size:13px;color:#555}
     .print-head b{font-size:18px;color:#141619}
   }
   .photo-strip{display:flex;gap:6px;overflow-x:auto;padding:10px 10px 4px}
-  .photo-strip img{height:86px;border-radius:8px;flex:0 0 auto;cursor:pointer;display:block}
+  .photo-strip img{height:86px;border-radius:8px;flex:0 0 auto;cursor:zoom-in;display:block}
   .lightbox{position:fixed;inset:0;background:rgba(10,18,28,.88);z-index:100;display:none;align-items:center;justify-content:center;cursor:zoom-out}
   .lightbox.open{display:flex}
   .lightbox img{max-width:94vw;max-height:92vh;border-radius:10px}
@@ -646,16 +692,18 @@
   .btn-chat:active{background:var(--brand-active)}
   .btn-chat svg{flex-shrink:0}
   @media(max-width:620px){
-    .topbar .btn-back,.topbar .btn-chat{flex:1;justify-content:center}
+    /* дві кнопки не вміщаються в один рядок на 375px: переносимо, а не розтягуємо сторінку */
+    .topbar{flex-wrap:wrap}
+    .topbar .btn-back,.topbar .btn-chat{flex:1 1 auto;justify-content:center}
   }
 
   /* ---- зовнішнє оголошення: маленька кнопка біля назви авто ---- */
   .ext-link{
     display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;flex:0 0 auto;
-    border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);
+    border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink);
     transition:background .15s;align-self:center;
   }
-  .ext-link svg{width:14px;height:14px}
+  .ext-link svg{width:13px;height:13px}
   .ext-link:hover{background:var(--surface-2)}
 
   /* ================= чат: три шари (шапка, полотно, composer) ================= */
@@ -792,7 +840,6 @@
 
   <div class="topbar">
     <a class="btn-back" href="/import">← New estimate</a>
-    <span class="hint" id="modeHint"></span>
     <span id="saveHint"></span>
     <button class="btn-chat" id="chatTopBtn" type="button">
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.9 8.9 0 0 1-3.7-.8L3 20l1-4.9a8.4 8.4 0 1 1 17-3.6z"/></svg>
@@ -800,17 +847,19 @@
     </button>
   </div>
 
-  <!-- lot card -->
+  <!-- авто: та сама подача, що в Check (стрічка фото, назва, identity-чіпи, характеристики) -->
   <div class="card">
-    <div class="photos" id="photosGrid" style="display:none"></div>
+    <div class="photo-strip" id="photosGrid" style="display:none"></div>
     <div class="lot-title">
       <h1 id="lotTitle"></h1>
       <a class="ext-link" id="lotLink" href="#" target="_blank" rel="noopener" style="display:none" title="Open the auction lot">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>
       </a>
+      <span id="titleChips"></span>
       <span class="badge blue" id="lotBadge">AI estimate</span>
     </div>
-    <div class="lot-meta" id="lotMeta"></div>
+    <div class="spec-rows" id="lotMeta"></div>
+    <div class="hint lot-note" id="modeHint"></div>
   </div>
 
   <!-- VIN spec -->
@@ -818,10 +867,11 @@
     <div class="card-head">
       <h2>Build sheet by VIN</h2>
       <span class="badge green">Factory data</span>
-      <span class="hint" id="vinHint" style="margin-left:auto"></span>
+      <span class="sec-meta hv-legend" id="eqLegend" style="display:none">Expensive options highlighted</span>
+      <span class="hint" id="vinHint"></span>
     </div>
     <div class="card-body">
-      <div class="spec-grid" id="specGrid"></div>
+      <div class="spec-rows in-body" id="specGrid"></div>
       <div class="chips" id="chipsEl"></div>
     </div>
   </div>
@@ -851,7 +901,7 @@
   <div class="card" id="notesCard" style="display:none">
     <div class="card-head">
       <h2>Common weak points of this model</h2>
-      <span class="hint" style="margin-left:auto">Based on this car’s version, engine, and mileage</span>
+      <span class="sec-meta">Based on this car’s version, engine, and mileage</span>
     </div>
     <div class="card-body">
       <div id="issuesList"></div>
@@ -862,7 +912,7 @@
   <div class="card">
     <div class="card-head">
       <h2>Parts</h2>
-      <span class="hint" style="margin-left:auto">Pick a category, edit prices, toggle or delete items</span>
+      <span class="sec-meta">Pick a category, edit prices, toggle or delete items</span>
     </div>
     <div class="card-body" style="padding-top:12px">
       <div class="est-head">
@@ -886,7 +936,7 @@
   <div class="card">
     <div class="card-head">
       <h2>Labor</h2>
-      <span class="hint" style="margin-left:auto">Enter your mechanic prices, ours are only a guide</span>
+      <span class="sec-meta">Enter your mechanic prices, ours are only a guide</span>
     </div>
     <div class="card-body" style="padding-top:12px">
       <div class="est-head simple">
@@ -905,7 +955,7 @@
   <div class="card" id="maintCard" style="display:none">
     <div class="card-head">
       <h2>Mileage-based maintenance</h2>
-      <span class="hint" style="margin-left:auto">Recommended for this mileage, toggle off what you do not need</span>
+      <span class="sec-meta">Recommended for this mileage, toggle off what you do not need</span>
     </div>
     <div class="card-body" style="padding-top:12px">
       <div class="est-head simple">
@@ -924,7 +974,7 @@
   <div class="card">
     <div class="card-head">
       <h2>Lot, delivery, and customs</h2>
-      <span class="hint" style="margin-left:auto">Duty, excise, and VAT are calculated from the bid. All fields are editable</span>
+      <span class="sec-meta">Duty, excise, and VAT are calculated from the bid. All fields are editable</span>
     </div>
     <div class="card-body">
       <div class="calc-controls">
@@ -1024,21 +1074,37 @@
   <div class="card">
     <div class="card-head"><h2>Summary</h2></div>
     <div class="card-body">
-      <div class="verdict-grid">
-        <div class="v-cell">
-          <div class="lbl">Landed cost in Ukraine</div>
-          <div class="val num" id="grandTotal">$0</div>
+      <div class="total-box">
+        <div>
+          <span class="total-l">Landed cost in Ukraine</span>
+          <div class="total-v num" id="grandTotal">$0</div>
           <div class="no-bid-note" id="noBidNote" style="display:none">excludes lot price: no bid entered</div>
         </div>
+        <div class="total-side" id="totalSide"></div>
       </div>
       <div class="safety-strike" id="safetyStrike">⚠ Airbags are excluded from the estimate. A car without restored airbags is unsafe; this note stays in the verdict and the PDF.</div>
-      <div class="v-actions">
-        <button class="btn-primary">Download PDF</button>
+      <div class="final-actions">
+        <button class="btn-primary" style="height:44px">Download PDF</button>
+        <button class="btn-back" id="importAskAi" type="button">Ask CalCar about this car</button>
       </div>
     </div>
   </div>
 
 </div>
+
+<footer>
+  <div class="footer-in">
+    <div class="ft-brand">
+      <a class="logo" href="/"><span class="l">Cal</span><span class="r">Car</span></a>
+      <p>Check specific cars before buying and calculate the real cost of importing them.</p>
+    </div>
+    <nav class="ft-cols">
+      <div class="ft-col"><b>Products</b><a href="/check">Vehicle Checks</a><a href="/import">Car Import</a></div>
+      <div class="ft-col"><b>My account</b><a href="/cabinet.html#reports">Reports</a><a href="/garage">Garage</a></div>
+    </nav>
+  </div>
+  <div class="footer-bottom"><div class="footer-in">© 2026 CalCar</div></div>
+</footer>
 
 <!-- Чат по авто живе у спільному CalCar Assistant (chat.js). Тут лише кнопка біля виділеного тексту. -->
 <button class="chat-selask" id="chatSelAsk" type="button">Ask about this</button>
@@ -1148,15 +1214,15 @@ function renderHeaderBlocks(){
 
   const vinVal = DATA._meta?.vin || DATA.vin || '';
   const vinFromPhoto = DATA._meta?.vin_source === 'photo';
-  const meta = [];
-  if (vinVal) meta.push(`<span class="vin-line">VIN ${esc(vinVal)}</span>${vinFromPhoto ? ' <span class="badge blue">' + t('read from photos') + '</span>' : ''}`);
-  if (v.mileage_note) meta.push(`Mileage <b>${esc(v.mileage_note)}</b>`);
-  if (DATA._meta?.damage) meta.push(`Damage <b>${esc(DATA._meta.damage)}</b>`);
-  if (DATA._meta?.title_code) meta.push(`Title <b>${esc(DATA._meta.title_code)}</b>`);
-  if (DATA._meta?.run_and_drive === false) meta.push(`<b style="color:var(--amber)">Not Run & Drive</b>`);
-  if (DATA._meta?.keys === 'NO') meta.push(`<b style="color:var(--amber)">No keys</b>`);
-  if (/deploy/i.test(String(DATA._meta?.airbags || ''))) meta.push(`<b style="color:var(--red)">Airbags deployed (auction data)</b>`);
-  if (DATA._meta?.lot_number) meta.push(`Lot <b>${esc(DATA._meta.lot_number)}</b>`);
+  /* характеристики лота: label і value в одному рядку, дві колонки, як у Check.
+     Дані ті самі, що були в lot-meta, змінюється лише подача */
+  const lotSpec = [];
+  if (v.mileage_note) lotSpec.push([t('Mileage'), esc(v.mileage_note)]);
+  if (DATA._meta?.damage) lotSpec.push([t('Damage'), esc(DATA._meta.damage)]);
+  if (DATA._meta?.title_code) lotSpec.push([t('Title'), esc(DATA._meta.title_code)]);
+  if (DATA._meta?.run_and_drive === false) lotSpec.push([t('Run & Drive'), esc(t('Not Run & Drive')), 'warn']);
+  if (DATA._meta?.keys === 'NO') lotSpec.push([t('Keys'), esc(t('No keys')), 'warn']);
+  if (/deploy/i.test(String(DATA._meta?.airbags || ''))) lotSpec.push([t('Airbags'), esc(t('Airbags deployed (auction data)')), 'bad']);
   /* статус торгів: збережений звіт живе довше за лот, людина мусить бачити, на коли дані */
   (() => {
     const sd = DATA._meta?.sale_date ? new Date(DATA._meta.sale_date) : null;
@@ -1164,20 +1230,39 @@ function renderHeaderBlocks(){
     if (sd && !isNaN(sd.getTime())) {
       const past = sd.getTime() < Date.now();
       const dstr = sd.toLocaleDateString(calcarLocale(), { day: 'numeric', month: 'long' });
-      meta.push(past
-        ? `<b style="color:var(--amber)">${t('Auction was on')} ${dstr}</b>`
-        : `${t('Auction')} <b>${dstr}</b>`);
+      lotSpec.push(past ? [t('Auction'), esc(t('Auction was on') + ' ' + dstr), 'warn'] : [t('Auction'), esc(dstr)]);
     } else if (/sold|closed|завершен/i.test(st)) {
-      meta.push(`<b style="color:var(--amber)">${t('Auction closed')}</b>`);
+      lotSpec.push([t('Auction'), esc(t('Auction closed')), 'warn']);
     }
     const an = DATA._meta?.analyzed_at ? new Date(DATA._meta.analyzed_at) : null;
     if (an && !isNaN(an.getTime())) {
-      meta.push(`<span style="color:var(--faint)">${t('Auction data as of')} ${an.toLocaleDateString(calcarLocale(), { day: 'numeric', month: 'long' })}, ${an.toLocaleTimeString(calcarLocale(), { hour: '2-digit', minute: '2-digit' })}</span>`);
+      lotSpec.push([t('Data as of'), esc(an.toLocaleDateString(calcarLocale(), { day: 'numeric', month: 'long' }) + ', ' + an.toLocaleTimeString(calcarLocale(), { hour: '2-digit', minute: '2-digit' })), 'faint']);
     }
   })();
-  if (DATA.lot_notes) meta.push(`<b style="color:var(--amber)">${esc(DATA.lot_notes)}</b>`);
-  document.getElementById('lotMeta').innerHTML = meta.map(m => `<div>${m}</div>`).join('');
-
+  if (DATA.lot_notes) lotSpec.push([t('Note'), esc(DATA.lot_notes), 'warn']);
+  const specRow = r => '<div class="spec-row"><span class="spec-l">' + esc(r[0]) + '</span><span class="spec-v' + (r[2] ? ' ' + r[2] : '') + '">' + r[1] + '</span></div>';
+  const lotCut = Math.ceil(lotSpec.length / 2);
+  document.getElementById('lotMeta').innerHTML = lotSpec.length
+    ? '<div class="spec-col">' + lotSpec.slice(0, lotCut).map(specRow).join('') + '</div>' + (lotSpec.length > lotCut ? '<div class="spec-col">' + lotSpec.slice(lotCut).map(specRow).join('') + '</div>' : '')
+    : '';
+  document.getElementById('lotMeta').style.display = lotSpec.length ? '' : 'none';
+  /* identity-чіпи біля назви: VIN і номер лота з копіюванням, як VIN і номер у Check */
+  const copySvg = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+  const chip = (l, val) => '<span class="id-chip"><span class="id-l">' + esc(l) + '</span><span class="id-v">' + esc(val) + '</span><button class="copy-btn" type="button" data-copy="' + esc(val) + '" title="' + esc(t('Copy')) + '" aria-label="' + esc(t('Copy')) + '">' + copySvg + '</button></span>';
+  const idBits = [];
+  if (vinVal) idBits.push(chip('VIN', vinVal) + (vinFromPhoto ? ' <span class="badge blue">' + esc(t('read from photos')) + '</span>' : ''));
+  if (DATA._meta?.lot_number) idBits.push(chip(t('Lot'), String(DATA._meta.lot_number)));
+  const chipsBox = document.getElementById('titleChips');
+  chipsBox.innerHTML = idBits.join('');
+  chipsBox.addEventListener('click', e => {
+    const b = e.target.closest('.copy-btn');
+    if (!b) return;
+    navigator.clipboard.writeText(b.dataset.copy).then(() => {
+      b.classList.add('done');
+      b.title = t('Copied');
+      setTimeout(() => { b.classList.remove('done'); b.title = t('Copy'); }, 1600);
+    }).catch(() => {});
+  });
 
   document.getElementById('vinHint').textContent = '';
 
@@ -1216,10 +1301,10 @@ function renderHeaderBlocks(){
     if (!issues.length) return;
     document.getElementById('issuesList').innerHTML = issues.map(i => {
       const sev = ['low','med','high'].includes(i.severity) ? i.severity : 'med';
-      return `<div class="note-row"><div class="sev ${sev}"></div><div class="nb"><b>${esc(i.title || '')}</b>`
-        + (i.unit ? `<div class="unit">${esc(i.unit)}</div>` : '')
-        + (i.detail ? `<p>${esc(i.detail)}</p>` : '')
-        + `</div></div>`;
+      const dot = sev === 'high' ? 'bad' : sev === 'med' ? 'warn' : 'ok';
+      return `<div class="issue"><div class="issue-t"><span class="dot ${dot}"></span><b>${esc(i.title || '')}</b>`
+        + (i.unit ? `<span class="u">${esc(i.unit)}</span>` : '')
+        + `</div>` + (i.detail ? `<p>${esc(i.detail)}</p>` : '') + `</div>`;
     }).join('');
     document.getElementById('notesCard').style.display = '';
   })();
@@ -1238,7 +1323,7 @@ function renderHeaderBlocks(){
 
   const spec = [];
   if (v.engine) spec.push([v.engine,t('Engine')]);
-  if (v.transmission) spec.push([v.transmission,t('Transmission')]);
+  if (v.transmission) spec.push([v.transmission,t('Gearbox')]);
   if (v.drive) spec.push([v.drive,t('Drivetrain')]);
   if (v.trim) {
     let tr = String(v.trim);
@@ -1246,12 +1331,17 @@ function renderHeaderBlocks(){
       const mdl = String(v.title || '').split(/\s+/)[1] || '';
       if (mdl && !new RegExp('^' + mdl, 'i').test(tr)) tr = mdl + ' ' + tr;
     }
-    spec.push([tr, t('Trim level')]);
+    spec.push([tr, t('Trim')]);
   }
-  if (spec.length) document.getElementById('specGrid').innerHTML =
-    spec.map(([b,s]) => `<div><b>${esc(b)}</b><span>${esc(s)}</span></div>`).join('');
+  const specEl = document.getElementById('specGrid');
+  if (spec.length) {
+    const row = ([b, l]) => `<div class="spec-row"><span class="spec-l">${esc(l)}</span><span class="spec-v">${esc(b)}</span></div>`;
+    const cut = Math.ceil(spec.length / 2);
+    specEl.innerHTML = '<div class="spec-col">' + spec.slice(0, cut).map(row).join('') + '</div>' + (spec.length > cut ? '<div class="spec-col">' + spec.slice(cut).map(row).join('') + '</div>' : '');
+  } else specEl.style.display = 'none';
   const eq = v.equipment || [];
   const premium = new Set((v.premium_options || []).map(String));
+  if (premium.size && eq.some(e => premium.has(String(e)))) document.getElementById('eqLegend').style.display = '';
   document.getElementById('chipsEl').innerHTML = eq.map(e => premium.has(String(e))
     ? `<div class="chip gold" title="${esc(t('Premium option, can significantly affect repair cost'))}">${esc(e)}</div>`
     : `<div class="chip">${esc(e)}</div>`).join('');
@@ -1585,6 +1675,10 @@ function recalc() {
   const grand = logistics + repair;
   document.getElementById('grandTotal').textContent = fmt(grand);
   window.__lastGrand = grand;
+  /* вторинні підсумки поруч із головною сумою: ті самі числа, лише подача */
+  const side = document.getElementById('totalSide');
+  if (side) side.innerHTML = '<div><span class="tl">' + esc(t('Repair')) + '</span><span class="tv num">' + esc(fmt(repair)) + '</span></div>'
+    + '<div><span class="tl">' + esc(t('Lot + logistics + customs')) + '</span><span class="tv num">' + esc(fmt(logistics)) + '</span></div>';
   const nb = document.getElementById('noBidNote');
   if (nb) nb.style.display = (Number(document.getElementById('bid').value) > 0) ? 'none' : '';
 
@@ -2093,6 +2187,8 @@ document.getElementById('printMeta').textContent =
   const top = document.getElementById('chatTopBtn');
   if (top) top.addEventListener('click', () => { if (window.CalCarChat) window.CalCarChat.toggle(); });
   window.calcarOpenChat = q => { if (window.CalCarChat) window.CalCarChat.open(q ? { quote: q } : {}); };
+  const askBtn = document.getElementById('importAskAi');
+  if (askBtn) askBtn.addEventListener('click', () => { if (window.CalCarChat) window.CalCarChat.open(); });
 
   /* репліки про цей прорахунок лягають у рядок звіту звичайним автозбереженням */
   function persistChat(){

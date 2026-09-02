@@ -406,7 +406,9 @@
   .btn-chat:active{background:var(--brand-active)}
   .btn-chat svg{flex-shrink:0}
   @media(max-width:620px){
-    .topbar .btn-back,.topbar .btn-chat{flex:1;justify-content:center}
+    /* дві кнопки не вміщаються в один рядок на 375px: переносимо, а не розтягуємо сторінку */
+    .topbar{flex-wrap:wrap}
+    .topbar .btn-back,.topbar .btn-chat{flex:1 1 auto;justify-content:center}
   }
 
   /* ---- зовнішнє оголошення: маленька кнопка біля назви авто ---- */
@@ -477,7 +479,9 @@
   .lang-menu button:hover{background:var(--surface-2)}
   .lang-menu button i{width:6px;height:6px;border-radius:50%;background:transparent;flex-shrink:0}
   .lang-menu button.on i{background:var(--brand)}
-  .wrap{max-width:1160px;margin:0 auto;padding:20px}
+  /* width:100%: у flex-колонці body з margin:auto контейнер брав fit-content, і стрічка фото
+     (min-content трьох кадрів) розтягувала сторінку до 418px на телефоні 375px */
+  .wrap{width:100%;max-width:1160px;margin:0 auto;padding:20px}
   @media(max-width:620px){
     header .header-in{display:flex;flex-wrap:wrap;height:auto;padding:10px 16px;gap:10px}
     .header-right{margin-left:auto}

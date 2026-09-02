@@ -708,4 +708,9 @@ window.CALCAR_DICTS.ru = {
   'Fuel smell in the cabin after a cold start is worth taking seriously: injector seals harden with mileage. This one is a safety item, not a comfort item.': 'Запах топлива в салоне после холодного запуска стоит воспринимать серьёзно: уплотнения форсунок дубеют с пробегом. Это вопрос безопасности, а не комфорта.',
   'What each repair usually costs depends on the region and on original versus aftermarket parts. Owner posts in the Garage are the best source of real numbers.': 'Сколько обычно стоит каждый ремонт, зависит от региона и от выбора между оригиналом и аналогом. Записи владельцев в Гараже это лучший источник реальных цифр.',
   'This post does not exist or is not published yet.': 'Такой публикации нет или она ещё не опубликована.',
+  'Keys': 'Ключи',
+  'Run & Drive': 'Run & Drive',
+  'Airbags': 'Подушки',
+  'Note': 'Примечание',
+  'Data as of': 'Данные на',
 };
