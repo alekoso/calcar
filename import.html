@@ -11,6 +11,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@800&display=swap&text=CalCar" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600&display=swap&text=CheckImport" rel="stylesheet">
 <style>html.i18n-wait body{visibility:hidden}</style>
 <script>
 /* i18n-core:start */
@@ -239,7 +240,7 @@
   .logo{display:inline-flex;align-items:stretch;border-radius:.46em;overflow:hidden;font-weight:800;font-size:15px;letter-spacing:.01em;line-height:1;text-decoration:none;font-family:'Sora',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
   .logo .l{background:var(--brand);color:var(--ink);padding:.62em 1.05em .62em .72em;clip-path:polygon(0 0,100% 0,calc(100% - .46em) 100%,0 100%)}
   .logo .r{background:var(--graphite);color:#fff;padding:.62em .72em .62em .98em;margin-left:-.26em;clip-path:polygon(.46em 0,100% 0,100% 100%,0 100%)}
-  .prod{font-size:14px;font-weight:700;font-style:italic;color:var(--brand-active);letter-spacing:.02em;line-height:1;font-family:inherit}
+  .prod{font-family:'Caveat',cursive;font-size:22px;font-weight:600;font-style:normal;color:var(--brand-active);letter-spacing:0;line-height:1;position:relative;top:1px}
   .prod::after{content:attr(data-prod)}
   .header-right{margin-left:0;grid-column:3;justify-self:end;display:flex;align-items:center;gap:16px;font-size:13px}
   .header-right a{color:var(--muted);text-decoration:none}
@@ -485,21 +486,21 @@
      розтягуються на висоту колонки, підсумок притиснутий донизу, тому ліва і
      права половини закінчуються на одній лінії за побудовою */
   .cost{display:flex;flex-direction:column;border-right:1px solid var(--line)}
-  .cost-row{flex:1 1 auto;display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;min-height:46px;padding:4px 22px;font-size:14px;color:var(--ink-2);border-bottom:1px solid var(--line)}
-  .cost-ic{width:18px;height:18px;color:var(--muted);display:flex}
-  .cost-ic svg{width:18px;height:18px}
-  .cost-row b{font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums;font-size:14.5px}
-  .cost-total{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:12px 14px 14px;padding:14px 16px;border-radius:12px;background:var(--brand-soft);font-size:14.5px;font-weight:700;color:var(--ink)}
-  .cost-total b{font-size:22px;font-weight:800;color:var(--brand-ink);font-variant-numeric:tabular-nums;letter-spacing:-.3px}
+  .cost-row{flex:1 1 auto;display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;min-height:34px;padding:2px 20px;font-size:13.5px;color:var(--ink-2);border-bottom:1px solid var(--line)}
+  .cost-ic{width:16px;height:16px;color:var(--muted);display:flex}
+  .cost-ic svg{width:16px;height:16px}
+  .cost-row b{font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums;font-size:14px}
+  .cost-total{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:10px 12px 12px;padding:9px 14px;border-radius:10px;background:var(--brand-soft);font-size:14px;font-weight:700;color:var(--ink)}
+  .cost-total b{font-size:19px;font-weight:800;color:var(--brand-ink);font-variant-numeric:tabular-nums;letter-spacing:-.3px}
   /* праворуч від кошторису: фото demo-авто з моделлю і роком, під ним три статуси.
      Фото статичне, зі /demo, не з розрахунків користувача */
   .ex-side{display:flex;flex-direction:column;min-width:0}
-  .ex-car{margin:0;padding:16px 20px 12px;border-bottom:1px solid var(--line)}
-  .ex-photo{width:100%;height:auto;aspect-ratio:16/10;object-fit:cover;border-radius:12px;background:var(--surface-2);display:block}
-  .ex-car b{display:block;font-size:15px;font-weight:700;margin-top:10px}
-  .ex-car i{display:block;font-style:normal;font-size:12px;color:var(--faint);margin-top:1px}
+  /* фото компактне, поруч модель; під ними три статуси щільно */
+  .ex-car{margin:0;padding:10px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px}
+  .ex-photo{flex:0 0 132px;width:132px;height:88px;object-fit:cover;object-position:50% 60%;border-radius:12px;background:var(--surface-2);display:block}
+  .ex-car b{display:block;font-size:15px;font-weight:700}
   .ex-rows{list-style:none;padding:0;flex:1;display:grid;grid-auto-rows:1fr}
-  .ex-rows li{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:center;padding:8px 22px;border-bottom:1px solid var(--line)}
+  .ex-rows li{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:center;padding:3px 18px;border-bottom:1px solid var(--line)}
   .ex-rows li:last-child{border-bottom:0}
   /* статус-іконки demo: фірмовий лайм із темною жирною галочкою, мʼякий amber з
      темним знаком, нейтральний сірий зі знаком питання. Це не кольори ризику
@@ -704,7 +705,7 @@
         <div class="cost-total"><span>Landed cost in Ukraine</span><b>$29 150</b></div>
       </div>
       <div class="ex-side">
-        <figure class="ex-car"><img class="ex-photo" src="/demo/import-main-dodge-challenger.jpg" alt="" width="960" height="600" onerror="this.onerror=null;this.removeAttribute('src')"><figcaption><b>Dodge Challenger</b><i>Example vehicle</i></figcaption></figure>
+        <figure class="ex-car"><img class="ex-photo" src="/demo/import-main-dodge-challenger.jpg" alt="" width="960" height="600" onerror="this.onerror=null;this.removeAttribute('src')"><figcaption><b>Dodge Challenger</b></figcaption></figure>
       <ul class="ex-rows">
         <li><span class="ex-ic warn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v10"/><path d="M12 19h.01"/></svg></span><span class="ex-txt"><b class="ex-k">Repair risk</b><i>Front impact, hidden damage possible</i></span></li>
         <li><span class="ex-ic ok"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span><span class="ex-txt"><b class="ex-k">Build sheet</b><i>Options confirmed by VIN</i></span></li>
@@ -1024,9 +1025,9 @@ btn.addEventListener('click', async () => {
   /* фото і назви demo-авто задані власником; підсумки презентаційні і не є
      розрахунком авто на фото */
   const DEMO_ESTIMATES = [
-    { name: 'Mazda 6', photo: '/demo/import-mazda-6.jpg', grand: 19650 },
-    { name: 'Audi A7', photo: '/demo/import-audi-a7.jpg', grand: 31840 },
-    { name: 'Toyota Corolla', photo: '/demo/import-toyota-corolla.jpg', grand: 16480 },
+    { name: 'Mazda 6', photo: '/demo/import-mazda-6.jpg', pos: '50% 55%', grand: 19650 },
+    { name: 'Audi A7', photo: '/demo/import-audi-a7.jpg', pos: '50% 50%', grand: 31840 },
+    { name: 'Toyota Corolla', photo: '/demo/import-toyota-corolla.jpg', pos: '45% 55%', grand: 16480 },
   ];
   function renderExampleEstimates(){
     const box = document.getElementById('recent'), grid = document.getElementById('recentGrid');
@@ -1034,8 +1035,8 @@ btn.addEventListener('click', async () => {
     document.getElementById('recentTitle').textContent = t('Examples of estimates');
     document.getElementById('recentAll').style.display = 'none';
     grid.innerHTML = DEMO_ESTIMATES.map(d => '<div class="rc rc-demo" aria-label="' + esc(t('Example')) + '">'
-      + '<span class="rc-ph"><img alt="" src="' + d.photo + '"></span>'
-      + '<span class="rc-body"><span class="rc-t">' + esc(d.name) + '</span><span class="rc-m">' + esc(t('Example')) + '</span></span>'
+      + '<span class="rc-ph"><img alt="" src="' + d.photo + '" style="object-position:' + (d.pos || '50% 50%') + '"></span>'
+      + '<span class="rc-body"><span class="rc-t">' + esc(d.name) + '</span></span>'
       + '<span class="rc-v"><span class="rc-sum">$' + esc(nf(d.grand)) + '</span><span class="rc-d">' + esc(t('landed cost')) + '</span></span>'
       + '</div>').join('');
     /* битий файл фото: нейтральна заглушка, ніяких ілюстрацій */

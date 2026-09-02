@@ -57,7 +57,14 @@ for (const [f, s] of Object.entries(PAGES)) {
   if (!/grid\.querySelectorAll\('\.rc-ph img'\)\.forEach\(img => img\.addEventListener\('error', \(\) => \{ img\.parentNode\.innerHTML = RC_PH; \}/.test(s)) errs.push(f + ': demo-картки без нейтрального фолбека');
   if (!/<img class="ex-photo" src="\/demo\//.test(s)) errs.push(f + ': у прикладі результату нема demo-фото');
   if (/\.hero-badge::before/.test(s)) errs.push(f + ': крапка перед бейджем повернулась');
-  if (!/\.prod\{font-size:14px;font-weight:700;font-style:italic;color:var\(--brand-active\)/.test(s) || (s.match(/^\s*\.prod\{/gm) || []).length !== 1) errs.push(f + ': назва продукту не одним lime-правилом');
+  if (!/\.prod\{font-family:'Caveat',cursive;font-size:22px;font-weight:600;font-style:normal;color:var\(--brand-active\)/.test(s) || (s.match(/^\s*\.prod\{/gm) || []).length !== 1) errs.push(f + ': назва продукту не одним lime-правилом (Caveat)');
+  if (!/family=Caveat:wght@600&display=swap&text=CheckImport/.test(s)) errs.push(f + ': шрифт Caveat не підключений або без text-підмножини');
+  /* у demo-картках лише фото, модель і оцінка/сума: без рядка "Приклад" і без "Приклад авто" */
+  if (/Example vehicle/.test(s)) errs.push(f + ': "Example vehicle" повернувся');
+  const exFn = f === 'check.html' ? 'renderExampleChecks' : 'renderExampleEstimates';
+  const st = s.indexOf('function ' + exFn + '(){'); let i2 = s.indexOf('{', st), dd = 0; for (; i2 < s.length; i2++) { if (s[i2] === '{') dd++; else if (s[i2] === '}' && --dd === 0) break; }
+  if (/rc-m/.test(s.slice(st, i2 + 1))) errs.push(f + ': у demo-картках лишився вторинний рядок');
+  if (!/object-position:' \+ \(d\.pos \|\| '50% 50%'\)/.test(s)) errs.push(f + ': demo-фото без індивідуального object-position');
   if (!/\.ex-ic\.ok\{background:var\(--brand\)\}/.test(s) || !/\.ex-ic\.warn\{background:var\(--amber-soft\)/.test(s)) errs.push(f + ': статус-іконки не в системі лайм/amber/нейтральний');
   if (/\.ex-ic\.ok\{background:var\(--green-soft\)/.test(s)) errs.push(f + ': позитивний статус знову generic green');
   /* футер мінімальний: лише копірайт, без другого логотипа і beta */

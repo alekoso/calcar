@@ -620,7 +620,6 @@ window.CALCAR_DICTS.ua = {
   /* ---- фінальна ітерація головних: приклади, demo-авто, футер ---- */
   'Examples of checks': 'Приклади перевірок',
   'Examples of estimates': 'Приклади розрахунків',
-  'Example vehicle': 'Приклад авто',
   '© 2026 CalCar': '© 2026 CalCar',
   'BMW 5 Series': 'BMW 5 Series',
   'Dodge Challenger': 'Dodge Challenger',

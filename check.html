@@ -11,6 +11,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@800&display=swap&text=CalCarheck" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600&display=swap&text=CheckImport" rel="stylesheet">
 <style>html.i18n-wait body{visibility:hidden}</style>
 <script>
 /* i18n-core:start */
@@ -249,7 +250,7 @@
   .logo{display:inline-flex;align-items:stretch;border-radius:.46em;overflow:hidden;font-weight:800;font-size:15px;letter-spacing:.01em;line-height:1;text-decoration:none;font-family:'Sora',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
   .logo .l{background:var(--brand);color:var(--ink);padding:.62em 1.05em .62em .72em;clip-path:polygon(0 0,100% 0,calc(100% - .46em) 100%,0 100%)}
   .logo .r{background:var(--graphite);color:#fff;padding:.62em .72em .62em .98em;margin-left:-.26em;clip-path:polygon(.46em 0,100% 0,100% 100%,0 100%)}
-  .prod{font-size:14px;font-weight:700;font-style:italic;color:var(--brand-active);letter-spacing:.02em;line-height:1;font-family:inherit}
+  .prod{font-family:'Caveat',cursive;font-size:22px;font-weight:600;font-style:normal;color:var(--brand-active);letter-spacing:0;line-height:1;position:relative;top:1px}
   .prod::after{content:attr(data-prod)}
   .header-right a{color:var(--muted);text-decoration:none}
   .header-right a:hover{color:var(--ink)}
@@ -555,13 +556,14 @@
      унизу короткий висновок. Панель це flex-колонка з розтягом, а рядки
      праворуч це grid із рівними рядками на всю висоту, тому обидві половини
      закінчуються на одній лінії за побудовою */
-  .ex-left{padding:20px 22px 18px;border-right:1px solid var(--line);display:flex;flex-direction:column;justify-content:space-between;gap:14px}
-  .ex-top{display:grid;grid-template-columns:minmax(0,1fr) 196px;gap:16px;align-items:start}
+  .ex-left{padding:18px 22px 16px;border-right:1px solid var(--line);display:flex;flex-direction:column;justify-content:space-between;gap:12px}
+  .ex-top{display:grid;grid-template-columns:minmax(0,1fr) 142px;gap:14px;align-items:center}
+  /* оцінка і вердикт однією групою в одному рядку */
+  .ex-scorerow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0 0}
   .ex-main{min-width:0}
   .ex-fig{margin:0}
   .ex-photo{width:100%;height:auto;aspect-ratio:4/3;object-fit:cover;border-radius:12px;background:var(--surface-2);display:block}
-  .ex-fig figcaption b{display:block;font-size:13.5px;font-weight:700;margin-top:8px}
-  .ex-fig figcaption i{display:block;font-style:normal;font-size:12px;color:var(--faint);margin-top:1px}
+  .ex-fig figcaption b{display:block;font-size:13px;font-weight:700;margin-top:7px;text-align:center}
   .ex-lab{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:var(--muted)}
   /* (i): та сама підказка, що в справжньому звіті (score-tip), на наведення і фокус */
   .ex-i{position:relative;width:15px;height:15px;border-radius:50%;border:1.5px solid var(--line-strong);color:var(--faint);font-size:9px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;font-style:italic;font-family:Georgia,serif;cursor:pointer;outline:none}
@@ -573,8 +575,8 @@
   .ex-tip span + span{margin-top:6px;color:var(--muted)}
   /* оцінка тим самим компонентом, число підкреслене фірмовим лаймом, як em у заголовку:
      лайм текстом на білому не проходить контраст, підкреслення проходить */
-  .ex-score{display:inline-flex;align-items:baseline;line-height:1;font-variant-numeric:tabular-nums;margin:6px 0 10px}
-  .ex-score b{font-size:42px;font-weight:800;letter-spacing:-1px;background:linear-gradient(transparent 72%,var(--brand) 72%);padding:0 2px}
+  .ex-score{display:inline-flex;align-items:baseline;line-height:1;font-variant-numeric:tabular-nums;margin:0}
+  .ex-score b{font-size:40px;font-weight:800;letter-spacing:-1px;background:linear-gradient(transparent 72%,var(--brand) 72%);padding:0 2px}
   .ex-score small{font-size:15px;font-weight:600;color:var(--muted);margin-left:5px}
   /* вердикт тим самим стилем, що risk-label у справжньому звіті */
   .ex-verdict{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:12px;background:var(--green-soft);color:var(--green)}
@@ -596,7 +598,7 @@
   @media(max-width:760px){
     .ex{grid-template-columns:1fr}
     .ex-left{border-right:0;border-bottom:1px solid var(--line)}
-    .ex-top{grid-template-columns:minmax(0,1fr) 150px}
+    .ex-top{grid-template-columns:minmax(0,1fr) 128px}
     .ex-rows{height:auto}
     .ex-rows li{padding:10px 16px}
   }
@@ -702,12 +704,11 @@
         <div class="ex-top">
           <div class="ex-main">
             <div class="ex-lab">CalCar Score <span class="ex-i" tabindex="0" role="button" aria-label="CalCar Score">i<span class="ex-tip"><b>CalCar Score</b><span>Our assessment of the car based on the data we could verify.</span><span>Critical risks can weigh more heavily on the final score.</span></span></span></div>
-            <div class="ex-score"><b>8.1</b><small>/10</small></div>
-            <span class="ex-verdict">Worth considering</span>
+            <div class="ex-scorerow"><div class="ex-score"><b>8.1</b><small>/10</small></div><span class="ex-verdict">Worth considering</span></div>
           </div>
           <figure class="ex-fig">
             <img class="ex-photo" src="/demo/check-main-bmw-5-series.jpg" alt="" width="960" height="720" onerror="this.onerror=null;this.removeAttribute('src')">
-            <figcaption><b>BMW 5 Series</b><i>Example vehicle</i></figcaption>
+            <figcaption><b>BMW 5 Series</b></figcaption>
           </figure>
         </div>
         <p class="ex-sum">Low, well-documented mileage and a sound engine version outweigh a moderate accident history.</p>
@@ -1010,9 +1011,9 @@ window.calcarRenderRecent = renderRecentChecks;   /* smoke-перевірки р
 /* фото і назви demo-авто задані власником; оцінки презентаційні і не рахуються
    по авто на фото */
 const DEMO_CHECKS = [
-  { name: 'Mercedes EQC', photo: '/demo/check-mercedes-eqc.jpg', score: 8.1 },
-  { name: 'Tesla Model Y', photo: '/demo/check-tesla-model-y.jpg', score: 7.4 },
-  { name: 'Audi Q5', photo: '/demo/check-audi-q5.jpg', score: 6.8 },
+  { name: 'Mercedes EQC', photo: '/demo/check-mercedes-eqc.jpg', pos: '50% 55%', score: 8.1 },
+  { name: 'Tesla Model Y', photo: '/demo/check-tesla-model-y.jpg', pos: '50% 50%', score: 7.4 },
+  { name: 'Audi Q5', photo: '/demo/check-audi-q5.jpg', pos: '45% 50%', score: 6.8 },
 ];
 function renderExampleChecks(){
   const box = document.getElementById('recent'), grid = document.getElementById('recentGrid');
@@ -1020,8 +1021,8 @@ function renderExampleChecks(){
   document.getElementById('recentTitle').textContent = t('Examples of checks');
   document.getElementById('recentAll').style.display = 'none';
   grid.innerHTML = DEMO_CHECKS.map(d => '<div class="rc rc-demo" aria-label="' + esc(t('Example')) + '">'
-    + '<span class="rc-ph"><img alt="" src="' + d.photo + '"></span>'
-    + '<span class="rc-body"><span class="rc-t">' + esc(d.name) + '</span><span class="rc-m">' + esc(t('Example')) + '</span></span>'
+    + '<span class="rc-ph"><img alt="" src="' + d.photo + '" style="object-position:' + (d.pos || '50% 50%') + '"></span>'
+    + '<span class="rc-body"><span class="rc-t">' + esc(d.name) + '</span></span>'
     + '<span class="rc-v"><span class="rc-score ' + (d.score >= 7.5 ? 'ok' : d.score >= 5.5 ? 'warn' : 'bad') + '"><b>' + d.score.toFixed(1) + '</b><small>/10</small></span></span>'
     + '</div>').join('');
   /* битий файл фото: нейтральна заглушка, ніяких ілюстрацій */

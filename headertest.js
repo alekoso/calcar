@@ -7,7 +7,7 @@ const vm = require('vm');
 const errs = [];
 const PAGES = ['check.html', 'import.html', 'result.html', 'result-check.html', 'cabinet.html', 'garage.html'];
 const S = Object.fromEntries(PAGES.map(p => [p, fs.readFileSync(p, 'utf8')]));
-const PROD_CSS = '.prod{font-size:14px;font-weight:700;font-style:italic;color:var(--brand-active);letter-spacing:.02em;line-height:1;font-family:inherit}';
+const PROD_CSS = ".prod{font-family:'Caveat',cursive;font-size:22px;font-weight:600;font-style:normal;color:var(--brand-active);letter-spacing:0;line-height:1;position:relative;top:1px}";
 const PROD = { 'check.html': 'Check', 'result-check.html': 'Check', 'import.html': 'Import', 'result.html': 'Import' };
 const MENU = ['/cabinet.html#reports', '/garage', '/cabinet.html#memory', '/cabinet.html#account'];
 const ICON = '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/>';
