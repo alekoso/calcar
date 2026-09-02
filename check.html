@@ -36,7 +36,7 @@
     { code: 'ru', label: 'Русский',    short: 'RU', locale: 'ru-RU', html: 'ru' },
     { code: 'en', label: 'English',    short: 'EN', locale: 'en-US', html: 'en' },
   ];
-  var DICT_V = '5';           /* міняти при зміні словників чи їх формату, щоб скинути кеш */
+  var DICT_V = '6';           /* міняти при зміні словників чи їх формату, щоб скинути кеш */
 
   /* єдиний резолвер локалі: явна підтримувана -> нормалізований код, усе
      інше -> null (той, хто викликає, підставляє DEFAULT чи FALLBACK).
@@ -253,7 +253,7 @@
   .logo .r{background:var(--graphite);color:#fff;padding:.62em .72em .62em .98em;margin-left:-.26em;clip-path:polygon(.46em 0,100% 0,100% 100%,0 100%)}
   /* Check як другий напрямок: підпис поруч із логотипом, тим самим шрифтом */
   .prod{font-family:'Sora',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;font-weight:800;font-size:15px;color:var(--ink);letter-spacing:.01em}
-  .beta{font-size:11px;background:var(--surface-2);color:var(--muted);padding:2px 8px;border-radius:20px;letter-spacing:.4px}
+  .beta{font-size:11px;font-weight:600;background:var(--surface-2);color:var(--muted);padding:2px 8px;border-radius:20px;letter-spacing:.4px}
   .header-right a{color:var(--muted);text-decoration:none}
   .header-right a:hover{color:var(--ink)}
   .btn-auth{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line-strong);border-radius:20px;padding:7px 14px;background:var(--card);color:var(--ink)!important;font-weight:600;font-size:13px;text-decoration:none;transition:background .15s,border-color .15s}
@@ -398,11 +398,11 @@
 
   /* ---- спільний компонент інформаційних секцій (еталон: Import) ---- */
   .wrap-sec{max-width:1160px;margin:0 auto;padding:0 20px}
-  section{padding:56px 0}
+  section{padding:48px 0}
   h2.sec{font-size:26px;font-weight:800;letter-spacing:-.4px;text-align:center}
   .sec-sub{text-align:center;color:var(--muted);margin-top:8px;max-width:560px;margin-left:auto;margin-right:auto}
   .feats{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:36px}
-  @media(max-width:1100px){.feats{grid-template-columns:1fr}}
+  @media(max-width:900px){.feats{grid-template-columns:1fr}}
   .feat{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:22px;display:flex;gap:14px}
   .feat b{display:block;font-size:15px;margin-bottom:4px}
   .feat p{font-size:13.5px;color:var(--muted)}
@@ -461,18 +461,21 @@
     /* на вузькому екрані перемикач переїжджає під шапку і займає всю ширину */
     header .header-in{display:flex;flex-wrap:wrap;height:auto;padding:10px 16px;gap:10px}
     .header-right{margin-left:auto}
-    .hero{padding:40px 16px 8px}
+    .hero{padding:30px 16px 0}
   }
 
 
-  .hero{background:var(--bg);padding:60px 20px 16px;text-align:center}
+  .hero{background:var(--bg);padding:44px 20px 0;text-align:center}
   .hero-in{max-width:860px;margin:0 auto}
   .hero h1{font-size:clamp(28px,5vw,44px);font-weight:800;letter-spacing:-.8px;line-height:1.15}
   .hero h1 em{font-style:normal;color:inherit;background:linear-gradient(transparent 68%,var(--brand) 68%);padding:0 2px}
-  .hero p.sub{margin:16px auto 0;max-width:620px;font-size:16.5px;color:var(--muted)}
+  /* підзаголовок вторинний, але щільний: 500, не жирний і не блідий */
+  .hero p.sub{margin:14px auto 0;max-width:600px;font-size:16px;font-weight:500;line-height:1.5;color:var(--muted)}
+  .hero-badge{display:inline-flex;align-items:center;gap:7px;background:var(--brand-soft);color:var(--brand-ink);font-size:12.5px;font-weight:700;padding:4px 12px;border-radius:20px;margin-bottom:14px}
+  .hero-badge::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--brand)}
 
   .hero-form{
-    background:#fff;border-radius:16px;padding:14px;margin:28px auto 0;max-width:680px;
+    background:#fff;border-radius:16px;padding:12px;margin:24px auto 0;max-width:640px;
     border:1px solid var(--line);box-shadow:0 1px 2px rgba(20,22,25,.04),0 10px 28px rgba(20,22,25,.06);text-align:left;
   }
   .hf-row{display:flex;gap:10px;flex-wrap:wrap}
@@ -511,31 +514,52 @@
   .hf-status{font-size:13.5px;color:var(--muted);margin-top:10px;display:none}
   .hf-status.on{display:block}
   .hero-form .btn-primary{height:52px;padding:0 26px;font-size:15px;font-weight:800;border-radius:12px;min-width:158px}
-  .hf-note{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-top:12px;font-size:12.5px;color:var(--muted)}
-  .hf-note span+span::before{content:"·";margin:0 10px;color:var(--line-strong)}
-  .hf-note b{display:inline-flex;align-items:center;gap:7px;background:var(--brand-soft);color:var(--brand-ink);font-weight:700;padding:3px 11px;border-radius:20px}
-  .hf-note b::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--brand)}
-  /* нижній рядок картки: та сама геометрія, що "Завантаж фото вручну" в Import */
-  .manual{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
-  .manual .summary{font-size:13.5px;color:var(--faint);font-weight:600;cursor:default;user-select:none}
-  .manual .summary::before{content:"+ ";font-weight:700;color:var(--line-strong)}
   .hf-status.err{color:var(--red)}
   .spin{display:inline-block;width:13px;height:13px;border:2px solid var(--line-strong);border-top-color:var(--ink);border-radius:50%;vertical-align:-2px;margin-right:8px;animation:sp 1s linear infinite}
   @keyframes sp{to{transform:rotate(360deg)}}
 
-  /* що саме перевіряємо: коротко, без маркетингу */
-  /* нижній заклик: той самий блок, що в прорахунку пригону */
-  .cta{background:var(--graphite);border-radius:20px;padding:48px 32px;text-align:center;color:#fff;margin:20px 0 64px}
-  .cta h3{font-size:24px;font-weight:800;letter-spacing:-.3px}
-  .cta p{color:#B4B9BF;margin:10px 0 24px}
-  .cta-wrap{max-width:1160px;margin:0 auto;padding:0 20px}
+  /* ---- недавня активність: компактні картки, ті самі адреси звітів, що в кабінеті ---- */
+  .recent{max-width:1160px;margin:26px auto 0;padding:0 20px;display:none}
+  .recent.on{display:block}
+  .recent-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px}
+  .recent-h b{font-size:14px;font-weight:700}
+  .recent-h a{font-size:13px;font-weight:600;color:var(--muted);text-decoration:none}
+  .recent-h a:hover{color:var(--ink)}
+  .recent-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .rc{display:flex;align-items:center;gap:12px;min-width:0;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;color:var(--ink);text-decoration:none;transition:background .15s,border-color .15s}
+  .rc:hover{background:var(--surface-2);border-color:var(--line-strong)}
+  .rc-body{flex:1;min-width:0}
+  .rc-t{display:block;font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rc-m{display:block;font-size:12.5px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rc-v{flex:0 0 auto;text-align:right}
+  .rc-score{font-size:19px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+  .rc-score.ok{color:var(--green)}.rc-score.warn{color:var(--amber)}.rc-score.bad{color:var(--red)}
+  .rc-score small{font-size:11.5px;font-weight:600;color:var(--muted);margin-left:2px}
+  .rc-sum{display:block;font-size:15px;font-weight:800;color:var(--brand-ink);font-variant-numeric:tabular-nums}
+  .rc-d{display:block;font-size:11.5px;color:var(--faint);margin-top:2px}
+  @media(max-width:860px){.recent-grid{grid-template-columns:1fr}}
 
-  .sample{margin-top:36px}
-  .sample .card{margin-bottom:0}
-  .sample .card-body{padding:16px 22px}
-  .sline{display:flex;gap:10px;align-items:flex-start;padding:7px 0;font-size:14px}
-  .sline .dot{margin-top:5px}
-  .sline b{font-weight:600}
+  /* ---- приклад результату: компактний зріз справжнього звіту, не інтерактивний ---- */
+  .sec-ex{padding-top:40px}
+  .ex{display:grid;grid-template-columns:minmax(240px,1fr) 1.45fr;background:var(--card);border:1px solid var(--line);border-radius:16px;margin-top:26px;overflow:hidden}
+  .ex-left{padding:24px 28px;border-right:1px solid var(--line)}
+  .ex-lab{font-size:12.5px;font-weight:700;color:var(--muted)}
+  .ex-score{font-size:44px;font-weight:800;letter-spacing:-1px;line-height:1.05;margin:6px 0 10px}
+  .ex-score small{font-size:15px;font-weight:600;letter-spacing:0;color:var(--muted);margin-left:4px}
+  .ex-sum{font-size:13.5px;color:var(--ink-2);line-height:1.5;margin-top:14px}
+  .ex-veh{margin-top:16px;font-size:12.5px;font-weight:600;color:var(--muted)}
+  .ex-rows{list-style:none;padding:6px 0}
+  .ex-rows li{display:grid;grid-template-columns:auto 124px 1fr;gap:12px;align-items:center;padding:12px 24px;border-bottom:1px solid var(--line)}
+  .ex-rows li:last-child{border-bottom:0}
+  .ex-k{font-size:14px;font-weight:700}
+  .ex-v{font-size:13.5px;color:var(--muted)}
+  .ex-note{text-align:center;font-size:12.5px;color:var(--faint);margin-top:12px}
+  @media(max-width:760px){
+    .ex{grid-template-columns:1fr}
+    .ex-left{border-right:0;border-bottom:1px solid var(--line)}
+    .ex-rows li{grid-template-columns:auto 1fr;padding:11px 18px}
+    .ex-v{grid-column:2}
+  }
   /* безшовний перехід між сторінками: браузер плавно перемальовує лише те,
      що змінилось, а шапка і футер візуально лишаються на місці */
   html{scrollbar-gutter:stable}
@@ -607,73 +631,76 @@
 
 <div class="hero">
   <div class="hero-in">
+    <span class="hero-badge">Free check</span>
     <h1>Is it really worth buying<br><em>this exact car?</em></h1>
-    <p class="sub">Paste a listing link. CalCar cross-checks the seller's claims against the car's history, factory VIN data and photos, shows discrepancies and gives a verdict.</p>
+    <p class="sub">Paste a listing link. CalCar will check the history, mileage, photos and VIN data and tell you whether this exact car is worth considering.</p>
 
     <div class="hero-form">
       <div class="hf-row">
         <input type="text" id="urlInput" placeholder="Listing link" spellcheck="false">
-        <button class="btn-primary" id="goBtn" type="button">Check it</button>
+        <button class="btn-primary" id="goBtn" type="button">Check the car</button>
       </div>
       <div class="hf-status" id="status"></div>
       <div class="ld" id="loadBox"></div>
-      <div class="hf-note">
-        <span><b>Free check</b></span>
-        <span>We'll find the VIN</span>
-        <span>Result in ~1–2 min</span>
-      </div>
-      <div class="manual"><span class="summary">VIN-only check is coming soon</span></div>
     </div>
   </div>
 </div>
 
+<!-- недавні перевірки: рендериться лише для того, хто увійшов і вже має звіти;
+     без них блок не показується зовсім, навіть заголовком -->
+<div class="recent" id="recent">
+  <div class="recent-h"><b>Recent checks</b><a href="/cabinet.html#reports">All reports <span aria-hidden="true">→</span></a></div>
+  <div class="recent-grid" id="recentGrid"></div>
+</div>
+
 <div class="wrap-sec">
-  <section style="padding-bottom:0">
-    <h2 class="sec">What CalCar checks</h2>
-    <p class="sec-sub">We gather data from multiple sources, cross-check it against the listing and highlight what deserves attention.</p>
-    <div class="feats">
-      <div class="feat">
-        <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M11 8v3l2 2"/></svg></div>
-        <div><b>Discrepancies</b>
-        <p>We cross-check the seller's claims against the car's history and show mismatches.</p></div>
+  <section class="sec-ex">
+    <h2 class="sec">Sample CalCar report</h2>
+    <div class="ex">
+      <div class="ex-left">
+        <div class="ex-lab">CalCar Score</div>
+        <div class="ex-score">8.1<small>/10</small></div>
+        <span class="badge green">Worth considering</span>
+        <p class="ex-sum">Low, well-documented mileage and a sound engine version outweigh a moderate accident history.</p>
+        <div class="ex-veh">BMW X5 xDrive40i 2021</div>
       </div>
-      <div class="feat">
-        <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg></div>
-        <div><b>Mileage & owners</b>
-        <p>We match past mileages, sales and ownership changes.</p></div>
-      </div>
-      <div class="feat">
-        <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="m21 15-4-4-6 6"/></svg></div>
-        <div><b>Photos & weak points</b>
-        <p>We look for repair signs in photos and risks of this exact version.</p></div>
-      </div>
+      <ul class="ex-rows">
+        <li><span class="dot ok"></span><span class="ex-k">Mileage</span><span class="ex-v">Confirmed by service history</span></li>
+        <li><span class="dot ok"></span><span class="ex-k">Owners</span><span class="ex-v">2 owners, private use</span></li>
+        <li><span class="dot warn"></span><span class="ex-k">History</span><span class="ex-v">One minor accident in the US</span></li>
+        <li><span class="dot ok"></span><span class="ex-k">Equipment</span><span class="ex-v">Matches the factory build</span></li>
+        <li><span class="dot ok"></span><span class="ex-k">Price</span><span class="ex-v">Below the market average</span></li>
+      </ul>
     </div>
+    <p class="ex-note">A sample. Your report is built for the exact car you check.</p>
   </section>
 </div>
 
 <div class="wrap-sec">
   <section>
-    <h2 class="sec">What the result looks like</h2>
-    <div class="sample">
-      <div class="card">
-        <div class="card-body">
-      <div class="sline"><span class="dot bad"></span><span><b>Seller: "no accidents".</b> The official check shows a US insurance claim and an auction record.</span></div>
-      <div class="sline"><span class="dot warn"></span><span><b>4 owners in 5 years,</b> last purchase 5 months ago: looks like a flip.</span></div>
-      <div class="sline"><span class="dot warn"></span><span><b>Mileage 129k km</b> vs 109k in a 2024 listing: the timeline is consistent.</span></div>
-      <div class="sline"><span class="dot ok"></span><span><b>Equipment confirmed</b> by factory VIN data.</span></div>
-        </div>
+    <h2 class="sec">What CalCar checks</h2>
+    <p class="sec-sub">We gather data from multiple sources, cross-check it against the listing and highlight what deserves attention.</p>
+    <div class="feats">
+      <div class="feat">
+        <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M11 8v3l2 2"/></svg></div>
+        <div><b>History and accidents</b>
+        <p>Auctions, old listings, photos, accidents, service records, mileage in databases.</p></div>
+      </div>
+      <div class="feat">
+        <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg></div>
+        <div><b>What the listing hides</b>
+        <p>We cross-check the seller's claims against VIN data, mileage, history and photos.</p></div>
+      </div>
+      <div class="feat">
+        <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="m21 15-4-4-6 6"/></svg></div>
+        <div><b>Is it worth buying</b>
+        <p>We weigh the risks and strengths and give a specific recommendation.</p></div>
       </div>
     </div>
   </section>
 </div>
 
-<div class="cta-wrap">
-  <div class="cta">
-    <h3>Check the listing before you go see the car</h3>
-    <p>One minute, and you know what the seller left out.</p>
-    <button class="btn-primary" id="ctaBtn">Check the car</button>
-  </div>
-</div>
+
 
 <footer>
   <div class="footer-in">
@@ -893,11 +920,55 @@ async function safeJson(r) {
   try { return await r.json(); } catch (e) { return { error: t('The server returned an unexpected response') }; }
 }
 
-/* нижня кнопка не дублює логіку, а веде до тієї самої форми */
-document.getElementById('ctaBtn').addEventListener('click', () => {
-  input.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  setTimeout(() => input.focus({ preventScroll: true }), 400);
-});
+/* ---------- недавні перевірки ----------
+   Той самий список, що в кабінеті, ті самі адреси звітів, нового сховища
+   і API нема. Лише для того, хто увійшов; без звітів блок не рендериться
+   зовсім, навіть заголовком. Три останні, від нових до старих. */
+function nf(n){ return Number(n).toLocaleString(window.calcarLocale()); }
+function timeAgo(iso){
+  const min = (Date.now() - new Date(iso).getTime()) / 60000;
+  if (min < 60) return t('Just now');
+  const h = Math.floor(min / 60);
+  if (h < 24) return h === 1 ? t('1 hour ago') : t('{n} hours ago').replace('{n}', h);
+  const d = Math.floor(h / 24);
+  if (d === 1) return t('Yesterday');
+  if (d < 7) return t('{n} days ago').replace('{n}', d);
+  return new Date(iso).toLocaleDateString(window.calcarLocale());
+}
+function renderRecentChecks(rows){
+  const box = document.getElementById('recent'), grid = document.getElementById('recentGrid');
+  if (!box || !grid || !Array.isArray(rows) || !rows.length) return;
+  grid.innerHTML = rows.slice(0, 3).map(r => {
+    const href = r.public_id ? '/check/' + r.public_id : '/result-check.html?id=' + r.id;
+    const sc = Number(r.score) || Number(r.legacy_score) || null;
+    /* ті самі пороги кольору, що в самому звіті */
+    const cls = sc === null ? '' : sc >= 7.5 ? 'ok' : sc >= 5.5 ? 'warn' : 'bad';
+    const meta = [];
+    if (r.odometer_km) meta.push(nf(r.odometer_km) + ' ' + t('km'));
+    meta.push(timeAgo(r.created_at));
+    return '<a class="rc" href="' + href + '">'
+      + '<span class="rc-body"><span class="rc-t">' + esc(r.title || t('Check')) + '</span>'
+      + '<span class="rc-m">' + esc(meta.join(' · ')) + '</span></span>'
+      + (sc === null ? '' : '<span class="rc-v"><span class="rc-score ' + cls + '">' + sc.toFixed(1) + '<small>/10</small></span></span>')
+      + '</a>';
+  }).join('');
+  box.classList.add('on');
+}
+window.calcarRenderRecent = renderRecentChecks;   /* smoke-перевірки рендерять блок без входу */
+(async function loadRecentChecks(){
+  if (!SB) return;
+  try {
+    const { data: s } = await SB.auth.getSession();
+    if (!s?.session) return;
+    const cols = 'id,created_at,title:data->vehicle->>title,odometer_km:data->_meta->>odometer_km,score:data->score_breakdown->>final,legacy_score:data->verdict->>score';
+    let { data: rows, error } = await SB.from('reports').select('public_id,' + cols)
+      .eq('kind', 'check').order('created_at', { ascending: false }).limit(3);
+    /* міграція public_id ще не виконана: працюємо без короткої адреси */
+    if (error) ({ data: rows, error } = await SB.from('reports').select(cols)
+      .eq('kind', 'check').order('created_at', { ascending: false }).limit(3));
+    if (!error) renderRecentChecks(rows);
+  } catch (e) { /* блок необовʼязковий: сторінка живе і без нього */ }
+})();
 
 btn.addEventListener('click', run);
 input.addEventListener('keydown', e => { if (e.key === 'Enter') run(); });
