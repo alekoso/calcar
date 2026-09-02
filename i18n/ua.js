@@ -715,4 +715,11 @@ window.CALCAR_DICTS.ua = {
   'Data as of': 'Дані на',
   'What we noticed in the photos': 'Що помітили на фото',
   'Car, logistics and customs': 'Авто, логістика і розмитнення',
+  'Damage assessment': 'Оцінка пошкоджень',
+  'Minor damage': 'Легкі пошкодження',
+  'Moderate damage': 'Помірні пошкодження',
+  'Serious damage': 'Серйозні пошкодження',
+  'Severe damage': 'Тяжкі пошкодження',
+  'Not enough data': 'Недостатньо даних',
+  'restoration confirmed': 'відновлення підтверджено',
 };

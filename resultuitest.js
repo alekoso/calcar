@@ -35,13 +35,13 @@ if (!/\.total-v\{font-size:36px/.test(I)) errs.push('фінальна сума �
 if (!/@media\(max-width:760px\)\{\n\s*\.est-head\{display:none\}/.test(I)) errs.push('мобільний брейкпоінт таблиць не 760px, як у Check');
 if (/@media\(max-width:720px\)/.test(I)) errs.push('лишився брейкпоінт 720px');
 /* 4. Import-логіка на місці: ідентифікатори, рядки таблиць, формули */
-for (const id of ['bid', 'usState', 'auctionFees', 'usDelivery', 'freight', 'port', 'duty', 'excise', 'vat', 'broker', 'uaFinal', 'partRows', 'workRows', 'maintRows', 'addPart', 'addWork', 'addMaint', 'partsTotal', 'worksTotal', 'maintTotal', 'logisticsTotal', 'grandTotal', 'noBidNote', 'safetyStrike', 'riskBadge', 'riskScore', 'flagsEl', 'dmgNote', 'zonesEl', 'issuesList', 'chipsEl', 'lotMeta', 'lotTitle', 'lotLink', 'titleChips', 'photosGrid', 'eqLegend', 'lotObs', 'lotObsText']) {
+for (const id of ['bid', 'usState', 'auctionFees', 'usDelivery', 'freight', 'port', 'duty', 'excise', 'vat', 'broker', 'uaFinal', 'partRows', 'workRows', 'maintRows', 'addPart', 'addWork', 'addMaint', 'partsTotal', 'worksTotal', 'maintTotal', 'logisticsTotal', 'grandTotal', 'noBidNote', 'safetyStrike', 'flagsEl', 'dmgNote', 'zonesEl', 'issuesList', 'chipsEl', 'lotMeta', 'dmgBadge', 'dmgScore', 'dmgLabel', 'lotTitle', 'lotLink', 'titleChips', 'photosGrid', 'eqLegend', 'lotObs', 'lotObsText']) {
   if (!imp.includes('id="' + id + '"')) errs.push('зник елемент #' + id);
 }
 for (const cls of ["className = 'est-row'", "'est-row simple'", 'class="toggle"', 'class="seg"', 'class="money"', 'class="del"', 'class="name-input"', 'class="conf sure"', 'class="prem-badge"']) {
   if (!imp.includes(cls)) errs.push('зник компонент кошторису ' + cls);
 }
-if (!/function computeRisk\(\)/.test(imp) || !/s \+= w\(F\.str\) \* 2\.0;/.test(imp)) errs.push('формула ризику змінена');
+if (!/function computeLegacyPurchaseRisk\(\)/.test(imp) || !/s \+= w\(F\.str\) \* 2\.0;/.test(imp)) errs.push('формула legacy-ризику змінена');
 if (!imp.includes('under_key_ua: repair + logistics')) errs.push('формула під ключ змінена');
 /* 5. подача картки авто, комплектації і слабких місць: паттерни Check */
 if (!/<div class="spec-rows" id="lotMeta">/.test(imp)) errs.push('метадані лота не в spec-rows');
@@ -51,7 +51,19 @@ if (imp.includes('id="specGrid"')) errs.push('двигун/коробка/при
 for (const k of ["t('Engine')", "t('Gearbox')", "t('Drivetrain')", "t('Trim')"]) if (!new RegExp('lotSpec\\.push\\(\\[' + k.replace(/[()]/g, '\\$&')).test(imp)) errs.push('у картці авто нема характеристики ' + k);
 for (const dead of ['id="lotBadge"', 'id="modeHint"', "t('read from photos')", "t('AI estimate')"]) if (imp.includes(dead)) errs.push('службова позначка лишилась у картці авто: ' + dead);
 if (!/id="lotObs"/.test(imp) || !/What we noticed in the photos/.test(imp)) errs.push('нема спостереження з фото');
-if (!/riskBadge'\)\.style\.display = 'none'/.test(imp)) errs.push('ризик покупки показується як оцінка пошкоджень');
+/* оцінка пошкоджень це спільна проекція accident-моделі, а не ризик покупки */
+if (!imp.includes('id="dmgBadge"') || !/renderDamageScore\(\)/.test(imp)) errs.push('нема бейджа оцінки пошкоджень');
+if (imp.includes('id="riskBadge"')) errs.push('бейдж ризику покупки повернувся в інтерфейс');
+{
+  const card = imp.slice(imp.indexOf('<h2>Damage analysis</h2>'), imp.indexOf('</div>', imp.indexOf('id="dmgBadge"')) + 6);
+  for (const bad of ['CalCar Score', 'Purchase risk', 'Risk:']) if (card.includes(bad)) errs.push('у картці пошкоджень заборонена назва: ' + bad);
+  /* у PDF legacy-ризик лишається свідомо, до окремого рішення */
+  if (!/t\('Purchase risk: '\)/.test(imp)) errs.push('legacy-ризик зник із PDF без окремого рішення');
+}
+if (!/function computeLegacyPurchaseRisk\(\)/.test(imp)) errs.push('legacy-риск не позначений як legacy');
+if (/\bfunction computeRisk\(\)/.test(imp)) errs.push('стара назва computeRisk лишилась як основна');
+if (!/DATA\.damage_score/.test(imp)) errs.push('бал пошкоджень не читається зі звіту');
+if (/10 *- *(rk|risk)/.test(imp)) errs.push('десь зʼявилась інверсія legacy-ризику');
 if (!/\.total-break\{margin-top:12px;padding-top:10px;border-top:1px solid #DCEFAE/.test(imp)) errs.push('розбивка підсумку не під головною сумою');
 if (imp.includes('.total-side')) errs.push('лишилась стара розбивка праворуч');
 if (!/class="issue"><div class="issue-t">/.test(imp)) errs.push('слабкі місця не компонентом Check');

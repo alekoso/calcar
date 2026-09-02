@@ -881,7 +881,7 @@
     <div class="card-head">
       <h2>Damage analysis</h2>
       <span class="badge blue" id="aiBadge">AI photo analysis</span>
-      <span class="risk-badge" id="riskBadge" style="display:none"><span class="dot ok" id="riskDot"></span>Risk: <b id="riskScore">–</b> <span class="risk-label" id="riskLabel"></span></span>
+      <span class="risk-badge" id="dmgBadge" style="display:none"><span class="dot ok" id="dmgDot"></span><span>Damage assessment</span> <b id="dmgScore">–</b> <span class="risk-label" id="dmgLabel"></span></span>
     </div>
     <div class="card-body">
       <div class="flags" id="flagsEl"></div>
@@ -1350,10 +1350,13 @@ function renderHeaderBlocks(){
 
 }
 
-/* ================= Ризик покупки: детермінована формула =================
-   Тільки цифра, без ярликів: бал рахується з фактів, однаковий лот
-   завжди дає однаковий бал. Причини людина бачить у прапорцях вище. */
-function computeRisk() {
+/* ============== LEGACY: ризик покупки (внутрішній) ==============
+   ЦЕ НЕ ОЦІНКА ПОШКОДЖЕНЬ. Крім пошкоджень сюди входять пробіг, ключі,
+   тайтл і кількість вірогідних позицій кошторису, тому інвертувати його в
+   Damage Score не можна. Лишається лише для сумісності: контекст чату,
+   знімок для порівняння звітів і PDF. Оцінку пошкоджень рахує спільний
+   api/damage-score.js, у користувацький інтерфейс іде тільки вона. */
+function computeLegacyPurchaseRisk() {
   const F = {};
   (DATA.flags || []).forEach(f => {
     const t = String(f.text || '');
@@ -1404,23 +1407,41 @@ function computeRisk() {
   const cls = score >= 6.5 ? 'bad' : score >= 4 ? 'warn' : 'ok';
   return { score, cls };
 }
-window.computeRisk = computeRisk;
+/* стара назва лишається для вже збережених звітів і зовнішніх викликів */
+window.computeRisk = computeLegacyPurchaseRisk;
+window.computeLegacyPurchaseRisk = computeLegacyPurchaseRisk;
 
-function computeAndRenderRisk() {
-  if (!(DATA.parts || []).length && !(DATA.flags || []).length) return;
-  if ((DATA.flags || []).length === 1 && DATA.flags[0].status === 'unknown') return; /* режим лише за VIN */
-  const rk = computeRisk();
-  /* бал ризику покупки внутрішній: їде в чат, знімок і PDF, але не показується як
-     оцінка пошкоджень, бо містить пробіг, ключі і тайтл. Заміна: окремий Damage Score */
-  document.getElementById('riskBadge').style.display = 'none';
-  document.getElementById('riskScore').textContent = rk.score.toFixed(1) + ' / 10';
-  document.getElementById('riskDot').className = 'dot ' + rk.cls;
-  const rl = document.getElementById('riskLabel');
-  const rkText = rk.score <= 3 ? t('Low') : rk.score <= 5 ? t('Moderate') : rk.score <= 7 ? t('Elevated') : t('High');
-  rl.textContent = rkText;
-  rl.style.background = rk.cls === 'ok' ? 'var(--green-soft)' : rk.cls === 'warn' ? 'var(--amber-soft)' : 'var(--red-soft)';
-  rl.style.color = rk.cls === 'ok' ? 'var(--green)' : rk.cls === 'warn' ? 'var(--amber)' : 'var(--red)';
+/* Оцінка пошкоджень: показуємо те, що порахував СПІЛЬНИЙ резолвер
+   (api/damage-score.js) поверх замороженої accident-моделі Check. Клієнт
+   нічого не рахує сам: своєї формули пошкоджень в Import немає.
+   Звіти, зроблені до появи бала, поля не мають: бейдж просто не показуємо. */
+function renderDamageScore() {
+  const d = DATA.damage_score;
+  if (!d || typeof d !== 'object') return;
+  const box = document.getElementById('dmgBadge');
+  const val = document.getElementById('dmgScore');
+  const lab = document.getElementById('dmgLabel');
+  const dot = document.getElementById('dmgDot');
+  box.style.display = '';
+  if (!d.score_available || typeof d.score !== 'number') {
+    val.textContent = '\u2014';
+    lab.textContent = t('Not enough data');
+    lab.style.background = 'var(--surface-2)';
+    lab.style.color = 'var(--muted)';
+    dot.className = 'dot unknown';
+    return;
+  }
+  val.textContent = d.score.toFixed(1) + ' / 10';
+  /* історично тяжка аварія тримає ярлик навіть за підтвердженого ремонту:
+     вищий бал це нижчий залишковий ризик, а не легша аварія */
+  const restored = d.restoration_confirmed && d.max_event_severity === 'severe';
+  lab.textContent = t(d.label_key) + (restored ? ' \u00b7 ' + t('restoration confirmed') : '');
+  const cls = d.label_key === 'Severe damage' ? 'bad' : d.label_key === 'Serious damage' ? 'warn' : 'ok';
+  dot.className = 'dot ' + cls;
+  lab.style.background = cls === 'ok' ? 'var(--green-soft)' : cls === 'warn' ? 'var(--amber-soft)' : 'var(--red-soft)';
+  lab.style.color = cls === 'ok' ? 'var(--green)' : cls === 'warn' ? 'var(--amber)' : 'var(--red)';
 }
+renderDamageScore();
 renderHeaderBlocks();
 
 /* ================= рендер рядків ================= */
@@ -1719,7 +1740,8 @@ if (US && US.log) {
   if (US.log.usState) document.getElementById('usState').value = US.log.usState;
 }
 recalc();
-computeAndRenderRisk();
+/* оцінка пошкоджень перемальовується разом із рештою звіту */
+renderDamageScore();
 
 /* ================= збереження правок у кабінет ================= */
 const REPORT_DB_ID = sessionStorage.getItem('calcarReportId') || null;
@@ -1746,7 +1768,8 @@ function scheduleSave() {
   merged._snapshot = {
     grand: typeof window.__lastGrand === 'number' ? Math.round(window.__lastGrand) : null,
     bid: Number(document.getElementById('bid')?.value) || 0,
-    risk: (() => { try { return computeRisk().score; } catch (e) { return null; } })(),
+    /* legacy_purchase_risk: ключ risk лишається незмінним, щоб не ламати вже збережені звіти */
+    risk: (() => { try { return computeLegacyPurchaseRisk().score; } catch (e) { return null; } })(),
     at: new Date().toISOString(),
   };
   try { sessionStorage.setItem('calcarResult', JSON.stringify(merged)); } catch(e){}
@@ -2021,7 +2044,7 @@ function generatePdf() {
     y += 6;
   }
 
-  const rkPdf = computeRisk();
+  const rkPdf = computeLegacyPurchaseRisk();
   dotLine(rkPdf.cls, t('Purchase risk: ') + rkPdf.score.toFixed(1) + ' / 10', '');
   const safetyOff = partRows.some(x => x.safety && !x.on);
   if (safetyOff) para(t('Airbags are excluded from the estimate. A car without restored airbags is unsafe.'), 8.5, COLORS.bad);
@@ -2084,7 +2107,8 @@ document.getElementById('printMeta').textContent =
       other_reports_of_this_user: Array.isArray(window.__otherReports) && window.__otherReports.length ? window.__otherReports : null,
       equipment_impact: DATA.equipment_impact || null,
       premium_options: (DATA.vehicle && DATA.vehicle.premium_options) || null,
-      risk_score: (DATA.parts || []).length ? computeRisk().score : null,
+      /* legacy purchase risk: чат уже знає цю шкалу, лишаємо як було */
+      risk_score: (DATA.parts || []).length ? computeLegacyPurchaseRisk().score : null,
       parts: on(partRows),
       works: on(workRows),
       maintenance: on(maintRows),

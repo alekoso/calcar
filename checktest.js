@@ -11,7 +11,13 @@ const errs = [];
 let composePromise = null;
 let hvLibShared = '';
 const page = fs.readFileSync('check.html', 'utf8');
-const api = fs.readFileSync('api/check.js', 'utf8');
+/* Промпт Check складається з власного тексту і спільного фрагмента візуальних
+   сигналів (api/visual-signals.js). Перевірки ПРИСУТНОСТІ правил дивляться на
+   обидва файли, перевірки ВІДСУТНОСТІ старого коду лише на сам check.js */
+const apiOnly = fs.readFileSync('api/check.js', 'utf8');
+const api = apiOnly + '\n' + fs.readFileSync('api/visual-signals.js', 'utf8');
+  /* резолвер глибини живе у спільному модулі візуальних сигналів */
+  const vis = fs.readFileSync('api/visual-signals.js', 'utf8');
 
 /* 1. нормалізація: копія в check.html посимвольно рівна api/check.js */
 const grab = (src, name) => {
@@ -176,8 +182,8 @@ const REPORTS = [
       const h = pick(24, 12);
       if (h.length !== 12 || h[0] !== 0 || h[h.length - 1] !== 23) errs.push('high-слоти не рівномірні: ' + JSON.stringify(h));
     }
-    if (api.includes('listing.photos.slice(0, 24)')) errs.push('лишився slice(0,24) для Vision');
-    if (api.includes("i < 12 ? 'high'")) errs.push('high досі дістається першим 12 підряд');
+    if (apiOnly.includes('listing.photos.slice(0, 24)')) errs.push('лишився slice(0,24) для Vision');
+    if (apiOnly.includes("i < 12 ? 'high'")) errs.push('high досі дістається першим 12 підряд');
     if (!api.includes('photo_selection: { total:')) errs.push('нема аудиту вибірки в _meta');
   }
 
@@ -208,7 +214,7 @@ const REPORTS = [
     if (!api.includes("mode: 'even_fallback'")) errs.push('нема рівномірного fallback');
     if (!api.includes('gallery_coverage_complete: galleryCoverageComplete')) errs.push('нема прапорця покриття галереї в _meta');
     if (!api.includes('ЗАБОРОНЕНО стверджувати, що якась зона')) errs.push('нема заборони "не показано" при частковому покритті');
-    if (api.includes('Це ПОВНИЙ набір фото цього авто')) errs.push('промпт бреше про повний набір безумовно');
+    if (apiOnly.includes('Це ПОВНИЙ набір фото цього авто')) errs.push('промпт бреше про повний набір безумовно');
     if (!api.includes('photos.slice(0, 120)')) errs.push('кап екстракції фото не піднятий');
     /* перейменування оцінки */
     const pgS = fs.readFileSync('result-check.html', 'utf8');
@@ -393,7 +399,7 @@ const REPORTS = [
     if (!api.includes('ЗАБОРОНЕНО ставити retrofit лише тому')) errs.push('check.js: нема заборони retrofit за незвичністю');
     if (!api.includes('Заводські опціональні пакети існують (M Sport на BMW 530e')) errs.push('check.js: нема правила про заводські пакети');
     if (!api.includes('vehicle-specific доказом ПІЗНІШОЇ установки')) errs.push('check.js: retrofit без вимоги прямого доказу');
-    if (api.includes('однозначна несумісність елемента із заводською конфігурацією')) errs.push('check.js: стара "несумісність" лишилась підставою retrofit');
+    if (apiOnly.includes('однозначна несумісність елемента із заводською конфігурацією')) errs.push('check.js: стара "несумісність" лишилась підставою retrofit');
     if (!api.includes('НАЗВА НЕ ШИРША ЗА ДОКАЗ')) errs.push('check.js: нема правила назви за доказом');
     if (!api.includes('НЕ "преміальна аудіосистема Bowers & Wilkins"')) errs.push('check.js: нема прикладу вузької назви B&W');
     {
@@ -496,7 +502,7 @@ const REPORTS = [
     if (pg4.includes("t('Цінна опція')")) errs.push('старий tooltip лишився');
     /* без першої особи */
     if (!api.includes('БЕЗ ПЕРШОЇ ОСОБИ')) errs.push('нема заборони першої особи в рішенні');
-    if (api.includes('прямо "я б шукав інше авто"')) errs.push('ТОН досі диктує першу особу');
+    if (apiOnly.includes('прямо "я б шукав інше авто"')) errs.push('ТОН досі диктує першу особу');
     if (!api.includes('їхнє "я бы" не переймай')) errs.push('few-shot граматика не відсічена');
     if (!fs.readFileSync('api/chat.js', 'utf8').includes('БЕЗ ПЕРШОЇ ОСОБИ')) errs.push('чат без правила першої особи');
     /* timeline: одна вісь для будь-якої точності дати */
@@ -553,19 +559,19 @@ const REPORTS = [
     if (!api.includes("auction_photos_provenance")) errs.push('check.js: нема провенансу фото в _meta');
     if (!api.includes('auction.photos_sent')) errs.push('check.js: промпт бреше про кількість переданих кадрів');
     /* historical_visual: схема, семантика, санітизація, порядок до decision */
-    if (!api.includes('"historical_visual":')) errs.push('check.js: схема без historical_visual');
-    if (!api.includes('НІКОЛИ не дорівнює "структура ціла"')) errs.push('check.js: нема семантики no_obvious_severe_signs');
-    if (!api.includes('НЕ "SRS справна"')) errs.push('check.js: нема семантики no_deployment_visible');
+    if (!api.includes('"historical_visual":')) errs.push('промпт без схеми historical_visual');
+    if (!api.includes('НІКОЛИ не дорівнює "структура ціла"')) errs.push('нема семантики no_obvious_severe_signs');
+    if (!api.includes('НЕ "SRS справна"')) errs.push('нема семантики no_deployment_visible');
     if (!api.includes('purchase_decision ЗОБОВʼЯЗАНИЙ враховувати historical_visual')) errs.push('check.js: decision не бачить historical_visual');
     const sanHv = grab(api, 'sanitizeHistoricalVisual');
     if (!sanHv) errs.push('нема sanitizeHistoricalVisual');
     else {
-      const depthSrc = grab(api, 'resolveDamageDepth');
+      const depthSrc = grab(vis, 'resolveDamageDepth');
       const DEPTH_CONSTS = "const DAMAGE_DEPTH_LEVELS = ['indeterminate','exterior_panels_only','inner_structure_or_module','load_bearing_structure','cabin_intrusion'];"
         + "const INNER_EXTENT_LEVELS = ['none','localized','substantial','indeterminate'];"
         + "const FASCIA_STATUSES = ['intact_mounted','damaged_but_mounted','detached_or_missing','not_visible'];"
         + "const OUTER_EXTENT_LEVELS = ['none','single_panel','multiple_panels','indeterminate'];"
-        + (grab(api, 'innerDeformationState') || '').replace(/export /g, '');
+        + (grab(vis, 'innerDeformationState') || '').replace(/export /g, '');
       hvLibShared = DEPTH_CONSTS + (depthSrc || '').replace(/export /g, '') + '\n' + sanHv;
       const sh = new Function(hvLibShared + '\nreturn sanitizeHistoricalVisual;')();
       /* без переданих кадрів поле не існує */
@@ -583,13 +589,13 @@ const REPORTS = [
       if (lb.damage_depth !== 'load_bearing_structure') errs.push('обґрунтована глибина знижена помилково');
     }
     /* ---- глибина пошкодження: код валідує заявлений рівень ---- */
-    const depthFn = grab(api, 'resolveDamageDepth');
+    const depthFn = grab(vis, 'resolveDamageDepth');
     if (!depthFn) errs.push('нема resolveDamageDepth');
     else {
       const lvl = "const DAMAGE_DEPTH_LEVELS = ['indeterminate','exterior_panels_only','inner_structure_or_module','load_bearing_structure','cabin_intrusion'];"
         + "const INNER_EXTENT_LEVELS = ['none','localized','substantial','indeterminate'];"
         + "const FASCIA_STATUSES = ['intact_mounted','damaged_but_mounted','detached_or_missing','not_visible'];"
-        + (grab(api, 'innerDeformationState') || '').replace(/export /g, '');
+        + (grab(vis, 'innerDeformationState') || '').replace(/export /g, '');
       const rd = new Function(lvl + depthFn.replace(/export /g, '') + '\nreturn resolveDamageDepth;')();
       /* заявлений рівень НЕ може бути вищим за обґрунтований спостереженнями */
       let r = rd({ damage_depth: 'load_bearing_structure', fascia_status: 'detached_or_missing', inner_components_exposed: true, inner_component_deformation_visible: true, inner_component_damage_extent: 'substantial' });
@@ -660,8 +666,8 @@ const REPORTS = [
     }
     /* severity-корекція 2026-09-01: нове hv-поле і його семантика в промпті,
        версія кеша ОБОВʼЯЗКОВО піднята (старий кеш без поля stale, не false) */
-    if (!api.includes('load_bearing_structure_deformation_visible (видима деформація САМЕ НЕСУЧИХ/СИЛОВИХ частин')) errs.push('check.js: нема визначення load_bearing у промпті');
-    if (!api.includes('"load_bearing_structure_deformation_visible":false')) errs.push('check.js: схема hv без нового поля');
+    if (!api.includes('load_bearing_structure_deformation_visible (видима деформація САМЕ НЕСУЧИХ/СИЛОВИХ частин')) errs.push('нема визначення load_bearing у промпті');
+    if (!api.includes('"load_bearing_structure_deformation_visible":false')) errs.push('схема hv без нового поля');
     /* глибина: окреме поняття, обсяг внутрішньої зони, заборона "розібрано" */
     if (!api.includes('ГЛИБИНА ПОШКОДЖЕННЯ (damage_depth) це ОКРЕМЕ поняття')) errs.push('check.js: нема визначення damage_depth у промпті');
     if (!api.includes('ОБСЯГ УШКОДЖЕННЯ ВНУТРІШНЬОЇ ЗОНИ (inner_component_damage_extent)')) errs.push('check.js: нема визначення обсягу внутрішнього ушкодження');
@@ -799,7 +805,7 @@ const REPORTS = [
   if (!/skipSerper: true/.test(api)) errs.push('cache-hit повтор не пропускає Serper');
   /* позитивний доказ головніший за відсутність у джерелі: generic-правило */
   if (!/ПОЗИТИВНИЙ ДОКАЗ ГОЛОВНІШИЙ ЗА ВІДСУТНІСТЬ У ДЖЕРЕЛІ/.test(api)) errs.push('нема правила позитивного доказу');
-  if (/hardcode.*AUTO\.RIA.*ДТП не зареєстровано/.test(api)) errs.push('правило захардкожене під RIA');
+  if (/hardcode.*AUTO\.RIA.*ДТП не зареєстровано/.test(apiOnly)) errs.push('правило захардкожене під RIA');
   /* negative-кеш: читання auction_checks і файл міграції для власника */
   if (!/auction_checks\?vin=eq\./.test(api)) errs.push('negative-кеш не читається');
   if (!/c\.status === 'found' && c\.lot_url/.test(api)) errs.push('found-кеш без канонічного lot_id не читається з auction_checks');
@@ -809,7 +815,7 @@ const REPORTS = [
 /* ---- історичні фото як байти + кеш historical_visual ---- */
 {
   /* фото більше НЕ викидаються: захищені йдуть через серверний транспорт */
-  if (/visionLoadable/.test(api)) errs.push('старий фільтр visionLoadable, що викидав захищені кадри, лишився');
+  if (/visionLoadable/.test(apiOnly)) errs.push('старий фільтр visionLoadable, що викидав захищені кадри, лишився');
   if (!/fetchHistoricalPhotos/.test(api)) errs.push('транспорт історичних кадрів не підключений');
   if (!/base64/.test(api)) errs.push('кадри не передаються Vision байтами');
   if (!/photoOriginByData/.test(api)) errs.push('нема мапи data-URI -> вихідний URL (у _meta полізе base64)');
@@ -877,7 +883,7 @@ const REPORTS = [
   /* безкоштовна галерея лота йде у Vision повністю: проріджування
      викидало саме кадр салону з розкритою подушкою */
   if (!/AUCTION_VISION_MAX = 8/.test(api)) errs.push('ліміт кадрів лота не піднятий до повної галереї');
-  if (/pickEvenIndexes\(directCandidates/.test(api)) errs.push('проріджування безкоштовної галереї лишилось');
+  if (/pickEvenIndexes\(directCandidates/.test(apiOnly)) errs.push('проріджування безкоштовної галереї лишилось');
 }
 
 if (composePromise) await composePromise;

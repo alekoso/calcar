@@ -768,7 +768,7 @@ const THIN = {
   /* Vision structural gate: строгі правила в промпті + страхувальний хід */
   if (!/STRONG structural evidence/.test(checkSrc)) errs.push('check.js: нема gate STRONG structural evidence у промпті');
   if (!/possible_structural_damage/.test(checkSrc)) errs.push('check.js: нема сигналу possible_structural_damage');
-  if (!/"сильно пошкоджений поріг"/.test(checkSrc)) errs.push('check.js: нема явного прикладу недостатнього evidence (поріг)');
+  if (!/"сильно пошкоджений поріг"/.test(checkSrc + fs.readFileSync('api/visual-signals.js', 'utf8'))) errs.push('нема явного прикладу недостатнього evidence (поріг)');
   if (!/Потенційно структурна зона удару/.test(checkSrc)) errs.push('check.js: нема детермінованого fallback-ризику possible structural');
   if (!/possible_structural_damage: hv\.possible_structural_damage === true && hv\.structural_visual_status !== 'visible_damage'/.test(checkSrc)) errs.push('check.js: sanitize не гейтить possible проти visible_damage');
   for (const key of ['Condition from photos']) {

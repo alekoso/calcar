@@ -1,4 +1,6 @@
 import { resolveLocale, languageDirective, errText } from './locale.js';
+import { HISTORICAL_VISUAL_RULES, HISTORICAL_VISUAL_SCHEMA } from './visual-signals.js';
+import { computeDamageScore } from './damage-score.js';
 export const config = { maxDuration: 300 };
 
 const PROMPT = (vin, nhtsa, damage, lot, langDirective) => `Ти експертна система calcar, яка оцінює пошкоджені авто з американських страхових аукціонів (Copart/IAAI) для пригону в Україну.
@@ -74,6 +76,8 @@ ${JSON.stringify({
 - БЕЗ цін: це довідковий блок, не кошторис.
 - Якщо по цій версії нічого певного не знаєш, повертай порожній масив. Вигадувати чи писати загальні фрази ("можливий знос підвіски") заборонено.
 
+${HISTORICAL_VISUAL_RULES}
+
 Відповідай ЛИШЕ валідним JSON без markdown, без пояснень, точно за схемою:
 {
  "vehicle": {"title":"Марка Модель Рік","year":2024,"fuel":"petrol|diesel|hybrid|electric","displacement_l":2.5,"engine":"2.5 л бензин, назва двигуна","transmission":"Автомат, 8 ст.","drive":"Повний AWD","trim":"осмислений рівень комплектації (M Sport, xLine, Premium) або null. НІКОЛИ не бери літери з назви моделі: 'i' з '540i' це НЕ trim. Якщо версія позначається однією-двома літерами, пиши разом із моделлю: 'Macan S', а не просто 'S'","equipment":["опція 1","опція 2"],"premium_options":["опція 1"],"mileage_note":"пробіг ОДНИМ рядком: число з даних лота в милях і км, без повторів. Показання з фото одометра згадуй ЛИШЕ якщо вони суттєво (понад ~5%) відрізняються від заявлених, тоді вкажи розбіжність прямо. Статус одометра згадуй лише якщо він НЕ ACTUAL: коротко, наприклад: одометр NOT ACTUAL, пробіг не підтверджений"},
@@ -81,6 +85,7 @@ ${JSON.stringify({
  "vin_detected":"VIN з наліпки/шильдика на фото, якщо читається, інакше null",
  "flags":[{"status":"ok|warn|bad|unknown","text":"Подушки безпеки: коротко"},{"status":"...","text":"Силова структура: коротко"},{"status":"...","text":"Затоплення: коротко"},{"status":"...","text":"Приховані ризики: коротко"}],
  "zones":[{"zone":"Кермо","status":"ok|warn|bad|unknown","note":"1 коротке речення"},{"zone":"Колінна зона водія","status":"...","note":"..."},{"zone":"Торпедо пасажира","status":"...","note":"..."},{"zone":"Стеля та стійки","status":"...","note":"..."},{"zone":"Сидіння та ремені","status":"...","note":"..."},{"zone":"Підлога і салон","status":"...","note":"..."},{"zone":"Моторний відсік","status":"...","note":"..."},{"zone":"Силова структура","status":"...","note":"..."}],
+${HISTORICAL_VISUAL_SCHEMA}
  "damage_note":"2-3 речення: характер удару, що збігається/не збігається з заявленим, що неможливо оцінити по фото",
  "parts":[{"name":"Бампер передній","sub":"Під фарбування","conf":"sure|likely","cat":"orig|alt|used","premium":false,"prices":{"orig":null,"alt":210,"used":160}}],
  "works":[{"name":"Рихтування, фарбування, збірка","sub":"Орієнтир для України","price":850}],
@@ -345,6 +350,44 @@ export default async function handler(req, res) {
       photos: (lot?.images || []).slice(0, 12).map(i => i.url),
       analyzed_at: new Date().toISOString(),
     };
+
+    /* Damage Score: спільна проекція accident-моделі Check. Своєї формули
+       пошкоджень в Import немає, рахує api/damage-score.js тими самими
+       функціями і вагами. Бал зберігається у звіті разом із покриттям. */
+    try {
+      const hv = parsed.historical_visual && typeof parsed.historical_visual === 'object' ? parsed.historical_visual : null;
+      const m = parsed._meta;
+      const airbagsDeployed = /deploy/i.test(String(m.airbags || ''));
+      const dmgText = String(m.damage || '');
+      const flood = /water|flood/i.test(dmgText);
+      const fire = /burn/i.test(dmgText);
+      const evidence = src => [{ source: 'us_auction', ref: 'auction_metadata', description: 'дані лота: ' + dmgText.slice(0, 120) }];
+      const findings = [];
+      if (flood) findings.push({ type: 'FLOOD', event_id: 'lot_damage', evidence: evidence() });
+      if (fire) findings.push({ type: 'FIRE', event_id: 'lot_damage', evidence: evidence() });
+      parsed.damage_score = computeDamageScore({
+        findings,
+        auctionMeta: {
+          lot_id: m.lot_number || null,
+          house: null,
+          sale_date: m.sale_date || null,
+          primary_damage: m.damage || null,
+          secondary_damage: null,
+          airbags: { deployed: airbagsDeployed },
+        },
+        hv,
+        coverage: {
+          photos_analyzed: content.length - 1,
+          auction_damage_known: !!m.damage,
+          airbags_deployed_confirmed: airbagsDeployed,
+          flood_confirmed: flood,
+          fire_confirmed: fire,
+        },
+      });
+    } catch (e) {
+      /* бал не критичний для прорахунку: звіт віддається без нього */
+      console.log('[analyze] damage score skipped:', e.message);
+    }
     return res.status(200).json(parsed);
   } catch (e) {
     if (e.name === 'AbortError') {

@@ -9,7 +9,7 @@ const errs = [];
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'calcar_dec_'));
 fs.mkdirSync(path.join(dir, 'api'));
 fs.writeFileSync(path.join(dir, 'package.json'), '{"type":"module"}');
-for (const x of ['check.js', 'score.js', 'score-v3.js', 'auction.js', 'locale.js']) {
+for (const x of ['check.js', 'score.js', 'score-v3.js', 'auction.js', 'locale.js', 'visual-signals.js']) {
   fs.writeFileSync(path.join(dir, 'api', x), fs.readFileSync('api/' + x, 'utf8'));
 }
 

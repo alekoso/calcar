@@ -715,4 +715,11 @@ window.CALCAR_DICTS.ru = {
   'Data as of': 'Данные на',
   'What we noticed in the photos': 'Что заметили на фото',
   'Car, logistics and customs': 'Авто, логистика и растаможка',
+  'Damage assessment': 'Оценка повреждений',
+  'Minor damage': 'Лёгкие повреждения',
+  'Moderate damage': 'Умеренные повреждения',
+  'Serious damage': 'Серьёзные повреждения',
+  'Severe damage': 'Тяжёлые повреждения',
+  'Not enough data': 'Недостаточно данных',
+  'restoration confirmed': 'восстановление подтверждено',
 };
