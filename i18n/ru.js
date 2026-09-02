@@ -17,7 +17,6 @@ window.CALCAR_DICTS.ru = {
   '3–12 photos: body from all sides, impact area, interior, steering wheel, headliner': '3–12 фото: кузов со всех сторон, зона удара, салон, руль, потолок',
   'VIN, 17 characters': 'VIN, 17 символов',
   'Warehouse state': 'Штат склада',
-  'First 3 estimates are free': '3 первых расчета бесплатно',
   'Paste a Copart or IAAI lot link or upload photos manually': 'Вставь ссылку на лот Copart или IAAI или загрузи фото вручную',
   'Build sheet by VIN': 'Комплектация по VIN',
   'Mileage-based maintenance': 'Обслуживание по пробегу',

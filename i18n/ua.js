@@ -17,7 +17,6 @@ window.CALCAR_DICTS.ua = {
   '3–12 photos: body from all sides, impact area, interior, steering wheel, headliner': '3–12 фото: кузов з усіх боків, зона удару, салон, кермо, стеля',
   'VIN, 17 characters': 'VIN, 17 символів',
   'Warehouse state': 'Штат складу',
-  'First 3 estimates are free': '3 перші прорахунки безкоштовно',
   'Paste a Copart or IAAI lot link or upload photos manually': 'Встав посилання на лот Copart чи IAAI або завантаж фото вручну',
   'Build sheet by VIN': 'Комплектація за VIN',
   'Mileage-based maintenance': 'Обслуговування за пробігом',
