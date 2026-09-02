@@ -19,7 +19,6 @@ for (const [f, s] of Object.entries(PAGES)) {
   const form = s.slice(s.indexOf('<div class="hero-form">'), s.indexOf('id="recent"'));
   if ((form.match(/<button class="btn-primary"/g) || []).length !== 1) errs.push(f + ': у формі не одна головна кнопка');
   if (!/\.hero p\.sub\{[^}]*font-weight:500/.test(s)) errs.push(f + ': підзаголовок без font-weight:500');
-  if (!/\.beta\{[^}]*font-weight:600/.test(s)) errs.push(f + ': beta без font-weight:600');
   /* 3. недавня активність: за замовчуванням схована, вмикається лише класом */
   if (!/\.recent\{[^}]*display:none/.test(s) || !s.includes('.recent.on{display:block}')) errs.push(f + ': блок недавніх не схований за замовчуванням');
   if (!s.includes('id="recent"') || !s.includes('id="recentGrid"')) errs.push(f + ': нема розмітки недавніх');
@@ -40,7 +39,23 @@ for (const [f, s] of Object.entries(PAGES)) {
   /* 5. рівно три картки продукту */
   if ((body.match(/<div class="feat">/g) || []).length !== 3) errs.push(f + ': карток продукту не три');
   /* 6. "beta" в шапці лишилась, лаунчер лишився */
-  if (!s.includes('<div class="beta">beta</div>') || !s.includes('id="lncBtn"')) errs.push(f + ': шапка змінилась');
+  if (/class="beta"/.test(s) || !s.includes('id="lncBtn"') || !/<span class="prod" data-prod="(Check|Import)"/.test(s)) errs.push(f + ': шапка змінилась');
+  /* без справжніх звітів блок показує приклади: статичні demo-авто, без переходу,
+     без дат, без БД. Перший справжній звіт їх замінює */
+  const ex = f === 'check.html' ? 'renderExampleChecks' : 'renderExampleEstimates';
+  if (!new RegExp('function ' + ex + '\\(\\)').test(s)) errs.push(f + ': нема прикладів для нового користувача');
+  if (!new RegExp('if \\(Array\\.isArray\\(rows\\) && rows\\.length\\) renderRecent\\w+\\(rows\\); else ' + ex + '\\(\\);').test(s)) errs.push(f + ': приклади не замінюються справжніми звітами');
+  /* тіло функції прикладів вирізається за балансом дужок: в Import вона живе всередині IIFE */
+  const demoBlock = (() => { const st = s.indexOf('function ' + ex + '(){'); if (st < 0) return ''; let i = s.indexOf('{', st), d = 0; for (; i < s.length; i++) { if (s[i] === '{') d++; else if (s[i] === '}' && --d === 0) break; } return s.slice(st, i + 1); })();
+  if (/href=|created_at|timeAgo\(/.test(demoBlock)) errs.push(f + ': demo-картки клікаються або мають дати');
+  if (!/rc-demo/.test(demoBlock) || !/from\('reports'\)/.test(s.slice(s.indexOf('function loadRecent')))) errs.push(f + ': demo-картки без позначки або справжній запит зник');
+  for (const m of s.match(/\/demo\/[a-z0-9-]+\.svg/g) || []) if (!fs.existsSync(m.slice(1))) errs.push(f + ': нема статичного demo-фото ' + m);
+  if (!/<img class="ex-photo" src="\/demo\//.test(s)) errs.push(f + ': у прикладі результату нема demo-фото');
+  if (!/\.ex-ic\.ok\{background:var\(--brand\)\}/.test(s) || !/\.ex-ic\.warn\{background:var\(--amber-soft\)/.test(s)) errs.push(f + ': статус-іконки не в системі лайм/amber/нейтральний');
+  if (/\.ex-ic\.ok\{background:var\(--green-soft\)/.test(s)) errs.push(f + ': позитивний статус знову generic green');
+  /* футер мінімальний: лише копірайт, без другого логотипа і beta */
+  const foot = (s.match(/<footer>[\s\S]*?<\/footer>/) || [''])[0];
+  if (!/© 2026 CalCar<\/span>/.test(foot) || /class="logo"|beta|calcar\.io/.test(foot)) errs.push(f + ': футер не мінімальний');
 }
 
 /* 7. Check: у прикладі пʼять категорій; Import: цифри прикладу сходяться в підсумок */

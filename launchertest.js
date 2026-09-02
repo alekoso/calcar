@@ -52,7 +52,7 @@ for (const f of PAGES) {
   if ((s.match(/class="lnc-item"/g) || []).length !== 2) errs.push('у лаунчері не два продукти: ' + f);
 
   /* 5. на телефоні звільняємо місце чипом beta, інакше шапка стає дворядковою */
-  if (!/@media\(max-width:620px\)\{[\s\S]{0,600}header \.beta\{display:none\}/.test(s)) errs.push('нема мобільного правила header .beta: ' + f);
+  if (!/@media\(max-width:620px\)\{[\s\S]{0,600}header \.prod\{display:none\}/.test(s)) errs.push('нема мобільного правила header .prod: ' + f);
 
   /* 5а. логотип не має зсуватися: на широкому екрані кнопка виходить із потоку
      у поле поруч із контейнером. Зсув -30px це не магічне число, а
@@ -191,5 +191,5 @@ for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
 for (const k of KEYS) if (!src['check.html'].includes(k)) errs.push('рядок "' + k + '" зник зі сторінки, словники тепер мимо');
 
 if (errs.length) { console.log('FAILED:', errs); process.exit(1); }
-console.log('лаунчер: 4 блоки однакові на 6 сторінках · панель поза шапкою · Import -> /import · 11 маршрутів дають правильний поточний продукт · beta ховається на телефоні · словники повні');
+console.log('лаунчер: 4 блоки однакові на 6 сторінках · панель поза шапкою · Import -> /import · 11 маршрутів дають правильний поточний продукт · назва продукту ховається на телефоні · словники повні');
 console.log('LAUNCHER TEST PASSED');

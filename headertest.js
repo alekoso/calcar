@@ -7,13 +7,25 @@ const vm = require('vm');
 const errs = [];
 const PAGES = ['check.html', 'import.html', 'result.html', 'result-check.html', 'cabinet.html', 'garage.html'];
 const S = Object.fromEntries(PAGES.map(p => [p, fs.readFileSync(p, 'utf8')]));
-const BETA = '.beta{font-size:11px;font-weight:600;background:var(--surface-2);color:var(--muted);padding:2px 8px;border-radius:20px;letter-spacing:.4px}';
+const PROD_CSS = '.prod{font-size:14px;font-weight:600;font-style:italic;color:var(--ink-2);letter-spacing:.01em;line-height:1}';
+const PROD = { 'check.html': 'Check', 'result-check.html': 'Check', 'import.html': 'Import', 'result.html': 'Import' };
+const MENU = ['/cabinet.html#reports', '/garage', '/cabinet.html#memory', '/cabinet.html#account'];
 const ICON = '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/>';
 const blocks = new Map();
 for (const p of PAGES) {
   const s = S[p];
-  if (!s.includes(BETA)) errs.push(p + ': beta не пігулка (нема спільного правила .beta)');
-  if ((s.match(/<div class="beta">beta<\/div>/g) || []).length !== 1) errs.push(p + ': нема beta у шапці');
+  /* beta зникла зі всіх сторінок; біля логотипа назва продукту з data-атрибута,
+     щоб локалізація її не перекладала; кабінет і гараж без назви продукту */
+  if (/class="beta"/.test(s) || /\bbeta\b/.test(s.replace(/<script[\s\S]*?<\/script>/g, '').replace(/<style[\s\S]*?<\/style>/g, '').replace(/<[^>]+>/g, ''))) errs.push(p + ': beta лишилась у розмітці');
+  if (!s.includes(PROD_CSS) || !s.includes('.prod::after{content:attr(data-prod)}')) errs.push(p + ': нема правила назви продукту');
+  const lab = (s.match(/<span class="prod" data-prod="([^"]+)"/g) || []).map(x => x.replace(/.*data-prod="([^"]+)".*/, '$1'));
+  if (PROD[p] ? (lab.length !== 1 || lab[0] !== PROD[p]) : lab.length) errs.push(p + ': назва продукту в шапці: ' + (lab.join(',') || 'нема') + ', очікували ' + (PROD[p] || 'нічого'));
+  /* меню кабінету: Звіти, Гараж, Памʼять, Налаштування, кожен пункт з іконкою */
+  const menu = (s.match(/<div class="acc-menu">[\s\S]*?<\/div>/) || [''])[0];
+  const hrefs = (menu.match(/<a href="([^"]+)"/g) || []).map(x => x.replace(/<a href="([^"]+)"/, '$1'));
+  if (hrefs.join('|') !== MENU.join('|')) errs.push(p + ': порядок меню: ' + hrefs.join(', '));
+  if ((menu.match(/<svg /g) || []).length !== 4) errs.push(p + ': у меню не чотири іконки');
+  if (!/\.acc-menu a svg\{width:16px;height:16px/.test(s)) errs.push(p + ': іконки меню без правила розміру');
   if (s.split(ICON).length - 1 !== 1) errs.push(p + ': іконка кнопки кабінету інша');
   if (!s.includes('.acc-wrap:hover .acc-menu,.acc-wrap:focus-within .acc-menu{display:block}')) errs.push(p + ': меню кабінету не відкривається наведенням/фокусом');
   if (!s.includes('.acc-wrap.open .acc-menu{display:block}')) errs.push(p + ': нема правила для тача (.acc-wrap.open)');
@@ -58,5 +70,5 @@ if (!touch.open) errs.push('тач: тап не відкриває меню');
 }
 
 if (errs.length) { console.log('FAILED:', errs); process.exit(1); }
-console.log('шапка: beta-пігулка і іконка однакові на 6 сторінках · блок меню побайтово один · клік по Кабінет нікуди не веде · тач відкриває, тап поза закриває');
+console.log('шапка: без beta, назва продукту і іконка однакові на 6 сторінках · меню Звіти/Гараж/Памʼять/Налаштування з іконками · блок меню побайтово один · клік по Кабінет нікуди не веде · тач відкриває, тап поза закриває');
 console.log('HEADER TEST PASSED');
