@@ -444,6 +444,8 @@
   header{view-transition-name:site-header}
   footer{view-transition-name:site-footer}
 </style>
+<!-- спільний інтерфейс контексту сторінки для помічника CalCar -->
+<script src="/context.js"></script>
 </head>
 <body>
 <header>
@@ -1036,5 +1038,13 @@ document.addEventListener('click', function (e) {
   window.addEventListener('scroll', function () { if (open) place(); }, { passive: true });
 })();
 </script>
+<script>
+/* Кабінет: конкретного авто нема, лише розділ, який людина відкрила. */
+if (window.CalCarContext) window.CalCarContext.register(function () {
+  return { page_type: 'cabinet', section: (location.hash || '#reports').slice(1) };
+});
+</script>
+<!-- спільний чат CalCar: монтується лише там, де свого чату в сторінки нема -->
+<script src="/chat.js"></script>
 </body>
 </html>

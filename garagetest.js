@@ -89,16 +89,34 @@ const { execSync } = require('child_process');
 const diff = execSync('git status --porcelain config.js').toString().trim();
 if (diff) errs.push('config.js змінено! ' + diff);
 
-/* 8. Garage як продукт: стрічка спільноти + мій гараж, без бекенду публікацій */
+/* 8. Garage як продукт: головна навігація, центрована стрічка, мій гараж */
 ['garageHome','paneFeed','paneGarage','feedSearch','feedQuery','feed','feedList','feedEmpty','feedError']
   .forEach(id => { if (!g.includes('id="'+id+'"')) errs.push('нема елемента стрічки #'+id); });
 if (!/class="g-tab on"[^>]*data-tab="feed"/.test(g)) errs.push('стрічка не відкрита за замовчуванням');
-if (!g.includes('<div class="sub">Car owners community</div>')) errs.push('інтро гаража не "Car owners community"');
+if (!/<div class="g-seg" role="tablist"/.test(g)) errs.push('нема сегментованого перемикача продукту');
+if ((g.match(/class="g-tab/g) || []).length !== 2) errs.push('у головній навігації не два розділи');
+if (!/\.g-seg\{[^}]*grid-template-columns:1fr 1fr/.test(g)) errs.push('розділи навігації не рівної ширини');
+if (!/\.g-nav\{position:sticky;top:var\(--hdr-h\)/.test(g)) errs.push('навігація не липне під шапкою');
+if (!/--hdr-h:56px/.test(g)) errs.push('нема токена висоти шапки');
+/* стара конструкція: великий заголовок і підзаголовок окремим hero */
+if (/<h1>Garage<\/h1>/.test(g)) errs.push('повернувся hero-заголовок Гаража');
+if (/<div class="sub">Car owners community<\/div>/.test(g)) errs.push('підзаголовок знову займає окремий hero');
+/* стрічка по центру, а не притиснута ліворуч */
+if (!/\.feed-shell\{display:grid;grid-template-columns:minmax\(0,780px\);justify-content:center\}/.test(g)) errs.push('стрічка не центрована');
+if (/\.feed-col\{max-width:760px\}/.test(g)) errs.push('стрічка знову притиснута ліворуч');
 if (!/id="listView"[\s\S]*?<h2 class="g-h2">My cars<\/h2>\s*<div class="sub">Your cars and their history<\/div>/.test(g)) errs.push('"Мій гараж" без заголовка "My cars / Your cars and their history"');
 if (!g.includes('href="/garage#garage">← My garage')) errs.push('повернення зі сторінки авто веде не в "Мій гараж"');
 if (!g.includes('placeholder="Search cars, problems, repairs or owner experiences"')) errs.push('нема пошуку по стрічці');
 if (!g.includes('data-feed="for-you"') || !g.includes('data-feed="following"')) errs.push('нема навігації стрічки Для тебе / Підписки');
+/* другорядні фільтри мусять лишатися слабшими за головний перемикач */
+if (/\.feed-nav-btn\.on\{background:var\(--ink\)/.test(g)) errs.push('фільтри стрічки сперечаються з головною навігацією');
 if (!g.includes("dispatchEvent(new CustomEvent('garage:vehicles'")) errs.push('основний скрипт не віддає авто власника стрічці');
+/* картка: однакова геометрія шапки, без повторюваної таблиці, з обмеженим фото */
+if (!/\.post-head\{display:grid;grid-template-columns:40px minmax\(0,1fr\) auto/.test(g)) errs.push('шапки постів не мають спільної геометрії');
+if (/\.post-facts/.test(g)) errs.push('повторювана таблиця Пробіг/Тип/Вартість/Робота повернулась');
+if (!/\.post-photos img\{[^}]*max-height:320px/.test(g)) errs.push('висота фото у стрічці не обмежена');
+if (!/-webkit-line-clamp:4/.test(g)) errs.push('довгий текст поста не обрізаний до превʼю');
+
 /* мовне меню: той самий компонент, що на Check/Import, без Garage-варіанта */
 {
   const chk = fs.readFileSync('check.html','utf8');
@@ -116,6 +134,8 @@ if (!g.includes("dispatchEvent(new CustomEvent('garage:vehicles'")) errs.push('�
   else {
     if (/\.insert\(|\.upsert\(|from\('garage|fetch\(|XMLHttpRequest/.test(feedSrc)) errs.push('скрипт стрічки ходить у БД або API: демо-пости мають лишатися статичними');
     if (/likes|comments|reposts|followers/i.test(feedSrc)) errs.push('у стрічці зʼявились соціальні лічильники без бекенду');
+    if (!/window\.CalCarChat\.open\(/.test(feedSrc)) errs.push('"Запитати CalCar" не відкриває спільний чат');
+    if (!/page_type: 'garage_feed'/.test(feedSrc) || !/content_type:/.test(feedSrc)) errs.push('контекст публікації не їде в чат');
     const vm = require('vm');
     const win = { t: x => x, calcarLocale: () => 'uk-UA', addEventListener(){}, dispatchEvent(){}, CustomEvent: function(){}, history: {}, URLSearchParams: URLSearchParams };
     const ctx = { window: win, document: { getElementById: () => null, querySelectorAll: () => [] }, location: { pathname: '/garage', search: '', hash: '' }, URLSearchParams, Number, String, Math, Promise, Date, console, history: {} };

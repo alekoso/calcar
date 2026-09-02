@@ -588,6 +588,8 @@
   header{view-transition-name:site-header}
   footer{view-transition-name:site-footer}
 </style>
+<!-- спільний інтерфейс контексту сторінки для помічника CalCar -->
+<script src="/context.js"></script>
 </head>
 <body>
 
@@ -1268,5 +1270,11 @@ document.addEventListener('click', function (e) {
   window.addEventListener('scroll', function () { if (open) place(); }, { passive: true });
 })();
 </script>
+<script>
+/* Вітрина Import: авто ще не обране, помічник відповідає по продукту загалом. */
+if (window.CalCarContext) window.CalCarContext.register(function () { return { page_type: 'import_landing' }; });
+</script>
+<!-- спільний чат CalCar: монтується лише там, де свого чату в сторінки нема -->
+<script src="/chat.js"></script>
 </body>
 </html>

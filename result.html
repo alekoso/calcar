@@ -833,6 +833,8 @@
   header{view-transition-name:site-header}
   footer{view-transition-name:site-footer}
 </style>
+<!-- спільний інтерфейс контексту сторінки для помічника CalCar -->
+<script src="/context.js"></script>
 </head>
 <body>
 
@@ -3056,6 +3058,26 @@ document.addEventListener('click', function (e) {
   });
   window.addEventListener('scroll', function () { if (open) place(); }, { passive: true });
 })();
+</script>
+<script>
+/* Прорахунок Import: помічник бачить те саме, що людина, у спільній формі.
+   Свій чат сторінки лишається головним, тут лише конверт контексту. */
+if (window.CalCarContext) window.CalCarContext.register(function () {
+  var d = DATA || {};
+  var totals = null;
+  try { totals = chatCtx().totals || null; } catch (e) { totals = null; }
+  return {
+    page_type: 'import_report',
+    entity: { type: 'report', id: (typeof REPORT_ID !== 'undefined' && REPORT_ID) || null },
+    report_id: (typeof REPORT_ID !== 'undefined' && REPORT_ID) || null,
+    vehicle: d.vehicle || null,
+    facts: {
+      lot_notes: d.lot_notes || null,
+      damage_note: d.damage_note || null,
+      totals: totals
+    }
+  };
+});
 </script>
 </body>
 </html>

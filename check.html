@@ -622,6 +622,8 @@
   header{view-transition-name:site-header}
   footer{view-transition-name:site-footer}
 </style>
+<!-- спільний інтерфейс контексту сторінки для помічника CalCar -->
+<script src="/context.js"></script>
 </head>
 <body>
 
@@ -1324,5 +1326,11 @@ document.addEventListener('click', function (e) {
   window.addEventListener('scroll', function () { if (open) place(); }, { passive: true });
 })();
 </script>
+<script>
+/* Що бачить людина на вітрині Check: сама вітрина, конкретного авто ще нема. */
+if (window.CalCarContext) window.CalCarContext.register(function () { return { page_type: 'check_landing' }; });
+</script>
+<!-- спільний чат CalCar: монтується лише там, де свого чату в сторінки нема -->
+<script src="/chat.js"></script>
 </body>
 </html>

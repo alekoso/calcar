@@ -851,6 +851,8 @@
   header{view-transition-name:site-header}
   footer{view-transition-name:site-footer}
 </style>
+<!-- спільний інтерфейс контексту сторінки для помічника CalCar -->
+<script src="/context.js"></script>
 </head>
 <body>
 
@@ -2602,6 +2604,28 @@ document.addEventListener('click', function (e) {
   });
   window.addEventListener('scroll', function () { if (open) place(); }, { passive: true });
 })();
+</script>
+<script>
+/* Звіт Check розповідає помічнику, що людина бачить. Свій докований чат на цій
+   сторінці лишається головним: він знає більше (памʼять, цитати, інші звіти).
+   Конверт тут потрібен, щоб форма контексту була спільною для всієї платформи. */
+if (window.CalCarContext) window.CalCarContext.register(function () {
+  var d = DATA || {}, m = (typeof M === 'object' && M) || {};
+  return {
+    page_type: 'check_report',
+    entity: { type: 'report', id: ROW_ID || null },
+    report_id: ROW_ID || null,
+    vehicle: d.vehicle || null,
+    vin: m.vin || null,
+    facts: {
+      score: d.verdict && d.verdict.score != null ? d.verdict.score : null,
+      verdict: d.verdict && d.verdict.summary ? d.verdict.summary : null,
+      key_risks: Array.isArray(d.risks) ? d.risks.slice(0, 5).map(function (r) { return r && (r.title || r.name) || null; }).filter(Boolean) : null,
+      odometer_km: m.odometer_km || null,
+      price: m.price || null
+    }
+  };
+});
 </script>
 </body>
 </html>
