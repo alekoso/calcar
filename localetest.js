@@ -215,7 +215,7 @@ const read = f => fs.readFileSync(f, 'utf8');
   const SWITCHER = new Set(['Українська', 'Русский', 'English']);
   const decode = s => s.replace(/&#(\d+);/g, (m, n) => String.fromCharCode(+n)).replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ');
   /* бренди і технічні токени, що свідомо не перекладаються */
-  const UNTRANSLATED = /^(Cal|Car|beta|UA|RU|EN|English|CalCar( Check| Import| Score)?|Google|VIN|you@example\.com|OK|PDF|AI)$/;
+  const UNTRANSLATED = /^(Cal|Car|beta|UA|RU|EN|English|CalCar( Check| Import| Garage| Score)?|Google|VIN|you@example\.com|OK|PDF|AI)$/;
   const need = new Map();
   for (const p of PAGES) {
     const s = read(p);

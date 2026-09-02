@@ -420,7 +420,6 @@ window.CALCAR_DICTS.ru = {
   'CalCar sees the lot data, photos and your estimate': 'CalCar видит данные лота, фото и твою смету',
   'Garage': 'Гараж',
   'Service log': 'Журнал авто',
-  'CalCar Garage': 'Гараж CalCar',
   'Your cars and their history': 'Твои автомобили и их история',
   '+ Add car': '+ Добавить авто',
   'Your garage is empty': 'В гараже пока пусто',
@@ -624,4 +623,5 @@ window.CALCAR_DICTS.ru = {
   'Worth considering': 'Стоит рассмотреть',
   'Products': 'Продукты',
   'Check specific cars before buying and calculate the real cost of importing them.': 'Проверяем конкретные автомобили перед покупкой и считаем реальную стоимость импорта.',
+  'Car owners community': 'Сообщество автовладельцев',
 };

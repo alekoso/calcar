@@ -11,7 +11,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@800&display=swap&text=CalCarheck" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600&display=swap&text=CheckImport" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600&display=swap&text=CheckImportGarage" rel="stylesheet">
 <style>html.i18n-wait body{visibility:hidden}</style>
 <script>
 /* i18n-core:start */
@@ -329,7 +329,8 @@
   .lnc-title{font-size:14px;font-weight:700;color:var(--ink);letter-spacing:.01em}
   .lnc-x{display:none;border:none;background:transparent;color:var(--muted);cursor:pointer;padding:6px;margin:-6px;border-radius:8px;font-family:inherit}
   .lnc-x:hover{background:var(--surface-2);color:var(--ink)}
-  .lnc-list{display:flex;flex-direction:column;gap:6px}
+  /* сітка з рівними рядками: усі продукти однієї висоти незалежно від довжини опису */
+  .lnc-list{display:grid;grid-auto-rows:1fr;gap:6px}
 
   .lnc-item{
     display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:center;
@@ -647,7 +648,6 @@
         </a>
       <div class="acc-menu">
        <a href="/cabinet.html#reports"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>Reports</a>
-       <a href="/garage"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 11l1.5-4.5A2 2 0 0 1 8.4 5h7.2a2 2 0 0 1 1.9 1.5L19 11"/><rect x="3" y="11" width="18" height="6" rx="2"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/></svg>Garage</a>
        <a href="/cabinet.html#memory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.7 4.7 1.8-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>Assistant memory</a>
        <a href="/cabinet.html#account"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Account settings</a>
       </div>
@@ -677,6 +677,14 @@
       <span class="lnc-body">
         <span class="lnc-name">CalCar Import</span>
         <span class="lnc-desc">What a US car really costs in Ukraine</span>
+        <span class="lnc-badge">Current product</span>
+      </span>
+    </a>
+    <a class="lnc-item" data-prod="garage" href="/garage">
+      <span class="lnc-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="#141619"><path d="M60 244 L256 112 L452 244 L452 300 L256 168 L60 300 Z"/><rect x="112" y="286" width="288" height="146" rx="18"/></g><g fill="#B8F23D"><rect x="140" y="316" width="232" height="18" rx="9"/><rect x="140" y="352" width="232" height="18" rx="9"/><rect x="140" y="388" width="232" height="18" rx="9"/></g></svg></span>
+      <span class="lnc-body">
+        <span class="lnc-name">CalCar Garage</span>
+        <span class="lnc-desc">Car owners community</span>
         <span class="lnc-badge">Current product</span>
       </span>
     </a>
@@ -1201,10 +1209,11 @@ document.addEventListener('click', function (e) {
 
   var PRODUCT_PATHS = {
     check: ['/', '/check', '/check.html', '/result-check.html'],
-    'import': ['/import', '/import.html', '/result.html']
+    'import': ['/import', '/import.html', '/result.html'],
+    garage: ['/garage', '/garage.html']
   };
   var p = location.pathname.replace(/\/+$/, '') || '/';
-  var cur = /^\/check\//.test(p) ? 'check' : '';
+  var cur = /^\/check\//.test(p) ? 'check' : /^\/garage\//.test(p) ? 'garage' : '';
   for (var k in PRODUCT_PATHS) if (!cur && PRODUCT_PATHS[k].indexOf(p) > -1) cur = k;
   if (cur) {
     var card = panel.querySelector('.lnc-item[data-prod="' + cur + '"]');

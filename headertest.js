@@ -8,8 +8,8 @@ const errs = [];
 const PAGES = ['check.html', 'import.html', 'result.html', 'result-check.html', 'cabinet.html', 'garage.html'];
 const S = Object.fromEntries(PAGES.map(p => [p, fs.readFileSync(p, 'utf8')]));
 const PROD_CSS = ".prod{font-family:'Caveat',cursive;font-size:22px;font-weight:600;font-style:normal;color:var(--brand-active);letter-spacing:0;line-height:1;position:relative;top:1px}";
-const PROD = { 'check.html': 'Check', 'result-check.html': 'Check', 'import.html': 'Import', 'result.html': 'Import' };
-const MENU = ['/cabinet.html#reports', '/garage', '/cabinet.html#memory', '/cabinet.html#account'];
+const PROD = { 'check.html': 'Check', 'result-check.html': 'Check', 'import.html': 'Import', 'result.html': 'Import', 'garage.html': 'Garage' };
+const MENU = ['/cabinet.html#reports', '/cabinet.html#memory', '/cabinet.html#account'];
 const ICON = '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/>';
 const blocks = new Map();
 for (const p of PAGES) {
@@ -24,7 +24,8 @@ for (const p of PAGES) {
   const menu = (s.match(/<div class="acc-menu">[\s\S]*?<\/div>/) || [''])[0];
   const hrefs = (menu.match(/<a href="([^"]+)"/g) || []).map(x => x.replace(/<a href="([^"]+)"/, '$1'));
   if (hrefs.join('|') !== MENU.join('|')) errs.push(p + ': порядок меню: ' + hrefs.join(', '));
-  if ((menu.match(/<svg /g) || []).length !== 4) errs.push(p + ': у меню не чотири іконки');
+  if ((menu.match(/<svg /g) || []).length !== 3) errs.push(p + ': у меню не три іконки');
+  if (/<a href="\/garage"/.test(menu)) errs.push(p + ': Гараж лишився в меню кабінету, він тепер продукт лаунчера');
   if (!/\.acc-menu a svg\{width:18px;height:18px/.test(s)) errs.push(p + ': іконки меню без правила розміру 18px');
   if ((s.match(/^\s*\.prod\{/gm) || []).length !== 1) errs.push(p + ': правило .prod не одне, назви продуктів різняться');
   if (s.split(ICON).length - 1 !== 1) errs.push(p + ': іконка кнопки кабінету інша');
@@ -71,5 +72,5 @@ if (!touch.open) errs.push('тач: тап не відкриває меню');
 }
 
 if (errs.length) { console.log('FAILED:', errs); process.exit(1); }
-console.log('шапка: без beta, назва продукту і іконка однакові на 6 сторінках · меню Звіти/Гараж/Памʼять/Налаштування з іконками · блок меню побайтово один · клік по Кабінет нікуди не веде · тач відкриває, тап поза закриває');
+console.log('шапка: без beta, назва продукту і іконка однакові на 6 сторінках · меню Звіти/Памʼять/Налаштування з іконками · блок меню побайтово один · клік по Кабінет нікуди не веде · тач відкриває, тап поза закриває');
 console.log('HEADER TEST PASSED');

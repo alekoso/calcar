@@ -49,7 +49,8 @@ for (const f of PAGES) {
   /* 4. Import веде в наявний flow, Check у свій; поточний продукт ставить код */
   if (!s.includes('<a class="lnc-item" data-prod="import" href="/import">')) errs.push('картка Import не веде на /import: ' + f);
   if (!s.includes('<a class="lnc-item" data-prod="check" href="/check">')) errs.push('картка Check не веде на /check: ' + f);
-  if ((s.match(/class="lnc-item"/g) || []).length !== 2) errs.push('у лаунчері не два продукти: ' + f);
+  if ((s.match(/class="lnc-item"/g) || []).length !== 3) errs.push('у лаунчері не три продукти: ' + f);
+  if (!s.includes('<a class="lnc-item" data-prod="garage" href="/garage">')) errs.push('картка Garage не веде на /garage: ' + f);
 
   /* 5. на телефоні звільняємо місце чипом beta, інакше шапка стає дворядковою */
   if (!/@media\(max-width:620px\)\{[\s\S]{0,600}header \.prod\{display:none\}/.test(s)) errs.push('нема мобільного правила header .prod: ' + f);
@@ -126,7 +127,8 @@ for (const f of PAGES) {
 function resolveProduct(pathname) {
   const cards = {
     check: { prod: 'check', cls: [], attrs: { href: '/check' } },
-    'import': { prod: 'import', cls: [], attrs: { href: '/import' } }
+    'import': { prod: 'import', cls: [], attrs: { href: '/import' } },
+    garage: { prod: 'garage', cls: [], attrs: { href: '/garage' } }
   };
   const el = (extra) => Object.assign({
     addEventListener() {}, focus() {}, offsetWidth: 344,
@@ -166,7 +168,7 @@ const ROUTES = {
   '/': 'check', '/check': 'check', '/check/aB3xZ9': 'check', '/check.html': 'check',
   '/result-check.html': 'check',
   '/import': 'import', '/import.html': 'import', '/result.html': 'import',
-  '/garage': '', '/garage/12': '', '/cabinet.html': ''
+  '/garage': 'garage', '/garage/12': 'garage', '/garage.html': 'garage', '/cabinet.html': ''
 };
 for (const [path, want] of Object.entries(ROUTES)) {
   const got = resolveProduct(path);
