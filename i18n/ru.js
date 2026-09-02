@@ -622,5 +622,7 @@ window.CALCAR_DICTS.ru = {
   '© 2026 CalCar': '© 2026 CalCar',
   'BMW 5 Series': 'BMW 5 Series',
   'Dodge Challenger': 'Dodge Challenger',
-  'Worth a look': 'Стоит внимания',
+  'Worth considering': 'Стоит рассмотреть',
+  'Products': 'Продукты',
+  'Check specific cars before buying and calculate the real cost of importing them.': 'Проверяем конкретные автомобили перед покупкой и считаем реальную стоимость импорта.',
 };

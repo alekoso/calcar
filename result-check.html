@@ -244,8 +244,21 @@
   .header-in{max-width:1160px;margin:0 auto;padding:0 20px;height:56px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center}
   .hleft{display:flex;align-items:center;gap:14px;justify-self:start}
   .header-right{margin-left:0;grid-column:3;justify-self:end;display:flex;align-items:center;gap:16px;font-size:13px}
-  footer{border-top:1px solid var(--line);background:var(--card);margin-top:auto}
-  .footer-in{max-width:1160px;margin:0 auto;padding:16px 20px;text-align:center;font-size:12.5px;color:var(--faint)}
+  /* футер: бренд з описом ліворуч, два стовпці реальних маршрутів праворуч,
+     копірайт під тонкою лінією. Фон трохи темніший за сторінку, без кнопок */
+  footer{border-top:1px solid var(--line);background:var(--surface-2);margin-top:auto}
+  .footer-in{max-width:1160px;margin:0 auto;padding:40px 20px 32px;display:flex;justify-content:space-between;align-items:flex-start;gap:32px;flex-wrap:wrap}
+  .ft-brand{max-width:380px}
+  .ft-brand .logo{font-size:14px}
+  .ft-brand p{margin:12px 0 0;font-size:13.5px;line-height:1.5;color:var(--muted)}
+  .ft-cols{display:flex;gap:56px}
+  .ft-col{display:flex;flex-direction:column;gap:8px;min-width:120px}
+  .ft-col b{font-size:13px;font-weight:700;color:var(--ink);margin-bottom:2px}
+  .ft-col a{font-size:13.5px;color:var(--muted);text-decoration:none;width:fit-content}
+  .ft-col a:hover{color:var(--ink);text-decoration:underline;text-decoration-color:var(--brand);text-decoration-thickness:2px;text-underline-offset:4px}
+  .footer-bottom{border-top:1px solid var(--line)}
+  .footer-bottom .footer-in{padding:14px 20px;font-size:12.5px;color:var(--faint)}
+  @media(max-width:620px){.footer-in{flex-direction:column;gap:24px;padding:32px 16px 24px}.ft-cols{gap:36px}.footer-bottom .footer-in{padding:12px 16px}}
 
   .logo{display:inline-flex;align-items:stretch;border-radius:.46em;overflow:hidden;font-weight:800;font-size:15px;letter-spacing:.01em;line-height:1;text-decoration:none;font-family:'Sora',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
   .logo .l{background:var(--brand);color:var(--ink);padding:.62em 1.05em .62em .72em;clip-path:polygon(0 0,100% 0,calc(100% - .46em) 100%,0 100%)}
@@ -1072,7 +1085,17 @@
 </div>
 
 <footer>
-  <div class="footer-in"><span>© 2026 CalCar</span></div>
+  <div class="footer-in">
+    <div class="ft-brand">
+      <a class="logo" href="/"><span class="l">Cal</span><span class="r">Car</span></a>
+      <p>Check specific cars before buying and calculate the real cost of importing them.</p>
+    </div>
+    <nav class="ft-cols">
+      <div class="ft-col"><b>Products</b><a href="/check">Vehicle Checks</a><a href="/import">Car Import</a></div>
+      <div class="ft-col"><b>My account</b><a href="/cabinet.html#reports">Reports</a><a href="/garage">Garage</a></div>
+    </nav>
+  </div>
+  <div class="footer-bottom"><div class="footer-in">© 2026 CalCar</div></div>
 </footer>
 
 <!-- чат по цьому авто -->

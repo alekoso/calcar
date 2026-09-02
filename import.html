@@ -481,33 +481,36 @@
 
   /* ---- приклад результату: компактний зріз справжнього конструктора, не інтерактивний ---- */
   .sec-ex{padding-top:40px}
-  /* Одна батьківська сітка на обидві половини: 2 колонки x 6 рядків. Кошторис
+  /* Одна батьківська сітка на обидві половини: 2 колонки x 6 рядків однакової
+     висоти (repeat(6, minmax(0,1fr)): при невизначеній висоті контейнера всі
+     1fr-треки стають рівними найвищому вмісту, тому рядки кошторису і статусів
+     збігаються за висотою без підгонки). Кошторис
      займає рядки 1-6 ліворуч, превʼю авто рядки 1-3 праворуч, три статуси рядки
      4-6. Рядок 4 ліворуч і праворуч це один трек, тому "Під ключ" і "Треба
      перевірити" лежать між тими самими лініями за побудовою, без margin-підгонки.
      Обгортки .cost і .ex-side це display:contents, їх діти живуть у сітці. */
-  .ex{display:grid;grid-template-columns:1.1fr 1fr;grid-template-rows:repeat(6,minmax(36px,auto)) auto;background:var(--card);border:1px solid var(--line);border-radius:16px;margin-top:26px;overflow:hidden;max-width:960px;margin-left:auto;margin-right:auto}
+  .ex{display:grid;grid-template-columns:1.1fr 1fr;grid-template-rows:repeat(6,minmax(0,1fr)) auto;background:var(--card);border:1px solid var(--line);border-radius:16px;margin-top:26px;overflow:hidden;max-width:960px;margin-left:auto;margin-right:auto}
   /* кошторис як калькулятор: рядок з нейтральною іконкою, назвою і сумою; рядки
      розтягуються на висоту колонки, підсумок притиснутий донизу, тому ліва і
      права половини закінчуються на одній лінії за побудовою */
   .cost{display:contents}
-  .cost-row{grid-column:1;display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:2px 20px;font-size:13.5px;color:var(--ink-2);border-bottom:1px solid var(--line);border-right:1px solid var(--line)}
+  .cost-row{grid-column:1;display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:4px 20px;font-size:13.5px;color:var(--ink-2);border-bottom:1px solid var(--line);border-right:1px solid var(--line)}
   .cost-row:nth-child(1){grid-row:1}.cost-row:nth-child(2){grid-row:2}.cost-row:nth-child(3){grid-row:3}.cost-row:nth-child(4){grid-row:4}.cost-row:nth-child(5){grid-row:5}
   .cost-ic{width:16px;height:16px;color:var(--muted);display:flex}
   .cost-ic svg{width:16px;height:16px}
   .cost-row b{font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums;font-size:14px}
   /* підсумок живе в рядку 6 і заповнює його висоту: лаймовий блок усередині комірки без вертикальних відступів */
-  .cost-total{grid-column:1;grid-row:6;align-self:stretch;display:flex;justify-content:space-between;align-items:center;gap:12px;margin:0;padding:8px 20px;background:var(--brand-soft);font-size:14px;font-weight:700;color:var(--ink);border-right:1px solid var(--line)}
+  .cost-total{grid-column:1;grid-row:6;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;margin:0;padding:4px 20px;background:var(--brand-soft);font-size:14px;font-weight:700;color:var(--ink);border-right:1px solid var(--line)}
   .cost-total b{font-size:19px;font-weight:800;color:var(--brand-ink);font-variant-numeric:tabular-nums;letter-spacing:-.3px}
   /* праворуч від кошторису: фото demo-авто з моделлю і роком, під ним три статуси.
      Фото статичне, зі /demo, не з розрахунків користувача */
   .ex-side{display:contents}
   /* фото компактне, поруч модель; під ними три статуси щільно */
-  .ex-car{grid-column:2;grid-row:1/4;margin:0;padding:10px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;min-width:0}
-  .ex-photo{flex:0 0 124px;width:124px;height:82px;object-fit:cover;object-position:50% 60%;border-radius:12px;background:var(--surface-2);display:block}
+  .ex-car{grid-column:2;grid-row:1/4;margin:0;padding:8px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;min-width:0;min-height:0}
+  .ex-photo{flex:0 0 118px;width:118px;height:78px;object-fit:cover;object-position:50% 60%;border-radius:12px;background:var(--surface-2);display:block}
   .ex-car b{display:block;font-size:15px;font-weight:700}
   .ex-rows{display:contents;list-style:none}
-  .ex-rows li{grid-column:2;display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:center;padding:3px 18px;border-bottom:1px solid var(--line)}
+  .ex-rows li{grid-column:2;display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:center;padding:4px 18px;border-bottom:1px solid var(--line);min-height:0}
   .ex-rows li:nth-child(1){grid-row:4}.ex-rows li:nth-child(2){grid-row:5}.ex-rows li:nth-child(3){grid-row:6}
   .ex-rows li:last-child{border-bottom:0}
   .ex-foot{grid-column:1/-1;grid-row:7}
@@ -518,8 +521,8 @@
   .ex-ic.ok{background:var(--brand)}
   .ex-ic.warn{background:var(--amber-soft);box-shadow:inset 0 0 0 1.5px rgba(200,121,10,.55)}
   .ex-ic.unknown{background:var(--surface-2);box-shadow:inset 0 0 0 1.5px var(--line-strong);color:var(--ink-2)}
-  .ex-txt b{display:block;font-size:14px;font-weight:700}
-  .ex-txt i{display:block;font-style:normal;font-size:12.5px;color:var(--muted);margin-top:1px}
+  .ex-txt b{display:block;font-size:13.5px;font-weight:700;line-height:1.2}
+  .ex-txt i{display:block;font-style:normal;font-size:12px;color:var(--muted);line-height:1.25;margin-top:1px}
   .ex-foot{grid-column:1/-1;border-top:1px solid var(--line);background:var(--bg);padding:10px 20px;font-size:12.5px;color:var(--muted);text-align:center}
   @media(max-width:760px){
     /* одна колонка: кошторис, підсумок, авто, статуси у порядку розмітки */
@@ -531,8 +534,21 @@
     .ex-foot{grid-row:auto}
   }
 
-  footer{border-top:1px solid var(--line);background:var(--card);margin-top:auto}
-  .footer-in{max-width:1160px;margin:0 auto;padding:16px 20px;text-align:center;font-size:12.5px;color:var(--faint)}
+  /* футер: бренд з описом ліворуч, два стовпці реальних маршрутів праворуч,
+     копірайт під тонкою лінією. Фон трохи темніший за сторінку, без кнопок */
+  footer{border-top:1px solid var(--line);background:var(--surface-2);margin-top:auto}
+  .footer-in{max-width:1160px;margin:0 auto;padding:40px 20px 32px;display:flex;justify-content:space-between;align-items:flex-start;gap:32px;flex-wrap:wrap}
+  .ft-brand{max-width:380px}
+  .ft-brand .logo{font-size:14px}
+  .ft-brand p{margin:12px 0 0;font-size:13.5px;line-height:1.5;color:var(--muted)}
+  .ft-cols{display:flex;gap:56px}
+  .ft-col{display:flex;flex-direction:column;gap:8px;min-width:120px}
+  .ft-col b{font-size:13px;font-weight:700;color:var(--ink);margin-bottom:2px}
+  .ft-col a{font-size:13.5px;color:var(--muted);text-decoration:none;width:fit-content}
+  .ft-col a:hover{color:var(--ink);text-decoration:underline;text-decoration-color:var(--brand);text-decoration-thickness:2px;text-underline-offset:4px}
+  .footer-bottom{border-top:1px solid var(--line)}
+  .footer-bottom .footer-in{padding:14px 20px;font-size:12.5px;color:var(--faint)}
+  @media(max-width:620px){.footer-in{flex-direction:column;gap:24px;padding:32px 16px 24px}.ft-cols{gap:36px}.footer-bottom .footer-in{padding:12px 16px}}
 
   @media(max-width:640px){
     .hero{padding:30px 16px 0}
@@ -762,7 +778,17 @@
 </div>
 
 <footer>
-  <div class="footer-in"><span>© 2026 CalCar</span></div>
+  <div class="footer-in">
+    <div class="ft-brand">
+      <a class="logo" href="/"><span class="l">Cal</span><span class="r">Car</span></a>
+      <p>Check specific cars before buying and calculate the real cost of importing them.</p>
+    </div>
+    <nav class="ft-cols">
+      <div class="ft-col"><b>Products</b><a href="/check">Vehicle Checks</a><a href="/import">Car Import</a></div>
+      <div class="ft-col"><b>My account</b><a href="/cabinet.html#reports">Reports</a><a href="/garage">Garage</a></div>
+    </nav>
+  </div>
+  <div class="footer-bottom"><div class="footer-in">© 2026 CalCar</div></div>
 </footer>
 
 <script>

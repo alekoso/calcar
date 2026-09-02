@@ -71,8 +71,12 @@ for (const [f, s] of Object.entries(PAGES)) {
   if (!/\.ex-ic\.ok\{background:var\(--brand\)\}/.test(s) || !/\.ex-ic\.warn\{background:var\(--amber-soft\)/.test(s)) errs.push(f + ': статус-іконки не в системі лайм/amber/нейтральний');
   if (/\.ex-ic\.ok\{background:var\(--green-soft\)/.test(s)) errs.push(f + ': позитивний статус знову generic green');
   /* футер мінімальний: лише копірайт, без другого логотипа і beta */
+  /* футер: справжній логотип, опис, лише реальні маршрути, копірайт; без beta, calcar.io і фейкових сторінок */
   const foot = (s.match(/<footer>[\s\S]*?<\/footer>/) || [''])[0];
-  if (!/© 2026 CalCar<\/span>/.test(foot) || /class="logo"|beta|calcar\.io/.test(foot)) errs.push(f + ': футер не мінімальний');
+  if (!/<a class="logo" href="\/">/.test(foot) || !/© 2026 CalCar/.test(foot)) errs.push(f + ': футер без логотипа або копірайту');
+  if (/beta|calcar\.io|Privacy|Terms|Support|About/i.test(foot.replace(/<[^>]+>/g, ''))) errs.push(f + ': у футері зайве (beta/calcar.io/фейкові сторінки)');
+  const links = (foot.match(/<a href="([^"]+)"/g) || []).map(x => x.replace(/<a href="([^"]+)"/, '$1'));
+  if (links.join('|') !== '/check|/import|/cabinet.html#reports|/garage') errs.push(f + ': посилання футера не ті: ' + links.join(', '));
 }
 
 /* 7а. Check demo: підказка (i), компонент оцінки, вердикт стилем звіту, рівна висота */
@@ -80,7 +84,12 @@ for (const [f, s] of Object.entries(PAGES)) {
   const c = PAGES['check.html'];
   if (!/<span class="ex-i" tabindex="0" role="button"[^>]*>i<span class="ex-tip"><b>CalCar Score<\/b>/.test(c)) errs.push('check.html: (i) без підказки');
   if (!/\.ex-i:hover \.ex-tip,\.ex-i:focus \.ex-tip\{display:block\}/.test(c)) errs.push('check.html: підказка не показується на hover/focus');
-  if (!c.includes('<div class="ex-score"><b>8.1</b><small>/10</small></div>')) errs.push('check.html: оцінка demo не компонентом');
+  if (!c.includes('<div class="ex-score"><b>8.1</b><small>/ 10</small></div>')) errs.push('check.html: оцінка demo не компонентом');
+  /* малі оцінки: один розмір шрифту для числа і "/ 10", baseline через inline-flex, без transform/top */
+  if (!/\.rc-score\{display:inline-flex;align-items:baseline;gap:4px;font-size:15px;line-height:1/.test(c)) errs.push('check.html: малі оцінки не єдиним компонентом');
+  if (!/\.rc-score small\{font-size:inherit;font-weight:600;color:var\(--muted\)\}/.test(c)) errs.push('check.html: знаменник малої оцінки іншого розміру');
+  if (/\.(rc|ex)-score[^{]*\{[^}]*(transform|top:|vertical-align)/.test(c)) errs.push('check.html: оцінка вирівняна хаком');
+  if (!c.includes('<span class="ex-verdict">Worth considering</span>')) errs.push('check.html: вердикт не фінальний');
   if (!/\.rc-score\{display:inline-flex;align-items:baseline/.test(c)) errs.push('check.html: оцінка в картках без спільної базової лінії');
   const rl = (fs.readFileSync('result-check.html', 'utf8').match(/\.risk-label\{([^}]*)\}/) || [])[1] || '';
   for (const prop of ['font-size:12px', 'font-weight:600', 'padding:2px 8px', 'border-radius:12px']) if (!rl.includes(prop) || !/\.ex-verdict\{[^}]*/.test(c) || !c.match(/\.ex-verdict\{[^}]*\}/)[0].includes(prop)) errs.push('check.html: бейдж вердикту не стилем risk-label звіту (' + prop + ')');
@@ -88,10 +97,12 @@ for (const [f, s] of Object.entries(PAGES)) {
   const i = PAGES['import.html'];
   if ((i.match(/<span class="cost-ic">/g) || []).length !== 5) errs.push('import.html: не всі рядки кошторису з іконкою');
   /* одна батьківська сітка 2x6: кошторис рядки 1-6, авто 1/4, статуси 4-6; без margin-підгонки */
-  if (!/\.ex\{display:grid;grid-template-columns:1\.1fr 1fr;grid-template-rows:repeat\(6,minmax\(36px,auto\)\) auto/.test(i)) errs.push('import.html: demo не на одній сітці 2x6');
+  if (!/\.ex\{display:grid;grid-template-columns:1\.1fr 1fr;grid-template-rows:repeat\(6,minmax\(0,1fr\)\) auto/.test(i)) errs.push('import.html: demo не на одній сітці 2x6 з рівними рядками');
+  /* усі шість рядків ліворуч з тим самим вертикальним відступом, підсумок не вищий */
+  if (!/\.cost-row\{[^}]*padding:4px 20px/.test(i) || !/\.cost-total\{[^}]*padding:4px 20px/.test(i)) errs.push('import.html: рядки кошторису з різним вертикальним відступом');
   if (!/\.cost\{display:contents\}/.test(i) || !/\.ex-side\{display:contents\}/.test(i) || !/\.ex-rows\{display:contents/.test(i)) errs.push('import.html: обгортки не display:contents, діти не в батьківській сітці');
   for (const k of [1,2,3,4,5]) if (!i.includes('.cost-row:nth-child(' + k + '){grid-row:' + k + '}')) errs.push('import.html: рядок кошторису ' + k + ' без явного grid-row');
-  if (!/\.cost-total\{grid-column:1;grid-row:6;align-self:stretch;[^}]*margin:0;/.test(i)) errs.push('import.html: підсумок не в рядку 6 або з вертикальними відступами');
+  if (!/\.cost-total\{grid-column:1;grid-row:6;[^}]*margin:0;/.test(i)) errs.push('import.html: підсумок не в рядку 6 або з відступами');
   if (!/\.ex-car\{grid-column:2;grid-row:1\/4;/.test(i)) errs.push('import.html: превʼю авто не в рядках 1-3');
   for (const [k, r] of [[1,4],[2,5],[3,6]]) if (!i.includes('.ex-rows li:nth-child(' + k + '){grid-row:' + r + '}')) errs.push('import.html: статус ' + k + ' не в рядку ' + r);
   if (!/<figure class="ex-car"><img class="ex-photo" src="\/demo\/import-main-dodge-challenger\.jpg"[^>]*><figcaption><b>Dodge Challenger<\/b>/.test(i)) errs.push('import.html: demo-розрахунок не Dodge Challenger з фото');
@@ -151,7 +162,7 @@ if (rc) {
   if ((rc.html.match(/<a class="rc"/g) || []).length !== 3) errs.push('check.html: недавніх має бути максимум 3');
   if (!rc.html.includes('href="/check/ABC123"')) errs.push('check.html: коротка адреса звіту не використана');
   if (!rc.html.includes('href="/result-check.html?id=x2"')) errs.push('check.html: без public_id адреса має бути через id');
-  if (!rc.html.includes('rc-score ok"><b>8.1</b><small>/10</small>')) errs.push('check.html: оцінка 8.1 не зелена або не компонентом число+знаменник');
+  if (!rc.html.includes('rc-score ok"><b>8.1</b><small>/ 10</small>')) errs.push('check.html: оцінка 8.1 не зелена або не компонентом число+знаменник');
   if (!rc.html.includes('rc-score warn"><b>5.6</b>')) errs.push('check.html: легасі-оцінка 5.6 не жовта або не взята з verdict');
   if (rc.html.includes('<Q5>')) errs.push('check.html: назва не екранується');
 }

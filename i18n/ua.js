@@ -622,5 +622,7 @@ window.CALCAR_DICTS.ua = {
   '© 2026 CalCar': '© 2026 CalCar',
   'BMW 5 Series': 'BMW 5 Series',
   'Dodge Challenger': 'Dodge Challenger',
-  'Worth a look': 'Варте уваги',
+  'Worth considering': 'Варто розглянути',
+  'Products': 'Продукти',
+  'Check specific cars before buying and calculate the real cost of importing them.': 'Перевіряємо конкретні автомобілі перед купівлею та рахуємо реальну вартість імпорту.',
 };
