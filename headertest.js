@@ -7,7 +7,7 @@ const vm = require('vm');
 const errs = [];
 const PAGES = ['check.html', 'import.html', 'result.html', 'result-check.html', 'cabinet.html', 'garage.html'];
 const S = Object.fromEntries(PAGES.map(p => [p, fs.readFileSync(p, 'utf8')]));
-const PROD_CSS = '.prod{font-size:14px;font-weight:600;font-style:italic;color:var(--ink-2);letter-spacing:.01em;line-height:1}';
+const PROD_CSS = '.prod{font-size:14px;font-weight:700;font-style:italic;color:var(--brand-active);letter-spacing:.02em;line-height:1;font-family:inherit}';
 const PROD = { 'check.html': 'Check', 'result-check.html': 'Check', 'import.html': 'Import', 'result.html': 'Import' };
 const MENU = ['/cabinet.html#reports', '/garage', '/cabinet.html#memory', '/cabinet.html#account'];
 const ICON = '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/>';
@@ -25,7 +25,8 @@ for (const p of PAGES) {
   const hrefs = (menu.match(/<a href="([^"]+)"/g) || []).map(x => x.replace(/<a href="([^"]+)"/, '$1'));
   if (hrefs.join('|') !== MENU.join('|')) errs.push(p + ': порядок меню: ' + hrefs.join(', '));
   if ((menu.match(/<svg /g) || []).length !== 4) errs.push(p + ': у меню не чотири іконки');
-  if (!/\.acc-menu a svg\{width:16px;height:16px/.test(s)) errs.push(p + ': іконки меню без правила розміру');
+  if (!/\.acc-menu a svg\{width:18px;height:18px/.test(s)) errs.push(p + ': іконки меню без правила розміру 18px');
+  if ((s.match(/^\s*\.prod\{/gm) || []).length !== 1) errs.push(p + ': правило .prod не одне, назви продуктів різняться');
   if (s.split(ICON).length - 1 !== 1) errs.push(p + ': іконка кнопки кабінету інша');
   if (!s.includes('.acc-wrap:hover .acc-menu,.acc-wrap:focus-within .acc-menu{display:block}')) errs.push(p + ': меню кабінету не відкривається наведенням/фокусом');
   if (!s.includes('.acc-wrap.open .acc-menu{display:block}')) errs.push(p + ': нема правила для тача (.acc-wrap.open)');

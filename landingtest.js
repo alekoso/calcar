@@ -5,6 +5,7 @@
 const fs = require('fs');
 const vm = require('vm');
 const errs = [];
+const missingPhotos = new Set();
 const PAGES = { 'check.html': fs.readFileSync('check.html', 'utf8'), 'import.html': fs.readFileSync('import.html', 'utf8') };
 
 for (const [f, s] of Object.entries(PAGES)) {
@@ -49,8 +50,15 @@ for (const [f, s] of Object.entries(PAGES)) {
   const demoBlock = (() => { const st = s.indexOf('function ' + ex + '(){'); if (st < 0) return ''; let i = s.indexOf('{', st), d = 0; for (; i < s.length; i++) { if (s[i] === '{') d++; else if (s[i] === '}' && --d === 0) break; } return s.slice(st, i + 1); })();
   if (/href=|created_at|timeAgo\(/.test(demoBlock)) errs.push(f + ': demo-картки клікаються або мають дати');
   if (!/rc-demo/.test(demoBlock) || !/from\('reports'\)/.test(s.slice(s.indexOf('function loadRecent')))) errs.push(f + ': demo-картки без позначки або справжній запит зник');
-  for (const m of s.match(/\/demo\/[a-z0-9-]+\.svg/g) || []) if (!fs.existsSync(m.slice(1))) errs.push(f + ': нема статичного demo-фото ' + m);
+  /* demo-фото: код посилається на jpg; поки фото не додані, працює фолбек на svg,
+     і тест вимагає хоча б його. Список відсутніх jpg друкується, а не ховається */
+  for (const m of new Set(s.match(/\/demo\/[a-z0-9-]+\.jpg/g) || [])) {
+    if (!fs.existsSync(m.slice(1))) { if (!fs.existsSync(m.slice(1).replace(/\.jpg$/, '.svg'))) errs.push(f + ': нема ні фото, ні фолбека для ' + m); else missingPhotos.add(m); }
+  }
+  if (!/onerror="this\.onerror=null;this\.src=/.test(s)) errs.push(f + ': demo-фото без фолбека');
   if (!/<img class="ex-photo" src="\/demo\//.test(s)) errs.push(f + ': у прикладі результату нема demo-фото');
+  if (/\.hero-badge::before/.test(s)) errs.push(f + ': крапка перед бейджем повернулась');
+  if (!/\.prod\{font-size:14px;font-weight:700;font-style:italic;color:var\(--brand-active\)/.test(s) || (s.match(/^\s*\.prod\{/gm) || []).length !== 1) errs.push(f + ': назва продукту не одним lime-правилом');
   if (!/\.ex-ic\.ok\{background:var\(--brand\)\}/.test(s) || !/\.ex-ic\.warn\{background:var\(--amber-soft\)/.test(s)) errs.push(f + ': статус-іконки не в системі лайм/amber/нейтральний');
   if (/\.ex-ic\.ok\{background:var\(--green-soft\)/.test(s)) errs.push(f + ': позитивний статус знову generic green');
   /* футер мінімальний: лише копірайт, без другого логотипа і beta */
@@ -58,10 +66,25 @@ for (const [f, s] of Object.entries(PAGES)) {
   if (!/© 2026 CalCar<\/span>/.test(foot) || /class="logo"|beta|calcar\.io/.test(foot)) errs.push(f + ': футер не мінімальний');
 }
 
-/* 7. Check: у прикладі пʼять категорій; Import: цифри прикладу сходяться в підсумок */
+/* 7а. Check demo: підказка (i), компонент оцінки, вердикт стилем звіту, рівна висота */
+{
+  const c = PAGES['check.html'];
+  if (!/<span class="ex-i" tabindex="0" role="button"[^>]*>i<span class="ex-tip"><b>CalCar Score<\/b>/.test(c)) errs.push('check.html: (i) без підказки');
+  if (!/\.ex-i:hover \.ex-tip,\.ex-i:focus \.ex-tip\{display:block\}/.test(c)) errs.push('check.html: підказка не показується на hover/focus');
+  if (!c.includes('<div class="ex-score"><b>8.1</b><small>/10</small></div>')) errs.push('check.html: оцінка demo не компонентом');
+  if (!/\.rc-score\{display:inline-flex;align-items:baseline/.test(c)) errs.push('check.html: оцінка в картках без спільної базової лінії');
+  const rl = (fs.readFileSync('result-check.html', 'utf8').match(/\.risk-label\{([^}]*)\}/) || [])[1] || '';
+  for (const prop of ['font-size:12px', 'font-weight:600', 'padding:2px 8px', 'border-radius:12px']) if (!rl.includes(prop) || !/\.ex-verdict\{[^}]*/.test(c) || !c.match(/\.ex-verdict\{[^}]*\}/)[0].includes(prop)) errs.push('check.html: бейдж вердикту не стилем risk-label звіту (' + prop + ')');
+  if (!/\.ex-rows\{[^}]*grid-auto-rows:1fr;height:100%/.test(c) || !/\.ex-left\{[^}]*display:flex;flex-direction:column;justify-content:space-between/.test(c)) errs.push('check.html: половини demo не вирівняні по висоті за побудовою');
+  const i = PAGES['import.html'];
+  if ((i.match(/<span class="cost-ic">/g) || []).length !== 5) errs.push('import.html: не всі рядки кошторису з іконкою');
+  if (!/\.cost\{display:flex;flex-direction:column/.test(i) || !/\.cost-row\{flex:1 1 auto/.test(i) || !/\.ex-rows\{[^}]*flex:1;display:grid;grid-auto-rows:1fr/.test(i)) errs.push('import.html: половини demo не вирівняні по висоті за побудовою');
+  if (!/<figure class="ex-car"><img class="ex-photo" src="\/demo\/bmw-x5\.jpg"/.test(i)) errs.push('import.html: фото X5 не у figure з підписом');
+}
+/* 7. Check: у прикладі категорії; Import: цифри прикладу сходяться в підсумок */
 const rows = (PAGES['check.html'].match(/<b class="ex-k">([^<]+)<\/b>/g) || []).map(x => x.replace(/<[^>]+>/g, ''));
-if (rows.join('|') !== 'Mileage|Owners|History|Equipment|Price') errs.push('check.html: категорії прикладу: ' + rows.join(', '));
-const nums = (PAGES['import.html'].match(/<div class="cost-row"><span>[^<]+<\/span><b>\$([\d ]+)<\/b>/g) || []).map(x => +x.match(/\$([\d ]+)/)[1].replace(/\s/g, ''));
+if (rows.join('|') !== 'Mileage|History|Equipment|Price') errs.push('check.html: категорії прикладу: ' + rows.join(', '));
+const nums = (PAGES['import.html'].match(/<div class="cost-row">(?:<span class="cost-ic">.*?<\/span>)?<span>[^<]+<\/span><b>\$([\d ]+)<\/b>/g) || []).map(x => +x.match(/\$([\d ]+)<\/b>/)[1].replace(/\s/g, ''));
 const total = +((PAGES['import.html'].match(/<div class="cost-total">[\s\S]*?<b>\$([\d ]+)<\/b>/) || [])[1] || '').replace(/\s/g, '');
 if (nums.length !== 5) errs.push('import.html: у прикладі не пʼять статей: ' + nums.length);
 else if (nums.reduce((a, b) => a + b, 0) !== total) errs.push('import.html: статті прикладу дають ' + nums.reduce((a, b) => a + b, 0) + ', а підсумок ' + total);
@@ -108,8 +131,8 @@ if (rc) {
   if ((rc.html.match(/<a class="rc"/g) || []).length !== 3) errs.push('check.html: недавніх має бути максимум 3');
   if (!rc.html.includes('href="/check/ABC123"')) errs.push('check.html: коротка адреса звіту не використана');
   if (!rc.html.includes('href="/result-check.html?id=x2"')) errs.push('check.html: без public_id адреса має бути через id');
-  if (!rc.html.includes('rc-score ok">8.1')) errs.push('check.html: оцінка 8.1 не зелена');
-  if (!rc.html.includes('rc-score warn">5.6')) errs.push('check.html: легасі-оцінка 5.6 не жовта або не взята з verdict');
+  if (!rc.html.includes('rc-score ok"><b>8.1</b><small>/10</small>')) errs.push('check.html: оцінка 8.1 не зелена або не компонентом число+знаменник');
+  if (!rc.html.includes('rc-score warn"><b>5.6</b>')) errs.push('check.html: легасі-оцінка 5.6 не жовта або не взята з verdict');
   if (rc.html.includes('<Q5>')) errs.push('check.html: назва не екранується');
 }
 const ri = render('import.html', 'renderRecentEstimates', [
@@ -128,6 +151,7 @@ const v = JSON.parse(fs.readFileSync('vercel.json', 'utf8'));
 if (!v.rewrites.some(r => r.source === '/' && r.destination === '/check.html')) errs.push('маршрут / не веде на check.html');
 for (const [f, s] of Object.entries(PAGES)) if (/last_product|lastProduct|calcar_product/.test(s)) errs.push(f + ': зʼявилась памʼять останнього продукту');
 
+if (missingPhotos.size) console.log('УВАГА: фото ще не додані, працює svg-фолбек: ' + [...missingPhotos].join(', '));
 if (errs.length) { console.log('FAILED:', errs); process.exit(1); }
 console.log('лендинги: форма чиста · бейдж · недавні лише з даними, максимум 3, адреси як у кабінеті · приклад сходиться · 3 картки · головна Check');
 console.log('LANDING TEST PASSED');
