@@ -1019,7 +1019,7 @@ btn.addEventListener('click', async () => {
       if (src) meta.push(src);
       meta.push(timeAgo(r.created_at));
       const grand = Number(r.grand) || null;
-      const ph = /^(https?:)?\//i.test(String(r.photo || '')) ? '<img loading="lazy" alt="" src="' + esc(r.photo) + '"' + (r.pos ? ' style="object-position:' + esc(r.pos) + '"' : '') + '>' : RC_PH;
+      const ph = /^(https?:)?\//i.test(String(r.photo || '')) ? '<img' + (demo ? '' : ' loading="lazy"') + ' alt="" src="' + esc(r.photo) + '"' + (r.pos ? ' style="object-position:' + esc(r.pos) + '"' : '') + '>' : RC_PH;
       /* demo-картка та сама за структурою, але це div без переходу: за нею нема розрахунку */
       return (demo ? '<div class="rc rc-demo">' : '<a class="rc" href="/result.html?id=' + encodeURIComponent(r.id) + '">')
         + '<span class="rc-ph">' + ph + '</span>'

@@ -991,7 +991,7 @@ function renderRecentChecks(rows, demo){
     if (r.odometer_km) meta.push(nf(r.odometer_km) + ' ' + t('km'));
     meta.push(timeAgo(r.created_at));
     /* перший кадр галереї, який звіт уже зберіг; без робочого кадру заглушка */
-    const ph = /^(https?:)?\//i.test(String(r.photo || '')) ? '<img loading="lazy" alt="" src="' + esc(r.photo) + '"' + (r.pos ? ' style="object-position:' + esc(r.pos) + '"' : '') + '>' : RC_PH;
+    const ph = /^(https?:)?\//i.test(String(r.photo || '')) ? '<img' + (demo ? '' : ' loading="lazy"') + ' alt="" src="' + esc(r.photo) + '"' + (r.pos ? ' style="object-position:' + esc(r.pos) + '"' : '') + '>' : RC_PH;
     /* demo-картка та сама за структурою, але це div без переходу: за нею нема звіту */
     return (demo ? '<div class="rc rc-demo">' : '<a class="rc" href="' + href + '">')
       + '<span class="rc-ph">' + ph + '</span>'
