@@ -557,10 +557,8 @@
      праворуч це grid із рівними рядками на всю висоту, тому обидві половини
      закінчуються на одній лінії за побудовою */
   .ex-left{padding:18px 22px 16px;border-right:1px solid var(--line);display:flex;flex-direction:column;justify-content:space-between;gap:12px}
-  .ex-top{display:grid;grid-template-columns:minmax(0,1fr) 142px;gap:14px;align-items:center}
-  /* оцінка і вердикт однією групою в одному рядку */
-  .ex-scorerow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0 0}
-  .ex-main{min-width:0}
+  .ex-top{display:grid;grid-template-columns:minmax(0,1fr) 142px;gap:16px;align-items:center}
+  .ex-main{min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:8px}
   .ex-fig{margin:0}
   .ex-photo{width:100%;height:auto;aspect-ratio:4/3;object-fit:cover;border-radius:12px;background:var(--surface-2);display:block}
   .ex-fig figcaption b{display:block;font-size:13px;font-weight:700;margin-top:7px;text-align:center}
@@ -580,7 +578,7 @@
   .ex-score small{font-size:15px;font-weight:600;color:var(--muted);margin-left:5px}
   /* вердикт тим самим стилем, що risk-label у справжньому звіті */
   .ex-verdict{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:12px;background:var(--green-soft);color:var(--green)}
-  .ex-sum{font-size:13.5px;color:var(--ink-2);line-height:1.5;margin:0}
+  .ex-sum{font-size:13.5px;color:var(--ink-2);line-height:1.5;margin:0;padding-top:12px;border-top:1px solid var(--line)}
   .ex-rows{list-style:none;padding:0;display:grid;grid-auto-rows:1fr;height:100%}
   .ex-rows li{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:8px 20px;border-bottom:1px solid var(--line)}
   .ex-rows li:last-child{border-bottom:0}
@@ -704,7 +702,8 @@
         <div class="ex-top">
           <div class="ex-main">
             <div class="ex-lab">CalCar Score <span class="ex-i" tabindex="0" role="button" aria-label="CalCar Score">i<span class="ex-tip"><b>CalCar Score</b><span>Our assessment of the car based on the data we could verify.</span><span>Critical risks can weigh more heavily on the final score.</span></span></span></div>
-            <div class="ex-scorerow"><div class="ex-score"><b>8.1</b><small>/10</small></div><span class="ex-verdict">Worth considering</span></div>
+            <div class="ex-score"><b>8.1</b><small>/10</small></div>
+            <span class="ex-verdict">Worth a look</span>
           </div>
           <figure class="ex-fig">
             <img class="ex-photo" src="/demo/check-main-bmw-5-series.jpg" alt="" width="960" height="720" onerror="this.onerror=null;this.removeAttribute('src')">
@@ -980,7 +979,7 @@ function timeAgo(iso){
   return new Date(iso).toLocaleDateString(window.calcarLocale());
 }
 const RC_PH = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 11l1.5-4.5A2 2 0 0 1 8.4 5h7.2a2 2 0 0 1 1.9 1.5L19 11"/><rect x="3" y="11" width="18" height="6" rx="2"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/></svg>';
-function renderRecentChecks(rows){
+function renderRecentChecks(rows, demo){
   const box = document.getElementById('recent'), grid = document.getElementById('recentGrid');
   if (!box || !grid || !Array.isArray(rows) || !rows.length) return;
   grid.innerHTML = rows.slice(0, 3).map(r => {
@@ -992,13 +991,14 @@ function renderRecentChecks(rows){
     if (r.odometer_km) meta.push(nf(r.odometer_km) + ' ' + t('km'));
     meta.push(timeAgo(r.created_at));
     /* перший кадр галереї, який звіт уже зберіг; без робочого кадру заглушка */
-    const ph = /^https?:\/\//i.test(String(r.photo || '')) ? '<img loading="lazy" alt="" src="' + esc(r.photo) + '">' : RC_PH;
-    return '<a class="rc" href="' + href + '">'
+    const ph = /^(https?:)?\//i.test(String(r.photo || '')) ? '<img loading="lazy" alt="" src="' + esc(r.photo) + '"' + (r.pos ? ' style="object-position:' + esc(r.pos) + '"' : '') + '>' : RC_PH;
+    /* demo-картка та сама за структурою, але це div без переходу: за нею нема звіту */
+    return (demo ? '<div class="rc rc-demo">' : '<a class="rc" href="' + href + '">')
       + '<span class="rc-ph">' + ph + '</span>'
       + '<span class="rc-body"><span class="rc-t">' + esc(r.title || t('Check')) + '</span>'
       + '<span class="rc-m">' + esc(meta.join(' · ')) + '</span></span>'
-      + (sc === null ? '' : '<span class="rc-v"><span class="rc-score ' + cls + '"><b>' + sc.toFixed(1) + '</b><small>/10</small></span></span>')
-      + '</a>';
+      + (sc === null ? '' : '<span class="rc-v"><span class="rc-score ' + cls + '">' + '<b>' + sc.toFixed(1) + '</b><small>/10</small></span></span>')
+      + (demo ? '</div>' : '</a>');
   }).join('');
   grid.querySelectorAll('.rc-ph img').forEach(img => img.addEventListener('error', () => { img.parentNode.innerHTML = RC_PH; }, { once: true }));
   box.classList.add('on');
@@ -1008,26 +1008,25 @@ window.calcarRenderRecent = renderRecentChecks;   /* smoke-перевірки р
    Це презентаційні дані, не записи reports: у БД не пишуться, у недавні і
    памʼять не потрапляють, нікуди не ведуть і бекенд не викликають. Як тільки
    зʼявиться перший справжній звіт, їх місце займають недавні перевірки. */
-/* фото і назви demo-авто задані власником; оцінки презентаційні і не рахуються
-   по авто на фото */
+/* Приклади перевірок: статичні demo-авто для того, у кого ще немає звітів.
+   Фото і назви задані власником; пробіг, дата і оцінка презентаційні, це не
+   записи reports: у БД не пишуться, нікуди не ведуть, бекенд не викликають.
+   Рендеряться тим самим кодом, що й справжні картки, тому структура, формат
+   дати і компонент оцінки збігаються один в один. */
 const DEMO_CHECKS = [
-  { name: 'Mercedes EQC', photo: '/demo/check-mercedes-eqc.jpg', pos: '50% 55%', score: 8.1 },
-  { name: 'Tesla Model Y', photo: '/demo/check-tesla-model-y.jpg', pos: '50% 50%', score: 7.4 },
-  { name: 'Audi Q5', photo: '/demo/check-audi-q5.jpg', pos: '45% 50%', score: 6.8 },
+  { name: 'Mercedes EQC', photo: '/demo/check-mercedes-eqc.jpg', pos: '50% 55%', km: 68000, when: 'today', score: 8.1 },
+  { name: 'Tesla Model Y', photo: '/demo/check-tesla-model-y.jpg', pos: '50% 50%', km: 42000, when: 'yesterday', score: 7.4 },
+  { name: 'Audi Q5', photo: '/demo/check-audi-q5.jpg', pos: '45% 50%', km: 91000, when: '2026-07-21T10:00:00Z', score: 6.8 },
 ];
+function demoWhen(w){
+  const n = Date.now();
+  return w === 'today' ? new Date(n - 2 * 3600e3).toISOString() : w === 'yesterday' ? new Date(n - 26 * 3600e3).toISOString() : w;
+}
 function renderExampleChecks(){
-  const box = document.getElementById('recent'), grid = document.getElementById('recentGrid');
-  if (!box || !grid) return;
+  if (!document.getElementById('recent')) return;
   document.getElementById('recentTitle').textContent = t('Examples of checks');
   document.getElementById('recentAll').style.display = 'none';
-  grid.innerHTML = DEMO_CHECKS.map(d => '<div class="rc rc-demo" aria-label="' + esc(t('Example')) + '">'
-    + '<span class="rc-ph"><img alt="" src="' + d.photo + '" style="object-position:' + (d.pos || '50% 50%') + '"></span>'
-    + '<span class="rc-body"><span class="rc-t">' + esc(d.name) + '</span></span>'
-    + '<span class="rc-v"><span class="rc-score ' + (d.score >= 7.5 ? 'ok' : d.score >= 5.5 ? 'warn' : 'bad') + '"><b>' + d.score.toFixed(1) + '</b><small>/10</small></span></span>'
-    + '</div>').join('');
-  /* битий файл фото: нейтральна заглушка, ніяких ілюстрацій */
-  grid.querySelectorAll('.rc-ph img').forEach(img => img.addEventListener('error', () => { img.parentNode.innerHTML = RC_PH; }, { once: true }));
-  box.classList.add('on');
+  renderRecentChecks(DEMO_CHECKS.map(d => ({ title: d.name, photo: d.photo, pos: d.pos, odometer_km: d.km, score: d.score, created_at: demoWhen(d.when) })), true);
 }
 (async function loadRecentChecks(){
   let rows = null;

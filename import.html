@@ -481,27 +481,36 @@
 
   /* ---- приклад результату: компактний зріз справжнього конструктора, не інтерактивний ---- */
   .sec-ex{padding-top:40px}
-  .ex{display:grid;grid-template-columns:1.1fr 1fr;background:var(--card);border:1px solid var(--line);border-radius:16px;margin-top:26px;overflow:hidden;max-width:960px;margin-left:auto;margin-right:auto}
+  /* Одна батьківська сітка на обидві половини: 2 колонки x 6 рядків. Кошторис
+     займає рядки 1-6 ліворуч, превʼю авто рядки 1-3 праворуч, три статуси рядки
+     4-6. Рядок 4 ліворуч і праворуч це один трек, тому "Під ключ" і "Треба
+     перевірити" лежать між тими самими лініями за побудовою, без margin-підгонки.
+     Обгортки .cost і .ex-side це display:contents, їх діти живуть у сітці. */
+  .ex{display:grid;grid-template-columns:1.1fr 1fr;grid-template-rows:repeat(6,minmax(36px,auto)) auto;background:var(--card);border:1px solid var(--line);border-radius:16px;margin-top:26px;overflow:hidden;max-width:960px;margin-left:auto;margin-right:auto}
   /* кошторис як калькулятор: рядок з нейтральною іконкою, назвою і сумою; рядки
      розтягуються на висоту колонки, підсумок притиснутий донизу, тому ліва і
      права половини закінчуються на одній лінії за побудовою */
-  .cost{display:flex;flex-direction:column;border-right:1px solid var(--line)}
-  .cost-row{flex:1 1 auto;display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;min-height:34px;padding:2px 20px;font-size:13.5px;color:var(--ink-2);border-bottom:1px solid var(--line)}
+  .cost{display:contents}
+  .cost-row{grid-column:1;display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:2px 20px;font-size:13.5px;color:var(--ink-2);border-bottom:1px solid var(--line);border-right:1px solid var(--line)}
+  .cost-row:nth-child(1){grid-row:1}.cost-row:nth-child(2){grid-row:2}.cost-row:nth-child(3){grid-row:3}.cost-row:nth-child(4){grid-row:4}.cost-row:nth-child(5){grid-row:5}
   .cost-ic{width:16px;height:16px;color:var(--muted);display:flex}
   .cost-ic svg{width:16px;height:16px}
   .cost-row b{font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums;font-size:14px}
-  .cost-total{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:10px 12px 12px;padding:9px 14px;border-radius:10px;background:var(--brand-soft);font-size:14px;font-weight:700;color:var(--ink)}
+  /* підсумок живе в рядку 6 і заповнює його висоту: лаймовий блок усередині комірки без вертикальних відступів */
+  .cost-total{grid-column:1;grid-row:6;align-self:stretch;display:flex;justify-content:space-between;align-items:center;gap:12px;margin:0;padding:8px 20px;background:var(--brand-soft);font-size:14px;font-weight:700;color:var(--ink);border-right:1px solid var(--line)}
   .cost-total b{font-size:19px;font-weight:800;color:var(--brand-ink);font-variant-numeric:tabular-nums;letter-spacing:-.3px}
   /* праворуч від кошторису: фото demo-авто з моделлю і роком, під ним три статуси.
      Фото статичне, зі /demo, не з розрахунків користувача */
-  .ex-side{display:flex;flex-direction:column;min-width:0}
+  .ex-side{display:contents}
   /* фото компактне, поруч модель; під ними три статуси щільно */
-  .ex-car{margin:0;padding:10px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px}
-  .ex-photo{flex:0 0 132px;width:132px;height:88px;object-fit:cover;object-position:50% 60%;border-radius:12px;background:var(--surface-2);display:block}
+  .ex-car{grid-column:2;grid-row:1/4;margin:0;padding:10px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;min-width:0}
+  .ex-photo{flex:0 0 124px;width:124px;height:82px;object-fit:cover;object-position:50% 60%;border-radius:12px;background:var(--surface-2);display:block}
   .ex-car b{display:block;font-size:15px;font-weight:700}
-  .ex-rows{list-style:none;padding:0;flex:1;display:grid;grid-auto-rows:1fr}
-  .ex-rows li{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:center;padding:3px 18px;border-bottom:1px solid var(--line)}
+  .ex-rows{display:contents;list-style:none}
+  .ex-rows li{grid-column:2;display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:center;padding:3px 18px;border-bottom:1px solid var(--line)}
+  .ex-rows li:nth-child(1){grid-row:4}.ex-rows li:nth-child(2){grid-row:5}.ex-rows li:nth-child(3){grid-row:6}
   .ex-rows li:last-child{border-bottom:0}
+  .ex-foot{grid-column:1/-1;grid-row:7}
   /* статус-іконки demo: фірмовий лайм із темною жирною галочкою, мʼякий amber з
      темним знаком, нейтральний сірий зі знаком питання. Це не кольори ризику
      Score, ті лишились у самому звіті */
@@ -513,9 +522,13 @@
   .ex-txt i{display:block;font-style:normal;font-size:12.5px;color:var(--muted);margin-top:1px}
   .ex-foot{grid-column:1/-1;border-top:1px solid var(--line);background:var(--bg);padding:10px 20px;font-size:12.5px;color:var(--muted);text-align:center}
   @media(max-width:760px){
-    .ex{grid-template-columns:1fr}
-    .cost{border-right:0;border-bottom:1px solid var(--line)}
-    .ex-rows li{padding:10px 16px}
+    /* одна колонка: кошторис, підсумок, авто, статуси у порядку розмітки */
+    .ex{grid-template-columns:1fr;grid-template-rows:none;grid-auto-rows:auto}
+    /* специфічність вища за :nth-child-правила рядків, інакше явні grid-row лишаються і рядки накладаються */
+    .ex.ex-cost .cost-row,.ex.ex-cost .cost-total,.ex.ex-cost .ex-car,.ex.ex-cost .ex-rows li{grid-column:1;grid-row:auto;border-right:0}
+    .ex.ex-cost .cost-total{border-bottom:1px solid var(--line)}
+    .ex-rows li{padding:8px 16px}
+    .ex-foot{grid-row:auto}
   }
 
   footer{border-top:1px solid var(--line);background:var(--card);margin-top:auto}
@@ -997,7 +1010,7 @@ btn.addEventListener('click', async () => {
     return new Date(iso).toLocaleDateString(window.calcarLocale());
   }
   const RC_PH = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 11l1.5-4.5A2 2 0 0 1 8.4 5h7.2a2 2 0 0 1 1.9 1.5L19 11"/><rect x="3" y="11" width="18" height="6" rx="2"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/></svg>';
-  function renderRecentEstimates(rows){
+  function renderRecentEstimates(rows, demo){
     const box = document.getElementById('recent'), grid = document.getElementById('recentGrid');
     if (!box || !grid || !Array.isArray(rows) || !rows.length) return;
     grid.innerHTML = rows.slice(0, 3).map(r => {
@@ -1006,13 +1019,14 @@ btn.addEventListener('click', async () => {
       if (src) meta.push(src);
       meta.push(timeAgo(r.created_at));
       const grand = Number(r.grand) || null;
-      const ph = /^https?:\/\//i.test(String(r.photo || '')) ? '<img loading="lazy" alt="" src="' + esc(r.photo) + '">' : RC_PH;
-      return '<a class="rc" href="/result.html?id=' + encodeURIComponent(r.id) + '">'
+      const ph = /^(https?:)?\//i.test(String(r.photo || '')) ? '<img loading="lazy" alt="" src="' + esc(r.photo) + '"' + (r.pos ? ' style="object-position:' + esc(r.pos) + '"' : '') + '>' : RC_PH;
+      /* demo-картка та сама за структурою, але це div без переходу: за нею нема розрахунку */
+      return (demo ? '<div class="rc rc-demo">' : '<a class="rc" href="/result.html?id=' + encodeURIComponent(r.id) + '">')
         + '<span class="rc-ph">' + ph + '</span>'
         + '<span class="rc-body"><span class="rc-t">' + esc(r.title || t('Estimate')) + '</span>'
         + '<span class="rc-m">' + esc(meta.join(' · ')) + '</span></span>'
         + (grand ? '<span class="rc-v"><span class="rc-sum">$' + esc(nf(grand)) + '</span><span class="rc-d">' + esc(t('landed cost')) + '</span></span>' : '')
-        + '</a>';
+        + (demo ? '</div>' : '</a>');
     }).join('');
     grid.querySelectorAll('.rc-ph img').forEach(img => img.addEventListener('error', () => { img.parentNode.innerHTML = RC_PH; }, { once: true }));
     box.classList.add('on');
@@ -1022,26 +1036,24 @@ btn.addEventListener('click', async () => {
      розрахунків. Презентаційні дані, не записи reports: у БД не пишуться,
      нікуди не ведуть, бекенд не викликають. Перший справжній розрахунок
      займає їх місце. */
-  /* фото і назви demo-авто задані власником; підсумки презентаційні і не є
-     розрахунком авто на фото */
+  /* Приклади розрахунків: статичні demo-авто для того, у кого ще немає
+     розрахунків. Фото і назви задані власником; аукціон, дата і сума
+     презентаційні, це не записи reports: у БД не пишуться, нікуди не ведуть,
+     бекенд не викликають. Рендеряться тим самим кодом, що й справжні картки. */
   const DEMO_ESTIMATES = [
-    { name: 'Mazda 6', photo: '/demo/import-mazda-6.jpg', pos: '50% 55%', grand: 19650 },
-    { name: 'Audi A7', photo: '/demo/import-audi-a7.jpg', pos: '50% 50%', grand: 31840 },
-    { name: 'Toyota Corolla', photo: '/demo/import-toyota-corolla.jpg', pos: '45% 55%', grand: 16480 },
+    { name: 'Mazda 6', photo: '/demo/import-mazda-6.jpg', pos: '50% 55%', lot_url: 'copart', when: 'today', grand: 16480 },
+    { name: 'Audi A7', photo: '/demo/import-audi-a7.jpg', pos: '50% 50%', lot_url: 'iaai', when: 'yesterday', grand: 24900 },
+    { name: 'Toyota Corolla', photo: '/demo/import-toyota-corolla.jpg', pos: '45% 55%', lot_url: 'copart', when: '2026-07-21T10:00:00Z', grand: 14850 },
   ];
+  function demoWhen(w){
+    const n = Date.now();
+    return w === 'today' ? new Date(n - 2 * 3600e3).toISOString() : w === 'yesterday' ? new Date(n - 26 * 3600e3).toISOString() : w;
+  }
   function renderExampleEstimates(){
-    const box = document.getElementById('recent'), grid = document.getElementById('recentGrid');
-    if (!box || !grid) return;
+    if (!document.getElementById('recent')) return;
     document.getElementById('recentTitle').textContent = t('Examples of estimates');
     document.getElementById('recentAll').style.display = 'none';
-    grid.innerHTML = DEMO_ESTIMATES.map(d => '<div class="rc rc-demo" aria-label="' + esc(t('Example')) + '">'
-      + '<span class="rc-ph"><img alt="" src="' + d.photo + '" style="object-position:' + (d.pos || '50% 50%') + '"></span>'
-      + '<span class="rc-body"><span class="rc-t">' + esc(d.name) + '</span></span>'
-      + '<span class="rc-v"><span class="rc-sum">$' + esc(nf(d.grand)) + '</span><span class="rc-d">' + esc(t('landed cost')) + '</span></span>'
-      + '</div>').join('');
-    /* битий файл фото: нейтральна заглушка, ніяких ілюстрацій */
-    grid.querySelectorAll('.rc-ph img').forEach(img => img.addEventListener('error', () => { img.parentNode.innerHTML = RC_PH; }, { once: true }));
-    box.classList.add('on');
+    renderRecentEstimates(DEMO_ESTIMATES.map(d => ({ title: d.name, photo: d.photo, pos: d.pos, lot_url: d.lot_url, grand: d.grand, created_at: demoWhen(d.when) })), true);
   }
   (async function loadRecentEstimates(){
     let rows = null;

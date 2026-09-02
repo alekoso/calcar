@@ -570,7 +570,6 @@ window.CALCAR_DICTS.ru = {
   '{n} days ago': '{n} дн. назад',
   'landed cost': 'под ключ',
   'Sample CalCar report': 'Пример отчёта CalCar',
-  'Worth considering': 'Стоит рассматривать',
   'Low, well-documented mileage and a sound engine version outweigh a moderate accident history.': 'Небольшой подтверждённый пробег и удачная версия двигателя перевешивают умеренную историю ДТП.',
   'Owners': 'Владельцы',
   'History': 'История',
@@ -623,4 +622,5 @@ window.CALCAR_DICTS.ru = {
   '© 2026 CalCar': '© 2026 CalCar',
   'BMW 5 Series': 'BMW 5 Series',
   'Dodge Challenger': 'Dodge Challenger',
+  'Worth a look': 'Стоит внимания',
 };

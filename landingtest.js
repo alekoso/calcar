@@ -44,11 +44,14 @@ for (const [f, s] of Object.entries(PAGES)) {
      без дат, без БД. Перший справжній звіт їх замінює */
   const ex = f === 'check.html' ? 'renderExampleChecks' : 'renderExampleEstimates';
   if (!new RegExp('function ' + ex + '\\(\\)').test(s)) errs.push(f + ': нема прикладів для нового користувача');
+  /* demo-картки рендеряться тим самим кодом, що справжні: структура, дата, оцінка збігаються */
+  if (!new RegExp('renderRecent\\w+\\(DEMO_\\w+\\.map\\([\\s\\S]{0,260}\\), true\\);').test(s)) errs.push(f + ': приклади не через спільний рендерер справжніх карток');
+  if (!/\(demo \? '<div class="rc rc-demo">' : '<a class="rc" href=/.test(s)) errs.push(f + ': demo-картка не div без переходу');
   if (!new RegExp('if \\(Array\\.isArray\\(rows\\) && rows\\.length\\) renderRecent\\w+\\(rows\\); else ' + ex + '\\(\\);').test(s)) errs.push(f + ': приклади не замінюються справжніми звітами');
   /* тіло функції прикладів вирізається за балансом дужок: в Import вона живе всередині IIFE */
   const demoBlock = (() => { const st = s.indexOf('function ' + ex + '(){'); if (st < 0) return ''; let i = s.indexOf('{', st), d = 0; for (; i < s.length; i++) { if (s[i] === '{') d++; else if (s[i] === '}' && --d === 0) break; } return s.slice(st, i + 1); })();
-  if (/href=|created_at|timeAgo\(/.test(demoBlock)) errs.push(f + ': demo-картки клікаються або мають дати');
-  if (!/rc-demo/.test(demoBlock) || !/from\('reports'\)/.test(s.slice(s.indexOf('function loadRecent')))) errs.push(f + ': demo-картки без позначки або справжній запит зник');
+  if (/href=/.test(demoBlock)) errs.push(f + ': demo-картки клікаються');
+  if (!/from\('reports'\)/.test(s.slice(s.indexOf('function loadRecent')))) errs.push(f + ': справжній запит недавніх зник');
   /* demo-фото: справжні фотографії з /demo, кожна мусить існувати; жодних svg-авто,
      битий файл дає лише нейтральну заглушку */
   for (const m of new Set(s.match(/\/demo\/[a-z0-9-]+\.(jpg|webp)/g) || [])) if (!fs.existsSync(m.slice(1))) errs.push(f + ': нема фото ' + m);
@@ -63,8 +66,8 @@ for (const [f, s] of Object.entries(PAGES)) {
   if (/Example vehicle/.test(s)) errs.push(f + ': "Example vehicle" повернувся');
   const exFn = f === 'check.html' ? 'renderExampleChecks' : 'renderExampleEstimates';
   const st = s.indexOf('function ' + exFn + '(){'); let i2 = s.indexOf('{', st), dd = 0; for (; i2 < s.length; i2++) { if (s[i2] === '{') dd++; else if (s[i2] === '}' && --dd === 0) break; }
-  if (/rc-m/.test(s.slice(st, i2 + 1))) errs.push(f + ': у demo-картках лишився вторинний рядок');
-  if (!/object-position:' \+ \(d\.pos \|\| '50% 50%'\)/.test(s)) errs.push(f + ': demo-фото без індивідуального object-position');
+  if (/Example'\)/.test(s.slice(st, i2 + 1))) errs.push(f + ': у demo-картках слово "Приклад"');
+  if (!/\(r\.pos \? ' style="object-position:' \+ esc\(r\.pos\)/.test(s)) errs.push(f + ': demo-фото без індивідуального object-position');
   if (!/\.ex-ic\.ok\{background:var\(--brand\)\}/.test(s) || !/\.ex-ic\.warn\{background:var\(--amber-soft\)/.test(s)) errs.push(f + ': статус-іконки не в системі лайм/amber/нейтральний');
   if (/\.ex-ic\.ok\{background:var\(--green-soft\)/.test(s)) errs.push(f + ': позитивний статус знову generic green');
   /* футер мінімальний: лише копірайт, без другого логотипа і beta */
@@ -84,7 +87,13 @@ for (const [f, s] of Object.entries(PAGES)) {
   if (!/\.ex-rows\{[^}]*grid-auto-rows:1fr;height:100%/.test(c) || !/\.ex-left\{[^}]*display:flex;flex-direction:column;justify-content:space-between/.test(c)) errs.push('check.html: половини demo не вирівняні по висоті за побудовою');
   const i = PAGES['import.html'];
   if ((i.match(/<span class="cost-ic">/g) || []).length !== 5) errs.push('import.html: не всі рядки кошторису з іконкою');
-  if (!/\.cost\{display:flex;flex-direction:column/.test(i) || !/\.cost-row\{flex:1 1 auto/.test(i) || !/\.ex-rows\{[^}]*flex:1;display:grid;grid-auto-rows:1fr/.test(i)) errs.push('import.html: половини demo не вирівняні по висоті за побудовою');
+  /* одна батьківська сітка 2x6: кошторис рядки 1-6, авто 1/4, статуси 4-6; без margin-підгонки */
+  if (!/\.ex\{display:grid;grid-template-columns:1\.1fr 1fr;grid-template-rows:repeat\(6,minmax\(36px,auto\)\) auto/.test(i)) errs.push('import.html: demo не на одній сітці 2x6');
+  if (!/\.cost\{display:contents\}/.test(i) || !/\.ex-side\{display:contents\}/.test(i) || !/\.ex-rows\{display:contents/.test(i)) errs.push('import.html: обгортки не display:contents, діти не в батьківській сітці');
+  for (const k of [1,2,3,4,5]) if (!i.includes('.cost-row:nth-child(' + k + '){grid-row:' + k + '}')) errs.push('import.html: рядок кошторису ' + k + ' без явного grid-row');
+  if (!/\.cost-total\{grid-column:1;grid-row:6;align-self:stretch;[^}]*margin:0;/.test(i)) errs.push('import.html: підсумок не в рядку 6 або з вертикальними відступами');
+  if (!/\.ex-car\{grid-column:2;grid-row:1\/4;/.test(i)) errs.push('import.html: превʼю авто не в рядках 1-3');
+  for (const [k, r] of [[1,4],[2,5],[3,6]]) if (!i.includes('.ex-rows li:nth-child(' + k + '){grid-row:' + r + '}')) errs.push('import.html: статус ' + k + ' не в рядку ' + r);
   if (!/<figure class="ex-car"><img class="ex-photo" src="\/demo\/import-main-dodge-challenger\.jpg"[^>]*><figcaption><b>Dodge Challenger<\/b>/.test(i)) errs.push('import.html: demo-розрахунок не Dodge Challenger з фото');
   if (!/<img class="ex-photo" src="\/demo\/check-main-bmw-5-series\.jpg"[\s\S]{0,200}<figcaption><b>BMW 5 Series<\/b>/.test(c)) errs.push('check.html: demo-звіт не BMW 5 Series з фото');
   if (/540i xDrive|BMW X5 2021/.test(c + i)) errs.push('стара назва demo-авто лишилась');
@@ -107,7 +116,7 @@ function render(page, fnName, rowsIn) {
   const src = PAGES[page];
   /* тіло функції вирізається за балансом дужок, а не регуляркою: усередині є
      вкладені блоки map(...), і ліниве \}\n обривало код на півдорозі */
-  const start = src.indexOf('function ' + fnName + '(rows){');
+  const start = src.indexOf('function ' + fnName + '(rows, demo){');
   if (start < 0) { errs.push(page + ': не знайдено ' + fnName); return null; }
   let i = src.indexOf('{', start), depth = 0;
   for (; i < src.length; i++) { if (src[i] === '{') depth++; else if (src[i] === '}' && --depth === 0) break; }
