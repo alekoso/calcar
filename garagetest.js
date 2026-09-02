@@ -108,6 +108,8 @@ if (!/\.g-tab\.on\{background:var\(--card\);color:var\(--ink\);border-color:var\
 if (!/\.g-tab:focus-visible\{outline/.test(g)) errs.push('клавіатурний фокус навігації втрачено');
 /* сторінка публікації: превʼю у стрічці веде на повну публікацію, маршрути не бʼються з /garage/:id */
 if (!g.includes('id="postView"')) errs.push('нема контейнера сторінки публікації');
+/* rewrite серверний: у браузері лишається /garage/post/:id, тому публікацію впізнаємо з pathname */
+if (!/PATH\.match\(\/\^\\\/garage\\\/\(\?:post\|article\)\\\/\(\[\^\\\/\?#\]\+\)\/\)/.test(g)) errs.push('публікація не впізнається з pathname, на проді після rewrite вона не відкриється');
 if (!/function postHref\(p\) \{ return p\.post_type === 'article' \? '\/garage\/article\/' \+ p\.slug : '\/garage\/post\/' \+ p\.id; \}/.test(g)) errs.push('картка стрічки не веде на сторінку публікації');
 if (!/class="post-link" href="/.test(g)) errs.push('заголовок публікації не посилання');
 if (!/function renderDetail\(p\)/.test(g) || !/pd-lead|sections/.test(g)) errs.push('нема повної сторінки публікації і статті');

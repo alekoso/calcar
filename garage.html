@@ -1500,13 +1500,14 @@ h1{font-size:27px;letter-spacing:-.01em}
   }
   window.CalCarFeed = { matchPost: matchPost, DEMO_POSTS: DEMO_POSTS, POST_TYPES: POST_TYPES, feeds: Object.keys(FEEDS) };
   /* стрічка розповідає помічнику, що людина зараз бачить */
-  if (window.CalCarContext) window.CalCarContext.register(function () { var q = new URLSearchParams(location.search); return (q.get('post') || q.get('article')) ? {} : { page_type: 'garage_feed', section: (state && state.feed) || 'for-you' }; });
+  if (window.CalCarContext) window.CalCarContext.register(function () { var q = new URLSearchParams(location.search); var onPost = /^\/garage\/(post|article)\//.test(location.pathname) || q.get('post') || q.get('article'); return onPost ? {} : { page_type: 'garage_feed', section: (state && state.feed) || 'for-you' }; });
 
   var home = $('garageHome');
   if (!home) return;
   /* сторінка публікації: /garage/post/:id або /garage/article/:slug (через vercel.json) */
   var Q = new URLSearchParams(location.search);
-  var DETAIL = Q.get('post') || Q.get('article') || '';
+  var PATH = location.pathname.replace(/\/+$/, '');
+  var DETAIL = (PATH.match(/^\/garage\/(?:post|article)\/([^\/?#]+)/) || [])[1] || Q.get('post') || Q.get('article') || '';
 
   /* Сторінка авто (/garage/:id): дім гаража ховається, лишається лише панель
      "Мій гараж", бо в ній живуть noAuth/noCfg, які показує основний скрипт. */
