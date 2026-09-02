@@ -713,4 +713,6 @@ window.CALCAR_DICTS.ua = {
   'Airbags': 'Подушки',
   'Note': 'Примітка',
   'Data as of': 'Дані на',
+  'What we noticed in the photos': 'Що помітили на фото',
+  'Car, logistics and customs': 'Авто, логістика і розмитнення',
 };

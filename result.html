@@ -463,8 +463,8 @@
   .spec-v.warn{color:var(--amber);font-weight:700}
   .spec-v.bad{color:var(--red);font-weight:700}
   .spec-v.faint{color:var(--faint);font-weight:500}
-  .spec-rows.in-body{padding:0;margin-bottom:14px}
-  .lot-note{padding:0 20px 14px}
+  .lot-obs{margin:4px 20px 16px;padding:10px 14px;background:var(--surface-2);border-radius:10px;font-size:13.5px;color:var(--ink-2);line-height:1.5}
+  .lot-obs b{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:3px}
   .copy-btn{border:none;background:none;cursor:pointer;padding:2px;color:var(--muted);display:inline-flex;align-items:center}
   .copy-btn:hover{color:var(--ink)}
   .copy-btn.done{color:var(--green)}
@@ -561,13 +561,14 @@
   .cost-row .lbl span{display:block;font-size:12px;color:var(--muted);font-weight:400;margin-top:1px}
 
   /* фінал: "скільки обійдеться" мусить важити стільки ж, скільки "чи варто брати" у Check */
-  .total-box{background:var(--brand-soft);border:1px solid #DCEFAE;border-radius:var(--radius);padding:18px 20px;display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  .total-box{background:var(--brand-soft);border:1px solid #DCEFAE;border-radius:var(--radius);padding:18px 20px}
   .total-l{display:block;font-size:12px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--brand-ink);margin-bottom:6px}
   .total-v{font-size:36px;font-weight:800;letter-spacing:-.8px;line-height:1.05;color:var(--ink)}
-  .total-side{display:flex;gap:18px;flex-wrap:wrap}
-  .total-side div{min-width:110px}
-  .total-side .tl{display:block;font-size:11.5px;font-weight:600;color:var(--muted)}
-  .total-side .tv{font-size:15px;font-weight:700;color:var(--ink)}
+  /* розбивка під головною сумою: рядки, а не ще дві KPI-картки */
+  .total-break{margin-top:12px;padding-top:10px;border-top:1px solid #DCEFAE;display:flex;flex-direction:column;gap:6px}
+  .total-break div{display:flex;justify-content:space-between;align-items:baseline;gap:16px;font-size:13.5px}
+  .total-break .tl{color:var(--ink-2)}
+  .total-break .tv{font-weight:700;color:var(--ink);white-space:nowrap}
   /* фінальні дії */
   .final-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
   .profit{color:var(--green)}
@@ -856,10 +857,10 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>
       </a>
       <span id="titleChips"></span>
-      <span class="badge blue" id="lotBadge">AI estimate</span>
     </div>
     <div class="spec-rows" id="lotMeta"></div>
-    <div class="hint lot-note" id="modeHint"></div>
+    <!-- примітка з фото лота: компактне спостереження, без AI-бейджа -->
+    <div class="lot-obs" id="lotObs" style="display:none"><b>What we noticed in the photos</b><span id="lotObsText"></span></div>
   </div>
 
   <!-- VIN spec -->
@@ -871,7 +872,6 @@
       <span class="hint" id="vinHint"></span>
     </div>
     <div class="card-body">
-      <div class="spec-rows in-body" id="specGrid"></div>
       <div class="chips" id="chipsEl"></div>
     </div>
   </div>
@@ -1075,12 +1075,10 @@
     <div class="card-head"><h2>Summary</h2></div>
     <div class="card-body">
       <div class="total-box">
-        <div>
-          <span class="total-l">Landed cost in Ukraine</span>
-          <div class="total-v num" id="grandTotal">$0</div>
-          <div class="no-bid-note" id="noBidNote" style="display:none">excludes lot price: no bid entered</div>
-        </div>
-        <div class="total-side" id="totalSide"></div>
+        <span class="total-l">Landed cost in Ukraine</span>
+        <div class="total-v num" id="grandTotal">$0</div>
+        <div class="no-bid-note" id="noBidNote" style="display:none">excludes lot price: no bid entered</div>
+        <div class="total-break" id="totalSide"></div>
       </div>
       <div class="safety-strike" id="safetyStrike">⚠ Airbags are excluded from the estimate. A car without restored airbags is unsafe; this note stays in the verdict and the PDF.</div>
       <div class="final-actions">
@@ -1209,17 +1207,26 @@ function esc(s){ return String(s ?? '').replace(/\s*\u2014\s*/g, ', ').replace(/
 function renderHeaderBlocks(){
   const v = DATA.vehicle || {};
   document.getElementById('lotTitle').textContent = v.title || t('Vehicle');
-  document.getElementById('lotBadge').textContent = t('AI estimate');
-  document.getElementById('modeHint').textContent = t('Estimate based on your photos. Prices are approximate, verify before bidding');
 
   const vinVal = DATA._meta?.vin || DATA.vin || '';
-  const vinFromPhoto = DATA._meta?.vin_source === 'photo';
   /* характеристики лота: label і value в одному рядку, дві колонки, як у Check.
      Дані ті самі, що були в lot-meta, змінюється лише подача */
   const lotSpec = [];
   if (v.mileage_note) lotSpec.push([t('Mileage'), esc(v.mileage_note)]);
+  if (v.engine) lotSpec.push([t('Engine'), esc(v.engine)]);
+  if (v.transmission) lotSpec.push([t('Gearbox'), esc(v.transmission)]);
+  if (v.drive) lotSpec.push([t('Drivetrain'), esc(v.drive)]);
   if (DATA._meta?.damage) lotSpec.push([t('Damage'), esc(DATA._meta.damage)]);
   if (DATA._meta?.title_code) lotSpec.push([t('Title'), esc(DATA._meta.title_code)]);
+  if (v.trim) {
+    /* коротка версія без назви моделі читається погано: "SE" стає "Corolla SE" */
+    let tr = String(v.trim);
+    if (tr.replace(/[^A-Za-zА-Яа-яІіЇїЄє0-9]/g, '').length <= 3) {
+      const mdl = String(v.title || '').split(/\s+/)[1] || '';
+      if (mdl && !new RegExp('^' + mdl, 'i').test(tr)) tr = mdl + ' ' + tr;
+    }
+    lotSpec.push([t('Trim'), esc(tr)]);
+  }
   if (DATA._meta?.run_and_drive === false) lotSpec.push([t('Run & Drive'), esc(t('Not Run & Drive')), 'warn']);
   if (DATA._meta?.keys === 'NO') lotSpec.push([t('Keys'), esc(t('No keys')), 'warn']);
   if (/deploy/i.test(String(DATA._meta?.airbags || ''))) lotSpec.push([t('Airbags'), esc(t('Airbags deployed (auction data)')), 'bad']);
@@ -1239,18 +1246,18 @@ function renderHeaderBlocks(){
       lotSpec.push([t('Data as of'), esc(an.toLocaleDateString(calcarLocale(), { day: 'numeric', month: 'long' }) + ', ' + an.toLocaleTimeString(calcarLocale(), { hour: '2-digit', minute: '2-digit' })), 'faint']);
     }
   })();
-  if (DATA.lot_notes) lotSpec.push([t('Note'), esc(DATA.lot_notes), 'warn']);
   const specRow = r => '<div class="spec-row"><span class="spec-l">' + esc(r[0]) + '</span><span class="spec-v' + (r[2] ? ' ' + r[2] : '') + '">' + r[1] + '</span></div>';
   const lotCut = Math.ceil(lotSpec.length / 2);
   document.getElementById('lotMeta').innerHTML = lotSpec.length
     ? '<div class="spec-col">' + lotSpec.slice(0, lotCut).map(specRow).join('') + '</div>' + (lotSpec.length > lotCut ? '<div class="spec-col">' + lotSpec.slice(lotCut).map(specRow).join('') + '</div>' : '')
     : '';
   document.getElementById('lotMeta').style.display = lotSpec.length ? '' : 'none';
+  if (DATA.lot_notes) { document.getElementById('lotObsText').textContent = DATA.lot_notes; document.getElementById('lotObs').style.display = ''; }
   /* identity-чіпи біля назви: VIN і номер лота з копіюванням, як VIN і номер у Check */
   const copySvg = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
   const chip = (l, val) => '<span class="id-chip"><span class="id-l">' + esc(l) + '</span><span class="id-v">' + esc(val) + '</span><button class="copy-btn" type="button" data-copy="' + esc(val) + '" title="' + esc(t('Copy')) + '" aria-label="' + esc(t('Copy')) + '">' + copySvg + '</button></span>';
   const idBits = [];
-  if (vinVal) idBits.push(chip('VIN', vinVal) + (vinFromPhoto ? ' <span class="badge blue">' + esc(t('read from photos')) + '</span>' : ''));
+  if (vinVal) idBits.push(chip('VIN', vinVal));
   if (DATA._meta?.lot_number) idBits.push(chip(t('Lot'), String(DATA._meta.lot_number)));
   const chipsBox = document.getElementById('titleChips');
   chipsBox.innerHTML = idBits.join('');
@@ -1321,24 +1328,7 @@ function renderHeaderBlocks(){
     document.getElementById('eqImpact').style.display = '';
   })();
 
-  const spec = [];
-  if (v.engine) spec.push([v.engine,t('Engine')]);
-  if (v.transmission) spec.push([v.transmission,t('Gearbox')]);
-  if (v.drive) spec.push([v.drive,t('Drivetrain')]);
-  if (v.trim) {
-    let tr = String(v.trim);
-    if (tr.replace(/[^A-Za-zА-Яа-яІіЇїЄє0-9]/g, '').length <= 3) {
-      const mdl = String(v.title || '').split(/\s+/)[1] || '';
-      if (mdl && !new RegExp('^' + mdl, 'i').test(tr)) tr = mdl + ' ' + tr;
-    }
-    spec.push([tr, t('Trim')]);
-  }
-  const specEl = document.getElementById('specGrid');
-  if (spec.length) {
-    const row = ([b, l]) => `<div class="spec-row"><span class="spec-l">${esc(l)}</span><span class="spec-v">${esc(b)}</span></div>`;
-    const cut = Math.ceil(spec.length / 2);
-    specEl.innerHTML = '<div class="spec-col">' + spec.slice(0, cut).map(row).join('') + '</div>' + (spec.length > cut ? '<div class="spec-col">' + spec.slice(cut).map(row).join('') + '</div>' : '');
-  } else specEl.style.display = 'none';
+  /* двигун, коробка, привід і версія тепер у картці авто; тут лише заводські опції */
   const eq = v.equipment || [];
   const premium = new Set((v.premium_options || []).map(String));
   if (premium.size && eq.some(e => premium.has(String(e)))) document.getElementById('eqLegend').style.display = '';
@@ -1420,7 +1410,9 @@ function computeAndRenderRisk() {
   if (!(DATA.parts || []).length && !(DATA.flags || []).length) return;
   if ((DATA.flags || []).length === 1 && DATA.flags[0].status === 'unknown') return; /* режим лише за VIN */
   const rk = computeRisk();
-  document.getElementById('riskBadge').style.display = '';
+  /* бал ризику покупки внутрішній: їде в чат, знімок і PDF, але не показується як
+     оцінка пошкоджень, бо містить пробіг, ключі і тайтл. Заміна: окремий Damage Score */
+  document.getElementById('riskBadge').style.display = 'none';
   document.getElementById('riskScore').textContent = rk.score.toFixed(1) + ' / 10';
   document.getElementById('riskDot').className = 'dot ' + rk.cls;
   const rl = document.getElementById('riskLabel');
@@ -1677,8 +1669,8 @@ function recalc() {
   window.__lastGrand = grand;
   /* вторинні підсумки поруч із головною сумою: ті самі числа, лише подача */
   const side = document.getElementById('totalSide');
-  if (side) side.innerHTML = '<div><span class="tl">' + esc(t('Repair')) + '</span><span class="tv num">' + esc(fmt(repair)) + '</span></div>'
-    + '<div><span class="tl">' + esc(t('Lot + logistics + customs')) + '</span><span class="tv num">' + esc(fmt(logistics)) + '</span></div>';
+  if (side) side.innerHTML = '<div><span class="tl">' + esc(t('Car, logistics and customs')) + '</span><span class="tv num">' + esc(fmt(logistics)) + '</span></div>'
+    + '<div><span class="tl">' + esc(t('Repair')) + '</span><span class="tv num">' + esc(fmt(repair)) + '</span></div>';
   const nb = document.getElementById('noBidNote');
   if (nb) nb.style.display = (Number(document.getElementById('bid').value) > 0) ? 'none' : '';
 

@@ -713,4 +713,6 @@ window.CALCAR_DICTS.ru = {
   'Airbags': 'Подушки',
   'Note': 'Примечание',
   'Data as of': 'Данные на',
+  'What we noticed in the photos': 'Что заметили на фото',
+  'Car, logistics and customs': 'Авто, логистика и растаможка',
 };
