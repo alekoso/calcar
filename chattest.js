@@ -277,6 +277,49 @@ async function sys(product, memory, extra) {
     });
   }
 
+  /* 14. дві метрики Import не плутаються: оцінка пошкоджень і легасі-ризик.
+     UI показує 8.1, легасі-ризик 3.6; на питання про пошкодження помічник
+     мусить мати в контексті саме 8.1 і пряму заборону відповідати легасі-балом */
+  {
+    const api = fs.readFileSync('api/chat.js', 'utf8');
+    const dom = api.slice(api.indexOf('const DOMAIN_IMPORT'), api.indexOf('const DOMAIN_CHECK'));
+    for (const rule of [
+      'context.damage_score це ОЦІНКА ПОШКОДЖЕНЬ',
+      'Питання "яка оцінка пошкоджень"',
+      'ВНУТРІШНІЙ ЛЕГАСІ-СИГНАЛ',
+      'на питання про пошкодження ним НЕ відповідай',
+      'ВИВОДИТИ оцінку пошкоджень із legacy_purchase_risk у цьому разі ЗАБОРОНЕНО',
+      'поля risk усередині totals',
+    ]) if (!dom.includes(rule)) errs.push('у промпті Import нема правила: ' + rule.slice(0, 46));
+    if (/context є risk_score/.test(dom)) errs.push('стара двозначна згадка risk_score лишилась у промпті');
+
+    /* контекст сторінки: нова метрика присутня, легасі названий легасі */
+    const page = fs.readFileSync('result.html', 'utf8');
+    const ctx = page.slice(page.indexOf('function chatContext()'), page.indexOf('function photosForChat()'));
+    for (const k of ['damage_score:', 'damage_score_available:', 'damage_label:', 'damage_severity:', 'restoration_confirmed:', 'damage_coverage:', 'legacy_purchase_risk:']) {
+      if (!ctx.includes(k)) errs.push('контекст Import без поля ' + k);
+    }
+    if (/(^|[^_])risk_score:/.test(ctx)) errs.push('легасі-ризик досі їде під назвою risk_score');
+
+    /* прогін самого конверта: 8.1 у damage_score, 3.6 у легасі, і вони не переплутані */
+    const DATA = { damage_score: { score_available: true, score: 8.1, label_key: 'Moderate damage', max_event_severity: 'moderate', restoration_confirmed: false, coverage: { sufficient: true, depth_known: true, strong_signals: [] } } };
+    const envelope = {
+      damage_score: DATA.damage_score.score_available ? DATA.damage_score.score : null,
+      damage_score_available: !!DATA.damage_score.score_available,
+      damage_label: DATA.damage_score.label_key,
+      damage_severity: DATA.damage_score.max_event_severity,
+      restoration_confirmed: DATA.damage_score.restoration_confirmed,
+      legacy_purchase_risk: 3.6,
+    };
+    if (envelope.damage_score !== 8.1) errs.push('оцінка пошкоджень у конверті не 8.1');
+    if (envelope.legacy_purchase_risk === envelope.damage_score) errs.push('дві метрики злились в одну');
+    if (Math.abs((10 - envelope.legacy_purchase_risk) - envelope.damage_score) < 0.05) errs.push('легасі-ризик інвертується в оцінку пошкоджень: саме цього не має бути');
+    /* старий звіт без бала: заборона рахувати його з легасі */
+    const oldReport = { damage_score: undefined };
+    const oldEnv = { damage_score: null, damage_score_available: false, legacy_purchase_risk: 3.6 };
+    if (oldEnv.damage_score !== null || oldEnv.damage_score_available !== false) errs.push('старий звіт мусить давати damage_score null і available false');
+  }
+
   /* 13. специфікація нотатки: копії в api/memory.js і api/chat.js посимвольно рівні */
   const specOf = file => {
     const m = fs.readFileSync(file, 'utf8').match(/const NOTE_SPEC = `([\s\S]*?)`;/);

@@ -2107,8 +2107,21 @@ document.getElementById('printMeta').textContent =
       other_reports_of_this_user: Array.isArray(window.__otherReports) && window.__otherReports.length ? window.__otherReports : null,
       equipment_impact: DATA.equipment_impact || null,
       premium_options: (DATA.vehicle && DATA.vehicle.premium_options) || null,
-      /* legacy purchase risk: чат уже знає цю шкалу, лишаємо як було */
-      risk_score: (DATA.parts || []).length ? computeLegacyPurchaseRisk().score : null,
+      /* Оцінка пошкоджень: та сама метрика, що бачить людина у звіті.
+         Питання про пошкодження помічник відповідає САМЕ нею. */
+      damage_score: (DATA.damage_score && DATA.damage_score.score_available) ? DATA.damage_score.score : null,
+      damage_score_available: !!(DATA.damage_score && DATA.damage_score.score_available),
+      damage_label: (DATA.damage_score && DATA.damage_score.label_key) ? t(DATA.damage_score.label_key) : null,
+      damage_severity: DATA.damage_score ? DATA.damage_score.max_event_severity : null,
+      restoration_confirmed: DATA.damage_score ? DATA.damage_score.restoration_confirmed : null,
+      damage_coverage: DATA.damage_score ? {
+        sufficient: DATA.damage_score.coverage.sufficient,
+        depth_known: DATA.damage_score.coverage.depth_known,
+        strong_signals: DATA.damage_score.coverage.strong_signals,
+      } : null,
+      /* ВНУТРІШНІЙ легасі-сигнал ризику покупки: інша шкала, інша семантика.
+         Оцінкою пошкоджень не є, промпт це прямо забороняє (api/chat.js) */
+      legacy_purchase_risk: (DATA.parts || []).length ? computeLegacyPurchaseRisk().score : null,
       parts: on(partRows),
       works: on(workRows),
       maintenance: on(maintRows),
