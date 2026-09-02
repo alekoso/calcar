@@ -996,7 +996,7 @@ function renderExampleChecks(){
   document.getElementById('recentTitle').textContent = t('Examples of checks');
   document.getElementById('recentAll').style.display = 'none';
   grid.innerHTML = DEMO_CHECKS.map(d => '<div class="rc rc-demo" aria-label="' + esc(t('Example')) + '">'
-    + '<span class="rc-ph"><img loading="lazy" alt="" src="' + d.photo + '"></span>'
+    + '<span class="rc-ph"><img alt="" src="' + d.photo + '"></span>'
     + '<span class="rc-body"><span class="rc-t">' + esc(d.name) + '</span><span class="rc-m">' + esc(t('Example')) + '</span></span>'
     + '<span class="rc-v"><span class="rc-score ' + (d.score >= 7.5 ? 'ok' : d.score >= 5.5 ? 'warn' : 'bad') + '">' + d.score.toFixed(1) + '<small>/10</small></span></span>'
     + '</div>').join('');

@@ -1028,7 +1028,7 @@ btn.addEventListener('click', async () => {
     document.getElementById('recentTitle').textContent = t('Examples of estimates');
     document.getElementById('recentAll').style.display = 'none';
     grid.innerHTML = DEMO_ESTIMATES.map(d => '<div class="rc rc-demo" aria-label="' + esc(t('Example')) + '">'
-      + '<span class="rc-ph"><img loading="lazy" alt="" src="' + d.photo + '"></span>'
+      + '<span class="rc-ph"><img alt="" src="' + d.photo + '"></span>'
       + '<span class="rc-body"><span class="rc-t">' + esc(d.name) + '</span><span class="rc-m">' + esc(t('Example')) + '</span></span>'
       + '<span class="rc-v"><span class="rc-sum">$' + esc(nf(d.grand)) + '</span><span class="rc-d">' + esc(t('landed cost')) + '</span></span>'
       + '</div>').join('');
