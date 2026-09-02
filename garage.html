@@ -444,6 +444,8 @@ h1{font-size:27px;letter-spacing:-.01em}
 /* Липне рівно під шапкою: це головна навігація продукту, вона мусить лишатися
    під рукою при прокрутці стрічки. Фон непрозорий, інакше пости просвічують. */
 .g-nav{position:sticky;top:var(--hdr-h);z-index:40;background:var(--bg);padding:14px 0 16px;margin:-26px 0 0;display:flex;flex-direction:column;align-items:center;gap:10px}
+/* атрибут hidden мусить перемагати display:flex навігації на сторінці авто і публікації */
+#garageHome [hidden]{display:none!important}
 .g-mini{display:none;font-size:17px;font-weight:800;letter-spacing:-.01em;align-self:flex-start}
 .g-seg{display:grid;grid-template-columns:1fr 1fr;gap:3px;width:400px;max-width:100%;padding:3px;background:var(--surface-2);border-radius:12px}
 .g-tab{display:inline-flex;align-items:center;justify-content:center;height:38px;border:1px solid transparent;border-radius:9px;background:transparent;color:var(--muted);font-family:inherit;font-size:14.5px;font-weight:600;cursor:pointer;transition:background .15s,color .15s,border-color .15s}

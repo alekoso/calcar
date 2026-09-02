@@ -119,6 +119,7 @@ if (!/CalCarChat\.open\(\{ focus: askFocus\(p\) \}\)/.test(g)) errs.push('кно
 if (/intro:|askSuggestions/.test(g)) errs.push('у гаражі лишились окремі підказки або інтро окремого чату');
 if ((g.match(/data-action="ask-calcar">/g) || []).length !== 2) errs.push('CTA під публікацією має бути одна на картку і одна на сторінці публікації');
 if (!/\.g-nav\{position:sticky;top:var\(--hdr-h\)/.test(g)) errs.push('навігація не липне під шапкою');
+if (!g.includes('#garageHome [hidden]{display:none!important}')) errs.push('hidden не перемагає display:flex: на сторінці авто видно навігацію стрічки');
 if (!/--hdr-h:56px/.test(g)) errs.push('нема токена висоти шапки');
 /* стара конструкція: великий заголовок і підзаголовок окремим hero */
 if (/<h1>Garage<\/h1>/.test(g)) errs.push('повернувся hero-заголовок Гаража');
