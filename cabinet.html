@@ -207,12 +207,15 @@
  .logo .r{background:var(--graphite);color:#fff;padding:.62em .72em .62em .98em;margin-left:-.26em;clip-path:polygon(.46em 0,100% 0,100% 100%,0 100%)}
  .header-right{margin-left:0;grid-column:3;justify-self:end;display:flex;align-items:center;gap:16px;font-size:13px}
  .hleft{display:flex;align-items:center;gap:14px;justify-self:start}
+ .beta{font-size:11px;font-weight:600;background:var(--surface-2);color:var(--muted);padding:2px 8px;border-radius:20px;letter-spacing:.4px}
  .btn-auth{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line-strong);border-radius:20px;padding:7px 14px;background:var(--card);color:var(--ink)!important;font-weight:600;font-size:13px;text-decoration:none;transition:background .15s,border-color .15s}
  .btn-auth:hover{background:var(--surface-2)}
  .acc-wrap{position:relative;display:inline-flex}
  .acc-wrap::after{content:"";position:absolute;left:0;right:0;top:100%;height:10px}
  .acc-menu{position:absolute;top:calc(100% + 8px);right:0;min-width:216px;padding:6px;z-index:70;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 28px rgba(20,22,25,.12);display:none}
  .acc-wrap:hover .acc-menu,.acc-wrap:focus-within .acc-menu{display:block}
+ /* тач: перший тап відкриває меню класом, бо :hover там залипає, а клік по посиланню вів би на сторінку */
+ .acc-wrap.open .acc-menu{display:block}
  .acc-menu a{display:block;padding:9px 12px;border-radius:8px;font-size:13.5px;font-weight:600;color:var(--ink);text-decoration:none}
  .acc-menu a:hover{background:var(--surface-2)}
 
@@ -458,7 +461,7 @@
  </div>
  <div class="acc-wrap">
  <a class="btn-auth" href="/cabinet.html">
- <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+ <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg>
  My account
  </a>
  <div class="acc-menu">
@@ -875,6 +878,25 @@ document.addEventListener('click', function (e) {
   m.style.display = 'none';
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   w.addEventListener('mouseleave', function () { m.style.display = ''; }, { once: true });
+});
+/* Кнопка "Кабінет" нікуди не веде. На десктопі меню відкриває наведення,
+   тому клік по самій кнопці нічого не робить: адреса не міняється, сторінка
+   не відкривається. На тачі наведення немає, і перший тап відкриває меню
+   класом .open, другий закриває. З клавіатури меню показує :focus-within,
+   Enter по кнопці теж нічого не відкриває. href лишається лише семантикою. */
+document.addEventListener('click', function (e) {
+  var b = e.target.closest ? e.target.closest('.btn-auth') : null;
+  if (!b) return;
+  e.preventDefault();
+  var w = b.closest('.acc-wrap');
+  if (!w) return;
+  var hoverable = window.matchMedia && window.matchMedia('(hover:hover) and (pointer:fine)').matches;
+  if (!hoverable) w.classList.toggle('open');
+});
+/* тап поза меню закриває його */
+document.addEventListener('click', function (e) {
+  if (e.target.closest && e.target.closest('.acc-wrap')) return;
+  document.querySelectorAll('.acc-wrap.open').forEach(function (w) { w.classList.remove('open'); });
 });
 </script>
 <script>

@@ -252,6 +252,8 @@
     box-shadow:0 10px 28px rgba(20,22,25,.12);display:none;
   }
   .acc-wrap:hover .acc-menu,.acc-wrap:focus-within .acc-menu{display:block}
+  /* тач: перший тап відкриває меню класом, бо :hover там залипає, а клік по посиланню вів би на сторінку */
+  .acc-wrap.open .acc-menu{display:block}
   .acc-menu a{display:block;padding:9px 12px;border-radius:8px;font-size:13.5px;font-weight:600;color:var(--ink);text-decoration:none}
   .acc-menu a:hover{background:var(--surface-2)}
 
@@ -460,7 +462,9 @@
   .recent-h a{font-size:13px;font-weight:600;color:var(--muted);text-decoration:none}
   .recent-h a:hover{color:var(--ink)}
   .recent-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-  .rc{display:flex;align-items:center;gap:12px;min-width:0;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;color:var(--ink);text-decoration:none;transition:background .15s,border-color .15s}
+  .rc{display:flex;align-items:center;gap:12px;min-width:0;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 12px;color:var(--ink);text-decoration:none;transition:background .15s,border-color .15s}
+  .rc-ph{flex:0 0 76px;width:76px;height:54px;border-radius:9px;overflow:hidden;background:var(--surface-2);color:var(--faint);display:flex;align-items:center;justify-content:center}
+  .rc-ph img{display:block;width:100%;height:100%;object-fit:cover}
   .rc:hover{background:var(--surface-2);border-color:var(--line-strong)}
   .rc-body{flex:1;min-width:0}
   .rc-t{display:block;font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -472,23 +476,26 @@
 
   /* ---- приклад результату: компактний зріз справжнього конструктора, не інтерактивний ---- */
   .sec-ex{padding-top:40px}
-  .ex{display:grid;grid-template-columns:1.1fr 1fr;background:var(--card);border:1px solid var(--line);border-radius:16px;margin-top:26px;overflow:hidden}
+  .ex{display:grid;grid-template-columns:1.1fr 1fr;background:var(--card);border:1px solid var(--line);border-radius:16px;margin-top:26px;overflow:hidden;max-width:960px;margin-left:auto;margin-right:auto}
   .cost{padding:10px 0;border-right:1px solid var(--line)}
   .cost-row{display:flex;justify-content:space-between;gap:12px;padding:10px 26px;font-size:14px;color:var(--ink-2)}
   .cost-row b{font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
   .cost-total{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:8px 14px 6px;padding:12px 12px;border-radius:12px;background:var(--brand-soft);font-size:15px;font-weight:800}
   .cost-total b{font-size:18px;color:var(--brand-ink);font-variant-numeric:tabular-nums}
-  .ex-rows{list-style:none;padding:6px 0;align-self:center}
-  .ex-rows li{display:grid;grid-template-columns:auto 118px 1fr;gap:12px;align-items:center;padding:14px 24px;border-bottom:1px solid var(--line)}
+  .ex-rows{list-style:none;padding:4px 0;align-self:center}
+  .ex-rows li{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:center;padding:12px 22px;border-bottom:1px solid var(--line)}
   .ex-rows li:last-child{border-bottom:0}
-  .ex-k{font-size:14px;font-weight:700}
-  .ex-v{font-size:13.5px;color:var(--muted)}
-  .ex-note{text-align:center;font-size:12.5px;color:var(--faint);margin-top:12px}
+  .ex-ic{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+  .ex-ic.ok{background:var(--green-soft);color:var(--green)}
+  .ex-ic.warn{background:var(--amber-soft);color:var(--amber)}
+  .ex-ic.unknown{background:var(--surface-2);color:var(--faint)}
+  .ex-txt b{display:block;font-size:14px;font-weight:700}
+  .ex-txt i{display:block;font-style:normal;font-size:12.5px;color:var(--muted);margin-top:1px}
+  .ex-foot{grid-column:1/-1;border-top:1px solid var(--line);background:var(--bg);padding:10px 20px;font-size:12.5px;color:var(--muted);text-align:center}
   @media(max-width:760px){
     .ex{grid-template-columns:1fr}
     .cost{border-right:0;border-bottom:1px solid var(--line)}
-    .ex-rows li{grid-template-columns:auto 1fr;padding:11px 18px}
-    .ex-v{grid-column:2}
+    .ex-rows li{padding:10px 16px}
   }
 
   footer{border-top:1px solid var(--line);background:var(--card);margin-top:auto}
@@ -680,12 +687,12 @@
         <div class="cost-total"><span>Landed cost in Ukraine</span><b>$29 150</b></div>
       </div>
       <ul class="ex-rows">
-        <li><span class="dot warn"></span><span class="ex-k">Repair risk</span><span class="ex-v">Front impact, hidden damage possible</span></li>
-        <li><span class="dot ok"></span><span class="ex-k">Build sheet</span><span class="ex-v">Options confirmed by VIN</span></li>
-        <li><span class="dot unknown"></span><span class="ex-k">To verify</span><span class="ex-v">Airbags: not visible in photos</span></li>
+        <li><span class="ex-ic warn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v9"/><path d="M12 18h.01"/></svg></span><span class="ex-txt"><b class="ex-k">Repair risk</b><i>Front impact, hidden damage possible</i></span></li>
+        <li><span class="ex-ic ok"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span><span class="ex-txt"><b class="ex-k">Build sheet</b><i>Options confirmed by VIN</i></span></li>
+        <li><span class="ex-ic unknown"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 1-1 1.7"/><path d="M12 17h.01"/></svg></span><span class="ex-txt"><b class="ex-k">To verify</b><i>Airbags: not visible in photos</i></span></li>
       </ul>
+      <div class="ex-foot">A sample. Your estimate is built for the exact lot you calculate.</div>
     </div>
-    <p class="ex-note">A sample. Your estimate is built for the exact lot you calculate.</p>
   </section>
 
   <section>
@@ -972,6 +979,7 @@ btn.addEventListener('click', async () => {
     if (d < 7) return t('{n} days ago').replace('{n}', d);
     return new Date(iso).toLocaleDateString(window.calcarLocale());
   }
+  const RC_PH = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 11l1.5-4.5A2 2 0 0 1 8.4 5h7.2a2 2 0 0 1 1.9 1.5L19 11"/><rect x="3" y="11" width="18" height="6" rx="2"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/></svg>';
   function renderRecentEstimates(rows){
     const box = document.getElementById('recent'), grid = document.getElementById('recentGrid');
     if (!box || !grid || !Array.isArray(rows) || !rows.length) return;
@@ -981,12 +989,15 @@ btn.addEventListener('click', async () => {
       if (src) meta.push(src);
       meta.push(timeAgo(r.created_at));
       const grand = Number(r.grand) || null;
+      const ph = /^https?:\/\//i.test(String(r.photo || '')) ? '<img loading="lazy" alt="" src="' + esc(r.photo) + '">' : RC_PH;
       return '<a class="rc" href="/result.html?id=' + encodeURIComponent(r.id) + '">'
+        + '<span class="rc-ph">' + ph + '</span>'
         + '<span class="rc-body"><span class="rc-t">' + esc(r.title || t('Estimate')) + '</span>'
         + '<span class="rc-m">' + esc(meta.join(' · ')) + '</span></span>'
         + (grand ? '<span class="rc-v"><span class="rc-sum">$' + esc(nf(grand)) + '</span><span class="rc-d">' + esc(t('landed cost')) + '</span></span>' : '')
         + '</a>';
     }).join('');
+    grid.querySelectorAll('.rc-ph img').forEach(img => img.addEventListener('error', () => { img.parentNode.innerHTML = RC_PH; }, { once: true }));
     box.classList.add('on');
   }
   window.calcarRenderRecent = renderRecentEstimates;   /* smoke-перевірки рендерять блок без входу */
@@ -996,7 +1007,7 @@ btn.addEventListener('click', async () => {
       const { data: s } = await window.SB.auth.getSession();
       if (!s?.session) return;
       const { data: rows, error } = await window.SB.from('reports')
-        .select('id,created_at,title:data->vehicle->>title,lot_url:data->_meta->>lot_url,grand:data->_snapshot->>grand')
+        .select('id,created_at,title:data->vehicle->>title,photo:data->_meta->photos->>0,lot_url:data->_meta->>lot_url,grand:data->_snapshot->>grand')
         .eq('kind', 'import').order('created_at', { ascending: false }).limit(3);
       if (!error) renderRecentEstimates(rows);
     } catch (e) { /* блок необовʼязковий: сторінка живе і без нього */ }
@@ -1016,6 +1027,25 @@ document.addEventListener('click', function (e) {
   m.style.display = 'none';
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   w.addEventListener('mouseleave', function () { m.style.display = ''; }, { once: true });
+});
+/* Кнопка "Кабінет" нікуди не веде. На десктопі меню відкриває наведення,
+   тому клік по самій кнопці нічого не робить: адреса не міняється, сторінка
+   не відкривається. На тачі наведення немає, і перший тап відкриває меню
+   класом .open, другий закриває. З клавіатури меню показує :focus-within,
+   Enter по кнопці теж нічого не відкриває. href лишається лише семантикою. */
+document.addEventListener('click', function (e) {
+  var b = e.target.closest ? e.target.closest('.btn-auth') : null;
+  if (!b) return;
+  e.preventDefault();
+  var w = b.closest('.acc-wrap');
+  if (!w) return;
+  var hoverable = window.matchMedia && window.matchMedia('(hover:hover) and (pointer:fine)').matches;
+  if (!hoverable) w.classList.toggle('open');
+});
+/* тап поза меню закриває його */
+document.addEventListener('click', function (e) {
+  if (e.target.closest && e.target.closest('.acc-wrap')) return;
+  document.querySelectorAll('.acc-wrap.open').forEach(function (w) { w.classList.remove('open'); });
 });
 </script>
 <script>

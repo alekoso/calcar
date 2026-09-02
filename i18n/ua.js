@@ -620,4 +620,5 @@ window.CALCAR_DICTS.ua = {
   'No estimates yet': 'Розрахунків ще немає',
   'Paste a Copart or IAAI lot link and get the full landed cost.': 'Встав посилання на лот Copart або IAAI і отримай повну вартість під ключ.',
   'Calculate a lot': 'Прорахувати лот',
+  'VIN 5UXCR6C0XM9F12345': 'VIN 5UXCR6C0XM9F12345',
 };

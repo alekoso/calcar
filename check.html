@@ -268,6 +268,8 @@
     box-shadow:0 10px 28px rgba(20,22,25,.12);display:none;
   }
   .acc-wrap:hover .acc-menu,.acc-wrap:focus-within .acc-menu{display:block}
+  /* тач: перший тап відкриває меню класом, бо :hover там залипає, а клік по посиланню вів би на сторінку */
+  .acc-wrap.open .acc-menu{display:block}
   .acc-menu a{display:block;padding:9px 12px;border-radius:8px;font-size:13.5px;font-weight:600;color:var(--ink);text-decoration:none}
   .acc-menu a:hover{background:var(--surface-2)}
 
@@ -526,7 +528,9 @@
   .recent-h a{font-size:13px;font-weight:600;color:var(--muted);text-decoration:none}
   .recent-h a:hover{color:var(--ink)}
   .recent-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-  .rc{display:flex;align-items:center;gap:12px;min-width:0;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;color:var(--ink);text-decoration:none;transition:background .15s,border-color .15s}
+  .rc{display:flex;align-items:center;gap:12px;min-width:0;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 12px;color:var(--ink);text-decoration:none;transition:background .15s,border-color .15s}
+  .rc-ph{flex:0 0 76px;width:76px;height:54px;border-radius:9px;overflow:hidden;background:var(--surface-2);color:var(--faint);display:flex;align-items:center;justify-content:center}
+  .rc-ph img{display:block;width:100%;height:100%;object-fit:cover}
   .rc:hover{background:var(--surface-2);border-color:var(--line-strong)}
   .rc-body{flex:1;min-width:0}
   .rc-t{display:block;font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -539,26 +543,34 @@
   .rc-d{display:block;font-size:11.5px;color:var(--faint);margin-top:2px}
   @media(max-width:860px){.recent-grid{grid-template-columns:1fr}}
 
-  /* ---- приклад результату: компактний зріз справжнього звіту, не інтерактивний ---- */
+  /* ---- приклад результату: зріз справжнього звіту, не інтерактивний і не таблиця ---- */
   .sec-ex{padding-top:40px}
-  .ex{display:grid;grid-template-columns:minmax(240px,1fr) 1.45fr;background:var(--card);border:1px solid var(--line);border-radius:16px;margin-top:26px;overflow:hidden}
-  .ex-left{padding:24px 28px;border-right:1px solid var(--line)}
-  .ex-lab{font-size:12.5px;font-weight:700;color:var(--muted)}
-  .ex-score{font-size:44px;font-weight:800;letter-spacing:-1px;line-height:1.05;margin:6px 0 10px}
+  .ex{display:grid;grid-template-columns:minmax(230px,.9fr) 1.35fr;background:var(--card);border:1px solid var(--line);border-radius:16px;margin-top:26px;overflow:hidden;max-width:960px;margin-left:auto;margin-right:auto}
+  .ex-left{padding:22px 24px 20px;border-right:1px solid var(--line)}
+  .ex-lab{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:var(--muted)}
+  .ex-i{width:14px;height:14px;border-radius:50%;border:1.5px solid var(--line-strong);color:var(--faint);font-size:9px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;font-style:italic;font-family:Georgia,serif}
+  .ex-score{font-size:42px;font-weight:800;letter-spacing:-1px;line-height:1.05;margin:4px 0 10px}
   .ex-score small{font-size:15px;font-weight:600;letter-spacing:0;color:var(--muted);margin-left:4px}
   .ex-sum{font-size:13.5px;color:var(--ink-2);line-height:1.5;margin-top:14px}
-  .ex-veh{margin-top:16px;font-size:12.5px;font-weight:600;color:var(--muted)}
-  .ex-rows{list-style:none;padding:6px 0}
-  .ex-rows li{display:grid;grid-template-columns:auto 124px 1fr;gap:12px;align-items:center;padding:12px 24px;border-bottom:1px solid var(--line)}
+  .ex-veh{display:flex;align-items:center;gap:10px;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+  .ex-veh-ph{flex:0 0 58px;width:58px;height:42px;border-radius:8px;background:var(--surface-2);color:var(--faint);display:flex;align-items:center;justify-content:center}
+  .ex-veh b{display:block;font-size:13px;font-weight:700}
+  .ex-veh i{display:block;font-style:normal;font-size:11.5px;color:var(--faint);letter-spacing:.3px;margin-top:2px}
+  .ex-rows{list-style:none;padding:4px 0}
+  .ex-rows li{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:10px 20px;border-bottom:1px solid var(--line)}
   .ex-rows li:last-child{border-bottom:0}
-  .ex-k{font-size:14px;font-weight:700}
-  .ex-v{font-size:13.5px;color:var(--muted)}
-  .ex-note{text-align:center;font-size:12.5px;color:var(--faint);margin-top:12px}
+  .ex-ic{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+  .ex-ic.ok{background:var(--green-soft);color:var(--green)}
+  .ex-ic.warn{background:var(--amber-soft);color:var(--amber)}
+  .ex-ic.unknown{background:var(--surface-2);color:var(--faint)}
+  .ex-txt b{display:block;font-size:14px;font-weight:700}
+  .ex-txt i{display:block;font-style:normal;font-size:12.5px;color:var(--muted);margin-top:1px}
+  .ex-chev{color:var(--faint);display:flex}
+  .ex-foot{grid-column:1/-1;border-top:1px solid var(--line);background:var(--bg);padding:10px 20px;font-size:12.5px;color:var(--muted);text-align:center}
   @media(max-width:760px){
     .ex{grid-template-columns:1fr}
     .ex-left{border-right:0;border-bottom:1px solid var(--line)}
-    .ex-rows li{grid-template-columns:auto 1fr;padding:11px 18px}
-    .ex-v{grid-column:2}
+    .ex-rows li{padding:10px 16px}
   }
   /* безшовний перехід між сторінками: браузер плавно перемальовує лише те,
      що змінилось, а шапка і футер візуально лишаються на місці */
@@ -658,21 +670,21 @@
     <h2 class="sec">Sample CalCar report</h2>
     <div class="ex">
       <div class="ex-left">
-        <div class="ex-lab">CalCar Score</div>
+        <div class="ex-lab">CalCar Score <span class="ex-i" aria-hidden="true">i</span></div>
         <div class="ex-score">8.1<small>/10</small></div>
         <span class="badge green">Worth considering</span>
         <p class="ex-sum">Low, well-documented mileage and a sound engine version outweigh a moderate accident history.</p>
-        <div class="ex-veh">BMW X5 xDrive40i 2021</div>
+        <div class="ex-veh"><span class="ex-veh-ph" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11l1.5-4.5A2 2 0 0 1 8.4 5h7.2a2 2 0 0 1 1.9 1.5L19 11"/><rect x="3" y="11" width="18" height="6" rx="2"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/></svg></span><span><b>BMW X5 xDrive40i 2021</b><i>VIN 5UXCR6C0XM9F12345</i></span></div>
       </div>
       <ul class="ex-rows">
-        <li><span class="dot ok"></span><span class="ex-k">Mileage</span><span class="ex-v">Confirmed by service history</span></li>
-        <li><span class="dot ok"></span><span class="ex-k">Owners</span><span class="ex-v">2 owners, private use</span></li>
-        <li><span class="dot warn"></span><span class="ex-k">History</span><span class="ex-v">One minor accident in the US</span></li>
-        <li><span class="dot ok"></span><span class="ex-k">Equipment</span><span class="ex-v">Matches the factory build</span></li>
-        <li><span class="dot ok"></span><span class="ex-k">Price</span><span class="ex-v">Below the market average</span></li>
+        <li><span class="ex-ic ok"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span><span class="ex-txt"><b class="ex-k">Mileage</b><i>Confirmed by service history</i></span><span class="ex-chev"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg></span></li>
+        <li><span class="ex-ic ok"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span><span class="ex-txt"><b class="ex-k">Owners</b><i>2 owners, private use</i></span><span class="ex-chev"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg></span></li>
+        <li><span class="ex-ic warn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v9"/><path d="M12 18h.01"/></svg></span><span class="ex-txt"><b class="ex-k">History</b><i>One minor accident in the US</i></span><span class="ex-chev"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg></span></li>
+        <li><span class="ex-ic ok"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span><span class="ex-txt"><b class="ex-k">Equipment</b><i>Matches the factory build</i></span><span class="ex-chev"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg></span></li>
+        <li><span class="ex-ic ok"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span><span class="ex-txt"><b class="ex-k">Price</b><i>Below the market average</i></span><span class="ex-chev"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg></span></li>
       </ul>
+      <div class="ex-foot">A sample. Your report is built for the exact car you check.</div>
     </div>
-    <p class="ex-note">A sample. Your report is built for the exact car you check.</p>
   </section>
 </div>
 
@@ -935,6 +947,7 @@ function timeAgo(iso){
   if (d < 7) return t('{n} days ago').replace('{n}', d);
   return new Date(iso).toLocaleDateString(window.calcarLocale());
 }
+const RC_PH = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 11l1.5-4.5A2 2 0 0 1 8.4 5h7.2a2 2 0 0 1 1.9 1.5L19 11"/><rect x="3" y="11" width="18" height="6" rx="2"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/></svg>';
 function renderRecentChecks(rows){
   const box = document.getElementById('recent'), grid = document.getElementById('recentGrid');
   if (!box || !grid || !Array.isArray(rows) || !rows.length) return;
@@ -946,12 +959,16 @@ function renderRecentChecks(rows){
     const meta = [];
     if (r.odometer_km) meta.push(nf(r.odometer_km) + ' ' + t('km'));
     meta.push(timeAgo(r.created_at));
+    /* перший кадр галереї, який звіт уже зберіг; без робочого кадру заглушка */
+    const ph = /^https?:\/\//i.test(String(r.photo || '')) ? '<img loading="lazy" alt="" src="' + esc(r.photo) + '">' : RC_PH;
     return '<a class="rc" href="' + href + '">'
+      + '<span class="rc-ph">' + ph + '</span>'
       + '<span class="rc-body"><span class="rc-t">' + esc(r.title || t('Check')) + '</span>'
       + '<span class="rc-m">' + esc(meta.join(' · ')) + '</span></span>'
       + (sc === null ? '' : '<span class="rc-v"><span class="rc-score ' + cls + '">' + sc.toFixed(1) + '<small>/10</small></span></span>')
       + '</a>';
   }).join('');
+  grid.querySelectorAll('.rc-ph img').forEach(img => img.addEventListener('error', () => { img.parentNode.innerHTML = RC_PH; }, { once: true }));
   box.classList.add('on');
 }
 window.calcarRenderRecent = renderRecentChecks;   /* smoke-перевірки рендерять блок без входу */
@@ -960,7 +977,7 @@ window.calcarRenderRecent = renderRecentChecks;   /* smoke-перевірки р
   try {
     const { data: s } = await SB.auth.getSession();
     if (!s?.session) return;
-    const cols = 'id,created_at,title:data->vehicle->>title,odometer_km:data->_meta->>odometer_km,score:data->score_breakdown->>final,legacy_score:data->verdict->>score';
+    const cols = 'id,created_at,title:data->vehicle->>title,photo:data->_meta->photos->>0,odometer_km:data->_meta->>odometer_km,score:data->score_breakdown->>final,legacy_score:data->verdict->>score';
     let { data: rows, error } = await SB.from('reports').select('public_id,' + cols)
       .eq('kind', 'check').order('created_at', { ascending: false }).limit(3);
     /* міграція public_id ще не виконана: працюємо без короткої адреси */
@@ -1069,6 +1086,25 @@ document.addEventListener('click', function (e) {
   m.style.display = 'none';
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   w.addEventListener('mouseleave', function () { m.style.display = ''; }, { once: true });
+});
+/* Кнопка "Кабінет" нікуди не веде. На десктопі меню відкриває наведення,
+   тому клік по самій кнопці нічого не робить: адреса не міняється, сторінка
+   не відкривається. На тачі наведення немає, і перший тап відкриває меню
+   класом .open, другий закриває. З клавіатури меню показує :focus-within,
+   Enter по кнопці теж нічого не відкриває. href лишається лише семантикою. */
+document.addEventListener('click', function (e) {
+  var b = e.target.closest ? e.target.closest('.btn-auth') : null;
+  if (!b) return;
+  e.preventDefault();
+  var w = b.closest('.acc-wrap');
+  if (!w) return;
+  var hoverable = window.matchMedia && window.matchMedia('(hover:hover) and (pointer:fine)').matches;
+  if (!hoverable) w.classList.toggle('open');
+});
+/* тап поза меню закриває його */
+document.addEventListener('click', function (e) {
+  if (e.target.closest && e.target.closest('.acc-wrap')) return;
+  document.querySelectorAll('.acc-wrap.open').forEach(function (w) { w.classList.remove('open'); });
 });
 </script>
 <script>

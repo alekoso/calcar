@@ -620,4 +620,5 @@ window.CALCAR_DICTS.ru = {
   'No estimates yet': 'Расчётов пока нет',
   'Paste a Copart or IAAI lot link and get the full landed cost.': 'Вставь ссылку на лот Copart или IAAI и получи полную стоимость под ключ.',
   'Calculate a lot': 'Рассчитать лот',
+  'VIN 5UXCR6C0XM9F12345': 'VIN 5UXCR6C0XM9F12345',
 };

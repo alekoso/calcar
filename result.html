@@ -240,7 +240,7 @@
   .logo{display:inline-flex;align-items:stretch;border-radius:.46em;overflow:hidden;font-weight:800;font-size:15px;letter-spacing:.01em;line-height:1;text-decoration:none;font-family:'Sora',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
   .logo .l{background:var(--brand);color:var(--ink);padding:.62em 1.05em .62em .72em;clip-path:polygon(0 0,100% 0,calc(100% - .46em) 100%,0 100%)}
   .logo .r{background:var(--graphite);color:#fff;padding:.62em .72em .62em .98em;margin-left:-.26em;clip-path:polygon(.46em 0,100% 0,100% 100%,0 100%)}
-  .beta{font-size:11px;background:var(--surface-2);color:var(--muted);padding:2px 8px;border-radius:20px;letter-spacing:.4px}
+  .beta{font-size:11px;font-weight:600;background:var(--surface-2);color:var(--muted);padding:2px 8px;border-radius:20px;letter-spacing:.4px}
   .header-right{margin-left:auto;display:flex;align-items:center;gap:16px;font-size:13px}
   .header-right a{color:var(--muted);text-decoration:none}
   .avatar{width:30px;height:30px;border-radius:50%;background:var(--graphite);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
@@ -256,6 +256,8 @@
     box-shadow:0 10px 28px rgba(20,22,25,.12);display:none;
   }
   .acc-wrap:hover .acc-menu,.acc-wrap:focus-within .acc-menu{display:block}
+  /* тач: перший тап відкриває меню класом, бо :hover там залипає, а клік по посиланню вів би на сторінку */
+  .acc-wrap.open .acc-menu{display:block}
   .acc-menu a{display:block;padding:9px 12px;border-radius:8px;font-size:13.5px;font-weight:600;color:var(--ink);text-decoration:none}
   .acc-menu a:hover{background:var(--surface-2)}
 
@@ -2895,6 +2897,25 @@ document.addEventListener('click', function (e) {
   m.style.display = 'none';
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   w.addEventListener('mouseleave', function () { m.style.display = ''; }, { once: true });
+});
+/* Кнопка "Кабінет" нікуди не веде. На десктопі меню відкриває наведення,
+   тому клік по самій кнопці нічого не робить: адреса не міняється, сторінка
+   не відкривається. На тачі наведення немає, і перший тап відкриває меню
+   класом .open, другий закриває. З клавіатури меню показує :focus-within,
+   Enter по кнопці теж нічого не відкриває. href лишається лише семантикою. */
+document.addEventListener('click', function (e) {
+  var b = e.target.closest ? e.target.closest('.btn-auth') : null;
+  if (!b) return;
+  e.preventDefault();
+  var w = b.closest('.acc-wrap');
+  if (!w) return;
+  var hoverable = window.matchMedia && window.matchMedia('(hover:hover) and (pointer:fine)').matches;
+  if (!hoverable) w.classList.toggle('open');
+});
+/* тап поза меню закриває його */
+document.addEventListener('click', function (e) {
+  if (e.target.closest && e.target.closest('.acc-wrap')) return;
+  document.querySelectorAll('.acc-wrap.open').forEach(function (w) { w.classList.remove('open'); });
 });
 </script>
 <script>

@@ -31,7 +31,12 @@ for (const [f, s] of Object.entries(PAGES)) {
   if (!blk.includes("from('reports')")) errs.push(f + ': блок недавніх не читає reports');
   if (/\.(insert|update|delete)\(/.test(blk)) errs.push(f + ': блок недавніх пише у reports');
   /* 4. приклад результату присутній і позначений як приклад */
-  if (!/<section class="sec-ex">/.test(s) || !/class="ex-note">A sample\./.test(s)) errs.push(f + ': нема прикладу результату або підпису "приклад"');
+  if (!/<section class="sec-ex">/.test(s) || !/class="ex-foot">A sample\./.test(s)) errs.push(f + ': нема прикладу результату або підпису "приклад"');
+  /* приклад це картка звіту, а не таблиця: іконки станів і двошаровий текст, без крапок-маркерів */
+  if (!/class="ex-ic (ok|warn|unknown)"/.test(s) || /<span class="dot (ok|warn)"><\/span><span class="ex-k">/.test(s)) errs.push(f + ': приклад результату знову таблиця з крапками');
+  /* недавні з фото: перший кадр галереї у запиті, заглушка без нього */
+  if (!/photo:data->_meta->photos->>0/.test(s)) errs.push(f + ': недавні без фото у запиті');
+  if (!/const RC_PH = '<svg/.test(s) || !/class="rc-ph">' \+ ph/.test(s)) errs.push(f + ': недавні без заглушки фото');
   /* 5. рівно три картки продукту */
   if ((body.match(/<div class="feat">/g) || []).length !== 3) errs.push(f + ': карток продукту не три');
   /* 6. "beta" в шапці лишилась, лаунчер лишився */
@@ -39,7 +44,7 @@ for (const [f, s] of Object.entries(PAGES)) {
 }
 
 /* 7. Check: у прикладі пʼять категорій; Import: цифри прикладу сходяться в підсумок */
-const rows = (PAGES['check.html'].match(/<span class="ex-k">([^<]+)<\/span>/g) || []).map(x => x.replace(/<[^>]+>/g, ''));
+const rows = (PAGES['check.html'].match(/<b class="ex-k">([^<]+)<\/b>/g) || []).map(x => x.replace(/<[^>]+>/g, ''));
 if (rows.join('|') !== 'Mileage|Owners|History|Equipment|Price') errs.push('check.html: категорії прикладу: ' + rows.join(', '));
 const nums = (PAGES['import.html'].match(/<div class="cost-row"><span>[^<]+<\/span><b>\$([\d ]+)<\/b>/g) || []).map(x => +x.match(/\$([\d ]+)/)[1].replace(/\s/g, ''));
 const total = +((PAGES['import.html'].match(/<div class="cost-total">[\s\S]*?<b>\$([\d ]+)<\/b>/) || [])[1] || '').replace(/\s/g, '');
@@ -59,11 +64,11 @@ function render(page, fnName, rowsIn) {
   for (; i < src.length; i++) { if (src[i] === '{') depth++; else if (src[i] === '}' && --depth === 0) break; }
   const m = [src.slice(start, i + 1)];
   const box = { cls: new Set(), classList: { add(c) { box.cls.add(c); } } };
-  const grid = { innerHTML: '' };
+  const grid = { innerHTML: '', querySelectorAll: () => [] };
   const ctx = {
     document: { getElementById: id => (id === 'recent' ? box : id === 'recentGrid' ? grid : null) },
     window: { calcarLocale: () => 'en-US' }, Date, Number, Array, String, Math, encodeURIComponent,
-    t: x => x, esc: x => String(x ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])),
+    t: x => x, esc: x => String(x ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])), RC_PH: '<svg/>',
     nf: n => Number(n).toLocaleString('en-US'),
     timeAgo: () => 'ago',
   };
