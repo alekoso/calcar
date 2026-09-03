@@ -3,6 +3,10 @@
    коли обрано цю мову. Згенеровано розворотом попередніх словників UA -> EN/RU. */
 window.CALCAR_DICTS = window.CALCAR_DICTS || {};
 window.CALCAR_DICTS.ua = {
+  'My CalCar AI': 'Мій CalCar AI',
+  'CalCar AI': 'CalCar AI',
+  'CalCar menu': 'Меню CalCar',
+  'Language': 'Мова',
   'My account': 'Кабінет',
   'Sign in': 'Увійти',
   'Sign out': 'Вийти',

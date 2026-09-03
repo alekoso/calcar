@@ -46,10 +46,9 @@ if (!fs.readFileSync('result.html','utf8').includes('.header-right{margin-left:a
 for (const f of ['garage.html','cabinet.html','check.html','import.html','result-check.html','result.html']) {
   const s = fs.readFileSync(f,'utf8');
   if (!s.includes('href="/garage"')) errs.push('нема пункту Гараж у ' + f);
-  /* міст під кнопкою: без нього hover злітає в зазорі і меню закривається */
-  if (!s.includes('.acc-wrap::after')) errs.push('нема моста наведення (.acc-wrap::after) у ' + f);
-  /* клік по пункту закриває меню: на кабінеті переходу нема і меню висіло */
-  if (!s.includes(".closest('.acc-menu a')")) errs.push('нема закриття меню кліком у ' + f);
+  /* акаунт живе в панелі лаунчера звичайними посиланнями, без hover-меню */
+  if (s.includes('.acc-wrap::after')) errs.push('лишився міст наведення від старого меню акаунта у ' + f);
+  if (!/<div class="acc-wrap anon">[\s\S]{0,300}id="authLink"/.test(s)) errs.push('нема блоку акаунта в панелі у ' + f);
   /* вітрина = лише Check: перемикач продуктів знятий, редирект-пастка теж */
   if (s.includes('class="switch"')) errs.push('перемикач продуктів повернувся у ' + f);
   if (s.includes('calcarProduct')) errs.push('редирект за calcarProduct повернувся у ' + f);
@@ -143,12 +142,13 @@ if (!/-webkit-line-clamp:4/.test(g)) errs.push('довгий текст пост
 /* мовне меню: той самий компонент, що на Check/Import, без Garage-варіанта */
 {
   const chk = fs.readFileSync('check.html','utf8');
-  for (const sel of ['.lang-btn{', '.lang-btn:hover{', '.lang-btn svg{', '.lang-menu{', '.lang-menu button{', '.lang-menu button.on i{']) {
+  for (const sel of ['.lang-menu button{', '.lang-menu button:hover{', '.lang-menu button i{', '.lang-menu button.on i{', '.lnc-panel .lang-menu button{']) {
     const pick = src => { const i = src.indexOf('  ' + sel); return i < 0 ? null : src.slice(i, src.indexOf('}', i) + 1); };
     const a = pick(chk), b = pick(g);
     if (!a || !b || a !== b) errs.push('мовне меню гаража відрізняється від Check: ' + sel);
   }
-  if (/\.lang-btn\{[^}]*border-radius:20px/.test(g)) errs.push('у гаража лишилась стара pill-обводка мови');
+  if (/\.lang-btn\{|id="langBtn"/.test(g)) errs.push('у гаража лишився старий мовний дропдаун у шапці');
+  if (!/<div class="lang-menu" id="langMenu">/.test(g)) errs.push('у гаража нема списку мов у лаунчері');
 }
 /* скрипт стрічки: синтаксис, демо-пости, жодних записів у БД і жодних вигаданих лайків */
 {

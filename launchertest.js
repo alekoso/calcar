@@ -101,9 +101,12 @@ for (const f of PAGES) {
   if (!/if \(!open\) setOpen\(true, false\)/.test(s)) errs.push('наведення забирає фокус у панель: ' + f);
   if (!/setOpen\(true, true\); pinned = true/.test(s)) errs.push('клік не віддає фокус панелі: ' + f);
 
-  /* 5г. мовне меню відкривається наведенням так само, меню кабінету не чіпали */
-  if (!/\.lang-dd:hover \.lang-menu,\.lang-dd:focus-within \.lang-menu\{display:block\}/.test(s)) errs.push('нема наведення для мовного меню: ' + f);
-  if (!s.includes('.acc-wrap:hover .acc-menu,.acc-wrap:focus-within .acc-menu{display:block}')) errs.push('меню кабінету змінилось у ' + f);
+  /* 5г. акаунт і мова переїхали в панель лаунчера: у шапці їх дропдаунів нема */
+  if (/\.lang-dd|id="langBtn"/.test(s)) errs.push('старий мовний дропдаун лишився в шапці: ' + f);
+  if (!/<div class="lnc-sec">Account<\/div>[\s\S]{0,400}id="authLink"/.test(s)) errs.push('групи "Акаунт" нема в панелі: ' + f);
+  if (!/<div class="lnc-sec">Language<\/div>\s*<div class="lang-menu" id="langMenu">/.test(s)) errs.push('групи "Мова" нема в панелі: ' + f);
+  if (!/<div class="lnc-sec">Products<\/div>\s*<div class="lnc-list">/.test(s)) errs.push('групи "Продукти" нема в панелі: ' + f);
+  if (!/\.lnc-panel \.acc-menu,\.lnc-panel \.lang-menu\{position:static/.test(s)) errs.push('меню в панелі лишились випадаючими: ' + f);
 
   /* 5д. переїзд кнопки в правий кластер, коли поля ліворуч немає */
   if (!/rail\.insertBefore\(btn, rail\.firstChild\)/.test(s)) errs.push('нема переїзду кнопки в правий кластер: ' + f);
@@ -183,7 +186,7 @@ if (!vercel.rewrites.some(r => r.source === '/import' && r.destination === '/imp
 if (!fs.existsSync('import.html')) errs.push('немає import.html, вести нікуди');
 
 /* 9. нові рядки інтерфейсу мусять бути в обох словниках, інакше RU/EN сторінка стане мішаною */
-const KEYS = ['CalCar products', 'Pre-purchase car check', 'Current product',
+const KEYS = ['CalCar menu', 'Products', 'Account', 'Language', 'Pre-purchase car check', 'Current product',
               'What a US car really costs in Ukraine'];
 for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
   const s = fs.readFileSync(d, 'utf8');
