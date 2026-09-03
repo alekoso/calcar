@@ -2350,24 +2350,12 @@ if (window.CALCAR_SIGNED_IN !== undefined) window.calcarAuthState(window.CALCAR_
   function focusables() {
     return [].slice.call(panel.querySelectorAll('a[href],button')).filter(function (el) { return el.offsetParent !== null; });
   }
-  /* Кнопка не сміє зсувати логотип на жодній ширині. Ширше 1240px медіазапит
-     виводить її з потоку в поле ліворуч від логотипа. Коли поля немає (вужче
-     1240px або відкритий чат у звіті, який знімає max-width шапки), кнопка
-     переїжджає в правий кластер: він вирівняний по правому краю, тому росте
-     вліво і теж нікого не зсуває. На телефоні кнопка лишається біля логотипа.
-     Ознака "поля немає" береться з обчисленого стилю, а не з другої копії
-     порога в JS: правило про виніс живе тільки в CSS. */
-  var home = btn.parentNode, homeNext = btn.nextSibling;
-  var rail = document.querySelector('.header-right');
-  function mount() {
-    if (!rail) return;
-    if (btn.parentNode !== home) home.insertBefore(btn, homeNext);
-    if (mobile()) return;
-    if (getComputedStyle(btn).position !== 'absolute') rail.insertBefore(btn, rail.firstChild);
-  }
-  mount();
-  /* чат у звіті вмикається класом на body вже після завантаження */
-  if (window.MutationObserver) new MutationObserver(mount).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+  /* Кнопка лаунчера завжди ліворуч: це ліва частина контракту шапки
+     (лаунчер, логотип, назва продукту). Ширше 1240px медіазапит виводить її
+     з потоку в поле ліворуч від логотипа, щоб логотип не зсувався; вужче,
+     а також коли помічник докований і поля немає, вона просто стоїть у
+     рядку перед логотипом. У правий кластер вона не переїжджає: праворуч
+     живе лише глобальний вхід у помічника. */
 
   /* Мова: один компактний рядок із поточною мовою, список розкривається за
      потреби. Сам перемикач лишається старим механізмом i18n: клік по пункту
@@ -2459,7 +2447,6 @@ if (window.CALCAR_SIGNED_IN !== undefined) window.calcarAuthState(window.CALCAR_
     }
   });
   window.addEventListener('resize', function () {
-    mount();
     if (!open) return;
     back.classList.toggle('open', mobile());
     document.documentElement.classList.toggle('lnc-locked', mobile());

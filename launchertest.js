@@ -119,9 +119,9 @@ for (const f of PAGES) {
   if (!/<div class="lnc-sec">Products<\/div>\s*<div class="lnc-list">/.test(s)) errs.push('групи "Продукти" нема в панелі: ' + f);
   if (!/\.lnc-panel \.acc-menu,\.lnc-panel \.lang-menu\{position:static/.test(s)) errs.push('меню в панелі лишились випадаючими: ' + f);
 
-  /* 5д. переїзд кнопки в правий кластер, коли поля ліворуч немає */
-  if (!/rail\.insertBefore\(btn, rail\.firstChild\)/.test(s)) errs.push('нема переїзду кнопки в правий кластер: ' + f);
-  if (!/getComputedStyle\(btn\)\.position !== 'absolute'/.test(s)) errs.push('переїзд не звіряється з обчисленим стилем: ' + f);
+  /* 5д. кнопка лаунчера завжди ліворуч: праворуч у шапці лише помічник */
+  if (/rail\.insertBefore\(btn/.test(s)) errs.push('кнопка лаунчера переїжджає в правий кластер: ' + f);
+  if (!/body:not\(\.chat-docked\) \.lnc-btn\{position:absolute/.test(s)) errs.push('нема виносу кнопки в поле ліворуч на широкому екрані: ' + f);
 
   /* 6. вітрина лишається одним продуктом: старий перемикач не повернувся */
   if (/class="switch"|calcarProduct|kind-badge/.test(s)) errs.push('старий перемикач Check/Import повернувся у ' + f);
