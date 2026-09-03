@@ -227,7 +227,7 @@ for (const x of fs.readdirSync('api').filter(f => f.endsWith('.js'))) {
     if (!ch.includes(k)) errs.push('check.html: нема ' + k);
   }
   if (!/<meta name="robots" content="noindex,nofollow">/.test(rc)) errs.push('звіт без noindex');
-  for (const k of ['const OPEN_TOKEN', "fetch('/api/check-job?'", 'READONLY', "body.readonly #chatTopBtn", 'navigator.share', "t('Link copied')", "'/api/img?u='", 'arch-fail', "id=\"shareBtn\"", "id=\"shareBtn2\"", 'Given the version, age and mileage', "r.kind === 'latent'", '#histList{--hd-w:96px;--rail-x:48px}', '.hrow::before', "' last'"]) {
+  for (const k of ['const OPEN_TOKEN', "fetch('/api/check-job?'", 'READONLY', 'body.readonly .pd-cta', 'navigator.share', "t('Link copied')", "'/api/img?u='", 'arch-fail', "id=\"shareBtn\"", "id=\"shareBtn2\"", 'Given the version, age and mileage', "r.kind === 'latent'", '#histList{--hd-w:96px;--rail-x:48px}', '.hrow::before', "' last'"]) {
     if (!rc.includes(k)) errs.push('result-check.html: нема ' + k);
   }
   if (rc.includes('Given the engine and mileage')) errs.push('EV-нелогічний заголовок лишився');

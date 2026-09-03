@@ -503,7 +503,12 @@
       '<button class="cc-send" type="button" id="ccSend" aria-label="' + esc(t('Send')) + '">' + I.send + '</button>' +
       '</div></div>' +
       '<div class="cc-note">' + I.shield + esc(t('CalCar sees the page you are on')) + '</div></div>';
-    document.body.append(fab, ov, panel);
+    /* Плаваюча кнопка це ГЛОБАЛЬНИЙ вхід у помічника. Сторінка, у якої є
+       власні контекстні входи, може від неї відмовитись
+       (window.CALCAR_CHAT_FAB = false до завантаження цього файлу):
+       панель, розмова, памʼять і API лишаються без змін. */
+    document.body.append(ov, panel);
+    if (window.CALCAR_CHAT_FAB !== false) document.body.append(fab);
 
     els = {
       fab: fab, ov: ov, panel: panel,

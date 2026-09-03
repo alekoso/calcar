@@ -219,6 +219,8 @@ header{background:rgba(255,255,255,.88);backdrop-filter:blur(10px);-webkit-backd
 .acc-wrap:hover .acc-menu,.acc-wrap:focus-within .acc-menu{display:block}
 /* тач: перший тап відкриває меню класом, бо :hover там залипає, а клік по посиланню вів би на сторінку */
 .acc-wrap.open .acc-menu{display:block}
+/* анонімний глядач: кнопка веде у вхід, меню кабінету не існує */
+.acc-wrap.anon .acc-menu{display:none!important}
 .acc-menu a{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;font-size:13.5px;font-weight:600;color:var(--ink);text-decoration:none}
 .acc-menu a:hover{background:var(--surface-2)}
 .acc-menu a svg{width:18px;height:18px;flex:0 0 auto;color:var(--ink-2);opacity:.85}
@@ -581,11 +583,11 @@ h1{font-size:27px;letter-spacing:-.01em}
  <button data-lang="en" type="button"><i></i>English</button>
  </div>
  </div>
- <div class="acc-wrap">
- <a class="btn-auth" href="/cabinet.html">
- <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg>
- My account
- </a>
+ <div class="acc-wrap anon">
+  <a class="btn-auth" href="/cabinet.html" id="authLink">
+   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg>
+   <span id="authLabel">Sign in</span>
+  </a>
  <div class="acc-menu">
   <a href="/cabinet.html#reports"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>Reports</a>
   <a href="/cabinet.html#memory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.7 4.7 1.8-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>Assistant memory</a>
@@ -848,6 +850,8 @@ h1{font-size:27px;letter-spacing:-.01em}
   var SB = supabase.createClient(cfg.url, cfg.anon);
   window.SB = SB;
   var { data: sess } = await SB.auth.getSession();
+  /* стан входу в шапці: "Кабінет" лише за реальною сесією, інакше "Увійти" */
+  window.calcarAuthState(!!(sess && sess.session));
   if (!sess || !sess.session) { show('noAuth', true); return; }
   var UID = sess.session.user.id;
 
@@ -1764,9 +1768,12 @@ document.addEventListener('click', function (e) {
 document.addEventListener('click', function (e) {
   var b = e.target.closest ? e.target.closest('.btn-auth') : null;
   if (!b) return;
-  e.preventDefault();
   var w = b.closest('.acc-wrap');
   if (!w) return;
+  /* анонімний глядач: меню кабінету нема, кнопка це звичайне посилання
+     у наявний вхід в акаунт, тому клік НЕ перехоплюємо */
+  if (w.classList.contains('anon')) return;
+  e.preventDefault();
   var hoverable = window.matchMedia && window.matchMedia('(hover:hover) and (pointer:fine)').matches;
   if (!hoverable) w.classList.toggle('open');
 });
@@ -1775,6 +1782,18 @@ document.addEventListener('click', function (e) {
   if (e.target.closest && e.target.closest('.acc-wrap')) return;
   document.querySelectorAll('.acc-wrap.open').forEach(function (w) { w.classList.remove('open'); });
 });
+/* Стан входу в шапці. Розмітка за замовчуванням АНОНІМНА ("Увійти"), бо
+   анонімний перегляд можливий на будь-якій сторінці, зокрема публічний
+   звіт за посиланням. Сторінка викликає calcarAuthState(true) лише коли
+   сесія реально підтверджена: тоді зʼявляється "Кабінет" і меню акаунта.
+   Ніколи не показуємо анонімного відвідувача залогіненим. */
+window.calcarAuthState = function (signedIn) {
+  var w = document.querySelector('.acc-wrap'), lab = document.getElementById('authLabel');
+  if (!w || !lab) return;
+  var tr = window.t || function (x) { return x; };
+  if (signedIn) { w.classList.remove('anon'); lab.textContent = tr('My account'); }
+  else { w.classList.add('anon'); lab.textContent = tr('Sign in'); }
+};
 </script>
 <script>
 /* Лаунчер продуктів CalCar: спільний блок, однаковий на всіх сторінках.

@@ -11,7 +11,7 @@ const rule = (css, sel) => { const i = css.indexOf('\n  ' + sel + '{'); if (i < 
 
 /* 1. спільні правила: побайтово ті самі, що в Check */
 for (const sel of ['.card', '.card-head', '.card-head h2', '.card-body', '.hint', '.sec-meta', '.badge', '.badge.green', '.badge.blue', '.badge.amber', '.badge.red',
-  '.btn-back', '.btn-chat', '.btn-primary', '.ext-link', '.photo-strip', '.photo-strip img', '.lot-title', '.lot-title h1',
+  '.btn-back', '.btn-primary', '.ext-link', '.photo-strip', '.photo-strip img', '.lot-title', '.lot-title h1',
   '.spec-rows', '.spec-row', '.spec-l', '.spec-v', '.spec-v.price', '#titleChips', '.id-chip', '.id-chip .id-l', '.id-chip .id-v', '.copy-btn',
   '.risk-badge', '.risk-label', '.dot', '.flags', '.flag', '.dmg-note', '.issue', '.issue-t', '.issue-t b', '.issue p', '.final-actions',
   'footer', '.footer-in', '.ft-brand', '.ft-cols', '.ft-col', '.ft-col a', '.footer-bottom', '.wrap', '.topbar']) {

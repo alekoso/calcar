@@ -282,6 +282,8 @@
   .acc-wrap:hover .acc-menu,.acc-wrap:focus-within .acc-menu{display:block}
   /* тач: перший тап відкриває меню класом, бо :hover там залипає, а клік по посиланню вів би на сторінку */
   .acc-wrap.open .acc-menu{display:block}
+  /* анонімний глядач: кнопка веде у вхід, меню кабінету не існує */
+  .acc-wrap.anon .acc-menu{display:none!important}
   .acc-menu a{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;font-size:13.5px;font-weight:600;color:var(--ink);text-decoration:none}
   .acc-menu a:hover{background:var(--surface-2)}
   .acc-menu a svg{width:18px;height:18px;flex:0 0 auto;color:var(--ink-2);opacity:.85}
@@ -393,37 +395,24 @@
   .topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:20px;position:relative}
   .reg-badge{background:var(--bg);border:1px solid var(--line-strong);color:var(--ink-2);margin-left:6px;vertical-align:1px}
   .spec-mo{color:var(--ink-2);font-weight:600;font-size:.93em;margin-left:6px;white-space:nowrap}
-  .chat-coach{position:absolute;top:calc(100% + 10px);right:0;z-index:60;max-width:290px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 34px rgba(20,22,25,.14);padding:12px 34px 12px 14px;font-size:13px;line-height:1.45;color:var(--ink-2)}
-  .chat-coach b{display:block;color:var(--ink);margin-bottom:3px;font-size:13.5px}
-  .chat-coach::before{content:'';position:absolute;top:-5px;right:34px;width:9px;height:9px;background:var(--card);border-left:1px solid var(--line);border-top:1px solid var(--line);transform:rotate(45deg)}
-  .chat-coach .coach-x{position:absolute;top:8px;right:9px;border:0;background:none;color:var(--faint);font-size:15px;line-height:1;cursor:pointer;padding:3px}
-  .chat-coach .coach-x:hover{color:var(--ink)}
-  .btn-chat{
-    display:inline-flex;align-items:center;gap:8px;background:var(--brand);color:var(--ink);
-    border:1px solid rgba(20,22,25,.08);border-radius:12px;height:44px;padding:0 16px;
-    font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;text-decoration:none;white-space:nowrap;
-  }
-  .btn-chat:hover{background:var(--brand-hover)}
-  .btn-chat:active{background:var(--brand-active)}
-  .btn-chat svg{flex-shrink:0}
+  /* дії звіту рівно по краях: ліворуч повернення, праворуч "Поділитися".
+     Посередині дій нема; підказка збереження це текст, а не дія */
+  .topbar #saveHint{margin-left:auto}
   .btn-share{display:inline-flex;align-items:center;gap:8px;background:#fff;color:var(--ink);border:1px solid var(--line-strong);border-radius:var(--radius);height:44px;padding:0 16px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap}
   .btn-share:hover{background:var(--surface-2);border-color:var(--brand)}
   .btn-share svg{flex-shrink:0}
   .share-toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,12px);background:var(--ink);color:#fff;font-size:13.5px;font-weight:600;padding:10px 16px;border-radius:12px;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:60}
   .share-toast.on{opacity:1;transform:translate(-50%,0)}
   /* read-only звіт за публічним посиланням: без чату, збереження і перекладу */
-  body.readonly #chatTopBtn,body.readonly #chatFab,body.readonly .pd-cta,body.readonly #askAi,body.readonly #saveHint,body.readonly #trBar,body.readonly .chat-selask{display:none!important}
+  body.readonly .pd-cta,body.readonly #saveHint,body.readonly #trBar,body.readonly .chat-selask{display:none!important}
   /* архівні фото недоступні: компактна плашка замість порожнього місця */
   .arch-fail{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 20px 4px;padding:9px 12px;border:1px dashed var(--line-strong);border-radius:10px;font-size:13px;color:var(--muted)}
   .arch-fail button,.arch-fail a{font:inherit;font-weight:600;color:var(--ink);background:var(--card);border:1px solid var(--line-strong);border-radius:8px;padding:4px 10px;cursor:pointer;text-decoration:none}
   @media(max-width:620px){
-    /* компактний мобільний topbar: три дії в один рядок 40px, без переносу */
+    /* мобільний topbar: дві дії по краях, 40px, без переносу. Share
+       лишається читабельним: іконка з підписом, поки він вміщається */
     .topbar{flex-wrap:nowrap;gap:8px;margin-bottom:14px}
-    .topbar .btn-back,.topbar .btn-chat,.topbar .btn-share{height:40px;padding:0 12px;font-size:13px;border-radius:12px}
-    .topbar .btn-back{flex:0 0 auto}
-    .topbar .btn-share{flex:0 0 auto}
-    .topbar .btn-share .tb-label{display:none}
-    .topbar .btn-chat{flex:1 1 auto;justify-content:center;min-width:0}
+    .topbar .btn-back,.topbar .btn-share{height:40px;padding:0 12px;font-size:13px;border-radius:12px;flex:0 0 auto}
     .topbar #saveHint{display:none}
   }
 
@@ -757,7 +746,11 @@
 </style>
 <!-- спільний інтерфейс контексту сторінки для помічника CalCar -->
 <script src="/context.js"></script>
-<!-- єдиний CalCar Assistant: API доступне скриптам сторінки, розмітка будується на DOMContentLoaded -->
+<!-- єдиний CalCar Assistant: API доступне скриптам сторінки, розмітка будується на DOMContentLoaded.
+     Плаваюча кнопка на звіті вимкнена: вона перекривала зміст, а входи в
+     помічника тут контекстні: CTA у висновку і кнопка біля виділеного тексту.
+     Розмова, памʼять і стан помічника не змінюються. -->
+<script>window.CALCAR_CHAT_FAB = false;</script>
 <script src="/chat.js"></script>
 </head>
 <body>
@@ -780,10 +773,10 @@
           <button data-lang="en" type="button"><i></i>English</button>
         </div>
       </div>
-      <div class="acc-wrap">
-        <a class="btn-auth" href="/cabinet.html">
+      <div class="acc-wrap anon">
+        <a class="btn-auth" href="/cabinet.html" id="authLink">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg>
-          My account
+          <span id="authLabel">Sign in</span>
         </a>
       <div class="acc-menu">
        <a href="/cabinet.html#reports"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>Reports</a>
@@ -861,10 +854,6 @@
     <button class="btn-share" id="shareBtn" type="button" style="display:none" title="Share">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/></svg>
       <span class="tb-label">Share</span>
-    </button>
-    <button class="btn-chat" id="chatTopBtn" type="button">
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.9 8.9 0 0 1-3.7-.8L3 20l1-4.9a8.4 8.4 0 1 1 17-3.6z"/></svg>
-      <span class="tb-label">Car chat</span>
     </button>
   </div>
   <div class="share-toast" id="shareToast" role="status" aria-live="polite"></div>
@@ -999,7 +988,6 @@
       <div class="final-actions">
         <button class="btn-primary" id="shareBtn2" type="button" style="height:44px;display:none">Share</button>
         <button class="btn-back" id="pdfBtn" type="button">Download PDF</button>
-        <button class="btn-back" id="askAi" type="button">Ask CalCar about this car</button>
       </div>
     </div>
   </div>
@@ -1029,6 +1017,8 @@
 const SB = (typeof supabase !== 'undefined' && window.CALCAR_SUPABASE?.url)
   ? supabase.createClient(window.CALCAR_SUPABASE.url, window.CALCAR_SUPABASE.anon)
   : null;
+/* стан входу в шапці: "Кабінет" лише за реальною сесією, інакше "Увійти" */
+if (SB) SB.auth.getSession().then(({ data }) => window.calcarAuthState(!!data?.session));
 
 /* публічний read-only звіт: /check/r/<slug>/<token>. Slug (make-model-year)
    лише для людини, звіт визначає непрозорий токен; неправильний slug
@@ -1402,30 +1392,6 @@ function boot2(D){
     }
   }
 
-  /* ---- одноразовий coachmark чату: показується лише тому, хто його ще
-     не бачив; закриття чи будь-яка взаємодія ставить прапорець назавжди ---- */
-  try {
-    const COACH_KEY = 'calcar_chat_hint_seen';
-    let seen = null;
-    try { seen = localStorage.getItem(COACH_KEY); } catch (e) {}
-    const chatBtnEl = $('chatTopBtn');
-    if (!seen && chatBtnEl) {
-      const markSeen = () => { try { localStorage.setItem(COACH_KEY, '1'); } catch (e) {} };
-      setTimeout(() => {
-        const coach = document.createElement('div');
-        coach.className = 'chat-coach';
-        coach.innerHTML = '<b>' + esc(t('You can ask about this car')) + '</b>'
-          + esc(t('The chat can walk you through the accident history, mileage and risks, and suggest what to check before buying.'))
-          + '<button class="coach-x" type="button" aria-label="' + esc(t('Close')) + '">×</button>';
-        chatBtnEl.closest('.topbar').appendChild(coach);
-        const dismiss = () => { markSeen(); coach.remove(); };
-        coach.querySelector('.coach-x').addEventListener('click', dismiss);
-        chatBtnEl.addEventListener('click', dismiss, { once: true });
-        setTimeout(() => { document.addEventListener('click', e => { if (!coach.contains(e.target)) dismiss(); }, { once: true }); }, 400);
-      }, 1200);
-    }
-  } catch (e) {}
-
   /* ---- ключові ризики ---- */
   const LVL = { high: ['red', t('high cost of mistake')], med: ['amber', t('worth attention')], low: ['blue', t('background')] };
   fill('risksCard', 'risksList', D.risks, r => {
@@ -1707,15 +1673,10 @@ document.getElementById('pdfBtn').addEventListener('click', () => {
   window.print();
   document.title = old;
 });
-document.getElementById('askAi').addEventListener('click', () => {
-  document.getElementById('chatFab').click();
-});
-
 /* CTA у кінці висновку: відкриває ТОЙ САМИЙ чат по цьому звіту, нового не
    створює. Авто вже є контекстом чату, пояснювати машину заново не треба */
 document.getElementById('pdChatBtn').addEventListener('click', () => {
   if (typeof window.calcarOpenChat === 'function') window.calcarOpenChat();
-  else document.getElementById('chatFab').click();
 });
 
 /* ---------- лайтбокс ---------- */
@@ -1877,9 +1838,7 @@ function chatCtx(){
    рядок. Розмова, памʼять, @-згадки, цитати і файли живуть у chat.js. */
 function chatInit(){
   loadOtherReports();
-  const top = document.getElementById('chatTopBtn');
-  if (top) top.addEventListener('click', () => { if (window.CalCarChat) window.CalCarChat.toggle(); });
-  /* гачок для кнопки "Запитати про це": відкрити помічника з цитатою */
+  /* гачок для CTA у висновку і "Запитати про це": відкрити помічника з цитатою */
   window.calcarOpenChat = q => { if (window.CalCarChat) window.CalCarChat.open(q ? { quote: q } : {}); };
   if (!window.CalCarChat) return;
   window.CalCarChat.registerCapability({
@@ -1920,9 +1879,12 @@ document.addEventListener('click', function (e) {
 document.addEventListener('click', function (e) {
   var b = e.target.closest ? e.target.closest('.btn-auth') : null;
   if (!b) return;
-  e.preventDefault();
   var w = b.closest('.acc-wrap');
   if (!w) return;
+  /* анонімний глядач: меню кабінету нема, кнопка це звичайне посилання
+     у наявний вхід в акаунт, тому клік НЕ перехоплюємо */
+  if (w.classList.contains('anon')) return;
+  e.preventDefault();
   var hoverable = window.matchMedia && window.matchMedia('(hover:hover) and (pointer:fine)').matches;
   if (!hoverable) w.classList.toggle('open');
 });
@@ -1931,6 +1893,18 @@ document.addEventListener('click', function (e) {
   if (e.target.closest && e.target.closest('.acc-wrap')) return;
   document.querySelectorAll('.acc-wrap.open').forEach(function (w) { w.classList.remove('open'); });
 });
+/* Стан входу в шапці. Розмітка за замовчуванням АНОНІМНА ("Увійти"), бо
+   анонімний перегляд можливий на будь-якій сторінці, зокрема публічний
+   звіт за посиланням. Сторінка викликає calcarAuthState(true) лише коли
+   сесія реально підтверджена: тоді зʼявляється "Кабінет" і меню акаунта.
+   Ніколи не показуємо анонімного відвідувача залогіненим. */
+window.calcarAuthState = function (signedIn) {
+  var w = document.querySelector('.acc-wrap'), lab = document.getElementById('authLabel');
+  if (!w || !lab) return;
+  var tr = window.t || function (x) { return x; };
+  if (signedIn) { w.classList.remove('anon'); lab.textContent = tr('My account'); }
+  else { w.classList.add('anon'); lab.textContent = tr('Sign in'); }
+};
 </script>
 <script>
 /* Лаунчер продуктів CalCar: спільний блок, однаковий на всіх сторінках.

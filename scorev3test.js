@@ -751,9 +751,10 @@ const THIN = {
   if (!/dim-caret/.test(pageSrc)) errs.push('result-check: нема caret-affordance на бейджі');
   if (!/has-dims\{cursor:pointer\}/.test(pageSrc.replace(/\s/g, ''))) errs.push('result-check: бейдж без cursor:pointer');
   if (!/shieldEl\.contains\(e\.target\)/.test(pageSrc)) errs.push('result-check: межі подій щита не розділені');
-  /* coachmark чату: одноразовий, з localStorage-прапорцем */
-  if (!/calcar_chat_hint_seen/.test(pageSrc)) errs.push('result-check: coachmark без localStorage-прапорця');
-  if (!/You can ask about this car/.test(pageSrc)) errs.push('result-check: нема тексту coachmark');
+  /* coachmark чату прибраний разом із верхньою кнопкою: він чіплявся до
+     правого краю topbar і виринав під кнопкою "Поділитися", зокрема в
+     публічному read-only звіті */
+  if (/calcar_chat_hint_seen|chat-coach|You can ask about this car/.test(pageSrc)) errs.push('result-check: coachmark чату повернувся');
   /* середній пробіг за рік: ТІ САМІ canonical-дані осі Пробіг */
   if (!/annual_mileage_km/.test(pageSrc)) errs.push('result-check: річний пробіг не з breakdown осі');
   if (!/Average monthly mileage over the whole life of the vehicle\./.test(pageSrc)) errs.push('result-check: нема tooltip місячного пробігу');

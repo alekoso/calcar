@@ -338,7 +338,11 @@ const REPORTS = [
     if (page.includes('AI-перевірка оголошення')) errs.push('плашка AI лишилась');
     if (page.includes('id="idLine"')) errs.push('нижній identity-рядок лишився');
     if (!page.includes('class="id-chip"')) errs.push('нема identity-чіпів біля назви');
-    if (!page.includes("CalCarChat.toggle()")) errs.push('чат не перемикається повторним кліком');
+    /* верхня кнопка чату прибрана: у звіті лишились лише контекстні входи */
+    if (page.includes('id="chatTopBtn"')) errs.push('верхня кнопка чату повернулась');
+    if (page.includes('id="askAi"')) errs.push('generic-кнопка чату у фінальних діях повернулась');
+    if (!page.includes('window.CALCAR_CHAT_FAB = false')) errs.push('плаваюча кнопка помічника не вимкнена на звіті');
+    if (!page.includes("id=\"pdChatBtn\"") || !page.includes('calcarOpenChat')) errs.push('контекстний вхід у помічника зник разом із рештою');
     if (!page.includes('id="scoreTip"') || !page.includes('Critical risks can weigh more heavily on the final score.')) errs.push('нема premium tooltip щита');
     if (/score-shield[^>]*title=/.test(page)) errs.push('щит досі з browser-title');
     if (page.includes("t('після перевірок')")) errs.push('grade-бейдж біля оцінки лишився');

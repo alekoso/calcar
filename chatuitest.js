@@ -26,7 +26,13 @@ for (const f of ['result.html', 'result-check.html']) {
   if (!s.includes('body.chat-docked{padding-right:380px}')) errs.push(f + ': нема CSS докування');
   if (!s.includes('id="chatSelAsk"')) errs.push(f + ': зникла кнопка "Запитати про це" біля виділення');
   if (!/CalCarChat\.open\(q \? \{ quote: q \} : \{\}\)/.test(s)) errs.push(f + ': цитата з виділення не їде у спільний чат');
-  if (!/CalCarChat\.toggle\(\)/.test(s)) errs.push(f + ': кнопка чату в шапці не перемикає спільний помічник');
+  /* Check-звіт свідомо без верхньої кнопки і без плаваючої: входи лише
+     контекстні. Import поки тримає верхню кнопку і перемикає нею помічника */
+  if (f === 'result-check.html') {
+    if (/id="chatTopBtn"/.test(s)) errs.push(f + ': верхня кнопка чату повернулась у звіт Check');
+    if (!/window\.CALCAR_CHAT_FAB = false/.test(s)) errs.push(f + ': плаваюча кнопка помічника не вимкнена на звіті');
+    if (!/calcarOpenChat/.test(s)) errs.push(f + ': нема контекстного входу в помічника');
+  } else if (!/CalCarChat\.toggle\(\)/.test(s)) errs.push(f + ': кнопка чату в шапці не перемикає спільний помічник');
 }
 if (!/others: OTHER_REPORTS/.test(fs.readFileSync('result-check.html', 'utf8'))) errs.push('звіт Check не віддає інші звіти людини');
 if (!/context: Object\.assign\(chatContext\(\), \{ page: body\.context \}\)/.test(fs.readFileSync('result.html', 'utf8'))) errs.push('прорахунок Import не віддає контекст лота');
