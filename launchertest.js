@@ -102,9 +102,20 @@ for (const f of PAGES) {
   if (!/setOpen\(true, true\); pinned = true/.test(s)) errs.push('клік не віддає фокус панелі: ' + f);
 
   /* 5г. акаунт і мова переїхали в панель лаунчера: у шапці їх дропдаунів нема */
-  if (/\.lang-dd|id="langBtn"/.test(s)) errs.push('старий мовний дропдаун лишився в шапці: ' + f);
+  const headerRight = (s.match(/<div class="header-right">[\s\S]*?<\/div>/) || [''])[0];
+  if (/lang|auth|acc-/.test(headerRight)) errs.push('мова або акаунт лишились у правій частині шапки: ' + f);
+  if (/id="langBtn"/.test(s)) errs.push('стара кнопка мовного дропдауна лишилась: ' + f);
   if (!/<div class="lnc-sec">Account<\/div>[\s\S]{0,400}id="authLink"/.test(s)) errs.push('групи "Акаунт" нема в панелі: ' + f);
-  if (!/<div class="lnc-sec">Language<\/div>\s*<div class="lang-menu" id="langMenu">/.test(s)) errs.push('групи "Мова" нема в панелі: ' + f);
+  if (!/<div class="lnc-sec">Language<\/div>\s*<div class="lang-dd" id="langDd">/.test(s)) errs.push('групи "Мова" нема в панелі: ' + f);
+  /* мова це один компактний рядок, список розкривається за потреби */
+  if (!/id="langCur"[\s\S]{0,200}id="langCurName"/.test(s)) errs.push('нема рядка поточної мови: ' + f);
+  if (!/\.lnc-panel \.lang-menu\{display:none\}/.test(s) || !/\.lnc-panel \.lang-dd\.lang-open \.lang-menu\{display:block\}/.test(s)) errs.push('список мов не згортається: ' + f);
+  if (!/langDd\.classList\.toggle\('lang-open'\)/.test(s)) errs.push('рядок мови не розкриває список: ' + f);
+  /* панель ніколи не виходить за екран */
+  if (!/max-height:calc\(100dvh - 84px\);overflow:auto/.test(s)) errs.push('панель без обмеження висоти на десктопі: ' + f);
+  if (!/max-height:calc\(100dvh - 16px\);overflow:auto/.test(s)) errs.push('шторка без обмеження висоти на телефоні: ' + f);
+  /* акаунт: "Кабінет" і "Звіти" вели в одне місце, лишились самі розділи */
+  if (!/\.acc-wrap:not\(\.anon\) \.btn-auth\{display:none\}/.test(s)) errs.push('дубль "Кабінет" лишився в меню: ' + f);
   if (!/<div class="lnc-sec">Products<\/div>\s*<div class="lnc-list">/.test(s)) errs.push('групи "Продукти" нема в панелі: ' + f);
   if (!/\.lnc-panel \.acc-menu,\.lnc-panel \.lang-menu\{position:static/.test(s)) errs.push('меню в панелі лишились випадаючими: ' + f);
 

@@ -172,7 +172,6 @@
     var p = String(ctx.page_type || '');
     return p.indexOf('garage') === 0 ? 'garage' : p.indexOf('import') === 0 ? 'import' : 'check';
   }
-  function wantsDock() { return activeCaps(pageCtx()).some(function (c) { return c.dock; }); }
 
   /* Фокус, виведений зі сторінки: звіт або авто це і є те, про що людина
      дивиться. Явний фокус (кнопка "Запитати CalCar") головніший. */
@@ -542,8 +541,11 @@
     renderEmpty();
   }
 
+  /* Десктоп: помічник це друга панель сторінки, а не шар поверх неї. Сторінка
+     ужимається вліво (body.chat-docked), затемнення нема, читати можна далі.
+     Вузьке вікно і телефон: звична шторка з підкладкою. */
   function layout() {
-    var dock = wantsDock() && window.innerWidth > DOCK_MIN;
+    var dock = window.innerWidth > DOCK_MIN;
     document.body.classList.toggle('chat-docked', dock);
     els.ov.classList.toggle('open', !dock);
     document.documentElement.style.overflow = window.innerWidth <= 760 ? 'hidden' : '';

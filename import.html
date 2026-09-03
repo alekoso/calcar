@@ -279,15 +279,34 @@
   .btn-ai svg{width:15px;height:15px;flex:0 0 auto}
   .btn-ai .ai-short{display:none}
   /* ---- групи лаунчера: продукти, акаунт, мова ---- */
-  .lnc-sec{margin:14px 6px 6px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
-  .lnc-list + .lnc-sec{margin-top:16px}
+  .lnc-sec{margin:10px 6px 5px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
+  .lnc-list + .lnc-sec{margin-top:12px}
   .lnc-panel .acc-wrap{position:static;display:block}
   .lnc-panel .btn-auth{display:flex;align-items:center;gap:10px;width:100%;height:auto;padding:9px 12px;border:0;border-radius:8px;background:none;font-size:13.5px;font-weight:600;color:var(--ink);text-decoration:none}
   .lnc-panel .btn-auth:hover{background:var(--surface-2)}
   .lnc-panel .btn-auth svg{width:18px;height:18px;flex:0 0 auto;color:var(--ink-2);opacity:.85}
   .lnc-panel .acc-menu,.lnc-panel .lang-menu{position:static;display:block;min-width:0;margin:0;padding:0;border:0;border-radius:0;box-shadow:none;background:none}
   .lnc-panel .lang-menu button{width:100%;padding:9px 12px;border-radius:8px;font-size:13.5px;font-weight:600;color:var(--ink)}
+  .lnc-panel .lang-dd{position:static}
+  .lnc-panel .lang-cur{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:9px 12px;border:0;border-radius:8px;background:none;font-family:inherit;font-size:13.5px;font-weight:600;color:var(--ink);cursor:pointer}
+  .lnc-panel .lang-cur:hover{background:var(--surface-2)}
+  .lnc-panel .lang-chev{flex:0 0 auto;color:var(--faint);transition:transform .15s}
+  .lnc-panel .lang-dd.lang-open .lang-chev{transform:rotate(180deg)}
+  .lnc-panel .lang-menu{display:none}
+  .lnc-panel .lang-dd.lang-open .lang-menu{display:block}
+  /* "Кабінет" і "Звіти" вели в одне місце: у меню лишаються самі розділи */
+  .acc-wrap:not(.anon) .btn-auth{display:none}
 
+  /* ---- докований помічник: сторінка ужимається вліво, а не ховається під ним ----
+     Десктоп віддає праву частину вікна панелі помічника, решту лишає сторінці:
+     без затемнення, без перекриття, без горизонтального переповнення. Закриття
+     повертає сторінку рівно в попередній стан. */
+  body{transition:padding-right .25s ease}
+  body.chat-docked{padding-right:380px}
+  body.chat-docked .wrap,
+  body.chat-docked .wrap-sec,
+  body.chat-docked .header-in,
+  body.chat-docked .footer-in{max-width:none}
   .lnc-backdrop{position:fixed;inset:0;background:rgba(20,22,25,.32);z-index:45;display:none}
 
   /* Місток під панеллю: між кнопкою і панеллю 10px порожнечі, і без нього курсор
@@ -299,6 +318,7 @@
   .lnc-panel{
     position:fixed;left:var(--lnc-x,20px);top:var(--lnc-y,64px);width:344px;z-index:410;
     background:var(--card);border:1px solid var(--line);border-radius:18px;padding:10px;
+    max-height:calc(100dvh - 84px);overflow:auto;overscroll-behavior:contain;
     box-shadow:0 14px 40px rgba(20,22,25,.13),0 2px 6px rgba(20,22,25,.05);display:none;
   }
   .lnc-panel.open{display:block}
@@ -309,11 +329,11 @@
   .lnc-x{display:none;border:none;background:transparent;color:var(--muted);cursor:pointer;padding:6px;margin:-6px;border-radius:8px;font-family:inherit}
   .lnc-x:hover{background:var(--surface-2);color:var(--ink)}
   /* сітка з рівними рядками: усі продукти однієї висоти незалежно від довжини опису */
-  .lnc-list{display:grid;grid-auto-rows:1fr;gap:6px}
+  .lnc-list{display:grid;grid-auto-rows:1fr;gap:5px}
 
   .lnc-item{
     display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:center;
-    padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--card);
+    padding:8px 10px;border:1px solid var(--line);border-radius:12px;background:var(--card);
     color:var(--ink);text-decoration:none;cursor:pointer;transition:background .15s,border-color .15s;
   }
   a.lnc-item:hover{background:var(--surface-2)}
@@ -326,7 +346,7 @@
   .lnc-ic svg{display:block;width:38px;height:38px}
   .lnc-name{display:block;font-size:14.5px;font-weight:700;line-height:1.25}
   .lnc-desc{display:block;font-size:12.5px;color:var(--muted);margin-top:2px;line-height:1.3}
-  .lnc-badge{display:inline-block;margin-top:6px;padding:1px 8px;font-size:11px;font-weight:600;color:var(--brand-ink);background:var(--card);border:1px solid #DCEFAE;border-radius:20px}
+  .lnc-badge{display:inline-block;margin-top:4px;padding:1px 8px;font-size:11px;font-weight:600;color:var(--brand-ink);background:var(--card);border:1px solid #DCEFAE;border-radius:20px}
 
   /* Логотип мусить стояти рівно там, де стояв до лаунчера. У контейнері 1160px
      ліворуч від логотипа є лише 20px падінгу, а кнопці треба 50px, тому в рядку
@@ -352,11 +372,12 @@
     .btn-ai .ai-full{display:none}
     .btn-ai .ai-short{display:inline}
     .lnc-sec{margin:16px 2px 6px;font-size:12px}
-    .lnc-panel .btn-auth,.lnc-panel .lang-menu button,.lnc-panel .acc-menu a{padding:12px;font-size:15px}
+    .lnc-panel .btn-auth,.lnc-panel .lang-cur,.lnc-panel .lang-menu button,.lnc-panel .acc-menu a{padding:10px 12px;font-size:14.5px}
     .lnc-panel{
       left:0;right:0;bottom:0;top:auto;width:auto;
       border-radius:20px 20px 0 0;border-left:0;border-right:0;border-bottom:0;
-      padding:8px 16px calc(18px + env(safe-area-inset-bottom,0px));
+      padding:8px 16px calc(14px + env(safe-area-inset-bottom,0px));
+      max-height:calc(100dvh - 16px);overflow:auto;overscroll-behavior:contain;
       box-shadow:0 -12px 44px rgba(20,22,25,.18);
     }
     .lnc-panel.open{animation:lnc-up .18s ease-out}
@@ -365,10 +386,10 @@
     .lnc-x{display:inline-flex;align-items:center;justify-content:center}
     .lnc-head{margin:2px 2px 12px}
     .lnc-title{font-size:16px}
-    .lnc-item{padding:13px;gap:14px}
-    .lnc-ic,.lnc-ic svg{width:44px;height:44px}
-    .lnc-name{font-size:15.5px}
-    .lnc-desc{font-size:13.5px;margin-top:3px}
+    .lnc-item{padding:9px 11px;gap:12px}
+    .lnc-ic,.lnc-ic svg{width:38px;height:38px}
+    .lnc-name{font-size:15px}
+    .lnc-desc{font-size:13px;margin-top:2px}
   }
   @keyframes lnc-up{from{transform:translateY(16px)}to{transform:none}}
 
@@ -658,10 +679,13 @@
     </div>
   </div>
   <div class="lnc-sec">Language</div>
+  <div class="lang-dd" id="langDd">
+    <button class="lang-cur" type="button" id="langCur" aria-expanded="false" aria-controls="langMenu"><span id="langCurName">English</span><svg class="lang-chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
   <div class="lang-menu" id="langMenu">
     <button data-lang="ua" type="button"><i></i>Українська</button>
     <button data-lang="ru" type="button"><i></i>Русский</button>
     <button data-lang="en" type="button"><i></i>English</button>
+  </div>
   </div>
 </div>
 
@@ -1192,6 +1216,26 @@ if (window.CALCAR_SIGNED_IN !== undefined) window.calcarAuthState(window.CALCAR_
   /* чат у звіті вмикається класом на body вже після завантаження */
   if (window.MutationObserver) new MutationObserver(mount).observe(document.body, { attributes: true, attributeFilter: ['class'] });
 
+  /* Мова: один компактний рядок із поточною мовою, список розкривається за
+     потреби. Сам перемикач лишається старим механізмом i18n: клік по пункту
+     обробляє ядро, тут тільки показ і згортання. */
+  var langDd = document.getElementById('langDd');
+  if (langDd) {
+    var langCur = document.getElementById('langCur'), langName = document.getElementById('langCurName');
+    var active = function () {
+      var l = window.calcarLang ? window.calcarLang() : 'en';
+      return langDd.querySelector('.lang-menu button[data-lang="' + l + '"]');
+    };
+    var b = active();
+    if (b && langName) langName.textContent = b.textContent.trim();
+    if (langCur) langCur.addEventListener('click', function (e) {
+      e.preventDefault();
+      var on = langDd.classList.toggle('lang-open');
+      langCur.setAttribute('aria-expanded', on ? 'true' : 'false');
+      if (on) place();
+    });
+  }
+
   var open = false, pinned = false, hoverTimer = null;
   function setOpen(v, moveFocus) {
     open = v;
@@ -1202,7 +1246,13 @@ if (window.CALCAR_SIGNED_IN !== undefined) window.calcarAuthState(window.CALCAR_
     btn.setAttribute('aria-expanded', v ? 'true' : 'false');
     if (v) { place(); if (moveFocus) panel.focus(); }
   }
-  function close(refocus) { cancelClose(); if (!open) return; setOpen(false); if (refocus) btn.focus(); }
+  function close(refocus) {
+    cancelClose(); if (!open) return;
+    setOpen(false);
+    /* наступне відкриття починається з компактного вигляду */
+    if (langDd) { langDd.classList.remove('lang-open'); if (langCur) langCur.setAttribute('aria-expanded', 'false'); }
+    if (refocus) btn.focus();
+  }
 
   /* Наведення тільки для миші: на тачі hover залипає після тапа і шторка
      відкривалася б сама. Затримка плюс місток над панеллю дають курсору
