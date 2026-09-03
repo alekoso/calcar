@@ -1,5 +1,6 @@
 export const config = { maxDuration: 300 };
 
+import crypto from 'crypto';
 import { computeScore } from './score.js';
 import { resolveLocale, languageDirective, errText } from './locale.js';
 import { computeScoreV3, resolveVehicleAge, SCORE_DIMENSIONS_CONFIG } from './score-v3.js';
@@ -586,6 +587,42 @@ function photoKey(u) {
   const m = /riastatic\.com\/photosnew\/auto\/photo\/([a-z0-9_\-]*?\d+)(?:hd|fx|bx)\.(?:webp|jpe?g)/i.exec(String(u));
   if (m) return 'ria:' + m[1].toLowerCase();
   return String(u).split('#')[0].split('?')[0];
+}
+
+/* ---------- 4в1. Кеш нормалізованого історичного візуалу ----------
+   P0-стабільність: один VIN + той самий НАБІР архівних кадрів + та сама
+   версія екстрактора мусять давати ОДИН historical_visual, а не новий
+   прогін Vision щоразу (саме так один Check давав 8.1, а наступний 6.7:
+   inner_component_damage_extent стрибав indeterminate <-> substantial).
+   Ключ: (vin, fingerprint(відсортовані URL + версія), hv_version), джерело
+   кадрів неважливе (RIA usa_photos, знайдений лот, архів). Кешований
+   результат ПРИМУСОВО підміняє відповідь моделі, а не лише "пропонується"
+   їй. До міграції таблиці функції мовчки повертають null */
+async function readHvCache(vin, fingerprint) {
+  const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!base || !key || !vin || !fingerprint) return null;
+  try {
+    const r = await fetch(base.replace(/\/$/, '') + '/rest/v1/historical_visual_cache?vin=eq.' + encodeURIComponent(vin)
+      + '&fingerprint=eq.' + encodeURIComponent(fingerprint) + '&hv_version=eq.' + encodeURIComponent(HISTORICAL_VISUAL_VERSION) + '&select=historical_visual,source,created_at&limit=1', {
+      headers: { apikey: key, authorization: 'Bearer ' + key },
+    });
+    if (!r.ok) return null;
+    const rows = await r.json();
+    const row = Array.isArray(rows) && rows[0] ? rows[0] : null;
+    return row && row.historical_visual && typeof row.historical_visual === 'object' ? row.historical_visual : null;
+  } catch (e) { return null; }
+}
+async function writeHvCache(vin, fingerprint, source, urls, hv) {
+  const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!base || !key || !vin || !fingerprint || !hv) return false;
+  try {
+    const r = await fetch(base.replace(/\/$/, '') + '/rest/v1/historical_visual_cache?on_conflict=vin,fingerprint,hv_version', {
+      method: 'POST',
+      headers: { apikey: key, authorization: 'Bearer ' + key, 'content-type': 'application/json', prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ vin, fingerprint, hv_version: HISTORICAL_VISUAL_VERSION, source: source || null, photo_urls: (urls || []).slice(0, 24), historical_visual: hv }),
+    });
+    return r.ok;
+  } catch (e) { return false; }
 }
 
 /* ---------- 4в. Кеш аукціонних подій ----------
@@ -1842,7 +1879,9 @@ ${HISTORICAL_VISUAL_RULES}
 
 "photo_findings": ЛИШЕ про НИНІШНІ фото з оголошення (не аукціонні: для них є auction.findings). СПОЧАТКУ те, що РЕАЛЬНО ПОМІЧЕНО: різниця відтінку фарби, шагрень, нерівні зазори, свіжий герметик, нештатні деталі, знос салону проти пробігу. Кожна знахідка = окремий пункт зі status warn або bad. Якщо підозрілого нічого немає: ОДИН пункт "ok" ("на доступних фото явних слідів ремонту не видно") плюс МАКСИМУМ один пункт "unknown" із найважливішим обмеженням (наприклад, немає фото салону). ЗАБОРОНЕНО три пункти поспіль про те, чого не видно.
 
-"risks": 2-5 КЛЮЧОВИХ РИЗИКІВ САМЕ ЦЬОГО ЕКЗЕМПЛЯРА, кожен спирається на КОНКРЕТНИЙ факт цієї машини: симптом, помилку системи, суперечність, результат діагностики, видимий дефект, зафіксовану подію (ДТП, аукціон, скрутка) з непідтвердженими наслідками. Вік, пробіг і відома болячка моделі САМІ ПО СОБІ недостатні для risks: типові задири, пневмопідвіска, роздавальна коробка, батарея гібрида тощо живуть у model_notes.issues, де можна позначити підвищену актуальність через вік чи пробіг цієї машини; у risks вони переходять ЛИШЕ за конкретного сигналу по цій машині. Пояснення "чому преміальне авто дешеве" (дорогий сервіс, витрати володіння) клади у purchase_decision.value_context, не в risks. Для авто після зафіксованого ДТП один із ризиків майже завжди якість відновлення: це конкретна подія цієї машини. Кожен ризик КОМПАКТНИЙ: title; level (high = висока ціна помилки, med, low); note МАКСИМУМ 2 речення (чому це головна стаття витрат саме тут, без есе); action одним рядком, що починається з переліку конкретних вузлів чи дій ("лонжерони, підрамник, SRS та ремені", а не загальне "діагностика на СТО").
+"risks": 2-5 КЛЮЧОВИХ РИЗИКІВ САМЕ ЦЬОГО ЕКЗЕМПЛЯРА, кожен спирається на КОНКРЕТНИЙ факт цієї машини: симптом, помилку системи, суперечність, результат діагностики, видимий дефект, зафіксовану подію (ДТП, аукціон, скрутка) з непідтвердженими наслідками. Вік, пробіг і відома болячка моделі САМІ ПО СОБІ недостатні для risks: типові задири, пневмопідвіска, роздавальна коробка, батарея гібрида тощо живуть у model_notes.issues, де можна позначити підвищену актуальність через вік чи пробіг цієї машини; у risks вони переходять ЛИШЕ за конкретного сигналу по цій машині. Пояснення "чому преміальне авто дешеве" (дорогий сервіс, витрати володіння) клади у purchase_decision.value_context, не в risks. Для авто після зафіксованого ДТП один із ризиків майже завжди якість відновлення: це конкретна подія цієї машини.
+ВИНЯТОК, ЯКИЙ МУСИТЬ БУТИ: HIGH_COST_LATENT_RISK. Це ризик, який (а) НЕ є доведеною несправністю, (б) НЕ знижує Оцінку CalCar сам по собі, але (в) може суттєво змінити рішення про покупку, бо ймовірність × ціна помилки × релевантність САМЕ ЦЬОМУ авто (вік, пробіг, версія, відсутність незалежного підтвердження) висока. Такий ризик ВХОДИТЬ у risks з полем "kind": "latent" і формулюванням "не підтверджено", а не "несправно". Приклади: у 10-11-річного електромобіля з оригінальною високовольтною батареєю і без незалежної перевірки її стану: "Стан оригінальної високовольтної батареї не підтверджено" (реальна usable capacity/SOH, історія помилок HV-батареї, cell imbalance, реальне споживання і запас ходу, поведінка на DC-швидкій зарядці важать більше за заявлений продавцем запас ходу; НЕ стверджуй, що батарея обовʼязково сильно деградована); у ранньої Tesla Model S без підтвердженого апгрейду медіаблока: "Перевірити, чи лишився MCU1 чи встановлено MCU2" (MCU1 на NVIDIA Tegra 3: помітно повільніший інтерфейс, відома проблема зносу 8 ГБ eMMC, звірити recall/сервісну історію; НЕ стверджуй MCU1 як факт, якщо авто могло отримати апгрейд); дорога коробка чи пневмопідвіска без сервісної історії при великому пробігу тощо. Власницькі спостереження (жовта рамка чи розшарування ранніх дисплеїв Model S) додавай лише як "перевірити візуально обидва екрани", з провенансом owner-reported, без твердження про дефект.
+ПРІОРИТИЗАЦІЯ: top risks це 3-5 пунктів, які РЕАЛЬНО змінюють рішення, впорядковані за ціною помилки: підтверджене ДТП/подушки і незакритий HIGH_COST_LATENT_RISK головних агрегатів (HV-батарея, двигун, коробка, повний привід) стоять ВИЩЕ дрібних generic-слабкостей моделі. Не перетворюй risks на каталог болячок: дрібні і типові лишаються в model_notes.issues. Кожен ризик КОМПАКТНИЙ: title; level (high = висока ціна помилки, med, low); note МАКСИМУМ 2 речення (чому це головна стаття витрат саме тут, без есе); action одним рядком, що починається з переліку конкретних вузлів чи дій ("лонжерони, підрамник, SRS та ремені", а не загальне "діагностика на СТО").
 
 ДИСЦИПЛІНА РИЗИКІВ: виконаний ремонт, обслуговування чи модифікація САМІ ПО СОБІ не є ризиком і НЕ створюють рекомендацію "перевірити", навіть для важливих вузлів. Ризик чи перевірка зʼявляються ЛИШЕ за конкретної підстави: симптом проблеми, знайдена суперечність, видимий дефект, помилка системи, свідчення неякісної чи незавершеної роботи, або серйозне минуле пошкодження з непідтвердженими наслідками. Це правило застосовується ОДНАКОВО до risks, must_check, questions_for_seller і checklist: виконаний ремонт чи модифікація без конкретного негативного сигналу НЕ створюють ані перевірку, ані питання продавцю. Зокрема рестайлінгові фари, вихлоп, проставки, CarPlay, замінена система охолодження без ознак проблеми і подібні зміни: це факти обслуговування і комплектації (history, equipment), про них не питають і їх не перевіряють, поки нема сигналу.
 
@@ -1936,7 +1975,7 @@ ${renderDecisionContext(decisionContext)}${DECISION_RULES}${decisionStyle === 'a
  "auction": {"found":true,"summary":"2-4 речення: що сталося з авто в США за архівом, реальний обсяг пошкоджень по фото, чи чесно продавець його описує","findings":[{"status":"ok|warn|bad|unknown","text":"порівняння до/після, 1 речення"}]},
  "body_wrap": {"present":false,"scope":"full|partial|unknown","sources":["seller","visual","historical"],"inspection_visibility":"limited|normal"},
 ${HISTORICAL_VISUAL_SCHEMA}
- "risks":[{"title":"назва ризику","level":"high|med|low","note":"1-2 речення: чому це головна стаття витрат чи ризику саме тут","action":"конкретна перевірка до покупки, 1 рядок"}],
+ "risks":[{"title":"назва ризику","level":"high|med|low","kind":"finding|latent","note":"1-2 речення: чому це головна стаття витрат чи ризику саме тут","action":"конкретна перевірка до покупки, 1 рядок"}],
  "equipment_v2":[{"name":"вентиляція передніх сидінь","category":"comfort|interior|multimedia|assist|exterior|performance","confidence_level":"vehicle_data|seller_and_visual|visual|seller, або null лише для суто історичної","highlight":false,"retrofit":false,"retrofit_basis":null,"historical_claim":false,"value_tier":"standard|notable|high_value","evidence":[{"source":"vehicle_data|current_photos|seller_claim|listing_data|historical","ref":"photo_7 чи vin_decode чи назва історичного джерела","sign":"конкретна ознака на кадрі чи коротка цитата джерела"}]}],
  "discrepancies":[{"severity":"high|med|low","title":"коротка назва розбіжності","detail":"2-3 речення: що стверджується, що знайдено, звідки","sources":["опис продавця","перевірка площадки","фото","VIN"]}],
  "history":[{"date":"MM.YYYY або YYYY","event":"1 рядок: подія з історії авто","gap":"тривалість від попередньої події ('2 роки 3 місяці') або null"}],
@@ -1954,8 +1993,91 @@ ${HISTORICAL_VISUAL_SCHEMA}
 - Кожен пункт мусить випливати з КОНКРЕТНОЇ знахідки цього звіту (розбіжність, запис історії, знахідка на фото, слабке місце цієї версії при цьому пробігу) і називати, ЩО саме шукати і ДЕ. Приклад правильного: "задній лівий кут: звір відтінок ліхтаря і зазор кришки багажника, у 2020 був страховий випадок ззаду". Приклад забороненого: "зробити карту ЛКП товщиноміром по всіх елементах".
 - Загальні ритуали ("діагностика на СТО", "прочитати помилки", "перевірити рівні рідин") дозволені лише якщо привʼязані до конкретного вузла з конкретної причини з цього звіту.`;
 
+/* ---------- 5. Durable-аналіз ----------
+   Розрахунок більше не привʼязаний до одного довгого запиту браузера:
+   POST створює persisted job, одразу відповідає токеном і продовжує
+   аналіз у тій самій serverless-інстанції через Vercel waitUntil (контекст
+   запиту живе до maxDuration незалежно від того, чи вкладка ще відкрита).
+   Прогрес і фінальний звіт пишуться в check_jobs; сторінка опитує
+   /api/check-job?token=. Токен непрозорий (128 біт) і є адресою
+   read-only звіту /check/r/<token>. Без waitUntil чи без таблиці
+   поведінка стара: синхронний запит з повним звітом у відповіді */
+export function makeJobToken() {
+  const bytes = crypto.randomBytes(16);
+  return bytes.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+export function vercelWaitUntil() {
+  try {
+    const ctx = globalThis[Symbol.for('@vercel/request-context')];
+    const g = ctx && typeof ctx.get === 'function' ? ctx.get() : null;
+    return g && typeof g.waitUntil === 'function' ? g.waitUntil.bind(g) : null;
+  } catch (e) { return null; }
+}
+async function jobCreate(row) {
+  const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!base || !key) return false;
+  try {
+    const r = await fetch(base.replace(/\/$/, '') + '/rest/v1/check_jobs', {
+      method: 'POST',
+      headers: { apikey: key, authorization: 'Bearer ' + key, 'content-type': 'application/json', prefer: 'return=minimal' },
+      body: JSON.stringify(row),
+    });
+    return r.ok;
+  } catch (e) { return false; }
+}
+async function jobWrite(token, patch) {
+  const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!base || !key || !token) return false;
+  try {
+    const r = await fetch(base.replace(/\/$/, '') + '/rest/v1/check_jobs?token=eq.' + encodeURIComponent(token), {
+      method: 'PATCH',
+      headers: { apikey: key, authorization: 'Bearer ' + key, 'content-type': 'application/json', prefer: 'return=minimal' },
+      body: JSON.stringify({ ...patch, updated_at: new Date().toISOString() }),
+    });
+    return r.ok;
+  } catch (e) { return false; }
+}
+/* мінімальна відповідь-заглушка для синхронного ядра: ядро викликає
+   res.status(n).json(o) як раніше, а job-обгортка читає результат */
+export function fakeRes() {
+  return { _s: 200, _o: null, status(n) { this._s = n; return this; }, json(o) { this._o = o; return this; } };
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  const jobLang = resolveLocale(req.body?.lang);
+  const jobUrl = String((req.body || {}).url || '').trim();
+  const waitUntil = vercelWaitUntil();
+  const durable = !!(waitUntil && process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY && req.body?.sync !== true);
+  if (!durable) return runCheck(req, res, null);
+  if (!/^https?:\/\/.+\..+/.test(jobUrl)) return res.status(400).json({ error: errText(jobLang, 'bad_listing_url') });
+  const token = makeJobToken();
+  const created = await jobCreate({ token, status: 'queued', stage: 'queued', url: jobUrl.split('#')[0], lang: jobLang, user_id: null });
+  if (!created) return runCheck(req, res, null);   /* таблиці ще нема: стара синхронна поведінка */
+  res.status(202).json({ job: token });
+  waitUntil((async () => {
+    await jobWrite(token, { status: 'running', stage: 'listing' });
+    const shim = fakeRes();
+    try {
+      await runCheck(req, shim, { token, progress: s => { jobWrite(token, { stage: s }).catch(() => {}); } });
+      if (shim._s === 200 && shim._o && shim._o.vehicle) {
+        /* токен їде у звіт: сторінка будує посилання "Поділитися" з нього */
+        if (shim._o._meta && typeof shim._o._meta === 'object') shim._o._meta.share_token = token;
+        const ok = await jobWrite(token, { status: 'done', stage: 'done', report: shim._o, vin: (shim._o._meta && shim._o._meta.vin) || null, finished_at: new Date().toISOString() });
+        console.log('[job]', token, 'done', ok ? 'saved' : 'SAVE FAILED');
+      } else {
+        await jobWrite(token, { status: 'error', stage: 'error', error: (shim._o && shim._o.error) || errText(jobLang, 'internal'), finished_at: new Date().toISOString() });
+        console.log('[job]', token, 'error', shim._s);
+      }
+    } catch (e) {
+      await jobWrite(token, { status: 'error', stage: 'error', error: errText(jobLang, 'internal', e.message), finished_at: new Date().toISOString() });
+      console.log('[job]', token, 'crashed', e.message);
+    }
+  })());
+}
+
+async function runCheck(req, res, job) {
+  const progress = stage => { if (job && typeof job.progress === 'function') { try { job.progress(stage); } catch (e) {} } };
   if (!process.env.OPENAI_API_KEY) {
     return res.status(500).json({ error: errText(resolveLocale(req.body?.lang), 'ai_not_configured') });
   }
@@ -1987,6 +2109,7 @@ export default async function handler(req, res) {
 
     const listing = extractListing(html, url);
     listing.history_facts = extractHistoryFacts(listing.text);
+    progress('listing');
     if (!listing.photos.length && !listing.vin && !listing.text) {
       return res.status(422).json({ error: errText(lang, 'listing_extract_failed') });
     }
@@ -2008,6 +2131,7 @@ export default async function handler(req, res) {
 
     /* --- знімок у рів: ДО аналізу, щоб історія копилась навіть коли AI впав --- */
     const snapshot = await saveSnapshot(listing, url);
+    progress('identity');
 
     /* --- фото "до ремонту": спершу кадри, збережені самою RIA --- */
     let auction = null;
@@ -2131,10 +2255,13 @@ export default async function handler(req, res) {
       } catch (e) { console.log('[auction] пошук впав:', e.message); }
     }
 
+    progress('history');
+
     /* кешований історичний візуал: ті самі незмінні кадри вже розібрані.
        Даємо моделі готовий структурований результат текстом, щоб рішення
        його бачило, і не платимо за повторний добір кадрів і Vision */
-    const cachedHv = (auctionSearch && auctionSearch.cached_historical_visual) || null;
+    let cachedHv = (auctionSearch && auctionSearch.cached_historical_visual) || null;
+    let hvCache = { fingerprint: null, hit: false, source: null };
 
     /* --- AI --- */
     const langDirective = languageDirective(lang);
@@ -2269,6 +2396,22 @@ export default async function handler(req, res) {
       } catch (e) { console.log('[check] historical photo transport failed:', e.message); }
     }
     if (auction) auction.photos_sent = auctionPhotos.length;
+    /* стабільний ключ візуалу: набір кадрів, який РЕАЛЬНО іде у Vision.
+       Той самий VIN з тим самим набором і версією отримує кешований
+       результат незалежно від того, звідки кадри і з якого пристрою
+       запущено Check */
+    try {
+      const hvPhotoIds = auctionPhotos.map(u => photoOriginByData.get(u) || u);
+      if (hvPhotoIds.length && listing.vin) {
+        hvCache.fingerprint = photoSetFingerprint(hvPhotoIds);
+        hvCache.source = auction && auction.from_ria ? 'autoria_history' : (auctionSearch && auctionSearch.status === 'found') ? 'auction_search' : 'external_archive';
+        if (!cachedHv) {
+          const c = await readHvCache(listing.vin, hvCache.fingerprint);
+          if (c) { cachedHv = c; hvCache.hit = true; }
+        } else hvCache.hit = true;
+      }
+      console.log('[hv-cache]', hvCache.hit ? 'hit' : 'miss', listing.vin || '-', hvCache.fingerprint || '-', hvCache.source || '-');
+    } catch (e) { console.log('[hv-cache] read failed:', e.message); }
     if (auction && !auctionPhotos.length) {
       /* структуроване діагностичне повідомлення для Runtime Logs:
          без секретів, HTML і великих payload */
@@ -2343,6 +2486,7 @@ export default async function handler(req, res) {
       { type: 'text', text: PROMPT(listing, nhtsa, auction, langDirective, decisionStyle, auctionSearch, decisionContext) },
     ];
 
+    progress('ai');
     const t0 = Date.now();
     let data = await callModel(modelBody(content), 240000);
 
@@ -2387,9 +2531,20 @@ export default async function handler(req, res) {
        structured-поля (structural_visual_status, srs, зони, severity).
        Виник у ТОМУ Ж виклику, що й purchase_decision, тому рішення
        бачило кадри до формування */
-    const hvClean = sanitizeHistoricalVisual(parsed.historical_visual, auctionPhotos.length || (cachedHv ? 1 : 0));
+    /* ПРИМУС: кешований візуал тих самих кадрів заміняє відповідь моделі
+       цілком. Модель бачила кадри для інших секцій звіту, але тяжкість
+       події визначає один і той самий нормалізований результат */
+    const hvClean = cachedHv
+      ? sanitizeHistoricalVisual(cachedHv, 1)
+      : sanitizeHistoricalVisual(parsed.historical_visual, auctionPhotos.length || 0);
     if (hvClean) parsed.historical_visual = hvClean;
     else delete parsed.historical_visual;
+    /* свіжий нормалізований візуал у кеш за ключем набору кадрів: наступний
+       Check цього VIN із тими самими кадрами отримає його примусово */
+    if (parsed.historical_visual && !hvCache.hit && hvCache.fingerprint && listing.vin) {
+      const ok = await writeHvCache(listing.vin, hvCache.fingerprint, hvCache.source, auctionPhotos.map(u => photoOriginByData.get(u) || u), parsed.historical_visual);
+      console.log('[hv-cache] write', ok ? 'ok' : 'skipped', hvCache.fingerprint);
+    }
     /* свіжий розбір незмінних кадрів кладемо в кеш події разом із
        відбитком набору: наступний Check не платитиме за ті самі кадри */
     if (parsed.historical_visual && !cachedHv && listing.vin && auctionSearch && auctionSearch.status === 'found') {
@@ -2556,6 +2711,7 @@ export default async function handler(req, res) {
         '| cap', breakdown.coverage_cap, '| lim', (breakdown.limiting_factors || []).join(',') || 'none');
     } catch (e) { console.log('[check] score failed:', e.message); }
 
+    progress('scoring');
     const cleanDecision = sanitizePurchaseDecision(parsed.purchase_decision, parsed.score_v2_preview);
     if (cleanDecision) parsed.purchase_decision = cleanDecision;
     else delete parsed.purchase_decision;
@@ -2726,6 +2882,8 @@ export default async function handler(req, res) {
       auction_url: listing.auction_url || null,
       auction_photos: auctionPhotos.map(u => photoOriginByData.get(u) || u),
       historical_photo_transport: historicalPhotoStats,
+      /* стабільність: ключ набору архівних кадрів і чи взято візуал з кешу */
+      historical_visual_cache: hvCache,
       /* мапи для UI і чату: технічний id кадру -> позиція у вихідній галереї */
       photo_map: { listing: photoIdx, auction: auctionPhotos.map(u => { const real = photoOriginByData.get(u) || u; return (auction && Array.isArray(auction.photos)) ? auction.photos.indexOf(real) : -1; }) },
       price_context: listing.price_context || null,

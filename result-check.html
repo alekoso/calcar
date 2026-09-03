@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Listing check · CalCar Check</title>
+<meta name="robots" content="noindex,nofollow">
 <meta name="description" content="Paste a car listing link. CalCar checks the seller's claims against the car's history, VIN data and photos, shows the discrepancies and tells you whether it is worth buying.">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
@@ -405,10 +406,25 @@
   .btn-chat:hover{background:var(--brand-hover)}
   .btn-chat:active{background:var(--brand-active)}
   .btn-chat svg{flex-shrink:0}
+  .btn-share{display:inline-flex;align-items:center;gap:8px;background:#fff;color:var(--ink);border:1px solid var(--line-strong);border-radius:var(--radius);height:44px;padding:0 16px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap}
+  .btn-share:hover{background:var(--surface-2);border-color:var(--brand)}
+  .btn-share svg{flex-shrink:0}
+  .share-toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,12px);background:var(--ink);color:#fff;font-size:13.5px;font-weight:600;padding:10px 16px;border-radius:12px;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:60}
+  .share-toast.on{opacity:1;transform:translate(-50%,0)}
+  /* read-only звіт за публічним посиланням: без чату, збереження і перекладу */
+  body.readonly #chatTopBtn,body.readonly #chatFab,body.readonly .pd-cta,body.readonly #askAi,body.readonly #saveHint,body.readonly #trBar,body.readonly .chat-selask{display:none!important}
+  /* архівні фото недоступні: компактна плашка замість порожнього місця */
+  .arch-fail{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 20px 4px;padding:9px 12px;border:1px dashed var(--line-strong);border-radius:10px;font-size:13px;color:var(--muted)}
+  .arch-fail button,.arch-fail a{font:inherit;font-weight:600;color:var(--ink);background:var(--card);border:1px solid var(--line-strong);border-radius:8px;padding:4px 10px;cursor:pointer;text-decoration:none}
   @media(max-width:620px){
-    /* дві кнопки не вміщаються в один рядок на 375px: переносимо, а не розтягуємо сторінку */
-    .topbar{flex-wrap:wrap}
-    .topbar .btn-back,.topbar .btn-chat{flex:1 1 auto;justify-content:center}
+    /* компактний мобільний topbar: три дії в один рядок 40px, без переносу */
+    .topbar{flex-wrap:nowrap;gap:8px;margin-bottom:14px}
+    .topbar .btn-back,.topbar .btn-chat,.topbar .btn-share{height:40px;padding:0 12px;font-size:13px;border-radius:12px}
+    .topbar .btn-back{flex:0 0 auto}
+    .topbar .btn-share{flex:0 0 auto}
+    .topbar .btn-share .tb-label{display:none}
+    .topbar .btn-chat{flex:1 1 auto;justify-content:center;min-width:0}
+    .topbar #saveHint{display:none}
   }
 
   /* ---- зовнішнє оголошення: маленька кнопка біля назви авто ---- */
@@ -609,9 +625,30 @@
      ширини 96px). Дата будь-якої точності (2025, 12.2025, повна) центрована
      на осі і своїм фоном розриває лінію; текст подій починається з однієї
      позиції, partial-дата layout не змінює */
-  .hrow{display:flex;gap:14px;padding:9px 0;font-size:14px;line-height:1.5;position:relative}
-  .hrow .hd{flex:0 0 96px;text-align:center;font-weight:700;font-variant-numeric:tabular-nums;background:var(--card);position:relative;z-index:1;align-self:flex-start}
-  .hrow > span:not(.hd){flex:1;min-width:0}
+  /* детермінована сітка: дата | рейка | зміст. Рейка малюється в КОЖНОМУ
+     рядку і в кожному інтервалі на всю висоту, тому зʼєднує центри дат
+     незалежно від висоти тексту; дата своїм фоном розриває лінію */
+  #histList{--hd-w:96px;--rail-x:48px}
+  .hrow{display:grid;grid-template-columns:var(--hd-w) minmax(0,1fr);column-gap:14px;padding:9px 0;font-size:14px;line-height:1.5;position:relative}
+  .hrow::before{content:'';position:absolute;left:var(--rail-x);top:0;bottom:0;width:2px;transform:translateX(-50%);background:var(--line-strong);border-radius:2px}
+  .hrow:first-child::before{top:50%}
+  .hrow.last::before{bottom:50%}
+  .hrow .hd{text-align:center;font-weight:700;font-variant-numeric:tabular-nums;background:var(--card);position:relative;z-index:1;align-self:start;padding:2px 0}
+  .hrow > span:not(.hd){min-width:0;overflow-wrap:anywhere}
+  .hrow .reg-badge{display:inline-block;white-space:normal;margin:2px 0 0 6px;vertical-align:baseline}
+  @media(max-width:620px){
+    #histList{--hd-w:64px;--rail-x:32px}
+    .hrow{column-gap:10px;font-size:13.5px}
+    .hrow .hd{font-size:12.5px}
+    .hgap{padding-left:74px}
+    /* картка комплектації: заголовок і легенда не конкурують за рядок */
+    /* заголовок займає весь рядок, легенда переноситься під нього по ширині свого тексту */
+    .card-head h2{flex:1 1 100%;min-width:0}
+    .card-head .sec-meta{flex:0 0 auto;max-width:100%;margin-left:0;white-space:normal;line-height:1.35}
+    .eq-chip{max-width:100%;white-space:normal;overflow-wrap:anywhere}
+    .eq-chips{max-width:100%}
+    #titleChips{max-width:100%}
+  }
   #scoreBadge{position:relative;color:var(--ink)}
   #scoreBadge.has-dims{cursor:pointer}
   .dim-caret{display:inline-flex;align-items:center;margin-left:-3px;color:var(--ink-2);transition:transform .18s ease,color .15s}
@@ -625,7 +662,7 @@
   .dim-pop-row b{font-variant-numeric:tabular-nums;color:var(--ink)}
   .dim-pop-row b.na{color:var(--faint);font-weight:600}
   .hgap{position:relative;min-height:18px;display:flex;align-items:center;padding:1px 0 1px 110px;color:var(--faint);font-size:12px}
-  .hgap::before{content:'';position:absolute;left:48px;top:-8px;bottom:-8px;width:2px;transform:translateX(-50%);background:var(--line-strong);border-radius:2px}
+  .hgap::before{content:'';position:absolute;left:var(--rail-x);top:0;bottom:0;width:2px;transform:translateX(-50%);background:var(--line-strong);border-radius:2px}
   .hnote{margin-top:12px}
 
   /* фінальні дії */
@@ -819,13 +856,18 @@
   </div>
 
   <div class="topbar">
-    <a class="btn-back" href="/check">← New check</a>
+    <a class="btn-back" href="/check"><span class="tb-arrow" aria-hidden="true">←</span> <span class="tb-label">New check</span></a>
     <span id="saveHint"></span>
+    <button class="btn-share" id="shareBtn" type="button" style="display:none" title="Share">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/></svg>
+      <span class="tb-label">Share</span>
+    </button>
     <button class="btn-chat" id="chatTopBtn" type="button">
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.9 8.9 0 0 1-3.7-.8L3 20l1-4.9a8.4 8.4 0 1 1 17-3.6z"/></svg>
-      Car chat
+      <span class="tb-label">Car chat</span>
     </button>
   </div>
+  <div class="share-toast" id="shareToast" role="status" aria-live="polite"></div>
 
   <!-- авто -->
   <div class="card">
@@ -932,7 +974,7 @@
   <div class="card" id="issuesCard" style="display:none">
     <div class="card-head">
       <h2>Known weak points of this version</h2>
-      <span class="sec-meta">Given the engine and mileage</span>
+      <span class="sec-meta">Given the version, age and mileage</span>
     </div>
     <div class="card-body"><div id="issuesList"></div></div>
   </div>
@@ -955,7 +997,8 @@
     <div class="card-body">
       <div id="chkList"></div>
       <div class="final-actions">
-        <button class="btn-primary" id="pdfBtn" type="button" style="height:44px">Download PDF</button>
+        <button class="btn-primary" id="shareBtn2" type="button" style="height:44px;display:none">Share</button>
+        <button class="btn-back" id="pdfBtn" type="button">Download PDF</button>
         <button class="btn-back" id="askAi" type="button">Ask CalCar about this car</button>
       </div>
     </div>
@@ -987,10 +1030,20 @@ const SB = (typeof supabase !== 'undefined' && window.CALCAR_SUPABASE?.url)
   ? supabase.createClient(window.CALCAR_SUPABASE.url, window.CALCAR_SUPABASE.anon)
   : null;
 
-const OPEN_ID = new URLSearchParams(location.search).get('id')
-  || (location.pathname.match(/^\/check\/([A-Za-z0-9-]{4,40})$/) || [])[1]
+/* публічний read-only звіт: /check/r/<token> (durable job) або
+   /check/r/<public_id> (старий збережений звіт). Обидва читаються через
+   /api/check-job без входу; сторінка стає read-only, якщо цей пристрій
+   не є автором (токен відсутній у локальному списку недавніх перевірок) */
+const OPEN_TOKEN = new URLSearchParams(location.search).get('r')
+  || (location.pathname.match(/^\/check\/r\/([A-Za-z0-9_-]{4,64})$/) || [])[1]
   || null;
-let DATA = null, M = {};
+const OPEN_ID = OPEN_TOKEN ? null : (new URLSearchParams(location.search).get('id')
+  || (location.pathname.match(/^\/check\/([A-Za-z0-9-]{4,40})$/) || [])[1]
+  || null);
+let DATA = null, M = {}, READONLY = false;
+const RECENT_KEY = 'calcar_recent_checks';
+function localRecent(){ try { const a = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+function isLocalAuthor(token){ return !!token && localRecent().some(x => x && x.token === token); }
 
 /* довге тире вичищаємо всюди: правило продукту */
 function esc(s){ return String(s ?? '').replace(/\s*\u2014\s*/g, ', ').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
@@ -1005,6 +1058,32 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 let ROW_ID = null; /* uuid рядка в reports: для збереження перекладів */
 
 (async function init(){
+  if (OPEN_TOKEN) {
+    const isPid = /^[A-Z0-9]{4,12}$/.test(OPEN_TOKEN) && !/[a-z_-]/.test(OPEN_TOKEN);
+    const q = isPid ? 'pid=' + encodeURIComponent(OPEN_TOKEN) : 'token=' + encodeURIComponent(OPEN_TOKEN);
+    let j = null;
+    for (let attempt = 0; attempt < 240; attempt++) {
+      try {
+        const r = await fetch('/api/check-job?' + q + '&lang=' + encodeURIComponent(window.calcarLang()), { cache: 'no-store' });
+        j = await r.json().catch(() => null);
+        if (r.status === 404) { document.body.innerHTML = '<div class="wrap"><div class="card"><div class="card-body">' + esc(t('Report not found')) + '</div></div></div>'; document.body.classList.add('report-ready'); return; }
+      } catch (e) { j = null; }
+      if (j && j.status === 'done' && j.report && j.report.vehicle) break;
+      if (j && j.status === 'error') { document.body.innerHTML = '<div class="wrap"><div class="card"><div class="card-body">' + esc(j.error || t('Server error')) + '</div></div></div>'; document.body.classList.add('report-ready'); return; }
+      /* автор повернувся до ще не готового аналізу: чекаємо тут же */
+      if (attempt === 0) { const sk = document.getElementById('skeleton'); if (sk) sk.setAttribute('data-wait', '1'); document.title = t('The report is not ready yet'); }
+      await new Promise(r => setTimeout(r, document.visibilityState === 'visible' ? 3000 : 8000));
+    }
+    if (!j || !j.report) { location.replace('/'); return; }
+    DATA = j.report;
+    READONLY = !(isLocalAuthor(OPEN_TOKEN) || (DATA._meta && DATA._meta.share_token && isLocalAuthor(DATA._meta.share_token)));
+    /* власник акаунта, що відкрив свій звіт за публічним посиланням, теж
+       бачить його як read-only: редагування живе на /check/<public_id> */
+    if (READONLY) document.body.classList.add('readonly');
+    history.replaceState(null, '', '/check/r/' + OPEN_TOKEN);
+    boot();
+    return;
+  }
   if (OPEN_ID) {
     if (!SB) { location.replace('/'); return; }
     const q = SB.from('reports').select('id,public_id,data');
@@ -1087,8 +1166,8 @@ function fill(cardId, listId, arr, tpl) {
 function boot(){
   M = DATA._meta || {};
   boot2(DATA);
-  trSetup();
-  chatInit();
+  shareSetup();
+  if (!READONLY) { trSetup(); chatInit(); }
   /* дані відрендерені повністю: показуємо звіт одним перемиканням.
      До цього людина бачить скелетон, а не порожній шаблон */
   document.body.classList.add('report-ready');
@@ -1343,7 +1422,8 @@ function boot2(D){
   fill('risksCard', 'risksList', D.risks, r => {
     const lv = LVL[r.level] || LVL.med;
     return '<div class="risk"><div class="risk-t"><b>' + esc(r.title) + '</b>'
-      + '<span class="badge ' + lv[0] + '">' + esc(lv[1]) + '</span></div>'
+      + '<span class="badge ' + lv[0] + '">' + esc(lv[1]) + '</span>'
+      + (r.kind === 'latent' ? '<span class="badge">' + esc(t('Not verified, high cost if wrong')) + '</span>' : '') + '</div>'
       + (r.note ? '<p>' + esc(r.note) + '</p>' : '')
       + (r.action ? '<div class="act"><span>' + esc(r.action) + '</span></div>' : '')
       + '</div>';
@@ -1367,7 +1447,30 @@ function boot2(D){
       $('baBefore').style.display = '';
       $('baBefore').innerHTML = '<span class="dot bad"></span>' + esc(isUS ? t('Before repair (US auction)') : t('Past photos'));
       $('auctionStrip').style.display = '';
-      $('auctionStrip').innerHTML = auPh.map(u => '<img loading="lazy" src="' + esc(u) + '" alt="">').join('');
+      /* архівні кадри йдуть через CalCar-проксі: збережений звіт не залежить
+         від того, чи пустить сторонній CDN цей телефон за прямим посиланням.
+         Кадр, що не завантажився, зникає, а не лишає порожній прямокутник;
+         якщо не завантажився жоден, компактна плашка з повтором і джерелом */
+      const proxied = u => /^https:\/\//.test(u) ? '/api/img?u=' + encodeURIComponent(u) : u;
+      $('auctionStrip').innerHTML = auPh.map(u => '<img loading="lazy" src="' + esc(proxied(u)) + '" data-src="' + esc(u) + '" alt="">').join('');
+      const stripEl = $('auctionStrip');
+      const archFail = () => {
+        if (stripEl.querySelector('img')) return;
+        stripEl.style.display = 'none';
+        if (document.getElementById('archFail')) return;
+        const box = document.createElement('div');
+        box.className = 'arch-fail'; box.id = 'archFail';
+        box.innerHTML = '<span>' + esc(t('Archive photos are temporarily unavailable')) + '</span><button type="button" id="archRetry">' + esc(t('Retry')) + '</button>'
+          + (M.auction_url ? '<a href="' + esc(M.auction_url) + '" target="_blank" rel="noopener">' + esc(t('Open source')) + '</a>' : '');
+        stripEl.parentNode.insertBefore(box, stripEl.nextSibling);
+        box.querySelector('#archRetry').onclick = () => {
+          box.remove(); stripEl.style.display = '';
+          stripEl.innerHTML = auPh.map(u => '<img loading="lazy" src="' + esc(proxied(u)) + '&r=' + Date.now() + '" data-src="' + esc(u) + '" alt="">').join('');
+          wireStrip();
+        };
+      };
+      const wireStrip = () => stripEl.querySelectorAll('img').forEach(img => img.addEventListener('error', () => { img.remove(); archFail(); }, { once: true }));
+      wireStrip();
     }
     if (au.summary) { $('usSummary').style.display = ''; $('usSummary').textContent = clean(au.summary); }
     if (Array.isArray(au.findings) && au.findings.length) {
@@ -1483,7 +1586,7 @@ function boot2(D){
       (i > 0 ? '<div class="hgap">' + (h.gap ? esc(h.gap) : '') + '</div>' : '')
       /* реєстраційні події видно при скануванні; бейдж лише за явну
          перереєстрацію, "зміну власника" не вигадуємо */
-      + '<div class="hrow' + (/реєстрац|регистрац|registration/i.test(h.event) ? ' reg' : '') + '"><span class="hd">' + esc(h.date) + '</span><span>' + esc(h.event)
+      + '<div class="hrow' + (/реєстрац|регистрац|registration/i.test(h.event) ? ' reg' : '') + (i === D.history.length - 1 ? ' last' : '') + '"><span class="hd">' + esc(h.date) + '</span><span>' + esc(h.event)
       + (owners[i] ? ' <span class="badge reg-badge">' + esc(t('Owner #{n}').replace('{n}', owners[i])) + '</span>' : '') + '</span></div>'
     ).join('')
     + (D.history_note ? '<div class="dmg-note hnote">' + esc(D.history_note) + '</div>' : '')
@@ -1538,6 +1641,35 @@ function persistChat(){
   chatSaveTimer = setTimeout(async () => {
     try { await SB.from('reports').update({ data: DATA }).eq('id', ROW_ID); } catch (e) {}
   }, 1200);
+}
+
+/* ---------- поділитися: постійне read-only посилання ----------
+   Первинний механізм поширення звіту. Мобільний Web Share API, інакше
+   копіювання в буфер з підтвердженням. PDF лишається другорядною дією */
+function shareUrl(){
+  const tok = OPEN_TOKEN || (DATA && DATA._meta && DATA._meta.share_token) || null;
+  if (tok) return location.origin + '/check/r/' + tok;
+  const pid = (location.pathname.match(/^\/check\/([A-Z0-9]{4,12})$/) || [])[1];
+  return pid ? location.origin + '/check/r/' + pid : null;
+}
+function shareToast(msg){
+  const el = $('shareToast'); if (!el) return;
+  el.textContent = msg; el.classList.add('on');
+  clearTimeout(shareToast._t); shareToast._t = setTimeout(() => el.classList.remove('on'), 2200);
+}
+async function shareReport(){
+  const url = shareUrl(); if (!url) return;
+  const title = t('Check this car: {title}').replace('{title}', (DATA && DATA.vehicle && DATA.vehicle.title) || 'CalCar');
+  const mobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+  if (mobile && navigator.share) {
+    try { await navigator.share({ title, url }); return; } catch (e) { if (e && e.name === 'AbortError') return; }
+  }
+  try { await navigator.clipboard.writeText(url); shareToast(t('Link copied')); }
+  catch (e) { try { window.prompt(t('Share'), url); } catch (e2) { shareToast(t('Could not copy the link')); } }
+}
+function shareSetup(){
+  const url = shareUrl();
+  ['shareBtn', 'shareBtn2'].forEach(id => { const b = $(id); if (!b) return; if (url) { b.style.display = ''; b.addEventListener('click', shareReport); } });
 }
 
 /* ---------- фінальні дії ---------- */

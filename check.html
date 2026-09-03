@@ -854,6 +854,8 @@ function loadingStart() {
     ld.subIdx++;
   };
   setStage(0);
+  /* реальні стадії з сервера (durable job) рухають індикатор вперед */
+  ld.setStage = i => { if (ld && !ld.done && i > ld.stage) setStage(i); };
   for (let i = 1; i < LOAD_STAGES.length; i++) ld.timers.push(setTimeout(() => setStage(i), LOAD_STAGE_AT[i]));
   ld.rot = setInterval(rotateSub, 18000);
   /* довше за звичайне: нейтральний текст, без обіцянок дедлайну */
@@ -885,6 +887,7 @@ function loadingFinish(rid) {
 
 function loadingError(rid, msg) {
   loadingStop();
+  pendingSet(null);
   console.log('[check-load]', rid, 'error', msg);
   const box = document.getElementById('loadBox');
   box.innerHTML = '<div class="ld-err">' + esc(msg) + ' <a href="#" id="ldRetry">' + esc(t('Try again')) + '</a></div>';
@@ -994,6 +997,98 @@ async function collectDecisionContext(){
   return out;
 }
 
+/* ---------- durable-аналіз: job на сервері, сторінка лише опитує ----------
+   POST /api/check відповідає токеном одразу; далі аналіз живе на сервері
+   незалежно від вкладки. Токен лежить у localStorage: після блокування
+   екрана чи повернення на сторінку опитування продовжується, готовий звіт
+   відкривається. Гість зберігає локальний список своїх недавніх перевірок
+   (лише посилання і картка, сам звіт живе на сервері) */
+const PENDING_KEY = 'calcar_pending_check';
+const RECENT_KEY = 'calcar_recent_checks';
+const STAGE_IDX = { queued: 0, listing: 0, identity: 0, history: 1, ai: 2, scoring: 3, done: 3 };
+function pendingGet(){ try { const j = JSON.parse(localStorage.getItem(PENDING_KEY) || 'null'); return j && j.token ? j : null; } catch (e) { return null; } }
+function pendingSet(j){ try { if (j) localStorage.setItem(PENDING_KEY, JSON.stringify(j)); else localStorage.removeItem(PENDING_KEY); } catch (e) {} }
+function localRecent(){ try { const a = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+function rememberRecent(entry){
+  try {
+    const list = localRecent().filter(x => x && x.token !== entry.token);
+    list.unshift(entry);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 20)));
+  } catch (e) {}
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function pollJob(token){
+  const t0 = Date.now();
+  let lastErr = null;
+  while (Date.now() - t0 < 9 * 60 * 1000) {
+    await sleep(document.visibilityState === 'visible' ? 2500 : 6000);
+    let j = null;
+    try {
+      const r = await fetch('/api/check-job?token=' + encodeURIComponent(token) + '&lang=' + encodeURIComponent(window.calcarLang()), { cache: 'no-store' });
+      j = await safeJson(r);
+      if (r.status === 404) throw new Error(j.error || t('Report not found'));
+      if (!r.ok) { lastErr = new Error(j.error || t('Server error')); continue; }
+    } catch (e) { lastErr = e; if (/not found|не знайдено|не найден/i.test(String(e.message))) throw e; continue; }
+    if (ld && ld.setStage && STAGE_IDX[j.stage] != null) ld.setStage(STAGE_IDX[j.stage]);
+    if (j.status === 'done' && j.report) return j.report;
+    if (j.status === 'error') throw new Error(j.error || t('Server error'));
+  }
+  throw lastErr || new Error(t('The analysis did not finish in time. Try again, the second run is usually faster'));
+}
+/* готовий звіт: у сесію, в кабінет для того, хто увійшов, у локальний список
+   для гостя, і перехід на постійну адресу звіту */
+async function finalizeReport(data, token){
+  if (token && data && data._meta && !data._meta.share_token) data._meta.share_token = token;
+  sessionStorage.setItem('calcarCheck', JSON.stringify(data));
+  sessionStorage.removeItem('calcarCheckId');
+  pendingSet(null);
+  const title = data.vehicle?.title || t('Check');
+  if (token) rememberRecent({ token, title, photo: (data._meta?.photos || [])[0] || null, score: (data.score_breakdown && data.score_breakdown.final) ?? null, odometer_km: data._meta?.odometer_km || null, created_at: new Date().toISOString() });
+  let dest = token ? '/check/r/' + token : '/result-check.html';
+  try {
+    if (SB) {
+      const { data: s } = await SB.auth.getSession();
+      if (s?.session) {
+        const pid = makePid();
+        let ins = await SB.from('reports').insert({
+          user_id: s.session.user.id, kind: 'check', public_id: pid, title, data,
+        }).select('id,public_id').single();
+        if (ins.error) ins = await SB.from('reports').insert({
+          user_id: s.session.user.id, kind: 'check', title, data,
+        }).select('id').single();
+        const row = ins.data;
+        if (row?.id) {
+          sessionStorage.setItem('calcarCheckId', row.id);
+          dest = row.public_id ? '/check/' + row.public_id : '/result-check.html?id=' + row.id;
+        }
+      }
+    }
+  } catch (e) { /* збереження не блокує показ результату */ }
+  return dest;
+}
+/* повернення на сторінку з незавершеним аналізом: продовжуємо опитування */
+async function resumePending(){
+  const pj = pendingGet();
+  if (!pj) return false;
+  if (Date.now() - (pj.at || 0) > 20 * 60 * 1000) { pendingSet(null); return false; }
+  if (pj.url) input.value = pj.url;
+  btn.disabled = true;
+  statusEl.className = 'hf-status';
+  const rid = loadingStart();
+  const note = document.getElementById('ldNote'); if (note) { note.textContent = t('Resuming your analysis…'); note.className = 'ld-note on'; }
+  try {
+    const report = await pollJob(pj.token);
+    const finPromise = loadingFinish(rid);
+    const dest = await finalizeReport(report, pj.token);
+    await finPromise;
+    location.href = dest;
+  } catch (e) {
+    pendingSet(null);
+    loadingError(rid, e.message || t('Something went wrong, please try again'));
+  } finally { btn.disabled = false; }
+  return true;
+}
+
 async function safeJson(r) {
   try { return await r.json(); } catch (e) { return { error: t('The server returned an unexpected response') }; }
 }
@@ -1018,7 +1113,7 @@ function renderRecentChecks(rows, demo){
   const box = document.getElementById('recent'), grid = document.getElementById('recentGrid');
   if (!box || !grid || !Array.isArray(rows) || !rows.length) return;
   grid.innerHTML = rows.slice(0, 3).map(r => {
-    const href = r.public_id ? '/check/' + r.public_id : '/result-check.html?id=' + r.id;
+    const href = r.href || (r.public_id ? '/check/' + r.public_id : '/result-check.html?id=' + r.id);
     const sc = Number(r.score) || Number(r.legacy_score) || null;
     /* ті самі пороги кольору, що в самому звіті */
     const cls = sc === null ? '' : sc >= 7.5 ? 'ok' : sc >= 5.5 ? 'warn' : 'bad';
@@ -1077,8 +1172,18 @@ function renderExampleChecks(){
       }
     }
   } catch (e) { /* блок необовʼязковий: нижче показуємо приклади */ }
-  if (Array.isArray(rows) && rows.length) renderRecentChecks(rows); else renderExampleChecks();
+  if (Array.isArray(rows) && rows.length) { renderRecentChecks(rows); return; }
+  /* гість: локальний список недавніх перевірок цього пристрою (лише
+     посилання і картка; сам звіт живе на сервері за токеном) */
+  const mine = localRecent().filter(x => x && x.token).map(x => ({ href: '/check/r/' + x.token, title: x.title, photo: x.photo, odometer_km: x.odometer_km, score: x.score, created_at: x.created_at }));
+  if (mine.length) {
+    const tt = document.getElementById('recentTitle'); if (tt) tt.textContent = t('Recent checks on this device');
+    const all = document.getElementById('recentAll'); if (all) all.style.display = 'none';
+    renderRecentChecks(mine);
+  } else renderExampleChecks();
 })();
+/* незавершений аналіз цього пристрою: продовжити опитування одразу */
+resumePending();
 
 btn.addEventListener('click', run);
 input.addEventListener('keydown', e => { if (e.key === 'Enter') run(); });
@@ -1125,39 +1230,21 @@ async function run() {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(Object.assign({ url, lang: window.calcarLang() }, dctx)),
     });
-    const data = await safeJson(r);
+    let data = await safeJson(r);
     if (!r.ok || data.error) throw new Error(data.error || t('Server error'));
+    let token = null;
+    if (r.status === 202 && data.job) {
+      /* durable job: токен у localStorage, далі опитування; телефон може
+         заблокувати екран, аналіз на сервері від цього не зупиниться */
+      token = data.job;
+      pendingSet({ token, url, at: Date.now() });
+      const note = document.getElementById('ldNote');
+      if (note) { note.textContent = t('Analysis in progress. It continues on the server, you can lock the screen or come back later.'); note.className = 'ld-note on'; }
+      data = await pollJob(token);
+    }
 
     const finPromise = loadingFinish(rid);
-    sessionStorage.setItem('calcarCheck', JSON.stringify(data));
-    /* прибираємо id попереднього звіту: інакше автозбереження перезапише чужий рядок */
-    sessionStorage.removeItem('calcarCheckId');
-
-    /* якщо користувач увійшов, звіт зберігається в кабінет і одразу
-       отримує власну постійну адресу */
-    let dest = '/result-check.html';
-    try {
-      if (SB) {
-        const { data: s } = await SB.auth.getSession();
-        if (s?.session) {
-          const title = data.vehicle?.title || t('Check');
-          const pid = makePid();
-          let ins = await SB.from('reports').insert({
-            user_id: s.session.user.id, kind: 'check', public_id: pid, title, data,
-          }).select('id,public_id').single();
-          /* міграція public_id ще не виконана: зберігаємо без нього */
-          if (ins.error) ins = await SB.from('reports').insert({
-            user_id: s.session.user.id, kind: 'check', title, data,
-          }).select('id').single();
-          const row = ins.data;
-          if (row?.id) {
-            sessionStorage.setItem('calcarCheckId', row.id);
-            dest = row.public_id ? '/check/' + row.public_id : '/result-check.html?id=' + row.id;
-          }
-        }
-      }
-    } catch (e) { /* збереження не блокує показ результату */ }
-
+    const dest = await finalizeReport(data, token);
     await finPromise;
     location.href = dest;
   } catch (e) {

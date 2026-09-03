@@ -78,7 +78,8 @@ const REPORTS = [
   }
 
   /* 4. новий звіт = нова запис: збереження лише insert, update по reports нема */
-  const save = page.split("fetch('/api/check'")[1] || '';
+  /* збереження живе у finalizeReport (спільне для синхронного і durable шляху) */
+  const save = page.split('async function finalizeReport')[1] || '';
   if (!save.includes(".insert(")) errs.push('збереження звіту не через insert');
   if (/from\('reports'\)[\s\S]{0,120}?\.update\(/.test(page)) errs.push('у check.html зʼявився update по reports: старий звіт можна перезаписати');
 
@@ -506,8 +507,11 @@ const REPORTS = [
     if (!api.includes('їхнє "я бы" не переймай')) errs.push('few-shot граматика не відсічена');
     if (!fs.readFileSync('api/chat.js', 'utf8').includes('БЕЗ ПЕРШОЇ ОСОБИ')) errs.push('чат без правила першої особи');
     /* timeline: одна вісь для будь-якої точності дати */
-    if (!pg4.includes('flex:0 0 96px;text-align:center')) errs.push('дати не центровані на осі');
-    if (!pg4.includes('left:48px;top:-8px;bottom:-8px;width:2px;transform:translateX(-50%)')) errs.push('вісь timeline не одна');
+    /* детермінована сітка: дата центрована у власній колонці, рейка на всю висоту рядка й інтервалу */
+    if (!pg4.includes('.hrow .hd{text-align:center;font-weight:700')) errs.push('дати не центровані на осі');
+    if (!pg4.includes('grid-template-columns:var(--hd-w) minmax(0,1fr)')) errs.push('timeline не на сітці дата | рейка | зміст');
+    if (!pg4.includes("left:var(--rail-x);top:0;bottom:0;width:2px;transform:translateX(-50%)")) errs.push('вісь timeline не одна');
+    if (!pg4.includes('.hrow:first-child::before{top:50%}') || !pg4.includes('.hrow.last::before{bottom:50%}')) errs.push('рейка не обрізана по центрах першої й останньої дати');
     /* loading: спільна content-колонка */
     if (!page.includes('class="ld-body"')) errs.push('loading без спільної content-колонки');
     if (/ld-sub\{[^}]*margin[^}]*34px/.test(page)) errs.push('subtitle досі з ручним лівим відступом');

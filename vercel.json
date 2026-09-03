@@ -20,6 +20,10 @@
       "destination": "/check.html"
     },
     {
+      "source": "/check/r/:token",
+      "destination": "/result-check.html?r=:token"
+    },
+    {
       "source": "/check/:id",
       "destination": "/result-check.html?id=:id"
     },
