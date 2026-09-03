@@ -576,7 +576,11 @@ const REPORTS = [
         + "const FASCIA_STATUSES = ['intact_mounted','damaged_but_mounted','detached_or_missing','not_visible'];"
         + "const OUTER_EXTENT_LEVELS = ['none','single_panel','multiple_panels','indeterminate'];"
         + (grab(vis, 'innerDeformationState') || '').replace(/export /g, '');
-      hvLibShared = DEPTH_CONSTS + (depthSrc || '').replace(/export /g, '') + '\n' + sanHv;
+      /* доказовий гейт для severity-raising сигналів живе поруч із глибиною */
+      const GATE_SRC = "const SEVERITY_RAISING_SIGNALS = ['wheel_displacement_visible', 'load_bearing_structure_deformation_visible', 'cabin_intrusion_visible', 'inner_component_deformation_visible', 'inner_component_damage_extent'];"
+        + "const RAISING_VALUE = { wheel_displacement_visible: true, load_bearing_structure_deformation_visible: true, cabin_intrusion_visible: true, inner_component_deformation_visible: 'visible', inner_component_damage_extent: 'substantial' };"
+        + (grab(vis, 'validSignalEvidence') || '').replace(/export /g, '') + '\n' + (grab(vis, 'gateSeverityRaisingSignals') || '').replace(/export /g, '');
+      hvLibShared = DEPTH_CONSTS + GATE_SRC + '\n' + (depthSrc || '').replace(/export /g, '') + '\n' + sanHv;
       const sh = new Function(hvLibShared + '\nreturn sanitizeHistoricalVisual;')();
       /* без переданих кадрів поле не існує */
       if (sh({ visible_severity: 'severe' }, 0) !== null) errs.push('historical_visual без кадрів вижив');
@@ -588,7 +592,7 @@ const REPORTS = [
       if (ok.visible_severity !== 'moderate' || ok.structural_visual_status !== 'no_obvious_severe_signs') errs.push('валідний assessment попсований');
       /* несуча деформація: strict boolean, відсутність поля = false */
       if (ok.load_bearing_structure_deformation_visible !== false) errs.push('load_bearing без поля мав бути false');
-      const lb = sh({ visible_damage_zones: ['лонжерон'], visible_severity: 'severe', structural_visual_status: 'indeterminate', srs_visual_status: 'not_visible', load_bearing_structure_deformation_visible: true, damage_depth: 'load_bearing_structure', summary: 's', evidence: [] }, 2);
+      const lb = sh({ visible_damage_zones: ['лонжерон'], visible_severity: 'severe', structural_visual_status: 'indeterminate', srs_visual_status: 'not_visible', load_bearing_structure_deformation_visible: true, damage_depth: 'load_bearing_structure', signal_evidence: [{ signal: 'load_bearing_structure_deformation_visible', frame: 'auction_photo_1', sign: 'лонжерон зімʼятий гармошкою за стаканом' }], summary: 's', evidence: [] }, 2);
       if (lb.load_bearing_structure_deformation_visible !== true) errs.push('load_bearing=true загублений sanitize-ом');
       if (lb.damage_depth !== 'load_bearing_structure') errs.push('обґрунтована глибина знижена помилково');
     }
@@ -662,7 +666,7 @@ const REPORTS = [
         if (over.hv.damage_depth !== 'exterior_panels_only') errs.push('наскрізно: завищена глибина не знижена: ' + over.hv.damage_depth);
         if (over.ev.derived_severity !== 'moderate') errs.push('наскрізно: завищена глибина дала ' + over.ev.derived_severity);
         /* чесне суттєве ушкодження внутрішньої зони: severe без structural капа */
-        const deep = run({ visible_damage_zones: ['капот', 'бампер', 'фара'], visible_severity: 'severe', structural_visual_status: 'indeterminate', srs_visual_status: 'deployed_visible', damage_depth: 'inner_structure_or_module', fascia_status: 'detached_or_missing', inner_components_exposed: true, inner_component_deformation_visible: true, inner_component_damage_extent: 'substantial', summary: 's', evidence: [{ source: 'us_auction', description: 'кадр' }] });
+        const deep = run({ visible_damage_zones: ['капот', 'бампер', 'фара'], visible_severity: 'severe', structural_visual_status: 'indeterminate', srs_visual_status: 'deployed_visible', damage_depth: 'inner_structure_or_module', fascia_status: 'detached_or_missing', inner_components_exposed: true, inner_component_deformation_visible: true, inner_component_damage_extent: 'substantial', signal_evidence: [{ signal: 'inner_component_deformation_visible', frame: 'auction_photo_2', sign: 'підсилювач бампера погнутий і зміщений' }, { signal: 'inner_component_damage_extent', frame: 'auction_photo_2', sign: 'зруйнована зона крэш-боксів з обох боків' }], summary: 's', evidence: [{ source: 'us_auction', description: 'кадр' }] });
         if (deep.ev.derived_severity !== 'severe') errs.push('наскрізно: чесний inner substantial не дав severe');
         if (deep.ev.structural !== false) errs.push('наскрізно: structural заявлений без structural evidence');
         fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -824,7 +828,8 @@ const REPORTS = [
   if (!/base64/.test(api)) errs.push('кадри не передаються Vision байтами');
   if (!/photoOriginByData/.test(api)) errs.push('нема мапи data-URI -> вихідний URL (у _meta полізе base64)');
   /* кеш historical_visual за відбитком набору кадрів і версією екстрактора */
-  const fns = new Function(grab(api, 'photoIdentity') + '\n' + grab(api, 'photoSetFingerprint') + '\nconst HISTORICAL_VISUAL_VERSION = "hv-test";\nreturn { photoSetFingerprint };')();
+  const vmSrc = fs.readFileSync('api/vehicle-memory.js', 'utf8');
+  const fns = new Function(grab(vmSrc, 'photoIdentity') + '\n' + grab(vmSrc, 'photoSetFingerprint') + '\nconst HISTORICAL_VISUAL_VERSION = "hv-test";\nreturn { photoSetFingerprint };')();
   const a = fns.photoSetFingerprint(['https://x/2.jpg', 'https://x/1.jpg'], 'v1');
   const b = fns.photoSetFingerprint(['https://x/1.jpg', 'https://x/2.jpg'], 'v1');
   if (a !== b) errs.push('відбиток набору кадрів залежить від порядку URL');

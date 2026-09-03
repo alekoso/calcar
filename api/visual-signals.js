@@ -21,6 +21,49 @@
    Vision віддає СПОСТЕРЕЖЕННЯ, а рівень глибини валідує код: заявлена
    глибина ніколи не може бути вищою за обґрунтовану булевими ознаками.
    Нижча заявлена глибина поважається (консервативно вниз, не вгору). */
+/* версія екстрактора історичного візуалу: входить у ключ кешу. v3: доказовий
+   стандарт для сигналів, що піднімають тяжкість (signal_evidence) */
+export const HISTORICAL_VISUAL_VERSION = 'hv-2026-09-03-v3';
+
+/* ---------- Доказовий стандарт для сигналів, що піднімають тяжкість ----------
+   wheel displacement, деформація несучої структури, проникнення в салон,
+   видима деформація внутрішнього модуля і substantial-обсяг самі здатні
+   підняти подію до severe. Тому true/visible/substantial приймається ЛИШЕ
+   з конкретним кадром і конкретною видимою ознакою в signal_evidence.
+   Без цього сигнал стає indeterminate: НЕ false і НЕ здогадка більшості.
+   Це семантика ВИТЯГУВАННЯ доказів, не зміна SCORE_CONFIG_V3 */
+export const SEVERITY_RAISING_SIGNALS = ['wheel_displacement_visible', 'load_bearing_structure_deformation_visible', 'cabin_intrusion_visible', 'inner_component_deformation_visible', 'inner_component_damage_extent'];
+const RAISING_VALUE = { wheel_displacement_visible: true, load_bearing_structure_deformation_visible: true, cabin_intrusion_visible: true, inner_component_deformation_visible: 'visible', inner_component_damage_extent: 'substantial' };
+export function validSignalEvidence(entry, photosSent) {
+  if (!entry || typeof entry !== 'object') return false;
+  const m = /^auction_photo_(\d+)$/.exec(String(entry.frame || entry.ref || '').trim());
+  if (!m) return false;
+  const n = parseInt(m[1], 10);
+  if (!(n >= 1 && (!photosSent || n <= photosSent))) return false;
+  return typeof entry.sign === 'string' && entry.sign.trim().length >= 8;
+}
+export function gateSeverityRaisingSignals(hv, photosSent) {
+  const h = hv && typeof hv === 'object' ? { ...hv } : {};
+  const raw = Array.isArray(h.signal_evidence) ? h.signal_evidence : [];
+  const evidence = raw.filter(e => e && typeof e === 'object' && SEVERITY_RAISING_SIGNALS.includes(e.signal) && validSignalEvidence(e, photosSent))
+    .map(e => ({ signal: e.signal, frame: String(e.frame || e.ref).trim(), sign: String(e.sign).trim().slice(0, 200) })).slice(0, 12);
+  const status = {}, downgraded = [];
+  for (const sig of SEVERITY_RAISING_SIGNALS) {
+    const v = sig === 'inner_component_deformation_visible' ? innerDeformationState(h[sig]) : h[sig];
+    const raising = v === RAISING_VALUE[sig];
+    const proven = evidence.some(e => e.signal === sig);
+    if (raising && !proven) {
+      downgraded.push(sig);
+      if (typeof RAISING_VALUE[sig] === 'boolean') h[sig] = false; else h[sig] = 'indeterminate';
+      status[sig] = 'indeterminate';
+    } else if (raising) status[sig] = 'confirmed';
+    else if (typeof RAISING_VALUE[sig] === 'boolean') status[sig] = h[sig] === false ? 'not_visible' : 'indeterminate';
+    else status[sig] = v == null ? 'indeterminate' : String(v);
+  }
+  h.signal_evidence = evidence;
+  return { hv: h, signal_status: status, signal_evidence: evidence, downgraded };
+}
+
 export const DAMAGE_DEPTH_LEVELS = ['indeterminate', 'exterior_panels_only', 'inner_structure_or_module', 'load_bearing_structure', 'cabin_intrusion'];
 export const INNER_EXTENT_LEVELS = ['none', 'localized', 'substantial', 'indeterminate'];
 /* стан деформації внутрішніх компонентів: ТРИ стани, бо "не можу визначити"
@@ -93,7 +136,8 @@ export const HISTORICAL_VISUAL_RULES = `ІСТОРИЧНИЙ ВІЗУАЛЬНИ�
 - possible_structural_damage (boolean): true, коли пошкодження лежить у ПОТЕНЦІЙНО структурній зоні (зона порога/rocker, зона стійки, передня/задня зона лонжеронів), але надійно відрізнити зовнішню панель від силового елемента за фото не можна. Тоді structural_visual_status = "indeterminate" + possible_structural_damage: true. Цей сигнал НЕ є підтвердженим структурним пошкодженням.
 - srs_visual_status: "deployed_visible" СТАВ ЛИШЕ за ПРЯМИМ візуальним доказом РОЗКРИТОЇ подушки на кадрі: видима біла/сіра тканина подушки з керма, торпедо, шторка вздовж даху, колінна подушка, подушка сидіння. Пошкоджений салон, розібрана торпедо, зірвана обшивка, спрацьовані ремені чи сам факт сильного удару подушок НЕ доводять і "deployed_visible" НЕ дають. "no_deployment_visible" означає лише "спрацювання не видно на доступних кадрах", НЕ "SRS справна". Салон у кадр не потрапив: "not_visible".
 - airbags_visible_parts: за deployed_visible опціонально перелічи, які саме подушки РЕАЛЬНО видно розкритими: "driver" | "passenger" | "curtain" | "knee" | "seat". Не вгадуй: у списку лише те, що видно на кадрі.
+- ДОКАЗОВИЙ СТАНДАРТ ДЛЯ СИГНАЛІВ, ЩО ПІДНІМАЮТЬ ТЯЖКІСТЬ: wheel_displacement_visible = true, load_bearing_structure_deformation_visible = true, cabin_intrusion_visible = true, inner_component_deformation_visible = "visible", inner_component_damage_extent = "substantial" дозволені ЛИШЕ з окремим записом у signal_evidence: {"signal": назва поля, "frame": "auction_photo_N" (КОНКРЕТНИЙ кадр), "sign": конкретна ВИДИМА ознака саме на цьому кадрі (наприклад "ліве переднє колесо вивернуте назовні відносно арки", "підсилювач бампера погнутий і зміщений вліво", "лонжерон зім'ятий гармошкою за стаканом")}. Немає кадру, де ознаку видно однозначно, або кадр можна прочитати двояко: НЕ став true/visible/substantial, постав indeterminate (для boolean: false плюс запис у summary, що ознаку визначити не можна). Код без валідного запису signal_evidence автоматично знижує такий сигнал до indeterminate. Загальна фраза "видно сильний удар" доказом не є.
 - summary: 2-3 речення про побачене, з розділенням "що видно" і "що лишається невідомим". evidence з ref auction_photo_N.`;
 
 /* рядок схеми відповіді для того самого блоку */
-export const HISTORICAL_VISUAL_SCHEMA = ` "historical_visual": {"visible_damage_zones":["капот","передній бампер"],"visible_severity":"minor|moderate|severe|indeterminate","damage_depth":"exterior_panels_only|inner_structure_or_module|load_bearing_structure|cabin_intrusion|indeterminate","inner_component_damage_extent":"none|localized|substantial|indeterminate","outer_panel_damage_extent":"none|single_panel|multiple_panels|indeterminate","fascia_status":"intact_mounted|damaged_but_mounted|detached_or_missing|not_visible","inner_components_exposed":false,"inner_component_deformation_visible":"visible|not_visible|indeterminate","load_bearing_structure_deformation_visible":false,"cabin_intrusion_visible":false,"wheel_displacement_visible":false,"cosmetic_only":false,"possible_structural_damage":false,"damage_side":"left|right|both|center|unknown","side_confidence":"high|medium|low","structural_visual_status":"no_obvious_severe_signs|possible|visible_damage|indeterminate","srs_visual_status":"deployed_visible|no_deployment_visible|not_visible|indeterminate","airbags_visible_parts":["driver"],"summary":"2-3 речення: що реально видно і що лишається невідомим","evidence":[{"source":"us_auction","ref":"auction_photo_1","description":"зім'ятий капот"}]},`;
+export const HISTORICAL_VISUAL_SCHEMA = ` "historical_visual": {"visible_damage_zones":["капот","передній бампер"],"visible_severity":"minor|moderate|severe|indeterminate","damage_depth":"exterior_panels_only|inner_structure_or_module|load_bearing_structure|cabin_intrusion|indeterminate","inner_component_damage_extent":"none|localized|substantial|indeterminate","outer_panel_damage_extent":"none|single_panel|multiple_panels|indeterminate","fascia_status":"intact_mounted|damaged_but_mounted|detached_or_missing|not_visible","inner_components_exposed":false,"inner_component_deformation_visible":"visible|not_visible|indeterminate","load_bearing_structure_deformation_visible":false,"cabin_intrusion_visible":false,"wheel_displacement_visible":false,"cosmetic_only":false,"possible_structural_damage":false,"damage_side":"left|right|both|center|unknown","side_confidence":"high|medium|low","structural_visual_status":"no_obvious_severe_signs|possible|visible_damage|indeterminate","srs_visual_status":"deployed_visible|no_deployment_visible|not_visible|indeterminate","airbags_visible_parts":["driver"],"signal_evidence":[{"signal":"wheel_displacement_visible","frame":"auction_photo_3","sign":"ліве переднє колесо вивернуте назовні відносно арки"}],"summary":"2-3 речення: що реально видно і що лишається невідомим","evidence":[{"source":"us_auction","ref":"auction_photo_1","description":"зім'ятий капот"}]},`;

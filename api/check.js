@@ -7,8 +7,16 @@ import { computeScoreV3, resolveVehicleAge, SCORE_DIMENSIONS_CONFIG } from './sc
 import {
   DAMAGE_DEPTH_LEVELS, INNER_EXTENT_LEVELS, innerDeformationState,
   FASCIA_STATUSES, OUTER_EXTENT_LEVELS, resolveDamageDepth,
-  HISTORICAL_VISUAL_RULES, HISTORICAL_VISUAL_SCHEMA,
+  HISTORICAL_VISUAL_RULES, HISTORICAL_VISUAL_SCHEMA, HISTORICAL_VISUAL_VERSION,
+  gateSeverityRaisingSignals,
 } from './visual-signals.js';
+import {
+  photoIdentity, photoSetFingerprint, listingFingerprint, snapshotRow, listingKey,
+  readVehicle, upsertVehicle, observeListing, patchSnapshotClaims, preservePhotos,
+  NHTSA_DECODER_VERSION, LISTING_FINGERPRINT_VERSION,
+} from './vehicle-memory.js';
+/* спільні ідентичності і версії: тести і сусідні модулі беруть їх звідси */
+export { HISTORICAL_VISUAL_VERSION, photoIdentity, photoSetFingerprint, listingFingerprint, snapshotRow, listingKey, NHTSA_DECODER_VERSION, LISTING_FINGERPRINT_VERSION };
 
 /* активна версія CalCar Score: перемикається конфігурацією без деплою коду.
    Rollback на v2 = env CALCAR_SCORE_VERSION=v2, НЕ revert коміту */
@@ -202,28 +210,8 @@ function auctionSearchMetaForCache(as) {
 
 /* версія екстрактора історичного візуалу: зміна семантики промпту/полів
    мусить інвалідовувати кеш historical_visual */
-export const HISTORICAL_VISUAL_VERSION = 'hv-2026-09-01-v2';
+/* HISTORICAL_VISUAL_VERSION живе у visual-signals.js (ключ кешу візуалу) */
 /* стабільний відбиток набору кадрів: djb2 по відсортованих URL */
-/* ідентичність кадру: CDN площадки ротує піддомени (cdn.riastatic.com ->
-   cdn4.riastatic.com) і може додавати query, а кадр той самий. Відбиток
-   набору рахується з нормалізованої ідентичності, інакше та сама подія
-   з тими самими кадрами промахується повз кеш і платить за Vision знову */
-export function photoIdentity(u) {
-  if (typeof u !== 'string') return '';
-  if (!/^https?:\/\//i.test(u)) return u;
-  try {
-    const x = new URL(u);
-    const host = x.hostname.toLowerCase().replace(/^(?:www\.)?/, '').replace(/^cdn\d+\./, 'cdn.');
-    return host + x.pathname.toLowerCase();
-  } catch (e) { return u; }
-}
-export function photoSetFingerprint(urls, version = HISTORICAL_VISUAL_VERSION) {
-  const norm = [...new Set((urls || []).filter(u => typeof u === 'string').map(photoIdentity).filter(Boolean))].sort().join('|') + '::' + version;
-  let h = 5381;
-  for (let i = 0; i < norm.length; i++) h = ((h * 33) ^ norm.charCodeAt(i)) >>> 0;
-  return version + ':' + h.toString(36);
-}
-
 /* TODO (окрема наступна data-задача, НЕ чіпати в поточних правках):
    Ukraine MVS provider: спершу вивчити офіційну open-data схему, потім
    вирішити стратегію VIN-індексації */
@@ -518,27 +506,6 @@ export function extractListingMeta(html, url, flat, text) {
   return out;
 }
 
-/* ---------- 3б0. Відбиток стану оголошення ----------
-   Детермінований: ціна, пробіг, повний текст продавця, впорядковані
-   ідентичності кадрів, структуровані поля площадки, статус. Ринковий
-   контекст (середня ціна) НЕ входить: він змінюється сам по собі і не
-   є станом оголошення */
-export const LISTING_FINGERPRINT_VERSION = 'lf-v1';
-export function listingFingerprint(l) {
-  const norm = v => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim() : v == null ? null : v);
-  const state = {
-    v: LISTING_FINGERPRINT_VERSION,
-    price: l.price ?? null, currency: l.currency || null, odometer_km: l.odometer_km ?? null,
-    seller_text: norm(l.seller_text) || null,
-    photos: (l.photos || []).map(photoIdentity),
-    equipment: (l.listing_equipment || []).map(norm),
-    history_facts: l.history_facts || null,
-    year: l.year ?? null, title: norm(l.title) || null,
-    status: l.listing_status || 'active',
-  };
-  return LISTING_FINGERPRINT_VERSION + ':' + crypto.createHash('sha1').update(JSON.stringify(state)).digest('hex').slice(0, 24);
-}
-
 /* ---------- 3б. Архів аукціону США: фото "до ремонту" ---------- */
 
 /* bidfax закривається від ботів, тому пробуємо кілька дзеркал і йдемо з реферером,
@@ -588,137 +555,9 @@ async function fetchAuction(url) {
   return { url, photos: [], text: '', blocked: true, error: lastErr ? String(lastErr.message || lastErr) : null };
 }
 
-/* ---------- 4. Знімок у рів даних ---------- */
-/* Vehicle Memory: КОЖЕН Check додає новий рядок, старі знімки ніколи не
-   перезаписуються. Зберігається повний текст продавця, ВСІ кадри галереї
-   і структуровані поля площадки: через роки можна показати, що саме
-   продавець писав і показував, і побудувати diff між оголошеннями */
-export function snapshotRow(l, url, jobToken) {
-  const photos = (l.photos || []).slice(0, 120);
-  const now = new Date().toISOString();
-  return {
-    vin: l.vin, plate: l.plate,
-    source_url: url, source_domain: l.domain, country: l.country,
-    price_amount: l.price, price_currency: l.currency,
-    odometer_km: l.odometer_km, year: l.year, make: l.make, model: l.model,
-    listing: { title: l.title, text: l.text },
-    photos,
-    /* аддитивні колонки (supabase-vehicle-intelligence.sql) */
-    seller_text: l.seller_text || null,
-    listing_fields: {
-      generation: l.generation || null,
-      listing_equipment: l.listing_equipment || [],
-      price_context: l.price_context || null,
-      history_facts: l.history_facts || null,
-      auction_url: l.auction_url || null,
-      usa_photos: l.usa_photos || [],
-      photos_total: (l.photos || []).length,
-    },
-    job_token: jobToken || null,
-    /* Vehicle Memory V0 */
-    source_listing_id: l.source_listing_id || null,
-    listing_fingerprint: listingFingerprint(l),
-    first_seen_at: now, last_seen_at: now, seen_count: 1,
-    title: l.title || null,
-    location: l.location || null,
-    seller_meta: l.seller_meta || null,
-    listing_status: l.listing_status || 'active',
-    /* впорядкований список кадрів: оригінальний URL + стабільна ідентичність.
-       Бінарники поки не копіюються: оригінал може зникнути разом із
-       оголошенням, ідентичність і порядок лишаються */
-    photo_items: photos.map((u, i) => ({ i, url: u, id: photoIdentity(u) })),
-    photo_set_fingerprint: photoSetFingerprint(photos, 'ps-v1'),
-    seller_claims: { history_facts: l.history_facts || null, listing_equipment: l.listing_equipment || [], ai_discrepancies: null },
-    raw_page_text: l.raw_page_text || null,
-  };
-}
-/* колонки V0, яких може ще не бути до міграції: відкидаються при 400 */
-const SNAPSHOT_V0_COLS = ['source_listing_id', 'listing_fingerprint', 'first_seen_at', 'last_seen_at', 'seen_count', 'title', 'location', 'seller_meta', 'listing_status', 'photo_items', 'photo_set_fingerprint', 'seller_claims', 'raw_page_text'];
-const SNAPSHOT_V1_COLS = ['seller_text', 'listing_fields', 'job_token'];
-/* Дедуплікація: той самий стан оголошення (відбиток) не створює новий
-   рядок, а лише продовжує last_seen_at; змінений стан це новий immutable
-   знімок. Старий рядок ніколи не змінюється так, щоб втратити минуле */
-export async function saveSnapshot(l, url, jobToken) {
-  const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!base || !key) return { status: 'env_missing', id: null };
-  const root = base.replace(/\/$/, '') + '/rest/v1/vehicle_snapshots';
-  const hdr = { apikey: key, authorization: 'Bearer ' + key, 'content-type': 'application/json' };
-  const post = body => fetch(root, { method: 'POST', headers: { ...hdr, prefer: 'return=representation' }, body: JSON.stringify(body) });
-  try {
-    const full = snapshotRow(l, url, jobToken);
-    /* останній знімок цього авто (за VIN, без VIN за адресою оголошення) */
-    let last = null;
-    try {
-      const q = l.vin ? 'vin=eq.' + encodeURIComponent(l.vin) : 'source_url=eq.' + encodeURIComponent(url);
-      const r0 = await fetch(root + '?' + q + '&order=captured_at.desc&limit=1&select=id,captured_at,listing_fingerprint,seen_count,source_url', { headers: hdr });
-      if (r0.ok) { const rows = await r0.json(); last = Array.isArray(rows) && rows[0] ? rows[0] : null; }
-    } catch (e) { last = null; }
-    if (last && last.listing_fingerprint && last.listing_fingerprint === full.listing_fingerprint) {
-      const r1 = await fetch(root + '?id=eq.' + encodeURIComponent(last.id), {
-        method: 'PATCH', headers: { ...hdr, prefer: 'return=minimal' },
-        body: JSON.stringify({ last_seen_at: full.last_seen_at, seen_count: (last.seen_count || 1) + 1 }),
-      });
-      if (r1.ok) return { status: 'dedup', id: last.id, seen_count: (last.seen_count || 1) + 1 };
-    }
-    let r = await post(full);
-    if (!r.ok && r.status === 400) {
-      /* міграція V0 ще не застосована: без нових колонок */
-      const v1 = { ...full }; for (const c of SNAPSHOT_V0_COLS) delete v1[c];
-      r = await post(v1);
-      if (!r.ok && r.status === 400) { const legacy = { ...v1 }; for (const c of SNAPSHOT_V1_COLS) delete legacy[c]; r = await post(legacy); }
-    }
-    if (!r.ok) return { status: 'error_' + r.status, id: null };
-    const rows = await r.json().catch(() => []);
-    return { status: last ? 'changed' : 'new', id: Array.isArray(rows) && rows[0] ? rows[0].id : null, previous_id: last ? last.id : null };
-  } catch (e) { return { status: 'error', id: null }; }
-}
-/* після AI: нормалізовані заяви продавця з розбіжностей доповнюють знімок
-   (додавання поля, не перезапис raw-доказу) */
-async function patchSnapshotClaims(id, parsed) {
-  const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!base || !key || !id || !parsed) return false;
-  try {
-    const disc = (Array.isArray(parsed.discrepancies) ? parsed.discrepancies : []).map(d => ({ title: d && d.title || null, severity: d && d.severity || null })).filter(d => d.title).slice(0, 20);
-    const r0 = await fetch(base.replace(/\/$/, '') + '/rest/v1/vehicle_snapshots?id=eq.' + encodeURIComponent(id) + '&select=seller_claims', { headers: { apikey: key, authorization: 'Bearer ' + key } });
-    const row = r0.ok ? (await r0.json())[0] : null;
-    const claims = { ...((row && row.seller_claims) || {}), ai_discrepancies: disc, ai_seller_claims_us_import: parsed?.score_facts?.signals?.seller_claims_us_import === true };
-    const r = await fetch(base.replace(/\/$/, '') + '/rest/v1/vehicle_snapshots?id=eq.' + encodeURIComponent(id), {
-      method: 'PATCH', headers: { apikey: key, authorization: 'Bearer ' + key, 'content-type': 'application/json', prefer: 'return=minimal' },
-      body: JSON.stringify({ seller_claims: claims }),
-    });
-    return r.ok;
-  } catch (e) { return false; }
-}
-
-/* ---------- 4а. Канонічна ідентичність авто (vehicles) ----------
-   Один рядок на VIN: декод NHTSA (з версією декодера) і те, що площадка
-   каже про марку/модель/рік. Наступний Check того самого VIN не ходить
-   у NHTSA повторно, поки версія декодера та сама */
-export const NHTSA_DECODER_VERSION = 'vpic-v1';
-async function readVehicle(vin) {
-  const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!base || !key || !vin) return null;
-  try {
-    const r = await fetch(base.replace(/\/$/, '') + '/rest/v1/vehicles?vin=eq.' + encodeURIComponent(vin) + '&select=*&limit=1', { headers: { apikey: key, authorization: 'Bearer ' + key } });
-    if (!r.ok) return null;
-    const rows = await r.json();
-    return Array.isArray(rows) && rows[0] ? rows[0] : null;
-  } catch (e) { return null; }
-}
-async function upsertVehicle(vin, patch) {
-  const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!base || !key || !vin) return false;
-  const row = { vin };
-  for (const [k, v] of Object.entries(patch || {})) if (v !== null && v !== undefined) row[k] = v;
-  try {
-    const r = await fetch(base.replace(/\/$/, '') + '/rest/v1/vehicles?on_conflict=vin', {
-      method: 'POST',
-      headers: { apikey: key, authorization: 'Bearer ' + key, 'content-type': 'application/json', prefer: 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify(row),
-    });
-    return r.ok;
-  } catch (e) { return false; }
-}
+/* ---------- 4. Знімок і ідентичність живуть у vehicle-memory.js ----------
+   Тут лишається лише пайплайн; Vehicle/Listing/Snapshot/PhotoAsset
+   описані в docs/VEHICLE_INTELLIGENCE_STORAGE.md */
 
 /* ---------- 4б. Історія рову даних для Score v2 ----------
    Лише факти пайплайна: скільки МИ реально бачили це авто раніше.
@@ -1439,8 +1278,12 @@ export {
   innerDeformationState, FASCIA_STATUSES, OUTER_EXTENT_LEVELS, resolveDamageDepth,
 } from './visual-signals.js';
 
-export function sanitizeHistoricalVisual(hv, photosSent) {
-  if (!photosSent || !hv || typeof hv !== 'object' || Array.isArray(hv)) return null;
+export function sanitizeHistoricalVisual(hvRaw, photosSent) {
+  if (!photosSent || !hvRaw || typeof hvRaw !== 'object' || Array.isArray(hvRaw)) return null;
+  /* доказовий стандарт: сигнал, що піднімає тяжкість, без конкретного кадру
+     і ознаки стає indeterminate ще ДО валідації глибини і голосування */
+  const gate = gateSeverityRaisingSignals(hvRaw, photosSent);
+  const hv = gate.hv;
   const SEV = ['minor', 'moderate', 'severe', 'indeterminate'];
   const STR = ['no_obvious_severe_signs', 'possible', 'visible_damage', 'indeterminate'];
   const SRS = ['deployed_visible', 'no_deployment_visible', 'not_visible', 'indeterminate'];
@@ -1484,6 +1327,11 @@ export function sanitizeHistoricalVisual(hv, photosSent) {
     /* опціональна деталізація: лише для deployed_visible і лише з переліку */
     airbags_visible_parts: (hv.srs_visual_status === 'deployed_visible' && Array.isArray(hv.airbags_visible_parts))
       ? hv.airbags_visible_parts.filter(x => ['driver', 'passenger', 'curtain', 'knee', 'seat'].includes(x)).slice(0, 5) : [],
+    /* доказовий стандарт: кадр і ознака для кожного підтвердженого сигналу,
+       статус кожного сигналу і перелік знижених до indeterminate */
+    signal_evidence: gate.signal_evidence,
+    signal_status: gate.signal_status,
+    evidence_downgrades: gate.downgraded,
     summary: clean(hv.summary) ? clean(hv.summary).slice(0, 600) : null,
     evidence: (Array.isArray(hv.evidence) ? hv.evidence : [])
       .filter(e => e && typeof e === 'object')
@@ -2397,7 +2245,7 @@ async function runCheck(req, res, job) {
     let nhtsa = null;
     /* карта переиспользування дорогих і зовнішніх етапів: у _meta.reuse */
     const reuse = { identity: null, listing_snapshot: null, auction_evidence: null, historical_visual: null, main_analysis: 'executed', equipment_verifier: null };
-    const vehicleRow = listing.vin ? await readVehicle(listing.vin) : null;
+    let vehicleRow = listing.vin ? await readVehicle(listing.vin) : null;
     if (vehicleRow && vehicleRow.nhtsa && typeof vehicleRow.nhtsa === 'object' && vehicleRow.decoder_version === NHTSA_DECODER_VERSION) {
       nhtsa = vehicleRow.nhtsa;
       reuse.identity = 'vehicles_cache';
@@ -2415,21 +2263,37 @@ async function runCheck(req, res, job) {
       } catch (e) { /* без NHTSA працюємо далі */ }
     }
 
-    /* --- знімок у рів: ДО аналізу, щоб історія копилась навіть коли AI впав --- */
-    const snapshot = await saveSnapshot(listing, url, job && job.token);
-    reuse.listing_snapshot = snapshot.status;
+    /* --- Vehicle Memory: кожен Check це ще й спостереження авто ---
+       resolve Vehicle (один рядок на VIN) -> resolve Listing (площадка + id)
+       -> порівняти з останнім знімком -> dedup або новий immutable знімок
+       -> зберегти нові унікальні кадри. Усе ДО аналізу, щоб історія
+       копилась навіть коли AI впав; персональних даних тут нема */
+    const nowIso = new Date().toISOString();
     if (listing.vin) {
-      const nowIso = new Date().toISOString();
-      upsertVehicle(listing.vin, {
+      const up = await upsertVehicle(listing.vin, {
         make: listing.make || (nhtsa && nhtsa.Make) || null, model: listing.model || (nhtsa && nhtsa.Model) || null,
         year: listing.year || null, model_year: nhtsa && nhtsa.ModelYear ? parseInt(nhtsa.ModelYear, 10) || null : null,
+        generation: listing.generation || null,
         trim: (nhtsa && (nhtsa.Trim || nhtsa.Series)) || null, fuel: (nhtsa && nhtsa.FuelTypePrimary) || null,
         nhtsa: nhtsa || null, decoder_version: nhtsa ? NHTSA_DECODER_VERSION : null,
-        first_seen_at: vehicleRow ? undefined : nowIso, last_seen_at: nowIso,
-        snapshots_count: ((vehicleRow && vehicleRow.snapshots_count) || 0) + (snapshot.status === 'dedup' ? 0 : 1),
+        first_seen_at: vehicleRow ? undefined : nowIso, last_seen_at: nowIso, updated_at: nowIso,
         last_listing_url: url, last_source_listing_id: listing.source_listing_id || null,
-      }).catch(() => {});
+      }).catch(() => null);
+      if (up) vehicleRow = up;
     }
+    const observation = await observeListing(listing, url, { jobToken: job && job.token, vehicleId: vehicleRow && vehicleRow.id ? vehicleRow.id : null, parserVersion: PARSER_VERSION });
+    const snapshot = observation.snapshot;
+    reuse.listing_snapshot = snapshot.status;
+    if (listing.vin && vehicleRow && snapshot.status !== 'dedup') {
+      upsertVehicle(listing.vin, { snapshots_count: ((vehicleRow && vehicleRow.snapshots_count) || 0) + 1, updated_at: nowIso }).catch(() => {});
+    }
+    console.log('[vehicle-memory]', JSON.stringify({ vin: listing.vin || null, vehicle_id: observation.vehicle_id, listing_id: observation.listing_id, listing_created: observation.listing_created, attached: observation.attached, snapshot: snapshot.status, snapshot_id: snapshot.id }));
+    /* кадри оголошення: паралельно з рештою пайплайна; лише для нового стану
+       оголошення (dedup означає, що ці самі кадри вже збережені) */
+    const photoPreservePromise = (snapshot.id && snapshot.status !== 'dedup' && listing.photos.length)
+      ? preservePhotos({ snapshotId: snapshot.id, vehicleId: observation.vehicle_id, listingId: observation.listing_id,
+          photos: listing.photos.slice(0, 120).map((u, i) => ({ url: u, position: i, kind: 'listing' })), budgetMs: 100000 }).catch(e => ({ error: e.message }))
+      : Promise.resolve(null);
     progress('identity');
 
     /* --- фото "до ремонту": спершу кадри, збережені самою RIA --- */
@@ -2695,6 +2559,18 @@ async function runCheck(req, res, job) {
       } catch (e) { console.log('[check] historical photo transport failed:', e.message); }
     }
     if (auction) auction.photos_sent = auctionPhotos.length;
+    /* історичні кадри як evidence-assets: та сама дедуплікація за hash, але
+       окремий kind і подія, щоб listing photos і історичні докази не змішувались */
+    const evidencePreservePromise = (snapshot.id && snapshot.status !== 'dedup' && auctionPhotos.length)
+      ? preservePhotos({ snapshotId: snapshot.id, vehicleId: observation.vehicle_id, listingId: observation.listing_id,
+          photos: auctionPhotos.map((u, i) => {
+            const origin = photoOriginByData.get(u) || u;
+            const m = /^data:([^;]+);base64,(.+)$/.exec(u);
+            return { url: origin, position: i, kind: 'historical_evidence',
+              event_key: (auction && auction.from_ria) ? 'autoria_history' : (auctionSearch && auctionSearch.status === 'found') ? [auctionSearch.house || auctionSearch.source || 'auction', auctionLotId || ''].filter(Boolean).join(':') : 'external_archive',
+              buf: m ? Buffer.from(m[2], 'base64') : null, type: m ? m[1] : null };
+          }), budgetMs: 60000 }).catch(e => ({ error: e.message }))
+      : Promise.resolve(null);
     /* стабільний ключ візуалу: набір кадрів, який РЕАЛЬНО іде у Vision.
        Той самий VIN з тим самим набором і версією отримує кешований
        результат незалежно від того, звідки кадри і з якого пристрою
@@ -2890,7 +2766,7 @@ async function runCheck(req, res, job) {
        цілком. Модель бачила кадри для інших секцій звіту, але тяжкість
        події визначає один і той самий нормалізований результат */
     const hvClean = cachedHv
-      ? sanitizeHistoricalVisual(cachedHv, 1)
+      ? sanitizeHistoricalVisual(cachedHv, auctionPhotos.length || 1)
       : sanitizeHistoricalVisual(parsed.historical_visual, auctionPhotos.length || 0);
     if (hvClean) parsed.historical_visual = hvClean;
     else delete parsed.historical_visual;
@@ -3222,6 +3098,11 @@ async function runCheck(req, res, job) {
     }
     console.log('[equipment]', JSON.stringify({ items: (parsed.equipment_v2 || []).length, verifier: eqVerifier }));
 
+    /* збереження кадрів іде паралельно з аналізом: чекаємо лише решту бюджету */
+    const photoPreservation = await Promise.race([
+      Promise.all([photoPreservePromise, evidencePreservePromise]).then(([listingStats, evidenceStats]) => ({ listing: listingStats, evidence: evidenceStats })),
+      new Promise(r => setTimeout(() => r({ listing: 'pending', evidence: 'pending' }), Math.max(1000, 285000 - (Date.now() - tRun)))),
+    ]);
     parsed._meta = {
       kind: 'check',
       lang,
@@ -3268,6 +3149,9 @@ async function runCheck(req, res, job) {
         : null,
       snapshot: snapshot.status,
       snapshot_id: snapshot.id || null,
+      vehicle_id: observation.vehicle_id || null,
+      listing_id: observation.listing_id || null,
+      photo_preservation: photoPreservation,
       equipment_verifier: eqVerifier,
       /* що переиспользовано з Vehicle Memory, а що виконано заново */
       reuse: {
@@ -3275,6 +3159,9 @@ async function runCheck(req, res, job) {
         auction_evidence: auctionSearch ? (auctionSearch.cache === 'hit' ? 'cache' : auctionSearch.status === 'found' ? 'discovery' : auctionSearch.status || null) : (auction && auction.from_ria ? 'listing_embedded' : 'none'),
         historical_visual: !auctionPhotos.length ? 'none' : hvCache.hit ? 'cache' : (hvCache.consensus ? 'consensus_' + (hvCache.consensus.reads_count || 0) + '_reads' : 'main_call'),
         equipment_verifier: eqVerifier ? eqVerifier.status : null,
+        photo_assets: photoPreservation && photoPreservation.listing && typeof photoPreservation.listing === 'object'
+          ? 'preserved_' + (photoPreservation.listing.uploaded || 0) + '_new_' + (photoPreservation.listing.existing || 0) + '_existing'
+          : (snapshot.status === 'dedup' ? 'unchanged_snapshot' : 'skipped'),
       },
       analyzed_at: new Date().toISOString(),
     };

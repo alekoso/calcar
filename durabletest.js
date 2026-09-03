@@ -53,7 +53,29 @@ for (const x of fs.readdirSync('api').filter(f => f.endsWith('.js'))) {
   /* 5. стабільність візуалу: ключ = набір кадрів + версія; кеш ПРИМУСОВИЙ */
   if (!/async function readHvCache\(vin, fingerprint\)/.test(src) || !/async function writeHvCache\(/.test(src)) errs.push('нема функцій hv-кешу');
   if (!/hvCache\.fingerprint = photoSetFingerprint\(hvPhotoIds\)/.test(src)) errs.push('ключ кешу не з набору кадрів, що йде у Vision');
-  if (!/const hvClean = cachedHv\s*\?\s*sanitizeHistoricalVisual\(cachedHv, 1\)/.test(src)) errs.push('кешований візуал не підміняє відповідь моделі примусово');
+  if (!/const hvClean = cachedHv\s*\?\s*sanitizeHistoricalVisual\(cachedHv, auctionPhotos\.length \|\| 1\)/.test(src)) errs.push('кешований візуал не підміняє відповідь моделі примусово');
+  /* доказовий стандарт: сигнал, що піднімає тяжкість, без кадру і ознаки = indeterminate, не false і не більшість */
+  const VS = await import('file://' + path.join(dir, 'api', 'visual-signals.js'));
+  if (VS.HISTORICAL_VISUAL_VERSION === 'hv-2026-09-01-v2') errs.push('версія екстрактора не піднята після зміни схеми доказів');
+  const weak = { damage_depth: 'inner_structure_or_module', inner_components_exposed: true, fascia_status: 'detached_or_missing', inner_component_deformation_visible: 'visible', inner_component_damage_extent: 'substantial', wheel_displacement_visible: true, load_bearing_structure_deformation_visible: true, cabin_intrusion_visible: true, srs_visual_status: 'deployed_visible', visible_damage_zones: ['a', 'b'], signal_evidence: [{ signal: 'wheel_displacement_visible', frame: 'general impression', sign: 'strong hit' }] };
+  const g = VS.gateSeverityRaisingSignals(weak, 8);
+  if (g.hv.wheel_displacement_visible !== false || g.signal_status.wheel_displacement_visible !== 'indeterminate') errs.push('wheel без кадру не став indeterminate: ' + JSON.stringify(g.signal_status));
+  if (g.hv.inner_component_deformation_visible !== 'indeterminate' || g.hv.inner_component_damage_extent !== 'indeterminate' || g.hv.load_bearing_structure_deformation_visible !== false || g.hv.cabin_intrusion_visible !== false) errs.push('сигнали без доказу не знижені: ' + JSON.stringify(g.hv));
+  if (g.downgraded.length !== 5) errs.push('downgraded: ' + g.downgraded.join());
+  const sanWeak = C.sanitizeHistoricalVisual(weak, 8);
+  if (sanWeak.wheel_displacement_visible !== false || sanWeak.inner_component_damage_extent !== 'indeterminate' || sanWeak.signal_status.wheel_displacement_visible !== 'indeterminate' || sanWeak.evidence_downgrades.length !== 5) errs.push('sanitize не застосовує доказовий гейт');
+  const strong = { ...weak, signal_evidence: [{ signal: 'wheel_displacement_visible', frame: 'auction_photo_3', sign: 'ліве переднє колесо вивернуте назовні відносно арки' }, { signal: 'inner_component_deformation_visible', frame: 'auction_photo_1', sign: 'підсилювач бампера погнутий і зміщений' }, { signal: 'inner_component_damage_extent', frame: 'auction_photo_1', sign: 'зруйнована зона крэш-боксів з обох боків' }] };
+  const sanStrong = C.sanitizeHistoricalVisual(strong, 8);
+  if (sanStrong.wheel_displacement_visible !== true || sanStrong.inner_component_deformation_visible !== 'visible' || sanStrong.inner_component_damage_extent !== 'substantial' || sanStrong.signal_status.wheel_displacement_visible !== 'confirmed') errs.push('сигнали з кадром і ознакою не підтверджені: ' + JSON.stringify(sanStrong.signal_status));
+  if (sanStrong.load_bearing_structure_deformation_visible !== false || sanStrong.signal_status.load_bearing_structure_deformation_visible !== 'indeterminate') errs.push('load_bearing без доказу не indeterminate');
+  if (sanStrong.signal_evidence.length !== 3 || sanStrong.signal_evidence[0].frame !== 'auction_photo_3') errs.push('signal_evidence не збережено');
+  const outOfRange = { ...weak, signal_evidence: [{ signal: 'wheel_displacement_visible', frame: 'auction_photo_9', sign: 'ліве переднє колесо вивернуте назовні відносно арки' }] };
+  if (C.sanitizeHistoricalVisual(outOfRange, 8).wheel_displacement_visible !== false) errs.push('кадр поза переданим набором прийнятий як доказ');
+  /* consensus голосує по ВЖЕ гейтованих читаннях: слабке evidence не стає severe більшістю */
+  const gatedReads = [C.sanitizeHistoricalVisual(weak, 8), C.sanitizeHistoricalVisual(weak, 8), C.sanitizeHistoricalVisual(strong, 8)];
+  const consG = C.hvConsensus(gatedReads);
+  if (!consG || consG.hv.wheel_displacement_visible !== false) errs.push('два слабкі читання і одне сильне: більшість мала лишити wheel indeterminate/false');
+  if (!/ДОКАЗОВИЙ СТАНДАРТ ДЛЯ СИГНАЛІВ, ЩО ПІДНІМАЮТЬ ТЯЖКІСТЬ/.test(VS.HISTORICAL_VISUAL_RULES) || !/"signal_evidence":\[/.test(VS.HISTORICAL_VISUAL_SCHEMA)) errs.push('промпт/схема без доказового стандарту');
   if (!/writeHvCache\(listing\.vin, hvCache\.fingerprint, hvCache\.source/.test(src)) errs.push('свіжий візуал не пишеться в кеш');
   if (!/historical_visual_cache: hvCache/.test(src)) errs.push('_meta без діагностики кешу');
   if (!/historical_visual_cache\?on_conflict=vin,fingerprint,hv_version[\s\S]{0,400}resolution=ignore-duplicates/.test(src)) errs.push('кеш візуалу не first-writer-wins');
@@ -79,7 +101,8 @@ for (const x of fs.readdirSync('api').filter(f => f.endsWith('.js'))) {
   const one = JSON.parse(runs[0]);
   if (one.ev[0][0] !== 'moderate' || one.ev[0][1] !== 1.3 || one.srs[0] !== 0.6) errs.push('Tesla-fixture: очікувалось moderate 1.3 + SRS 0.6, отримано ' + runs[0]);
   /* substantial vs indeterminate це і є різниця 8.1/6.7 (1.4 = 2.4 - 1.0) */
-  const hv2 = { ...hv, inner_component_deformation_visible: 'visible', inner_component_damage_extent: 'substantial' };
+  /* доказовий стандарт: severity-raising сигнали лише з кадром і ознакою */
+  const hv2 = { ...hv, inner_component_deformation_visible: 'visible', inner_component_damage_extent: 'substantial', signal_evidence: [{ signal: 'inner_component_deformation_visible', frame: 'auction_photo_2', sign: 'підсилювач заднього бампера погнутий і зміщений вліво' }, { signal: 'inner_component_damage_extent', frame: 'auction_photo_2', sign: 'зруйнована зона крэш-боксів, деформований носій' }] };
   const r2 = computeScoreV3({ findings: [], coverageInputs: COV, vehicle: { odometer_km: 167000, age_months: 134, powertrain: 'electric' }, historicalVisual: C.sanitizeHistoricalVisual(hv2, 8), accidentRecord: { recorded: true, note: 'x' } });
   if (r2.accident_events[0].derived_severity !== 'severe' || Math.abs(r2.accident_events[0].final_event_penalty - 2.7) > 1e-9) errs.push('substantial не дав severe 2.7');
   if (Math.abs((r2.accident_events[0].final_event_penalty - one.ev[0][1]) - 1.4) > 1e-9) errs.push('різниця tier не 1.4');
@@ -179,7 +202,7 @@ for (const x of fs.readdirSync('api').filter(f => f.endsWith('.js'))) {
   const snap = C.snapshotRow({ vin: 'V', photos: Array.from({ length: 50 }, (_, i) => 'p' + i), seller_text: 'опис продавця', listing_equipment: ['a'], price_context: { x: 1 }, history_facts: { y: 2 }, title: 'T', text: 'txt', price: 1, currency: 'USD' }, 'https://u', 'tok');
   if (snap.photos.length !== 50) errs.push('знімок обрізає галерею до ' + snap.photos.length);
   if (snap.seller_text !== 'опис продавця' || snap.job_token !== 'tok' || snap.listing_fields.photos_total !== 50 || snap.listing_fields.price_context.x !== 1) errs.push('знімок без повних полів');
-  if (!/saveSnapshot\(listing, url, job && job\.token\)/.test(src)) errs.push('знімок не привʼязаний до job');
+  if (!/observeListing\(listing, url, \{ jobToken: job && job\.token/.test(src)) errs.push('знімок не привʼязаний до job');
 
   /* 7. проксі кадрів: лише https і лише хости історичних джерел */
   if (!I.allowedImageUrl('https://cdn.riastatic.com/photos/auto/usa/1909/19098/1909872.jpg')) errs.push('riastatic не дозволений');
