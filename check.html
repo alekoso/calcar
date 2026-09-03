@@ -1043,8 +1043,9 @@ async function finalizeReport(data, token){
   sessionStorage.removeItem('calcarCheckId');
   pendingSet(null);
   const title = data.vehicle?.title || t('Check');
-  if (token) rememberRecent({ token, title, photo: (data._meta?.photos || [])[0] || null, score: (data.score_breakdown && data.score_breakdown.final) ?? null, odometer_km: data._meta?.odometer_km || null, created_at: new Date().toISOString() });
-  let dest = token ? '/check/r/' + token : '/result-check.html';
+  const slug = (data._meta && data._meta.share_slug) || 'car';
+  if (token) rememberRecent({ token, slug, title, photo: (data._meta?.photos || [])[0] || null, score: (data.score_breakdown && data.score_breakdown.final) ?? null, odometer_km: data._meta?.odometer_km || null, created_at: new Date().toISOString() });
+  let dest = token ? '/check/r/' + slug + '/' + token : '/result-check.html';
   try {
     if (SB) {
       const { data: s } = await SB.auth.getSession();
@@ -1173,15 +1174,42 @@ function renderExampleChecks(){
     }
   } catch (e) { /* блок необовʼязковий: нижче показуємо приклади */ }
   if (Array.isArray(rows) && rows.length) { renderRecentChecks(rows); return; }
-  /* гість: локальний список недавніх перевірок цього пристрою (лише
-     посилання і картка; сам звіт живе на сервері за токеном) */
-  const mine = localRecent().filter(x => x && x.token).map(x => ({ href: '/check/r/' + x.token, title: x.title, photo: x.photo, odometer_km: x.odometer_km, score: x.score, created_at: x.created_at }));
+  /* гість: локальний список недавніх перевірок цього пристрою. Локально
+     живуть лише токен і мінімальна картка для першого рендера; джерело
+     правди про звіт це сервер: картки оновлюються з /api/check-job
+     (summary), зниклі звіти прибираються зі списку */
+  const toRow = x => ({ href: '/check/r/' + (x.slug || 'car') + '/' + x.token, title: x.title, photo: x.photo, odometer_km: x.odometer_km, score: x.score, created_at: x.created_at });
+  const mine = localRecent().filter(x => x && x.token);
   if (mine.length) {
     const tt = document.getElementById('recentTitle'); if (tt) tt.textContent = t('Recent checks on this device');
     const all = document.getElementById('recentAll'); if (all) all.style.display = 'none';
-    renderRecentChecks(mine);
+    renderRecentChecks(mine.map(toRow));
+    refreshRecentFromServer(mine).then(list => { if (list) renderRecentChecks(list.map(toRow)); }).catch(() => {});
   } else renderExampleChecks();
 })();
+/* сервер як джерело правди для гостьових карток: оновлює score, назву,
+   кадр і slug за токеном; 404 прибирає запис. Повертає новий список або
+   null, якщо нічого не змінилось */
+async function refreshRecentFromServer(list){
+  let changed = false;
+  const out = [];
+  await Promise.all(list.map(async (x, i) => {
+    try {
+      const r = await fetch('/api/check-job?token=' + encodeURIComponent(x.token) + '&summary=1', { cache: 'no-store' });
+      if (r.status === 404) { changed = true; return; }
+      const j = r.ok ? await r.json().catch(() => null) : null;
+      if (!j || j.status !== 'done' || !j.summary) { out[i] = x; return; }
+      const s = j.summary;
+      const nx = { ...x, slug: j.slug || x.slug || null, title: s.title || x.title, photo: s.photo || x.photo, odometer_km: s.odometer_km || x.odometer_km, score: (typeof s.score === 'number') ? s.score : x.score, created_at: s.created_at || x.created_at };
+      if (JSON.stringify(nx) !== JSON.stringify(x)) changed = true;
+      out[i] = nx;
+    } catch (e) { out[i] = x; }
+  }));
+  const next = out.filter(Boolean);
+  if (!changed) return null;
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify(next.slice(0, 20))); } catch (e) {}
+  return next;
+}
 /* незавершений аналіз цього пристрою: продовжити опитування одразу */
 resumePending();
 

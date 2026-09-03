@@ -1030,13 +1030,21 @@ const SB = (typeof supabase !== 'undefined' && window.CALCAR_SUPABASE?.url)
   ? supabase.createClient(window.CALCAR_SUPABASE.url, window.CALCAR_SUPABASE.anon)
   : null;
 
-/* публічний read-only звіт: /check/r/<token> (durable job) або
-   /check/r/<public_id> (старий збережений звіт). Обидва читаються через
-   /api/check-job без входу; сторінка стає read-only, якщо цей пристрій
-   не є автором (токен відсутній у локальному списку недавніх перевірок) */
-const OPEN_TOKEN = new URLSearchParams(location.search).get('r')
-  || (location.pathname.match(/^\/check\/r\/([A-Za-z0-9_-]{4,64})$/) || [])[1]
-  || null;
+/* публічний read-only звіт: /check/r/<slug>/<token>. Slug (make-model-year)
+   лише для людини, звіт визначає непрозорий токен; неправильний slug
+   виправляється канонічним replaceState. Читається через /api/check-job
+   без входу; сторінка стає read-only, якщо цей пристрій не є автором
+   (токен відсутній у локальному списку недавніх перевірок). Старий
+   короткий public_id публічним ключем не є: /check/r/<PID> веде на
+   адресу кабінету, де звіт бачить лише його власник після входу */
+const TOKEN_RE = /^[A-Za-z0-9_-]{16,64}$/;
+const PATH_R = location.pathname.match(/^\/check\/r\/(?:([a-z0-9-]{1,60})\/)?([A-Za-z0-9_-]{4,64})$/) || [];
+const OPEN_TOKEN = (function(){
+  const q = new URLSearchParams(location.search).get('r') || PATH_R[2] || null;
+  return q && TOKEN_RE.test(q) ? q : null;
+})();
+if (!OPEN_TOKEN && PATH_R[2] && /^[A-Z0-9]{4,12}$/.test(PATH_R[2])) location.replace('/check/' + PATH_R[2]);
+let SHARE_SLUG = new URLSearchParams(location.search).get('slug') || PATH_R[1] || null;
 const OPEN_ID = OPEN_TOKEN ? null : (new URLSearchParams(location.search).get('id')
   || (location.pathname.match(/^\/check\/([A-Za-z0-9-]{4,40})$/) || [])[1]
   || null);
@@ -1059,8 +1067,7 @@ let ROW_ID = null; /* uuid рядка в reports: для збереження п
 
 (async function init(){
   if (OPEN_TOKEN) {
-    const isPid = /^[A-Z0-9]{4,12}$/.test(OPEN_TOKEN) && !/[a-z_-]/.test(OPEN_TOKEN);
-    const q = isPid ? 'pid=' + encodeURIComponent(OPEN_TOKEN) : 'token=' + encodeURIComponent(OPEN_TOKEN);
+    const q = 'token=' + encodeURIComponent(OPEN_TOKEN);
     let j = null;
     for (let attempt = 0; attempt < 240; attempt++) {
       try {
@@ -1080,7 +1087,9 @@ let ROW_ID = null; /* uuid рядка в reports: для збереження п
     /* власник акаунта, що відкрив свій звіт за публічним посиланням, теж
        бачить його як read-only: редагування живе на /check/<public_id> */
     if (READONLY) document.body.classList.add('readonly');
-    history.replaceState(null, '', '/check/r/' + OPEN_TOKEN);
+    /* канонічна людська адреса: slug із сервера, токен незмінний */
+    SHARE_SLUG = j.slug || (DATA._meta && DATA._meta.share_slug) || SHARE_SLUG || 'car';
+    history.replaceState(null, '', '/check/r/' + SHARE_SLUG + '/' + OPEN_TOKEN);
     boot();
     return;
   }
@@ -1648,9 +1657,26 @@ function persistChat(){
    копіювання в буфер з підтвердженням. PDF лишається другорядною дією */
 function shareUrl(){
   const tok = OPEN_TOKEN || (DATA && DATA._meta && DATA._meta.share_token) || null;
-  if (tok) return location.origin + '/check/r/' + tok;
-  const pid = (location.pathname.match(/^\/check\/([A-Z0-9]{4,12})$/) || [])[1];
-  return pid ? location.origin + '/check/r/' + pid : null;
+  if (!tok) return null;
+  const slug = SHARE_SLUG || (DATA && DATA._meta && DATA._meta.share_slug) || 'car';
+  return location.origin + '/check/r/' + slug + '/' + tok;
+}
+/* старий збережений звіт без токена: власник (і лише він, JWT перевіряє
+   сервер) отримує постійний токен через /api/share-link; короткий
+   public_id публічним ключем не стає */
+async function ensureShareToken(){
+  if (shareUrl()) return shareUrl();
+  if (!SB || !ROW_ID) return null;
+  try {
+    const { data: s } = await SB.auth.getSession();
+    if (!s?.session) return null;
+    const r = await fetch('/api/share-link', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + s.session.access_token }, body: JSON.stringify({ report_id: ROW_ID, lang: window.calcarLang() }) });
+    const j = await r.json().catch(() => null);
+    if (!r.ok || !j || !j.token) return null;
+    if (DATA && DATA._meta) { DATA._meta.share_token = j.token; DATA._meta.share_slug = j.slug; }
+    SHARE_SLUG = j.slug || SHARE_SLUG;
+    return location.origin + j.path;
+  } catch (e) { return null; }
 }
 function shareToast(msg){
   const el = $('shareToast'); if (!el) return;
@@ -1658,7 +1684,7 @@ function shareToast(msg){
   clearTimeout(shareToast._t); shareToast._t = setTimeout(() => el.classList.remove('on'), 2200);
 }
 async function shareReport(){
-  const url = shareUrl(); if (!url) return;
+  const url = await ensureShareToken(); if (!url) { shareToast(t('Could not copy the link')); return; }
   const title = t('Check this car: {title}').replace('{title}', (DATA && DATA.vehicle && DATA.vehicle.title) || 'CalCar');
   const mobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
   if (mobile && navigator.share) {
@@ -1668,8 +1694,9 @@ async function shareReport(){
   catch (e) { try { window.prompt(t('Share'), url); } catch (e2) { shareToast(t('Could not copy the link')); } }
 }
 function shareSetup(){
-  const url = shareUrl();
-  ['shareBtn', 'shareBtn2'].forEach(id => { const b = $(id); if (!b) return; if (url) { b.style.display = ''; b.addEventListener('click', shareReport); } });
+  /* токен уже є (durable-звіт) або його може створити власник (ROW_ID) */
+  const can = !!(shareUrl() || (SB && ROW_ID));
+  ['shareBtn', 'shareBtn2'].forEach(id => { const b = $(id); if (!b) return; if (can) { b.style.display = ''; b.addEventListener('click', shareReport); } });
 }
 
 /* ---------- фінальні дії ---------- */

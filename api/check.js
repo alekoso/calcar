@@ -13,6 +13,7 @@ import {
 /* активна версія CalCar Score: перемикається конфігурацією без деплою коду.
    Rollback на v2 = env CALCAR_SCORE_VERSION=v2, НЕ revert коміту */
 const SCORE_VERSION = process.env.CALCAR_SCORE_VERSION === 'v2' ? 'v2' : 'v3';
+import { makeToken, reportSlug, slugify } from './share.js';
 import { findAuctionRecord, shouldRecheck, discoverVinCandidates, photoHasProvenance, fetchHistoricalPhotos, extractLotMeta, verifyLotIdentity, zenrowsFetch, odometerToKm, PARSER_VERSION, EVENT_VERSION } from './auction.js';
 
 /* ============================================================
@@ -513,25 +514,51 @@ async function fetchAuction(url) {
 }
 
 /* ---------- 4. Знімок у рів даних ---------- */
-async function saveSnapshot(l, url) {
+/* Vehicle Memory: КОЖЕН Check додає новий рядок, старі знімки ніколи не
+   перезаписуються. Зберігається повний текст продавця, ВСІ кадри галереї
+   і структуровані поля площадки: через роки можна показати, що саме
+   продавець писав і показував, і побудувати diff між оголошеннями */
+export function snapshotRow(l, url, jobToken) {
+  return {
+    vin: l.vin, plate: l.plate,
+    source_url: url, source_domain: l.domain, country: l.country,
+    price_amount: l.price, price_currency: l.currency,
+    odometer_km: l.odometer_km, year: l.year, make: l.make, model: l.model,
+    listing: { title: l.title, text: l.text },
+    photos: (l.photos || []).slice(0, 120),
+    /* аддитивні колонки (supabase-vehicle-intelligence.sql) */
+    seller_text: l.seller_text || null,
+    listing_fields: {
+      generation: l.generation || null,
+      listing_equipment: l.listing_equipment || [],
+      price_context: l.price_context || null,
+      history_facts: l.history_facts || null,
+      auction_url: l.auction_url || null,
+      usa_photos: l.usa_photos || [],
+      photos_total: (l.photos || []).length,
+    },
+    job_token: jobToken || null,
+  };
+}
+async function saveSnapshot(l, url, jobToken) {
   const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!base || !key) return { status: 'env_missing', id: null };
+  const post = body => fetch(base.replace(/\/$/, '') + '/rest/v1/vehicle_snapshots', {
+    method: 'POST',
+    headers: {
+      apikey: key, authorization: 'Bearer ' + key,
+      'content-type': 'application/json', prefer: 'return=representation',
+    },
+    body: JSON.stringify(body),
+  });
   try {
-    const r = await fetch(base.replace(/\/$/, '') + '/rest/v1/vehicle_snapshots', {
-      method: 'POST',
-      headers: {
-        apikey: key, authorization: 'Bearer ' + key,
-        'content-type': 'application/json', prefer: 'return=representation',
-      },
-      body: JSON.stringify({
-        vin: l.vin, plate: l.plate,
-        source_url: url, source_domain: l.domain, country: l.country,
-        price_amount: l.price, price_currency: l.currency,
-        odometer_km: l.odometer_km, year: l.year, make: l.make, model: l.model,
-        listing: { title: l.title, text: l.text },
-        photos: l.photos.slice(0, 20),
-      }),
-    });
+    const full = snapshotRow(l, url, jobToken);
+    let r = await post(full);
+    if (!r.ok && r.status === 400) {
+      /* міграція ще не застосована: пишемо у старій формі, нічого не втрачаючи з обовʼязкового */
+      const { seller_text, listing_fields, job_token, ...legacy } = full;
+      r = await post(legacy);
+    }
     if (!r.ok) return { status: 'error_' + r.status, id: null };
     const rows = await r.json().catch(() => []);
     return { status: 'saved', id: Array.isArray(rows) && rows[0] ? rows[0].id : null };
@@ -603,27 +630,47 @@ async function readHvCache(vin, fingerprint) {
   if (!base || !key || !vin || !fingerprint) return null;
   try {
     const r = await fetch(base.replace(/\/$/, '') + '/rest/v1/historical_visual_cache?vin=eq.' + encodeURIComponent(vin)
-      + '&fingerprint=eq.' + encodeURIComponent(fingerprint) + '&hv_version=eq.' + encodeURIComponent(HISTORICAL_VISUAL_VERSION) + '&select=historical_visual,source,created_at&limit=1', {
+      + '&fingerprint=eq.' + encodeURIComponent(fingerprint) + '&hv_version=eq.' + encodeURIComponent(HISTORICAL_VISUAL_VERSION) + '&select=*&limit=1', {
       headers: { apikey: key, authorization: 'Bearer ' + key },
     });
     if (!r.ok) return null;
     const rows = await r.json();
     const row = Array.isArray(rows) && rows[0] ? rows[0] : null;
-    return row && row.historical_visual && typeof row.historical_visual === 'object' ? row.historical_visual : null;
+    if (!row || !row.historical_visual || typeof row.historical_visual !== 'object') return null;
+    return {
+      historical_visual: row.historical_visual,
+      diag: {
+        reads_count: row.reads_count ?? null, conflict_detected: row.conflict_detected ?? null,
+        canonicalized_at: row.canonicalized_at || row.created_at || null, extractor_version: row.extractor_version || row.hv_version || null,
+        disagreed_fields: (row.consensus && Array.isArray(row.consensus.disagreed_fields)) ? row.consensus.disagreed_fields : [],
+      },
+    };
   } catch (e) { return null; }
 }
-async function writeHvCache(vin, fingerprint, source, urls, hv) {
+async function writeHvCache(vin, fingerprint, source, urls, hv, diag) {
   const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!base || !key || !vin || !fingerprint || !hv) return false;
+  const post = body => fetch(base.replace(/\/$/, '') + '/rest/v1/historical_visual_cache?on_conflict=vin,fingerprint,hv_version', {
+    method: 'POST',
+    /* канонічний результат записується один раз: два ОДНОЧАСНІ холодні
+       аналізи одного VIN не перезаписують один одного, наступні беруть
+       перший. Сам результат уже є consensus-читанням, а не одиничним */
+    headers: { apikey: key, authorization: 'Bearer ' + key, 'content-type': 'application/json', prefer: 'resolution=ignore-duplicates,return=minimal' },
+    body: JSON.stringify(body),
+  });
+  const base_row = { vin, fingerprint, hv_version: HISTORICAL_VISUAL_VERSION, source: source || null, photo_urls: (urls || []).slice(0, 24), historical_visual: hv };
   try {
-    const r = await fetch(base.replace(/\/$/, '') + '/rest/v1/historical_visual_cache?on_conflict=vin,fingerprint,hv_version', {
-      method: 'POST',
-      /* перший записаний результат канонічний: два ОДНОЧАСНІ холодні аналізи
-         одного VIN не перезаписують один одного, наступні беруть перший */
-      headers: { apikey: key, authorization: 'Bearer ' + key, 'content-type': 'application/json', prefer: 'resolution=ignore-duplicates,return=minimal' },
-      body: JSON.stringify({ vin, fingerprint, hv_version: HISTORICAL_VISUAL_VERSION, source: source || null, photo_urls: (urls || []).slice(0, 24), historical_visual: hv }),
-    });
-    return r.ok;
+    if (diag) {
+      const r = await post({ ...base_row,
+        reads_count: diag.reads_count ?? null, conflict_detected: diag.conflict_detected ?? null,
+        canonicalized_at: diag.canonicalized_at || new Date().toISOString(), extractor_version: HISTORICAL_VISUAL_VERSION,
+        consensus: { disagreed_fields: diag.disagreed_fields || [], reads: diag.reads || [], majority: diag.majority || null },
+      });
+      if (r.ok) return true;
+      /* колонок діагностики ще нема (міграція не застосована): пишемо без них */
+    }
+    const r2 = await post(base_row);
+    return r2.ok;
   } catch (e) { return false; }
 }
 
@@ -1291,6 +1338,74 @@ export function sanitizeHistoricalVisual(hv, photosSent) {
   };
 }
 
+/* ---------- 4в2. Канонізація історичного візуалу: consensus ----------
+   Один Vision-прогін тих самих кадрів нестабільний у high-impact полях
+   (на Tesla один холодний прогін дав severe/6.7, решта moderate/8.1).
+   First-writer-wins заморозив би випадковий outlier назавжди. Тому на
+   холодному промаху кешу робимо ДВА незалежні читання A і B; якщо вони
+   розходяться в полі, здатному змінити тяжкість події (а отже Score),
+   читаємо C і беремо більшість по КОЖНОМУ нормалізованому сигналу.
+   Голосування йде по evidence ДО resolveAccidentEvents, а не по Score.
+   Тричі різні значення enum-поля означають "не визначено", а не вибір
+   навмання. SCORE_CONFIG_V3 і ваги не чіпаються */
+export const HV_MATERIAL_FIELDS = [
+  'damage_depth', 'inner_component_deformation_visible', 'inner_component_damage_extent',
+  'load_bearing_structure_deformation_visible', 'wheel_displacement_visible', 'cabin_intrusion_visible',
+  'structural_visual_status', 'srs_visual_status', 'cosmetic_only', 'possible_structural_damage',
+];
+/* enum-поля, для яких тристороння незгода дає чесне "невідомо" */
+const HV_INDETERMINATE = {
+  damage_depth: 'indeterminate', inner_component_deformation_visible: 'indeterminate',
+  inner_component_damage_extent: 'indeterminate', structural_visual_status: 'indeterminate',
+  srs_visual_status: 'indeterminate',
+};
+/* матеріальний підпис читання: лише те, що здатне змінити moderate/severe */
+export function hvMaterial(hv) {
+  const o = {};
+  for (const f of HV_MATERIAL_FIELDS) o[f] = hv ? hv[f] : undefined;
+  o.multiple_zones = !!(hv && Array.isArray(hv.visible_damage_zones) && hv.visible_damage_zones.length >= 2);
+  return o;
+}
+export function hvDisagreedFields(reads) {
+  const sigs = reads.map(hvMaterial);
+  if (sigs.length < 2) return [];
+  return Object.keys(sigs[0]).filter(f => sigs.some(x => JSON.stringify(x[f]) !== JSON.stringify(sigs[0][f])));
+}
+/* reads: масив ПРОВАЛІДОВАНИХ (sanitizeHistoricalVisual) читань, 1..N.
+   Повертає канонічний hv (ще НЕ провалідований повторно: викликач
+   проганяє sanitize ще раз, щоб глибина була узгоджена з ознаками) */
+export function hvConsensus(reads) {
+  const list = (reads || []).filter(r => r && typeof r === 'object');
+  if (!list.length) return null;
+  const disagreed = hvDisagreedFields(list);
+  if (list.length === 1) return { hv: list[0], reads_count: 1, conflict_detected: null, disagreed_fields: [], resolved: true, majority: null };
+  if (!disagreed.length) return { hv: list[0], reads_count: list.length, conflict_detected: false, disagreed_fields: [], resolved: true, majority: null };
+  /* два читання і конфлікт: рішення потребує третього читання */
+  if (list.length === 2) return { hv: null, reads_count: 2, conflict_detected: true, disagreed_fields: disagreed, resolved: false, majority: null };
+  const sigs = list.map(hvMaterial);
+  const majority = {};
+  for (const f of Object.keys(sigs[0])) {
+    const counts = new Map();
+    for (const x of sigs) { const k = JSON.stringify(x[f]); counts.set(k, (counts.get(k) || 0) + 1); }
+    const top = Math.max(...counts.values());
+    const winners = [...counts.entries()].filter(([, n]) => n === top).map(([k]) => JSON.parse(k));
+    majority[f] = winners.length === 1 ? winners[0] : (f in HV_INDETERMINATE ? HV_INDETERMINATE[f] : (typeof winners[0] === 'boolean' ? false : winners[0]));
+  }
+  /* база для тексту і зон: читання, найближче до більшості */
+  const score = x => Object.keys(majority).filter(f => JSON.stringify(x[f]) === JSON.stringify(majority[f])).length;
+  let bi = 0;
+  for (let i = 1; i < sigs.length; i++) if (score(sigs[i]) > score(sigs[bi])) bi = i;
+  const hv = { ...list[bi] };
+  for (const f of HV_MATERIAL_FIELDS) hv[f] = majority[f];
+  /* кількість зон це теж матеріальний сигнал: беремо зони з читання, що
+     збігається з більшістю по ньому */
+  if (hvMaterial(hv).multiple_zones !== majority.multiple_zones) {
+    const src = list.find(r => hvMaterial(r).multiple_zones === majority.multiple_zones);
+    if (src) hv.visible_damage_zones = src.visible_damage_zones;
+  }
+  return { hv, reads_count: list.length, conflict_detected: true, disagreed_fields: disagreed, resolved: true, majority };
+}
+
 /* ---------- 4г. Комплектація: детермінована валідація і верифікація ----------
    Модель пропонує знахідки, код вирішує, що виживає. Рівно чотири рівні
    достовірності, рівня "ймовірно" не існує. Візуальне підтвердження без
@@ -1824,6 +1939,10 @@ function renderDecisionContext(dc) {
     + '\nЧого в цьому блоці нема, того не вигадуй: відсутній BUYER_CONTEXT означає, що про пріоритети цієї людини нам нічого не відомо, а порожній RECENT_REPORTS означає, що релевантних недавніх авто в неї нема.\n\n';
 }
 
+/* правило сторін авто: одне для основного промпту і для окремого
+   екстрактора історичного візуалу (consensus-читання) */
+const SIDE_RULE = `СТОРОНИ АВТОМОБІЛЯ (ГЛОБАЛЬНЕ ПРАВИЛО для всіх секцій: historical_visual, auction, photo_findings, risks, discrepancies, score_facts, purchase_decision): LEFT/ліва і RIGHT/права це сторони САМОГО АВТОМОБІЛЯ з точки зору водія, що сидить у машині й дивиться вперед, а НЕ сторони кадру. Авто зняте СПЕРЕДУ: права сторона авто візуально ЗЛІВА кадру; зняте ЗЗАДУ: навпаки. Завжди спочатку визнач орієнтацію авто в кадрі. Якщо сторону надійно визначити не можна: пиши "бокова частина"/"бокове пошкодження" і НЕ вгадуй ліво/право: краще unknown, ніж впевнено неправильно. Structured-сторона ДЖЕРЕЛА (auction LEFT/RIGHT, запис площадки) є канонічною для текстів УСІХ розділів однієї події: не перевизначай сторону заново в кожному блоці. Заперечити сторону джерела можна ЛИШЕ за сильних незалежних ознак орієнтації (номерний знак, кермо, написи). Положення лючка бака САМОСТІЙНИМ доказом сторони НЕ є.`;
+
 const PROMPT = (l, nhtsa, auction, langDirective, decisionStyle, auctionMeta, decisionContext) => `Ти експертна система CalCar Check: незалежний розбір оголошення про продаж вживаного авто. Твоя робота: звірити те, що СТВЕРДЖУЄ продавець, із тим, що КАЖУТЬ дані і фото, і чесно відповісти, чи варто брати саме це авто.
 
 ${langDirective}
@@ -1844,7 +1963,7 @@ ${auction && auction.photos_sent ? `
 - порівняй зону удару "до" з нинішніми фото "після": збіг відтінку, зазори, якість відновлення
 - verdict тверджень продавця про пошкодження і ремонт тепер спирається на аукціонні фото, а не на "недоступно"
 
-СТОРОНИ АВТОМОБІЛЯ (ГЛОБАЛЬНЕ ПРАВИЛО для всіх секцій: historical_visual, auction, photo_findings, risks, discrepancies, score_facts, purchase_decision): LEFT/ліва і RIGHT/права це сторони САМОГО АВТОМОБІЛЯ з точки зору водія, що сидить у машині й дивиться вперед, а НЕ сторони кадру. Авто зняте СПЕРЕДУ: права сторона авто візуально ЗЛІВА кадру; зняте ЗЗАДУ: навпаки. Завжди спочатку визнач орієнтацію авто в кадрі. Якщо сторону надійно визначити не можна: пиши "бокова частина"/"бокове пошкодження" і НЕ вгадуй ліво/право: краще unknown, ніж впевнено неправильно. Structured-сторона ДЖЕРЕЛА (auction LEFT/RIGHT, запис площадки) є канонічною для текстів УСІХ розділів однієї події: не перевизначай сторону заново в кожному блоці. Заперечити сторону джерела можна ЛИШЕ за сильних незалежних ознак орієнтації (номерний знак, кермо, написи). Положення лючка бака САМОСТІЙНИМ доказом сторони НЕ є.
+${SIDE_RULE}
 
 ${HISTORICAL_VISUAL_RULES}
 ` : auction && (auction.blocked || (auction.photos || []).length) ? `Архів чи історичні матеріали існують, але кадри автоматично недоступні.
@@ -2004,10 +2123,7 @@ ${HISTORICAL_VISUAL_SCHEMA}
    /api/check-job?token=. Токен непрозорий (128 біт) і є адресою
    read-only звіту /check/r/<token>. Без waitUntil чи без таблиці
    поведінка стара: синхронний запит з повним звітом у відповіді */
-export function makeJobToken() {
-  const bytes = crypto.randomBytes(16);
-  return bytes.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
+export function makeJobToken() { return makeToken(); }
 export function vercelWaitUntil() {
   try {
     const ctx = globalThis[Symbol.for('@vercel/request-context')];
@@ -2132,7 +2248,7 @@ async function runCheck(req, res, job) {
     }
 
     /* --- знімок у рів: ДО аналізу, щоб історія копилась навіть коли AI впав --- */
-    const snapshot = await saveSnapshot(listing, url);
+    const snapshot = await saveSnapshot(listing, url, job && job.token);
     progress('identity');
 
     /* --- фото "до ремонту": спершу кадри, збережені самою RIA --- */
@@ -2409,11 +2525,61 @@ async function runCheck(req, res, job) {
         hvCache.source = auction && auction.from_ria ? 'autoria_history' : (auctionSearch && auctionSearch.status === 'found') ? 'auction_search' : 'external_archive';
         if (!cachedHv) {
           const c = await readHvCache(listing.vin, hvCache.fingerprint);
-          if (c) { cachedHv = c; hvCache.hit = true; }
+          if (c) { cachedHv = c.historical_visual; hvCache.hit = true; hvCache.consensus = c.diag; }
         } else hvCache.hit = true;
       }
       console.log('[hv-cache]', hvCache.hit ? 'hit' : 'miss', listing.vin || '-', hvCache.fingerprint || '-', hvCache.source || '-');
     } catch (e) { console.log('[hv-cache] read failed:', e.message); }
+    /* ХОЛОДНИЙ ПРОМАХ: канонізуємо evidence ДО основного виклику і ДО
+       resolveAccidentEvents. Читання A і B паралельно; за матеріального
+       конфлікту читання C і більшість по кожному сигналу. Канонічний
+       результат одразу в кеш; основний виклик отримує його як готовий
+       historical_visual, а код нижче примусово підміняє ним відповідь */
+    let hvConsensusMs = 0;
+    if (!cachedHv && auctionPhotos.length && listing.vin && hvCache.fingerprint) {
+      const tHv = Date.now();
+      const hvContent = [
+        { type: 'text', text: 'Ти експертна система CalCar Check. Нижче лише АРХІВНІ кадри цього авто (до ремонту). Нумерація: auction_photo_1..auction_photo_' + auctionPhotos.length + ' у порядку подачі. Твоє єдине завдання: заповнити структурований блок "historical_visual" за правилами нижче. Не оцінюй ціну, не давай рекомендацій, не пиши нічого поза цим блоком.' },
+        ...auctionPhotos.map(u => img(u, 'high')),
+        { type: 'text', text: langDirective + '\n\n' + SIDE_RULE + '\n\n' + HISTORICAL_VISUAL_RULES + '\n\nВідповідь: JSON-обʼєкт рівно з одним ключем:\n{' + HISTORICAL_VISUAL_SCHEMA.replace(/,\s*$/, '') + '}' },
+      ];
+      const readHv = async label => {
+        try {
+          const d = await callModel(modelBody(hvContent), 110000);
+          if (d?.error) { console.log('[hv-consensus] read', label, 'error:', String(d.error.message || '').slice(0, 120)); return null; }
+          const j = JSON.parse((d.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim());
+          const hv = sanitizeHistoricalVisual(j && j.historical_visual, auctionPhotos.length);
+          if (!hv) console.log('[hv-consensus] read', label, 'empty');
+          return hv;
+        } catch (e) { console.log('[hv-consensus] read', label, 'failed:', e.message); return null; }
+      };
+      try {
+        const ab = await Promise.all([readHv('A'), readHv('B')]);
+        let reads = ab.filter(Boolean);
+        let cons = hvConsensus(reads);
+        if (cons && !cons.resolved) {
+          const c = await readHv('C');
+          if (c) reads.push(c);
+          cons = hvConsensus(reads);
+        }
+        if (cons && cons.hv) {
+          const canonical = sanitizeHistoricalVisual(cons.hv, auctionPhotos.length);
+          if (canonical) {
+            cachedHv = canonical;
+            hvCache.hit = false;
+            hvCache.consensus = {
+              reads_count: cons.reads_count, conflict_detected: cons.conflict_detected,
+              canonicalized_at: new Date().toISOString(), extractor_version: HISTORICAL_VISUAL_VERSION,
+              disagreed_fields: cons.disagreed_fields, reads: reads.map(hvMaterial), majority: cons.majority,
+            };
+            const ok = await writeHvCache(listing.vin, hvCache.fingerprint, hvCache.source, auctionPhotos.map(u => photoOriginByData.get(u) || u), canonical, hvCache.consensus);
+            hvCache.written = ok;
+            console.log('[hv-consensus]', JSON.stringify({ reads: cons.reads_count, conflict: cons.conflict_detected, disagreed: cons.disagreed_fields, written: ok, ms: Date.now() - tHv }));
+          }
+        } else console.log('[hv-consensus] no usable reads, falling back to main-call visual');
+      } catch (e) { console.log('[hv-consensus] failed:', e.message); }
+      hvConsensusMs = Date.now() - tHv;
+    }
     if (auction && !auctionPhotos.length) {
       /* структуроване діагностичне повідомлення для Runtime Logs:
          без секретів, HTML і великих payload */
@@ -2490,7 +2656,7 @@ async function runCheck(req, res, job) {
 
     progress('ai');
     const t0 = Date.now();
-    let data = await callModel(modelBody(content), 240000);
+    let data = await callModel(modelBody(content), Math.max(90000, 240000 - hvConsensusMs));
 
     if (data?.error && /reasoning_effort|unknown|unsupported|unrecognized/i.test(String(data.error.message || ''))) {
       data = await callModel(modelBody(content, false), Math.max(60000, 250000 - (Date.now() - t0)));
@@ -2543,8 +2709,11 @@ async function runCheck(req, res, job) {
     else delete parsed.historical_visual;
     /* свіжий нормалізований візуал у кеш за ключем набору кадрів: наступний
        Check цього VIN із тими самими кадрами отримає його примусово */
-    if (parsed.historical_visual && !hvCache.hit && hvCache.fingerprint && listing.vin) {
-      const ok = await writeHvCache(listing.vin, hvCache.fingerprint, hvCache.source, auctionPhotos.map(u => photoOriginByData.get(u) || u), parsed.historical_visual);
+    if (parsed.historical_visual && !hvCache.hit && !hvCache.consensus && hvCache.fingerprint && listing.vin) {
+      /* фолбек: consensus-читання не дали результату, кешуємо візуал
+         основного виклику як одиничне читання (reads_count 1) */
+      const ok = await writeHvCache(listing.vin, hvCache.fingerprint, hvCache.source, auctionPhotos.map(u => photoOriginByData.get(u) || u), parsed.historical_visual,
+        { reads_count: 1, conflict_detected: null, disagreed_fields: [], reads: [hvMaterial(parsed.historical_visual)] });
       console.log('[hv-cache] write', ok ? 'ok' : 'skipped', hvCache.fingerprint);
     }
     /* свіжий розбір незмінних кадрів кладемо в кеш події разом із
@@ -2886,6 +3055,10 @@ async function runCheck(req, res, job) {
       historical_photo_transport: historicalPhotoStats,
       /* стабільність: ключ набору архівних кадрів і чи взято візуал з кешу */
       historical_visual_cache: hvCache,
+      /* людська частина публічної адреси: лише для читабельності, не ключ */
+      share_slug: (listing.make && listing.model)
+        ? slugify([listing.make, listing.model, listing.year || (parsed.vehicle && parsed.vehicle.year) || ''].join(' '))
+        : reportSlug({ vehicle: parsed.vehicle || {} }),
       /* мапи для UI і чату: технічний id кадру -> позиція у вихідній галереї */
       photo_map: { listing: photoIdx, auction: auctionPhotos.map(u => { const real = photoOriginByData.get(u) || u; return (auction && Array.isArray(auction.photos)) ? auction.photos.indexOf(real) : -1; }) },
       price_context: listing.price_context || null,

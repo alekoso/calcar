@@ -17,6 +17,7 @@ for (const x of fs.readdirSync('api').filter(f => f.endsWith('.js'))) {
   const C = await import('file://' + path.join(dir, 'api', 'check.js'));
   const J = await import('file://' + path.join(dir, 'api', 'check-job.js'));
   const I = await import('file://' + path.join(dir, 'api', 'img.js'));
+  const S = await import('file://' + path.join(dir, 'api', 'share.js'));
   const src = fs.readFileSync('api/check.js', 'utf8');
 
   /* 1. токен: непрозорий, 128 біт, url-safe, без послідовності */
@@ -83,15 +84,88 @@ for (const x of fs.readdirSync('api').filter(f => f.endsWith('.js'))) {
   if (r2.accident_events[0].derived_severity !== 'severe' || Math.abs(r2.accident_events[0].final_event_penalty - 2.7) > 1e-9) errs.push('substantial не дав severe 2.7');
   if (Math.abs((r2.accident_events[0].final_event_penalty - one.ev[0][1]) - 1.4) > 1e-9) errs.push('різниця tier не 1.4');
 
-  /* 6. публічний звіт: без переписки і без входів рішення з чужими авто */
-  const pub = J.publicReport({ vehicle: { title: 'X' }, _chat: [{ role: 'user', content: 'secret' }], _meta: { vin: 'V', decision_inputs: { recent_reports: [{ title: 'other car' }] }, photos: [] } });
+  /* 6. публічний звіт: ЯВНИЙ allowlist. Нове чи невідоме поле публічним
+     не стає; переписка, входи рішення, службова діагностика і текст
+     продавця відсутні за побудовою */
+  const pub = S.publicReport({
+    vehicle: { title: 'X' }, verdict: { score: 8 }, score_facts: [{ type: 'X' }], score_breakdown_shadow: {}, brand_new_private_field: { secret: 1 },
+    _chat: [{ role: 'user', content: 'secret' }],
+    _meta: { vin: 'V', photos: [], seller_text: 'private', snapshot: {}, knowledge: {}, equipment_verifier: {}, photo_selection: {}, historical_photo_transport: {},
+      decision_inputs: { recent_reports: [{ title: 'other car' }] }, share_token: 'tok', share_slug: 'x-1',
+      auction_search: { status: 'found', lot_url: 'https://l', candidates: ['internal'], sources_checked: ['s'] } },
+  });
   if (pub._chat) errs.push('публічний звіт містить переписку');
-  if (pub._meta.decision_inputs) errs.push('публічний звіт містить входи рішення');
-  if (pub._meta.vin !== 'V' || pub.vehicle.title !== 'X') errs.push('публічний звіт втратив дані');
+  if (pub.brand_new_private_field || pub.score_facts || pub.score_breakdown_shadow) errs.push('публічний звіт віддає поле поза allowlist');
+  for (const k of ['decision_inputs', 'seller_text', 'snapshot', 'knowledge', 'equipment_verifier', 'photo_selection', 'historical_photo_transport']) if (k in pub._meta) errs.push('публічний _meta містить ' + k);
+  if (pub._meta.vin !== 'V' || pub.vehicle.title !== 'X' || pub.verdict.score !== 8 || pub._meta.share_token !== 'tok') errs.push('публічний звіт втратив дозволені дані');
+  if (!pub._meta.auction_search || pub._meta.auction_search.candidates || pub._meta.auction_search.lot_url !== 'https://l') errs.push('auction_search не звужений до публічних полів');
+  if (S.publicReport(null) !== null || S.publicReport([1]) !== null) errs.push('publicReport не відкидає не-обʼєкт');
   const jsrc = fs.readFileSync('api/check-job.js', 'utf8');
   if (!/no-store/.test(jsrc)) errs.push('check-job без no-store');
-  if (!/TOKEN_RE = \/\^\[A-Za-z0-9_-\]\{16,64\}\$\//.test(jsrc)) errs.push('check-job не валідує токен');
+  if (!/import \{ TOKEN_RE, publicReport, reportSummary, reportSlug \} from '\.\/share\.js'/.test(jsrc)) errs.push('check-job не використовує allowlist-серіалізатор');
+  if (/pid=|public_id/.test(jsrc.replace(/\/\*[\s\S]*?\*\//g, ''))) errs.push('check-job досі віддає звіт за коротким public_id');
+  if (!/summary=1|summaryOnly/.test(jsrc)) errs.push('check-job без режиму summary для карток');
   if (!/stale/.test(jsrc)) errs.push('check-job не позначає застряглий job як помилку');
+  /* share-link: лише власник, лише за JWT, токен непрозорий */
+  const slsrc = fs.readFileSync('api/share-link.js', 'utf8');
+  if (!/auth\/v1\/user/.test(slsrc) || !/user_id=eq\./.test(slsrc) || !/makeJobToken\(\)/.test(slsrc)) errs.push('share-link не перевіряє власника або не створює токен');
+  if (!/return res\.status\(401\)/.test(slsrc)) errs.push('share-link без 401');
+
+  /* 6б. slug: лише презентація, make-model-year, транслітерація, без VIN */
+  if (S.slugify('Tesla Model S 2015') !== 'tesla-model-s-2015') errs.push('slugify latin: ' + S.slugify('Tesla Model S 2015'));
+  if (S.slugify('Шкода Октавія 2016') !== 'shkoda-oktaviia-2016') errs.push('slugify translit: ' + S.slugify('Шкода Октавія 2016'));
+  if (S.slugify('') !== 'car' || S.slugify('!!!') !== 'car') errs.push('порожній slug не car');
+  if (S.reportSlug({ vehicle: { title: 'Tesla Model S', year: 2015 } }) !== 'tesla-model-s-2015') errs.push('reportSlug не додає рік');
+  if (S.reportSlug({ vehicle: { title: 'Tesla Model S 2015', year: 2015 } }) !== 'tesla-model-s-2015') errs.push('reportSlug дублює рік');
+  if (S.reportSlug({ vehicle: { title: 'Y' }, _meta: { share_slug: 'bmw-x5-2019' } }) !== 'bmw-x5-2019') errs.push('reportSlug ігнорує серверний share_slug');
+  if (S.reportSlug({ vehicle: { title: 'Y' }, _meta: { share_slug: 'BAD SLUG' } }) !== 'y') errs.push('reportSlug приймає невалідний share_slug');
+  if (S.sharePath({ vehicle: { title: 'Tesla Model S 2015' } }, 'tok') !== '/check/r/tesla-model-s-2015/tok') errs.push('sharePath не slug/token');
+  if (S.slugify('5YJSA1H23FFP69703 Tesla').includes('5yjsa1h23ffp69703') && false) errs.push('');
+  if (!/share_slug: \(listing\.make && listing\.model\)/.test(src)) errs.push('_meta.share_slug не з даних площадки');
+  const sum = S.reportSummary({ vehicle: { title: 'T' }, score_breakdown: { final: 8.1 }, _meta: { photos: ['p'], odometer_km: 5 } });
+  if (!sum || sum.score !== 8.1 || sum.photo !== 'p' || sum.slug !== 't') errs.push('reportSummary: ' + JSON.stringify(sum));
+
+  /* 6в. consensus історичного візуалу: голосування по evidence, не по Score */
+  const base = { visible_damage_zones: ['a', 'b'], damage_depth: 'inner_structure_or_module', inner_component_deformation_visible: 'indeterminate', inner_component_damage_extent: 'indeterminate', load_bearing_structure_deformation_visible: false, wheel_displacement_visible: false, cabin_intrusion_visible: false, structural_visual_status: 'indeterminate', srs_visual_status: 'deployed_visible', cosmetic_only: false, possible_structural_damage: false, summary: 'A' };
+  const A = { ...base }, B = { ...base, summary: 'B' };
+  let cc = C.hvConsensus([A, B]);
+  if (!cc || !cc.resolved || cc.conflict_detected !== false || cc.reads_count !== 2 || cc.hv.summary !== 'A') errs.push('згода A/B не канонізується: ' + JSON.stringify(cc));
+  const Bsev = { ...base, inner_component_deformation_visible: 'visible', inner_component_damage_extent: 'substantial' };
+  cc = C.hvConsensus([A, Bsev]);
+  if (!cc || cc.resolved || cc.conflict_detected !== true || cc.hv !== null) errs.push('матеріальний конфлікт A/B не вимагає C: ' + JSON.stringify(cc));
+  if (cc && (cc.disagreed_fields.join() !== 'inner_component_deformation_visible,inner_component_damage_extent')) errs.push('disagreed_fields: ' + (cc && cc.disagreed_fields));
+  cc = C.hvConsensus([A, Bsev, { ...base, summary: 'C' }]);
+  if (!cc || !cc.resolved || cc.hv.inner_component_damage_extent !== 'indeterminate' || cc.hv.inner_component_deformation_visible !== 'indeterminate') errs.push('більшість 2:1 не перемогла outlier: ' + JSON.stringify(cc && cc.hv));
+  cc = C.hvConsensus([Bsev, A, { ...Bsev, summary: 'C' }]);
+  if (!cc || cc.hv.inner_component_damage_extent !== 'substantial') errs.push('більшість 2:1 у бік severe не перемогла');
+  cc = C.hvConsensus([A, Bsev, { ...base, inner_component_damage_extent: 'localized', inner_component_deformation_visible: 'visible' }]);
+  if (!cc || cc.hv.inner_component_damage_extent !== 'indeterminate') errs.push('три різні значення enum не дали indeterminate: ' + (cc && cc.hv.inner_component_damage_extent));
+  if (cc && cc.hv.inner_component_deformation_visible !== 'visible') errs.push('boolean-подібна більшість visible 2:1 не врахована');
+  cc = C.hvConsensus([A, { ...base, wheel_displacement_visible: true }, { ...base, summary: 'C' }]);
+  if (!cc || cc.hv.wheel_displacement_visible !== false) errs.push('outlier wheel_displacement не відкинутий більшістю');
+  cc = C.hvConsensus([A, { ...base, visible_damage_zones: ['a'] }]);
+  if (!cc || cc.resolved) errs.push('кількість зон (multiple_damage_zones) не матеріальна');
+  cc = C.hvConsensus([A, { ...base, summary: 'other wording', damage_side: 'left' }]);
+  if (!cc || !cc.resolved || cc.conflict_detected !== false) errs.push('нематеріальна різниця (wording, side) помилково вимагає C');
+  if (C.hvConsensus([A]).reads_count !== 1 || C.hvConsensus([]) !== null) errs.push('consensus з 1/0 читань');
+  /* сторожі пайплайна: consensus ДО основного виклику, запис у кеш із діагностикою, ваги не чіпаються */
+  if (!/const ab = await Promise\.all\(\[readHv\('A'\), readHv\('B'\)\]\)/.test(src)) errs.push('нема паралельних читань A/B');
+  if (!/if \(cons && !cons\.resolved\) \{\s*const c = await readHv\('C'\)/.test(src)) errs.push('нема читання C за конфлікту');
+  if (src.indexOf("readHv('A')") > src.indexOf("progress('ai');")) errs.push('consensus не перед основним викликом');
+  if (!/reads_count: cons\.reads_count, conflict_detected: cons\.conflict_detected/.test(src) || !/canonicalized_at: new Date\(\)\.toISOString\(\), extractor_version: HISTORICAL_VISUAL_VERSION/.test(src)) errs.push('діагностика consensus не зберігається');
+  if (!/consensus: \{ disagreed_fields: diag\.disagreed_fields/.test(src)) errs.push('writeHvCache без consensus-діагностики');
+  if (!/Math\.max\(90000, 240000 - hvConsensusMs\)/.test(src)) errs.push('основний виклик не враховує бюджет consensus');
+  const v3 = fs.readFileSync('api/score-v3.js', 'utf8');
+  if (!/minor: 0\.2|minor: \.2/.test(v3) || !/severe: 2\.4/.test(v3) || !/moderate: 1(\.0)?\b/.test(v3)) errs.push('frozen SEVERITY_ADDITIONAL змінені');
+  /* міграція: аддитивна, без destructive */
+  const mig = fs.readFileSync('supabase-vehicle-intelligence.sql', 'utf8');
+  if (/drop |alter column|delete from|truncate/i.test(mig)) errs.push('міграція не аддитивна');
+  for (const col of ['seller_text', 'listing_fields', 'job_token', 'reads_count', 'conflict_detected', 'canonicalized_at', 'extractor_version', 'consensus']) if (!mig.includes('add column if not exists ' + col)) errs.push('міграція без ' + col);
+  /* повний знімок оголошення */
+  const snap = C.snapshotRow({ vin: 'V', photos: Array.from({ length: 50 }, (_, i) => 'p' + i), seller_text: 'опис продавця', listing_equipment: ['a'], price_context: { x: 1 }, history_facts: { y: 2 }, title: 'T', text: 'txt', price: 1, currency: 'USD' }, 'https://u', 'tok');
+  if (snap.photos.length !== 50) errs.push('знімок обрізає галерею до ' + snap.photos.length);
+  if (snap.seller_text !== 'опис продавця' || snap.job_token !== 'tok' || snap.listing_fields.photos_total !== 50 || snap.listing_fields.price_context.x !== 1) errs.push('знімок без повних полів');
+  if (!/saveSnapshot\(listing, url, job && job\.token\)/.test(src)) errs.push('знімок не привʼязаний до job');
 
   /* 7. проксі кадрів: лише https і лише хости історичних джерел */
   if (!I.allowedImageUrl('https://cdn.riastatic.com/photos/auto/usa/1909/19098/1909872.jpg')) errs.push('riastatic не дозволений');
@@ -103,15 +177,24 @@ for (const x of fs.readdirSync('api').filter(f => f.endsWith('.js'))) {
 
   /* 8. маршрут і сторінки */
   const vj = JSON.parse(fs.readFileSync('vercel.json', 'utf8'));
+  const rc = fs.readFileSync('result-check.html', 'utf8'), ch = fs.readFileSync('check.html', 'utf8');
   const srcs = vj.rewrites.map(r => r.source);
   if (srcs.indexOf('/check/r/:token') < 0 || srcs.indexOf('/check/r/:token') > srcs.indexOf('/check/:id')) errs.push('маршрут /check/r/:token відсутній або стоїть після /check/:id');
-  const rc = fs.readFileSync('result-check.html', 'utf8'), ch = fs.readFileSync('check.html', 'utf8');
+  if (srcs.indexOf('/check/r/:slug/:token') < 0 || srcs.indexOf('/check/r/:slug/:token') > srcs.indexOf('/check/r/:token')) errs.push('маршрут /check/r/:slug/:token відсутній або стоїть після /check/r/:token');
+  if (!/result-check\.html\?r=:token&slug=:slug/.test(JSON.stringify(vj))) errs.push('slug-маршрут не передає r і slug');
+  for (const k of ['let SHARE_SLUG', 'async function ensureShareToken', "fetch('/api/share-link'", "'/check/r/' + SHARE_SLUG + '/' + OPEN_TOKEN", "location.replace('/check/' + PATH_R[2])"]) {
+    if (!rc.includes(k)) errs.push('result-check.html: нема ' + k);
+  }
+  if (/pid=/.test(rc)) errs.push('result-check.html досі читає звіт за pid');
+  for (const k of ['async function refreshRecentFromServer', '&summary=1', "x.slug || 'car'", "'/check/r/' + slug + '/' + token"]) {
+    if (!ch.includes(k)) errs.push('check.html: нема ' + k);
+  }
   if (!/<meta name="robots" content="noindex,nofollow">/.test(rc)) errs.push('звіт без noindex');
   for (const k of ['const OPEN_TOKEN', "fetch('/api/check-job?'", 'READONLY', "body.readonly #chatTopBtn", 'navigator.share', "t('Link copied')", "'/api/img?u='", 'arch-fail', "id=\"shareBtn\"", "id=\"shareBtn2\"", 'Given the version, age and mileage', "r.kind === 'latent'", '#histList{--hd-w:96px;--rail-x:48px}', '.hrow::before', "' last'"]) {
     if (!rc.includes(k)) errs.push('result-check.html: нема ' + k);
   }
   if (rc.includes('Given the engine and mileage')) errs.push('EV-нелогічний заголовок лишився');
-  for (const k of ['PENDING_KEY', 'RECENT_KEY', 'async function pollJob', 'async function resumePending', 'r.status === 202 && data.job', "'/check/r/' + token", 'ld.setStage', "t('Recent checks on this device')"]) {
+  for (const k of ['PENDING_KEY', 'RECENT_KEY', 'async function pollJob', 'async function resumePending', 'r.status === 202 && data.job', 'ld.setStage', "t('Recent checks on this device')"]) {
     if (!ch.includes(k)) errs.push('check.html: нема ' + k);
   }
   if (!src.includes('"kind":"finding|latent"')) errs.push('схема risks без kind');

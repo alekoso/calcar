@@ -1,30 +1,17 @@
-/* CalCar Check: стан durable-аналізу і read-only звіт за токеном.
-   GET /api/check-job?token=<token>  -> { status, stage, report?, error? }
-   GET /api/check-job?pid=<public_id> -> збережений звіт кабінету як
-   read-only (для посилання "Поділитися" на старі звіти без токена).
-   Читає лише сервер через service role; приватні поля (переписка чату,
-   входи рішення з назвами інших авто цієї людини) у публічну відповідь
-   не потрапляють. Токен непрозорий, перебір неможливий; невідомий токен
-   дає 404 без деталей. */
+/* CalCar Check: стан durable-аналізу і публічний read-only звіт за токеном.
+   GET /api/check-job?token=<token>            -> { status, stage, slug, report?, error? }
+   GET /api/check-job?token=<token>&summary=1  -> { status, slug, summary } (картка для списків)
+   Читає лише сервер через service role. Публічна відповідь будується
+   ЯВНИМ allowlist-серіалізатором (api/share.js): переписка чату, входи
+   рішення, службова діагностика і будь-яке нове поле схеми публічними
+   не стають. Токен непрозорий (128 біт), перебір неможливий; невідомий
+   токен дає 404 без деталей. Короткий public_id кабінету публічним ключем
+   НЕ є: для старих звітів токен створює /api/share-link після входу. */
 
 export const config = { maxDuration: 15 };
 
 import { resolveLocale, errText } from './locale.js';
-
-const TOKEN_RE = /^[A-Za-z0-9_-]{16,64}$/;
-const PID_RE = /^[A-Z0-9]{4,12}$/;
-
-export function publicReport(report) {
-  if (!report || typeof report !== 'object') return null;
-  const out = { ...report };
-  delete out._chat;
-  if (out._meta && typeof out._meta === 'object') {
-    const meta = { ...out._meta };
-    delete meta.decision_inputs;
-    out._meta = meta;
-  }
-  return out;
-}
+import { TOKEN_RE, publicReport, reportSummary, reportSlug } from './share.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
@@ -35,37 +22,35 @@ export default async function handler(req, res) {
   const hdr = { apikey: key, authorization: 'Bearer ' + key };
   const root = base.replace(/\/$/, '');
   const token = String(req.query?.token || '').trim();
-  const pid = String(req.query?.pid || '').trim().toUpperCase();
+  const summaryOnly = String(req.query?.summary || '') === '1';
   try {
-    if (token) {
-      if (!TOKEN_RE.test(token)) return res.status(404).json({ error: 'not found' });
-      const r = await fetch(root + '/rest/v1/check_jobs?token=eq.' + encodeURIComponent(token) + '&select=status,stage,report,error,url,vin,lang,created_at,updated_at,finished_at&limit=1', { headers: hdr });
-      if (!r.ok) return res.status(500).json({ error: errText(lang, 'internal') });
-      const rows = await r.json();
-      const row = Array.isArray(rows) && rows[0] ? rows[0] : null;
-      if (!row) return res.status(404).json({ error: 'not found' });
-      /* job, що застряг у running довше за ліміт функції, чесно вважається зламаним */
-      const ageMs = Date.now() - Date.parse(row.updated_at || row.created_at || 0);
-      const stale = (row.status === 'queued' || row.status === 'running') && ageMs > 6 * 60 * 1000;
+    if (!token) return res.status(400).json({ error: 'token required' });
+    if (!TOKEN_RE.test(token)) return res.status(404).json({ error: 'not found' });
+    const r = await fetch(root + '/rest/v1/check_jobs?token=eq.' + encodeURIComponent(token) + '&select=status,stage,report,error,url,vin,lang,created_at,updated_at,finished_at&limit=1', { headers: hdr });
+    if (!r.ok) return res.status(500).json({ error: errText(lang, 'internal') });
+    const rows = await r.json();
+    const row = Array.isArray(rows) && rows[0] ? rows[0] : null;
+    if (!row) return res.status(404).json({ error: 'not found' });
+    /* job, що застряг у running довше за ліміт функції, чесно вважається зламаним */
+    const ageMs = Date.now() - Date.parse(row.updated_at || row.created_at || 0);
+    const stale = (row.status === 'queued' || row.status === 'running') && ageMs > 6 * 60 * 1000;
+    const done = row.status === 'done' && row.report && row.report.vehicle;
+    const slug = done ? reportSlug(row.report) : null;
+    if (summaryOnly) {
       return res.status(200).json({
-        status: stale ? 'error' : row.status,
-        stage: row.stage || null,
-        error: stale ? errText(lang, 'check_timeout') : (row.error || null),
-        report: row.status === 'done' ? publicReport(row.report) : null,
-        url: row.url || null, vin: row.vin || null, lang: row.lang || null,
-        created_at: row.created_at, updated_at: row.updated_at, finished_at: row.finished_at || null,
+        status: stale ? 'error' : row.status, slug,
+        summary: done ? { ...reportSummary(row.report), created_at: row.finished_at || row.created_at } : null,
       });
     }
-    if (pid) {
-      if (!PID_RE.test(pid)) return res.status(404).json({ error: 'not found' });
-      const r = await fetch(root + '/rest/v1/reports?public_id=eq.' + encodeURIComponent(pid) + '&kind=eq.check&select=data,created_at&limit=1', { headers: hdr });
-      if (!r.ok) return res.status(500).json({ error: errText(lang, 'internal') });
-      const rows = await r.json();
-      const row = Array.isArray(rows) && rows[0] ? rows[0] : null;
-      if (!row || !row.data || !row.data.vehicle) return res.status(404).json({ error: 'not found' });
-      return res.status(200).json({ status: 'done', stage: 'done', report: publicReport(row.data), created_at: row.created_at, finished_at: row.created_at });
-    }
-    return res.status(400).json({ error: 'token or pid required' });
+    return res.status(200).json({
+      status: stale ? 'error' : row.status,
+      stage: row.stage || null,
+      slug,
+      error: stale ? errText(lang, 'check_timeout') : (row.error || null),
+      report: done ? publicReport(row.report) : null,
+      url: row.url || null, vin: row.vin || null, lang: row.lang || null,
+      created_at: row.created_at, updated_at: row.updated_at, finished_at: row.finished_at || null,
+    });
   } catch (e) {
     return res.status(500).json({ error: errText(lang, 'internal', e.message) });
   }

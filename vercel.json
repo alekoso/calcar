@@ -20,6 +20,10 @@
       "destination": "/check.html"
     },
     {
+      "source": "/check/r/:slug/:token",
+      "destination": "/result-check.html?r=:token&slug=:slug"
+    },
+    {
       "source": "/check/r/:token",
       "destination": "/result-check.html?r=:token"
     },
