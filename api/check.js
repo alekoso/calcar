@@ -474,7 +474,69 @@ function extractListing(html, url) {
     usa_photos: usaPhotos.slice(0, 12),
     /* посилання на зовнішній архів: лишається як довідка для користувача */
     auction_url: (/https?:\/\/bidfax\.info\/[^\s"'<>\\]+/i.exec(html) || [null])[0],
+    /* Vehicle Memory: ідентичність оголошення, локація, продавець, статус.
+       Raw-доказ важливіший за AI-інтерпретацію: повний текст сторінки теж
+       лишається (обрізаний лише технічним лімітом) */
+    ...extractListingMeta(html, url, flat, text),
   };
+}
+
+/* ---------- 3а. Метадані оголошення для Vehicle Memory ----------
+   Усе, що площадка вже віддає структуровано (JSON-LD, хлібні крихти,
+   вбудований стан), без AI. Чого нема, те null: не вигадуємо */
+export function extractListingMeta(html, url, flat, text) {
+  const out = { source_listing_id: null, location: null, seller_meta: null, listing_status: 'active', raw_page_text: null };
+  /* id оголошення: RIA auto_<make>_<model>_<id>.html, інакше останнє довге число шляху */
+  const idM = /_(\d{5,})\.html/.exec(url) || /\/(\d{6,})(?:[\/?#]|$)/.exec(url);
+  out.source_listing_id = idM ? idM[1] : null;
+  try {
+    const blobs = pageJsonBlobs(html);
+    /* локація з хлібних крихт схеми: "... > Київська область > Київ > Tesla > ..." */
+    for (const b of blobs) {
+      if (b && b['@type'] === 'BreadcrumbList' && Array.isArray(b.itemListElement)) {
+        const names = b.itemListElement.map(x => x && x.item && x.item.name).filter(Boolean);
+        /* географічні крихти: адреса крихти веде на /state/ або /city/ і НЕ є сторінкою марки (/car/) */
+        const geo = b.itemListElement
+          .filter(x => x && x.item && x.item.name && /\/(city|state)\//.test(x.item['@id'] || '') && !/\/car\//.test(x.item['@id'] || ''))
+          .map(x => x.item.name);
+        if (geo.length) out.location = geo.slice(-2).join(', ').slice(0, 120);
+      }
+    }
+    if (!out.location) {
+      const loc = pick(flat || {}, ['addressLocality', 'cityName', 'city', 'locationName', 'regionName']);
+      if (loc && typeof loc === 'string') out.location = loc.slice(0, 120);
+    }
+  } catch (e) { /* локація опційна */ }
+  /* продавець: id користувача площадки і тип (дилер/приватний), якщо площадка їх показує */
+  const userM = /"userId":\s*(\d+)/.exec(html);
+  const dealer = /Автосалон|Дилер|Компанія-продавець|Dealer/i.test(text.slice(0, 40000)) && !/Приватний продавець/i.test(text.slice(0, 40000));
+  if (userM || dealer) out.seller_meta = { platform_user_id: userM ? userM[1] : null, seller_type: userM || dealer ? (dealer ? 'dealer' : 'unknown') : null };
+  /* статус: вбудований стан площадки або явні маркери тексту */
+  if (/"isActive":\s*false/.test(html) || /(Оголошення (зняте|знято) з продажу|Автомобіль продано|Объявление снято|Продан[оа]\s*$)/im.test(text.slice(0, 5000))) out.listing_status = 'inactive';
+  /* повний текст сторінки: історія має пережити зміну парсера */
+  out.raw_page_text = String(text || '').slice(0, 200000) || null;
+  return out;
+}
+
+/* ---------- 3б0. Відбиток стану оголошення ----------
+   Детермінований: ціна, пробіг, повний текст продавця, впорядковані
+   ідентичності кадрів, структуровані поля площадки, статус. Ринковий
+   контекст (середня ціна) НЕ входить: він змінюється сам по собі і не
+   є станом оголошення */
+export const LISTING_FINGERPRINT_VERSION = 'lf-v1';
+export function listingFingerprint(l) {
+  const norm = v => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim() : v == null ? null : v);
+  const state = {
+    v: LISTING_FINGERPRINT_VERSION,
+    price: l.price ?? null, currency: l.currency || null, odometer_km: l.odometer_km ?? null,
+    seller_text: norm(l.seller_text) || null,
+    photos: (l.photos || []).map(photoIdentity),
+    equipment: (l.listing_equipment || []).map(norm),
+    history_facts: l.history_facts || null,
+    year: l.year ?? null, title: norm(l.title) || null,
+    status: l.listing_status || 'active',
+  };
+  return LISTING_FINGERPRINT_VERSION + ':' + crypto.createHash('sha1').update(JSON.stringify(state)).digest('hex').slice(0, 24);
 }
 
 /* ---------- 3б. Архів аукціону США: фото "до ремонту" ---------- */
@@ -532,13 +594,15 @@ async function fetchAuction(url) {
    і структуровані поля площадки: через роки можна показати, що саме
    продавець писав і показував, і побудувати diff між оголошеннями */
 export function snapshotRow(l, url, jobToken) {
+  const photos = (l.photos || []).slice(0, 120);
+  const now = new Date().toISOString();
   return {
     vin: l.vin, plate: l.plate,
     source_url: url, source_domain: l.domain, country: l.country,
     price_amount: l.price, price_currency: l.currency,
     odometer_km: l.odometer_km, year: l.year, make: l.make, model: l.model,
     listing: { title: l.title, text: l.text },
-    photos: (l.photos || []).slice(0, 120),
+    photos,
     /* аддитивні колонки (supabase-vehicle-intelligence.sql) */
     seller_text: l.seller_text || null,
     listing_fields: {
@@ -551,31 +615,109 @@ export function snapshotRow(l, url, jobToken) {
       photos_total: (l.photos || []).length,
     },
     job_token: jobToken || null,
+    /* Vehicle Memory V0 */
+    source_listing_id: l.source_listing_id || null,
+    listing_fingerprint: listingFingerprint(l),
+    first_seen_at: now, last_seen_at: now, seen_count: 1,
+    title: l.title || null,
+    location: l.location || null,
+    seller_meta: l.seller_meta || null,
+    listing_status: l.listing_status || 'active',
+    /* впорядкований список кадрів: оригінальний URL + стабільна ідентичність.
+       Бінарники поки не копіюються: оригінал може зникнути разом із
+       оголошенням, ідентичність і порядок лишаються */
+    photo_items: photos.map((u, i) => ({ i, url: u, id: photoIdentity(u) })),
+    photo_set_fingerprint: photoSetFingerprint(photos, 'ps-v1'),
+    seller_claims: { history_facts: l.history_facts || null, listing_equipment: l.listing_equipment || [], ai_discrepancies: null },
+    raw_page_text: l.raw_page_text || null,
   };
 }
-async function saveSnapshot(l, url, jobToken) {
+/* колонки V0, яких може ще не бути до міграції: відкидаються при 400 */
+const SNAPSHOT_V0_COLS = ['source_listing_id', 'listing_fingerprint', 'first_seen_at', 'last_seen_at', 'seen_count', 'title', 'location', 'seller_meta', 'listing_status', 'photo_items', 'photo_set_fingerprint', 'seller_claims', 'raw_page_text'];
+const SNAPSHOT_V1_COLS = ['seller_text', 'listing_fields', 'job_token'];
+/* Дедуплікація: той самий стан оголошення (відбиток) не створює новий
+   рядок, а лише продовжує last_seen_at; змінений стан це новий immutable
+   знімок. Старий рядок ніколи не змінюється так, щоб втратити минуле */
+export async function saveSnapshot(l, url, jobToken) {
   const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!base || !key) return { status: 'env_missing', id: null };
-  const post = body => fetch(base.replace(/\/$/, '') + '/rest/v1/vehicle_snapshots', {
-    method: 'POST',
-    headers: {
-      apikey: key, authorization: 'Bearer ' + key,
-      'content-type': 'application/json', prefer: 'return=representation',
-    },
-    body: JSON.stringify(body),
-  });
+  const root = base.replace(/\/$/, '') + '/rest/v1/vehicle_snapshots';
+  const hdr = { apikey: key, authorization: 'Bearer ' + key, 'content-type': 'application/json' };
+  const post = body => fetch(root, { method: 'POST', headers: { ...hdr, prefer: 'return=representation' }, body: JSON.stringify(body) });
   try {
     const full = snapshotRow(l, url, jobToken);
+    /* останній знімок цього авто (за VIN, без VIN за адресою оголошення) */
+    let last = null;
+    try {
+      const q = l.vin ? 'vin=eq.' + encodeURIComponent(l.vin) : 'source_url=eq.' + encodeURIComponent(url);
+      const r0 = await fetch(root + '?' + q + '&order=captured_at.desc&limit=1&select=id,captured_at,listing_fingerprint,seen_count,source_url', { headers: hdr });
+      if (r0.ok) { const rows = await r0.json(); last = Array.isArray(rows) && rows[0] ? rows[0] : null; }
+    } catch (e) { last = null; }
+    if (last && last.listing_fingerprint && last.listing_fingerprint === full.listing_fingerprint) {
+      const r1 = await fetch(root + '?id=eq.' + encodeURIComponent(last.id), {
+        method: 'PATCH', headers: { ...hdr, prefer: 'return=minimal' },
+        body: JSON.stringify({ last_seen_at: full.last_seen_at, seen_count: (last.seen_count || 1) + 1 }),
+      });
+      if (r1.ok) return { status: 'dedup', id: last.id, seen_count: (last.seen_count || 1) + 1 };
+    }
     let r = await post(full);
     if (!r.ok && r.status === 400) {
-      /* міграція ще не застосована: пишемо у старій формі, нічого не втрачаючи з обовʼязкового */
-      const { seller_text, listing_fields, job_token, ...legacy } = full;
-      r = await post(legacy);
+      /* міграція V0 ще не застосована: без нових колонок */
+      const v1 = { ...full }; for (const c of SNAPSHOT_V0_COLS) delete v1[c];
+      r = await post(v1);
+      if (!r.ok && r.status === 400) { const legacy = { ...v1 }; for (const c of SNAPSHOT_V1_COLS) delete legacy[c]; r = await post(legacy); }
     }
     if (!r.ok) return { status: 'error_' + r.status, id: null };
     const rows = await r.json().catch(() => []);
-    return { status: 'saved', id: Array.isArray(rows) && rows[0] ? rows[0].id : null };
+    return { status: last ? 'changed' : 'new', id: Array.isArray(rows) && rows[0] ? rows[0].id : null, previous_id: last ? last.id : null };
   } catch (e) { return { status: 'error', id: null }; }
+}
+/* після AI: нормалізовані заяви продавця з розбіжностей доповнюють знімок
+   (додавання поля, не перезапис raw-доказу) */
+async function patchSnapshotClaims(id, parsed) {
+  const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!base || !key || !id || !parsed) return false;
+  try {
+    const disc = (Array.isArray(parsed.discrepancies) ? parsed.discrepancies : []).map(d => ({ title: d && d.title || null, severity: d && d.severity || null })).filter(d => d.title).slice(0, 20);
+    const r0 = await fetch(base.replace(/\/$/, '') + '/rest/v1/vehicle_snapshots?id=eq.' + encodeURIComponent(id) + '&select=seller_claims', { headers: { apikey: key, authorization: 'Bearer ' + key } });
+    const row = r0.ok ? (await r0.json())[0] : null;
+    const claims = { ...((row && row.seller_claims) || {}), ai_discrepancies: disc, ai_seller_claims_us_import: parsed?.score_facts?.signals?.seller_claims_us_import === true };
+    const r = await fetch(base.replace(/\/$/, '') + '/rest/v1/vehicle_snapshots?id=eq.' + encodeURIComponent(id), {
+      method: 'PATCH', headers: { apikey: key, authorization: 'Bearer ' + key, 'content-type': 'application/json', prefer: 'return=minimal' },
+      body: JSON.stringify({ seller_claims: claims }),
+    });
+    return r.ok;
+  } catch (e) { return false; }
+}
+
+/* ---------- 4а. Канонічна ідентичність авто (vehicles) ----------
+   Один рядок на VIN: декод NHTSA (з версією декодера) і те, що площадка
+   каже про марку/модель/рік. Наступний Check того самого VIN не ходить
+   у NHTSA повторно, поки версія декодера та сама */
+export const NHTSA_DECODER_VERSION = 'vpic-v1';
+async function readVehicle(vin) {
+  const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!base || !key || !vin) return null;
+  try {
+    const r = await fetch(base.replace(/\/$/, '') + '/rest/v1/vehicles?vin=eq.' + encodeURIComponent(vin) + '&select=*&limit=1', { headers: { apikey: key, authorization: 'Bearer ' + key } });
+    if (!r.ok) return null;
+    const rows = await r.json();
+    return Array.isArray(rows) && rows[0] ? rows[0] : null;
+  } catch (e) { return null; }
+}
+async function upsertVehicle(vin, patch) {
+  const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!base || !key || !vin) return false;
+  const row = { vin };
+  for (const [k, v] of Object.entries(patch || {})) if (v !== null && v !== undefined) row[k] = v;
+  try {
+    const r = await fetch(base.replace(/\/$/, '') + '/rest/v1/vehicles?on_conflict=vin', {
+      method: 'POST',
+      headers: { apikey: key, authorization: 'Bearer ' + key, 'content-type': 'application/json', prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify(row),
+    });
+    return r.ok;
+  } catch (e) { return false; }
 }
 
 /* ---------- 4б. Історія рову даних для Score v2 ----------
@@ -2253,7 +2395,14 @@ async function runCheck(req, res, job) {
 
     /* --- NHTSA decode: той самий безкоштовний шлях, що в Import --- */
     let nhtsa = null;
-    if (listing.vin) {
+    /* карта переиспользування дорогих і зовнішніх етапів: у _meta.reuse */
+    const reuse = { identity: null, listing_snapshot: null, auction_evidence: null, historical_visual: null, main_analysis: 'executed', equipment_verifier: null };
+    const vehicleRow = listing.vin ? await readVehicle(listing.vin) : null;
+    if (vehicleRow && vehicleRow.nhtsa && typeof vehicleRow.nhtsa === 'object' && vehicleRow.decoder_version === NHTSA_DECODER_VERSION) {
+      nhtsa = vehicleRow.nhtsa;
+      reuse.identity = 'vehicles_cache';
+    } else if (listing.vin) {
+      reuse.identity = 'nhtsa_decode';
       try {
         const r = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/${encodeURIComponent(listing.vin)}?format=json`);
         const row = (await r.json())?.Results?.[0];
@@ -2268,6 +2417,19 @@ async function runCheck(req, res, job) {
 
     /* --- знімок у рів: ДО аналізу, щоб історія копилась навіть коли AI впав --- */
     const snapshot = await saveSnapshot(listing, url, job && job.token);
+    reuse.listing_snapshot = snapshot.status;
+    if (listing.vin) {
+      const nowIso = new Date().toISOString();
+      upsertVehicle(listing.vin, {
+        make: listing.make || (nhtsa && nhtsa.Make) || null, model: listing.model || (nhtsa && nhtsa.Model) || null,
+        year: listing.year || null, model_year: nhtsa && nhtsa.ModelYear ? parseInt(nhtsa.ModelYear, 10) || null : null,
+        trim: (nhtsa && (nhtsa.Trim || nhtsa.Series)) || null, fuel: (nhtsa && nhtsa.FuelTypePrimary) || null,
+        nhtsa: nhtsa || null, decoder_version: nhtsa ? NHTSA_DECODER_VERSION : null,
+        first_seen_at: vehicleRow ? undefined : nowIso, last_seen_at: nowIso,
+        snapshots_count: ((vehicleRow && vehicleRow.snapshots_count) || 0) + (snapshot.status === 'dedup' ? 0 : 1),
+        last_listing_url: url, last_source_listing_id: listing.source_listing_id || null,
+      }).catch(() => {});
+    }
     progress('identity');
 
     /* --- фото "до ремонту": спершу кадри, збережені самою RIA --- */
@@ -3105,9 +3267,18 @@ async function runCheck(req, res, job) {
         ? { house: auctionSearch.house || null, date: auctionSearch.sale_date || null }
         : null,
       snapshot: snapshot.status,
+      snapshot_id: snapshot.id || null,
       equipment_verifier: eqVerifier,
+      /* що переиспользовано з Vehicle Memory, а що виконано заново */
+      reuse: {
+        ...reuse,
+        auction_evidence: auctionSearch ? (auctionSearch.cache === 'hit' ? 'cache' : auctionSearch.status === 'found' ? 'discovery' : auctionSearch.status || null) : (auction && auction.from_ria ? 'listing_embedded' : 'none'),
+        historical_visual: !auctionPhotos.length ? 'none' : hvCache.hit ? 'cache' : (hvCache.consensus ? 'consensus_' + (hvCache.consensus.reads_count || 0) + '_reads' : 'main_call'),
+        equipment_verifier: eqVerifier ? eqVerifier.status : null,
+      },
       analyzed_at: new Date().toISOString(),
     };
+    if (snapshot.id) patchSnapshotClaims(snapshot.id, parsed).catch(() => {});
     /* шар знань: спостереження цього Check. Ніколи не ламає відповідь.
        Результат кроку йде в _meta.knowledge як діагностика */
     try {

@@ -22,3 +22,42 @@ alter table historical_visual_cache add column if not exists canonicalized_at ti
 alter table historical_visual_cache add column if not exists extractor_version text;
 alter table historical_visual_cache add column if not exists consensus jsonb;
 comment on column historical_visual_cache.consensus is 'Матеріальні сигнали кожного читання і перелік полів, де читання розійшлися';
+
+-- 3. Vehicle Memory V0: immutable-знімки з дедуплікацією за відбитком стану
+--    оголошення і канонічна ідентичність авто.
+alter table vehicle_snapshots add column if not exists source_listing_id text;
+alter table vehicle_snapshots add column if not exists listing_fingerprint text;
+alter table vehicle_snapshots add column if not exists first_seen_at timestamptz;
+alter table vehicle_snapshots add column if not exists last_seen_at timestamptz;
+alter table vehicle_snapshots add column if not exists seen_count integer;
+alter table vehicle_snapshots add column if not exists title text;
+alter table vehicle_snapshots add column if not exists location text;
+alter table vehicle_snapshots add column if not exists seller_meta jsonb;
+alter table vehicle_snapshots add column if not exists listing_status text;
+alter table vehicle_snapshots add column if not exists photo_items jsonb;
+alter table vehicle_snapshots add column if not exists photo_set_fingerprint text;
+alter table vehicle_snapshots add column if not exists seller_claims jsonb;
+alter table vehicle_snapshots add column if not exists raw_page_text text;
+create index if not exists vehicle_snapshots_vin_captured on vehicle_snapshots (vin, captured_at desc);
+comment on column vehicle_snapshots.listing_fingerprint is 'Детермінований відбиток стану оголошення (ціна, пробіг, текст продавця, кадри, поля площадки, статус). Той самий відбиток не створює новий рядок, лише продовжує last_seen_at';
+comment on column vehicle_snapshots.photo_items is 'Впорядкований список кадрів: оригінальний URL і стабільна ідентичність (без CDN-хоста і query). Бінарники не копіюються: оригінал може зникнути';
+comment on column vehicle_snapshots.raw_page_text is 'Повний текст сторінки на момент знімка (до 200 000 символів): raw-доказ важливіший за AI-інтерпретацію';
+
+create table if not exists vehicles (
+  vin text primary key,
+  make text,
+  model text,
+  year smallint,
+  model_year smallint,
+  trim text,
+  fuel text,
+  nhtsa jsonb,
+  decoder_version text,
+  first_seen_at timestamptz not null default now(),
+  last_seen_at timestamptz not null default now(),
+  snapshots_count integer not null default 0,
+  last_listing_url text,
+  last_source_listing_id text
+);
+alter table vehicles enable row level security;
+comment on table vehicles is 'Канонічна ідентичність авто за VIN: декод NHTSA із версією декодера; наступний Check не декодує повторно';
