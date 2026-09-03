@@ -824,7 +824,7 @@ const REPORTS = [
   if (!/base64/.test(api)) errs.push('кадри не передаються Vision байтами');
   if (!/photoOriginByData/.test(api)) errs.push('нема мапи data-URI -> вихідний URL (у _meta полізе base64)');
   /* кеш historical_visual за відбитком набору кадрів і версією екстрактора */
-  const fns = new Function(grab(api, 'photoSetFingerprint') + '\nconst HISTORICAL_VISUAL_VERSION = "hv-test";\nreturn { photoSetFingerprint };')();
+  const fns = new Function(grab(api, 'photoIdentity') + '\n' + grab(api, 'photoSetFingerprint') + '\nconst HISTORICAL_VISUAL_VERSION = "hv-test";\nreturn { photoSetFingerprint };')();
   const a = fns.photoSetFingerprint(['https://x/2.jpg', 'https://x/1.jpg'], 'v1');
   const b = fns.photoSetFingerprint(['https://x/1.jpg', 'https://x/2.jpg'], 'v1');
   if (a !== b) errs.push('відбиток набору кадрів залежить від порядку URL');
