@@ -101,7 +101,7 @@ db._patches = [];
     if (l.vin) { const up = await VM.upsertVehicle(l.vin, { make: l.make || null, model: l.model || null, year: l.year || null, first_seen_at: vehicleRow ? undefined : new Date().toISOString(), last_seen_at: new Date().toISOString() }); if (up) vehicleRow = up; }
     const obs = await VM.observeListing(l, url, { jobToken: tok, vehicleId: vehicleRow ? vehicleRow.id : null, parserVersion: 'parser-test' });
     let photos = null;
-    if (obs.snapshot.id && obs.snapshot.status !== 'dedup' && (l.photos || []).length) {
+    if (obs.snapshot.id && (l.photos || []).length && (obs.snapshot.status !== 'dedup' || !(await VM.snapshotHasPhotos(obs.snapshot.id, 'listing')))) {
       photos = await VM.preservePhotos({ snapshotId: obs.snapshot.id, vehicleId: obs.vehicle_id, listingId: obs.listing_id, photos: l.photos.map((u, i) => ({ url: u, position: i, kind: 'listing' })) });
     }
     return { obs, photos };
@@ -190,6 +190,21 @@ db._patches = [];
   if (l4.length !== 3 || l4[0].storage_status !== 'stored' || l4[1].storage_status !== 'unavailable' || l4[1].reason !== 'http_404' || l4[2].storage_status !== 'unavailable' || l4[2].reason !== 'protected_403') errs.push('зниклий/захищений кадр: ' + JSON.stringify(l4.map(x => [x.storage_status, x.reason])));
   if (l4[1].source_url_at_observation !== P('GONE') || !l4[1].photo_identity || l4[1].position !== 1) errs.push('metadata зниклого кадру втрачені');
   if (c10.photos.unavailable !== 2 || c10.photos.existing !== 1 || db.photo_assets.length !== before.a + 1) errs.push('stats зниклого кадру: ' + JSON.stringify(c10.photos) + ' assets ' + db.photo_assets.length);
+
+  /* ===== SNAPSHOT БЕЗ КАДРІВ (створений до Photo Assets): досохранити один раз ===== */
+  const L5 = { ...L1, vin: 'WBAJB9C50JB049616', source_listing_id: '40308279', price: 30500, seller_text: 'BMW до V1', photos: [P('M1'), P('M2')] };
+  const U5 = 'https://auto.ria.com/uk/auto_bmw_5-series_40308279.html';
+  const c11 = await check(L5, U5, 'tok11');
+  /* імітуємо старий знімок: прибираємо його звʼязки з кадрами і бінарники */
+  const oldLinks = db.snapshot_photos.filter(x => x.snapshot_id === c11.obs.snapshot.id);
+  for (const x of oldLinks) db.snapshot_photos.splice(db.snapshot_photos.indexOf(x), 1);
+  const assetsBefore = db.photo_assets.length, dlBefore = cdn.downloads;
+  const c12 = await check(L5, U5, 'tok12');
+  if (c12.obs.snapshot.status !== 'dedup' || !c12.photos || c12.photos.existing !== 2 || db.snapshot_photos.filter(x => x.snapshot_id === c11.obs.snapshot.id).length !== 2) errs.push('знімок без кадрів при dedup не досохранений: ' + JSON.stringify(c12.photos));
+  if (db.photo_assets.length !== assetsBefore) errs.push('досохранення продублювало бінарники');
+  const c13 = await check(L5, U5, 'tok13');
+  if (c13.photos !== null || cdn.downloads !== dlBefore + 2) errs.push('досохранення повторюється щоразу');
+  if (!/const needListingPhotos = !!\(snapshot\.id && listing\.photos\.length && \(snapshot\.status !== 'dedup' \|\| !\(await snapshotHasPhotos\(snapshot\.id, 'listing'\)\)\)\);/.test(src)) errs.push('check.js не досохраняє кадри dedup-знімка без звʼязків');
 
   /* ===== чисті функції і сторожі ===== */
   if (VM.listingKey({ domain: 'auto.ria.com', source_listing_id: '1' }, 'https://auto.ria.com/x_1.html').source_listing_id !== '1') errs.push('listingKey з id площадки');

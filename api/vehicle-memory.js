@@ -228,6 +228,14 @@ export async function observeListing(l, url, { jobToken = null, vehicleId = null
   } catch (e) { out.snapshot = { status: 'error', id: null, error: e.message }; return out; }
 }
 
+/* чи має знімок уже збережені кадри цього виду: знімки, створені до появи
+   Photo Assets, досохраняються один раз при наступному спостереженні */
+export async function snapshotHasPhotos(snapshotId, kind = 'listing') {
+  if (!snapshotId) return true;
+  const r = await rest('snapshot_photos?snapshot_id=eq.' + encodeURIComponent(snapshotId) + '&kind=eq.' + encodeURIComponent(kind) + '&select=id&limit=1');
+  return !!(r.ok && Array.isArray(r.rows) && r.rows.length);
+}
+
 /* після AI: нормалізовані заяви продавця з розбіжностей ДОПОВНЮЮТЬ знімок
    (нове поле, raw-доказ не чіпається) */
 export async function patchSnapshotClaims(id, parsed) {

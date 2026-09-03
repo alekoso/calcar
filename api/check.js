@@ -12,7 +12,7 @@ import {
 } from './visual-signals.js';
 import {
   photoIdentity, photoSetFingerprint, listingFingerprint, snapshotRow, listingKey,
-  readVehicle, upsertVehicle, observeListing, patchSnapshotClaims, preservePhotos,
+  readVehicle, upsertVehicle, observeListing, patchSnapshotClaims, preservePhotos, snapshotHasPhotos,
   NHTSA_DECODER_VERSION, LISTING_FINGERPRINT_VERSION,
 } from './vehicle-memory.js';
 /* спільні ідентичності і версії: тести і сусідні модулі беруть їх звідси */
@@ -2288,9 +2288,11 @@ async function runCheck(req, res, job) {
       upsertVehicle(listing.vin, { snapshots_count: ((vehicleRow && vehicleRow.snapshots_count) || 0) + 1, updated_at: nowIso }).catch(() => {});
     }
     console.log('[vehicle-memory]', JSON.stringify({ vin: listing.vin || null, vehicle_id: observation.vehicle_id, listing_id: observation.listing_id, listing_created: observation.listing_created, attached: observation.attached, snapshot: snapshot.status, snapshot_id: snapshot.id }));
-    /* кадри оголошення: паралельно з рештою пайплайна; лише для нового стану
-       оголошення (dedup означає, що ці самі кадри вже збережені) */
-    const photoPreservePromise = (snapshot.id && snapshot.status !== 'dedup' && listing.photos.length)
+    /* кадри оголошення: паралельно з рештою пайплайна; для нового стану
+       оголошення завжди, для dedup лише коли знімок ще без кадрів (створений
+       до появи Photo Assets): досохраняємо один раз */
+    const needListingPhotos = !!(snapshot.id && listing.photos.length && (snapshot.status !== 'dedup' || !(await snapshotHasPhotos(snapshot.id, 'listing'))));
+    const photoPreservePromise = needListingPhotos
       ? preservePhotos({ snapshotId: snapshot.id, vehicleId: observation.vehicle_id, listingId: observation.listing_id,
           photos: listing.photos.slice(0, 120).map((u, i) => ({ url: u, position: i, kind: 'listing' })), budgetMs: 100000 }).catch(e => ({ error: e.message }))
       : Promise.resolve(null);
@@ -2561,7 +2563,7 @@ async function runCheck(req, res, job) {
     if (auction) auction.photos_sent = auctionPhotos.length;
     /* історичні кадри як evidence-assets: та сама дедуплікація за hash, але
        окремий kind і подія, щоб listing photos і історичні докази не змішувались */
-    const evidencePreservePromise = (snapshot.id && snapshot.status !== 'dedup' && auctionPhotos.length)
+    const evidencePreservePromise = (snapshot.id && auctionPhotos.length && (snapshot.status !== 'dedup' || !(await snapshotHasPhotos(snapshot.id, 'historical_evidence'))))
       ? preservePhotos({ snapshotId: snapshot.id, vehicleId: observation.vehicle_id, listingId: observation.listing_id,
           photos: auctionPhotos.map((u, i) => {
             const origin = photoOriginByData.get(u) || u;
