@@ -204,8 +204,21 @@ function auctionSearchMetaForCache(as) {
    мусить інвалідовувати кеш historical_visual */
 export const HISTORICAL_VISUAL_VERSION = 'hv-2026-09-01-v2';
 /* стабільний відбиток набору кадрів: djb2 по відсортованих URL */
+/* ідентичність кадру: CDN площадки ротує піддомени (cdn.riastatic.com ->
+   cdn4.riastatic.com) і може додавати query, а кадр той самий. Відбиток
+   набору рахується з нормалізованої ідентичності, інакше та сама подія
+   з тими самими кадрами промахується повз кеш і платить за Vision знову */
+export function photoIdentity(u) {
+  if (typeof u !== 'string') return '';
+  if (!/^https?:\/\//i.test(u)) return u;
+  try {
+    const x = new URL(u);
+    const host = x.hostname.toLowerCase().replace(/^(?:www\.)?/, '').replace(/^cdn\d+\./, 'cdn.');
+    return host + x.pathname.toLowerCase();
+  } catch (e) { return u; }
+}
 export function photoSetFingerprint(urls, version = HISTORICAL_VISUAL_VERSION) {
-  const norm = [...new Set((urls || []).filter(u => typeof u === 'string'))].sort().join('|') + '::' + version;
+  const norm = [...new Set((urls || []).filter(u => typeof u === 'string').map(photoIdentity).filter(Boolean))].sort().join('|') + '::' + version;
   let h = 5381;
   for (let i = 0; i < norm.length; i++) h = ((h * 33) ^ norm.charCodeAt(i)) >>> 0;
   return version + ':' + h.toString(36);

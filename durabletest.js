@@ -111,6 +111,14 @@ for (const x of fs.readdirSync('api').filter(f => f.endsWith('.js'))) {
   if (!/auth\/v1\/user/.test(slsrc) || !/user_id=eq\./.test(slsrc) || !/makeJobToken\(\)/.test(slsrc)) errs.push('share-link не перевіряє власника або не створює токен');
   if (!/return res\.status\(401\)/.test(slsrc)) errs.push('share-link без 401');
 
+  /* 5б. ідентичність кадру: ротація CDN-піддомену і query не міняють відбиток */
+  const fpA = C.photoSetFingerprint(['https://cdn.riastatic.com/photos/auto/usa/1909/19098/1909872.jpg', 'https://cdn.riastatic.com/photos/auto/usa/1909/19098/1909864.jpg']);
+  const fpB = C.photoSetFingerprint(['https://cdn4.riastatic.com/photos/auto/usa/1909/19098/1909864.jpg?x=1', 'https://CDN2.riastatic.com/photos/auto/usa/1909/19098/1909872.jpg']);
+  if (fpA !== fpB) errs.push('відбиток залежить від CDN-піддомену/query');
+  if (fpA === C.photoSetFingerprint(['https://cdn.riastatic.com/photos/auto/usa/1909/19098/1909872.jpg'])) errs.push('відбиток не бачить різницю наборів');
+  if (C.photoIdentity('https://cdn7.riastatic.com/a/B.jpg?q') !== 'cdn.riastatic.com/a/b.jpg') errs.push('photoIdentity: ' + C.photoIdentity('https://cdn7.riastatic.com/a/B.jpg?q'));
+  if (C.photoIdentity('https://bidfax.info/x.jpg') === C.photoIdentity('https://poctra.com/x.jpg')) errs.push('photoIdentity склеює різні хости');
+
   /* 6б. slug: лише презентація, make-model-year, транслітерація, без VIN */
   if (S.slugify('Tesla Model S 2015') !== 'tesla-model-s-2015') errs.push('slugify latin: ' + S.slugify('Tesla Model S 2015'));
   if (S.slugify('Шкода Октавія 2016') !== 'shkoda-oktaviia-2016') errs.push('slugify translit: ' + S.slugify('Шкода Октавія 2016'));
