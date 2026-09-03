@@ -618,7 +618,9 @@ async function writeHvCache(vin, fingerprint, source, urls, hv) {
   try {
     const r = await fetch(base.replace(/\/$/, '') + '/rest/v1/historical_visual_cache?on_conflict=vin,fingerprint,hv_version', {
       method: 'POST',
-      headers: { apikey: key, authorization: 'Bearer ' + key, 'content-type': 'application/json', prefer: 'resolution=merge-duplicates,return=minimal' },
+      /* перший записаний результат канонічний: два ОДНОЧАСНІ холодні аналізи
+         одного VIN не перезаписують один одного, наступні беруть перший */
+      headers: { apikey: key, authorization: 'Bearer ' + key, 'content-type': 'application/json', prefer: 'resolution=ignore-duplicates,return=minimal' },
       body: JSON.stringify({ vin, fingerprint, hv_version: HISTORICAL_VISUAL_VERSION, source: source || null, photo_urls: (urls || []).slice(0, 24), historical_visual: hv }),
     });
     return r.ok;

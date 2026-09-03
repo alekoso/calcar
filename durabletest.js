@@ -55,6 +55,7 @@ for (const x of fs.readdirSync('api').filter(f => f.endsWith('.js'))) {
   if (!/const hvClean = cachedHv\s*\?\s*sanitizeHistoricalVisual\(cachedHv, 1\)/.test(src)) errs.push('кешований візуал не підміняє відповідь моделі примусово');
   if (!/writeHvCache\(listing\.vin, hvCache\.fingerprint, hvCache\.source/.test(src)) errs.push('свіжий візуал не пишеться в кеш');
   if (!/historical_visual_cache: hvCache/.test(src)) errs.push('_meta без діагностики кешу');
+  if (!/historical_visual_cache\?on_conflict=vin,fingerprint,hv_version[\s\S]{0,400}resolution=ignore-duplicates/.test(src)) errs.push('кеш візуалу не first-writer-wins');
   /* той самий набір у будь-якому порядку і з дублями дає той самий ключ; інша версія інший */
   const a = C.photoSetFingerprint(['https://x/1.jpg', 'https://x/2.jpg']);
   const b = C.photoSetFingerprint(['https://x/2.jpg', 'https://x/1.jpg', 'https://x/1.jpg']);
