@@ -37,10 +37,6 @@
 
   /* ---------- стилі: один дизайн у всіх продуктах ---------- */
   var CSS = '' +
-  '.cc-fab{position:fixed;right:20px;bottom:20px;z-index:120;display:inline-flex;align-items:center;gap:9px;height:48px;padding:0 18px 0 15px;border:1px solid rgba(20,22,25,.08);border-radius:26px;background:var(--brand);color:var(--ink);font-family:inherit;font-size:14px;font-weight:800;cursor:pointer;box-shadow:0 8px 24px rgba(20,22,25,.16);transition:background .15s,transform .15s}' +
-  '.cc-fab:hover{background:var(--brand-hover)}.cc-fab:active{transform:scale(.97)}' +
-  '.cc-fab svg{width:19px;height:19px;flex:0 0 auto}' +
-  '.cc-fab.hide{display:none}' +
   '.cc-ov{position:fixed;inset:0;background:rgba(15,25,40,.28);z-index:125;opacity:0;pointer-events:none;transition:opacity .22s}' +
   '.cc-ov.open{opacity:1;pointer-events:auto}' +
   '.cc-panel{position:fixed;top:0;right:0;bottom:0;width:380px;max-width:100vw;z-index:130;display:flex;flex-direction:column;background:var(--bg);border-left:1px solid var(--line);box-shadow:-16px 0 40px rgba(20,22,25,.05);transform:translateX(102%);transition:transform .26s cubic-bezier(.22,.61,.36,1)}' +
@@ -116,7 +112,6 @@
   '.cc-mention-empty{padding:12px 14px;font-size:12.5px;color:var(--muted)}' +
   '.cc-note{display:flex;align-items:center;justify-content:center;gap:5px;margin-top:6px;font-size:11px;color:var(--faint)}' +
   '@media(max-width:760px){' +
-    '.cc-fab{right:14px;bottom:14px;height:46px;padding:0 16px 0 13px}' +
     '.cc-panel{top:auto;left:0;right:0;bottom:0;width:auto;height:88vh;border-left:0;border-top:1px solid var(--line);border-radius:18px 18px 0 0;transform:translateY(102%);box-shadow:0 -14px 44px rgba(20,22,25,.18)}' +
     '.cc-panel.open{transform:none}' +
     '.cc-head{height:52px}' +
@@ -474,10 +469,6 @@
     loadThread();
     var st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st);
 
-    var fab = document.createElement('button');
-    fab.type = 'button'; fab.className = 'cc-fab'; fab.id = 'ccFab';
-    fab.setAttribute('aria-label', t('Ask CalCar'));
-    fab.innerHTML = I.spark + '<span>' + esc(t('Ask CalCar')) + '</span>';
     var ov = document.createElement('div'); ov.className = 'cc-ov'; ov.id = 'ccOverlay';
     var panel = document.createElement('div');
     panel.className = 'cc-panel'; panel.id = 'ccPanel'; panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', 'CalCar Assistant');
@@ -503,15 +494,15 @@
       '<button class="cc-send" type="button" id="ccSend" aria-label="' + esc(t('Send')) + '">' + I.send + '</button>' +
       '</div></div>' +
       '<div class="cc-note">' + I.shield + esc(t('CalCar sees the page you are on')) + '</div></div>';
-    /* Плаваюча кнопка це ГЛОБАЛЬНИЙ вхід у помічника. Сторінка, у якої є
-       власні контекстні входи, може від неї відмовитись
-       (window.CALCAR_CHAT_FAB = false до завантаження цього файлу):
-       панель, розмова, памʼять і API лишаються без змін. */
+    /* Плаваючої кнопки помічника нема НІ НА ОДНІЙ сторінці: вона висіла
+       поверх змісту на кожному екрані. Сам помічник лишається повністю
+       живим (панель, розмова, памʼять, контекст, API): його відкривають
+       контекстні дії сторінок і window.CalCarChat.open()/toggle().
+       Окремий глобальний вхід спроектуємо окремою задачею. */
     document.body.append(ov, panel);
-    if (window.CALCAR_CHAT_FAB !== false) document.body.append(fab);
 
     els = {
-      fab: fab, ov: ov, panel: panel,
+      ov: ov, panel: panel,
       sub: panel.querySelector('#ccSub'), focus: panel.querySelector('#ccFocus'),
       canvas: panel.querySelector('#ccCanvas'), empty: panel.querySelector('#ccEmpty'), msgs: panel.querySelector('#ccMsgs'), sugg: panel.querySelector('#ccSugg'),
       text: panel.querySelector('#ccText'), overlay: panel.querySelector('#ccOverlayTa'), send: panel.querySelector('#ccSend'),
@@ -520,7 +511,6 @@
       mention: panel.querySelector('#ccMention'), mentionSearch: panel.querySelector('#ccMentionSearch'), mentionList: panel.querySelector('#ccMentionList')
     };
 
-    fab.addEventListener('click', function () { API.open(); });
     ov.addEventListener('click', API.close);
     panel.querySelector('#ccClose').addEventListener('click', API.close);
     panel.querySelector('#ccFocusX').addEventListener('click', function () { focus = null; focusDismissed = true; renderFocus(); renderSugg(); });
@@ -640,7 +630,6 @@
       if (typeof opts.quote === 'string') { quote = opts.quote.trim().slice(0, 500); renderQuote(); }
       renderFocus(); renderEmpty(); renderSugg();
       els.panel.classList.add('open');
-      els.fab.classList.add('hide');
       layout();
       loadMemory();
       if (window.innerWidth > 560) setTimeout(function () { els.text.focus(); }, 60);
@@ -648,7 +637,7 @@
     },
     close: function () {
       if (!booted) return;
-      els.panel.classList.remove('open'); els.ov.classList.remove('open'); els.fab.classList.remove('hide');
+      els.panel.classList.remove('open'); els.ov.classList.remove('open');
       document.body.classList.remove('chat-docked');
       document.documentElement.style.overflow = '';
     },

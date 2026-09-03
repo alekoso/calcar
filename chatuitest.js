@@ -18,6 +18,23 @@ for (const f of PAGES) {
   if (/class="cc-panel"|id="ccPanel"/.test(s)) errs.push(f + ': розмітка помічника продубльована в сторінці');
   if (!/CalCarContext\.register\(/.test(s)) errs.push(f + ': сторінка не розповідає, що на ній видно');
 }
+/* плаваючої кнопки помічника нема НІ на одній сторінці: вона висіла поверх
+   змісту. Помічник живий: панель, розмова, памʼять, контекст і API лишились,
+   відкривають його контекстні дії сторінок і CalCarChat.open()/toggle() */
+{
+  const chat = fs.readFileSync('chat.js', 'utf8');
+  if (/cc-fab|ccFab/.test(chat)) errs.push('chat.js: плаваюча кнопка помічника повернулась');
+  if (!/document\.body\.append\(ov, panel\);/.test(chat)) errs.push('chat.js: панель помічника не додається на сторінку');
+  for (const k of ['API.open', 'API.close', 'toggle: function', 'registerCapability', 'loadMemory', 'saveThread', "els.panel.classList.add('open')"]) {
+    if (!chat.includes(k)) errs.push('chat.js: разом із кнопкою зник ' + k);
+  }
+  for (const f of PAGES) {
+    const s = fs.readFileSync(f, 'utf8');
+    if (/class="cc-fab"|id="ccFab"/.test(s)) errs.push(f + ': власна плаваюча кнопка помічника');
+    if (!/<script src="\/chat\.js"><\/script>/.test(s)) errs.push(f + ': спільний помічник не підключений');
+  }
+}
+
 /* звіти: свої здатності підключені в спільний помічник, докування збережене */
 for (const f of ['result.html', 'result-check.html']) {
   const s = fs.readFileSync(f, 'utf8');
@@ -30,7 +47,6 @@ for (const f of ['result.html', 'result-check.html']) {
      контекстні. Import поки тримає верхню кнопку і перемикає нею помічника */
   if (f === 'result-check.html') {
     if (/id="chatTopBtn"/.test(s)) errs.push(f + ': верхня кнопка чату повернулась у звіт Check');
-    if (!/window\.CALCAR_CHAT_FAB = false/.test(s)) errs.push(f + ': плаваюча кнопка помічника не вимкнена на звіті');
     if (!/calcarOpenChat/.test(s)) errs.push(f + ': нема контекстного входу в помічника');
   } else if (!/CalCarChat\.toggle\(\)/.test(s)) errs.push(f + ': кнопка чату в шапці не перемикає спільний помічник');
 }
