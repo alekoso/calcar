@@ -37,6 +37,41 @@ for (const p of PAGES) {
 }
 if (new Set(blocks.values()).size > 1) errs.push('блок поведінки меню розійшовся між сторінками');
 
+/* стан входу: розмітка за замовчуванням анонімна, "Кабінет" лише за
+   підтвердженою сесією, і жодна сторінка не падає, якщо дізналась про сесію
+   РАНІШЕ, ніж виконався спільний блок (саме так кабінет лишався порожнім) */
+for (const p of PAGES) {
+  const s = S[p];
+  if (!/<div class="acc-wrap anon">/.test(s)) errs.push(p + ': шапка не починається з анонімного стану');
+  if (!/<span id="authLabel">Sign in<\/span>/.test(s)) errs.push(p + ': за замовчуванням не "Увійти"');
+  if (!/\.acc-wrap\.anon \.acc-menu\{display:none!important\}/.test(s)) errs.push(p + ': анонімному показується меню кабінету');
+  const calls = (s.match(/window\.calcarAuthState\(/g) || []).length;
+  if (calls < 2) errs.push(p + ': нема виклику calcarAuthState за станом сесії');
+  /* кожен виклик поза визначенням блоку мусить бути захищений перевіркою */
+  const unguarded = s.split('\n').filter(l => /window\.calcarAuthState\(/.test(l) && !/if \(window\.calcarAuthState\)/.test(l) && !/window\.calcarAuthState = /.test(l) && !/CALCAR_SIGNED_IN !== undefined/.test(l));
+  if (unguarded.length) errs.push(p + ': незахищений виклик calcarAuthState (сторінка впаде, якщо блок ще не виконався): ' + unguarded[0].trim().slice(0, 60));
+  if (!/window\.CALCAR_SIGNED_IN = /.test(s)) errs.push(p + ': стан сесії не запамʼятовується до виконання блоку');
+}
+/* сама функція: анонім бачить "Увійти" і не бачить меню, вхід дає "Кабінет" */
+{
+  const src = (blocks.get('check.html') || '').replace(/^<script>\n/, '').replace(/\n<\/script>$/, '');
+  const mkCls = () => { const set = new Set(['anon']); return { add: c => set.add(c), remove: c => set.delete(c), contains: c => set.has(c), toggle: c => (set.has(c) ? set.delete(c) : set.add(c)), _set: set }; };
+  const wrap = { classList: mkCls() };
+  const lab = { textContent: 'Sign in' };
+  const ctx = {
+    window: { t: x => (x === 'My account' ? 'Кабінет' : x === 'Sign in' ? 'Увійти' : x), matchMedia: () => ({ matches: true }) },
+    document: { addEventListener() {}, querySelector: sel => (sel === '.acc-wrap' ? wrap : null), getElementById: id => (id === 'authLabel' ? lab : null), querySelectorAll: () => [], activeElement: null },
+  };
+  ctx.window.document = ctx.document;
+  vm.createContext(ctx);
+  vm.runInContext(src, ctx);
+  ctx.window.calcarAuthState(true);
+  if (lab.textContent !== 'Кабінет' || wrap.classList.contains('anon')) errs.push('підтверджена сесія не дає "Кабінет"');
+  ctx.window.calcarAuthState(false);
+  if (lab.textContent !== 'Увійти' || !wrap.classList.contains('anon')) errs.push('без сесії шапка не повертається в "Увійти"');
+  if (ctx.window.CALCAR_SIGNED_IN !== false) errs.push('стан входу не зберігається у CALCAR_SIGNED_IN');
+}
+
 /* поведінка кліку: справжній блок під заглушкою */
 const block = blocks.get('check.html') || '';
 function run(hoverable) {

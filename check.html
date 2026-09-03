@@ -797,7 +797,7 @@ const SB = (typeof supabase !== 'undefined' && window.CALCAR_SUPABASE?.url)
   ? supabase.createClient(window.CALCAR_SUPABASE.url, window.CALCAR_SUPABASE.anon)
   : null;
 /* стан входу в шапці: "Кабінет" лише за реальною сесією, інакше "Увійти" */
-if (SB) SB.auth.getSession().then(({ data }) => window.calcarAuthState(!!data?.session));
+if (SB) SB.auth.getSession().then(({ data }) => { window.CALCAR_SIGNED_IN = !!data?.session; if (window.calcarAuthState) window.calcarAuthState(window.CALCAR_SIGNED_IN); });
 
 const input = document.getElementById('urlInput');
 const btn = document.getElementById('goBtn');
@@ -1322,12 +1322,16 @@ document.addEventListener('click', function (e) {
    сесія реально підтверджена: тоді зʼявляється "Кабінет" і меню акаунта.
    Ніколи не показуємо анонімного відвідувача залогіненим. */
 window.calcarAuthState = function (signedIn) {
+  window.CALCAR_SIGNED_IN = !!signedIn;
   var w = document.querySelector('.acc-wrap'), lab = document.getElementById('authLabel');
   if (!w || !lab) return;
   var tr = window.t || function (x) { return x; };
   if (signedIn) { w.classList.remove('anon'); lab.textContent = tr('My account'); }
   else { w.classList.add('anon'); lab.textContent = tr('Sign in'); }
 };
+/* сесія могла підтвердитись РАНІШЕ, ніж виконався цей блок: скрипти сторінки
+   лежать вище за нього. Тоді стан чекає у CALCAR_SIGNED_IN і застосовується тут */
+if (window.CALCAR_SIGNED_IN !== undefined) window.calcarAuthState(window.CALCAR_SIGNED_IN);
 </script>
 <script>
 /* Лаунчер продуктів CalCar: спільний блок, однаковий на всіх сторінках.
