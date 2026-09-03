@@ -158,11 +158,17 @@ for (const x of fs.readdirSync('api').filter(f => f.endsWith('.js'))) {
   if (C.hvConsensus([A]).reads_count !== 1 || C.hvConsensus([]) !== null) errs.push('consensus з 1/0 читань');
   /* сторожі пайплайна: consensus ДО основного виклику, запис у кеш із діагностикою, ваги не чіпаються */
   if (!/const ab = await Promise\.all\(\[readHv\('A'\), readHv\('B'\)\]\)/.test(src)) errs.push('нема паралельних читань A/B');
-  if (!/if \(cons && !cons\.resolved\) \{\s*const c = await readHv\('C'\)/.test(src)) errs.push('нема читання C за конфлікту');
+  if (!/if \(cons && !cons\.resolved\) \{[\s\S]{0,200}const c = await readHv\('C'\)/.test(src)) errs.push('нема читання C за конфлікту');
   if (src.indexOf("readHv('A')") > src.indexOf("progress('ai');")) errs.push('consensus не перед основним викликом');
   if (!/reads_count: cons\.reads_count, conflict_detected: cons\.conflict_detected/.test(src) || !/canonicalized_at: new Date\(\)\.toISOString\(\), extractor_version: HISTORICAL_VISUAL_VERSION/.test(src)) errs.push('діагностика consensus не зберігається');
   if (!/consensus: \{ disagreed_fields: diag\.disagreed_fields/.test(src)) errs.push('writeHvCache без consensus-діагностики');
-  if (!/Math\.max\(90000, 240000 - hvConsensusMs\)/.test(src)) errs.push('основний виклик не враховує бюджет consensus');
+  if (!/Math\.max\(100000, Math\.min\(240000, 268000 - \(Date\.now\(\) - tRun\)\)\)/.test(src)) errs.push('основний виклик не враховує бюджет функції після consensus');
+  if (!/if \(Date\.now\(\) - tRun < 150000\) \{\s*const c = await readHv\('C'\)/.test(src)) errs.push('читання C без бюджету часу');
+  if (!/cons\.tie_break \? false : await writeHvCache/.test(src)) errs.push('tie-break без C потрапляє в кеш');
+  if (!/elapsedEq > 190000 \|\| Date\.now\(\) - tRun > 235000/.test(src)) errs.push('верифікатор комплектації не знає загального бюджету');
+  cc = C.hvConsensus([A, Bsev], { force: true });
+  if (!cc || !cc.resolved || !cc.tie_break || cc.hv.inner_component_damage_extent !== 'indeterminate' || cc.hv.inner_component_deformation_visible !== 'indeterminate') errs.push('force-tie не дає indeterminate: ' + JSON.stringify(cc && cc.hv));
+  if (C.hvConsensus([A, Bsev, { ...base, summary: 'C' }]).tie_break !== false) errs.push('3 читання позначені як tie_break');
   const v3 = fs.readFileSync('api/score-v3.js', 'utf8');
   if (!/minor: 0\.2|minor: \.2/.test(v3) || !/severe: 2\.4/.test(v3) || !/moderate: 1(\.0)?\b/.test(v3)) errs.push('frozen SEVERITY_ADDITIONAL змінені');
   /* міграція: аддитивна, без destructive */

@@ -1387,14 +1387,16 @@ export function hvDisagreedFields(reads) {
 /* reads: масив ПРОВАЛІДОВАНИХ (sanitizeHistoricalVisual) читань, 1..N.
    Повертає канонічний hv (ще НЕ провалідований повторно: викликач
    проганяє sanitize ще раз, щоб глибина була узгоджена з ознаками) */
-export function hvConsensus(reads) {
+export function hvConsensus(reads, { force = false } = {}) {
   const list = (reads || []).filter(r => r && typeof r === 'object');
   if (!list.length) return null;
   const disagreed = hvDisagreedFields(list);
-  if (list.length === 1) return { hv: list[0], reads_count: 1, conflict_detected: null, disagreed_fields: [], resolved: true, majority: null };
-  if (!disagreed.length) return { hv: list[0], reads_count: list.length, conflict_detected: false, disagreed_fields: [], resolved: true, majority: null };
-  /* два читання і конфлікт: рішення потребує третього читання */
-  if (list.length === 2) return { hv: null, reads_count: 2, conflict_detected: true, disagreed_fields: disagreed, resolved: false, majority: null };
+  if (list.length === 1) return { hv: list[0], reads_count: 1, conflict_detected: null, disagreed_fields: [], resolved: true, majority: null, tie_break: false };
+  if (!disagreed.length) return { hv: list[0], reads_count: list.length, conflict_detected: false, disagreed_fields: [], resolved: true, majority: null, tie_break: false };
+  /* два читання і конфлікт: рішення потребує третього читання. force
+     (бюджет часу вичерпано) вирішує спірні поля як "не визначено" ЛИШЕ
+     для цього прогону; такий результат у кеш не пишеться */
+  if (list.length === 2 && !force) return { hv: null, reads_count: 2, conflict_detected: true, disagreed_fields: disagreed, resolved: false, majority: null, tie_break: false };
   const sigs = list.map(hvMaterial);
   const majority = {};
   for (const f of Object.keys(sigs[0])) {
@@ -1416,7 +1418,7 @@ export function hvConsensus(reads) {
     const src = list.find(r => hvMaterial(r).multiple_zones === majority.multiple_zones);
     if (src) hv.visible_damage_zones = src.visible_damage_zones;
   }
-  return { hv, reads_count: list.length, conflict_detected: true, disagreed_fields: disagreed, resolved: true, majority };
+  return { hv, reads_count: list.length, conflict_detected: true, disagreed_fields: disagreed, resolved: true, majority, tie_break: list.length === 2 };
 }
 
 /* ---------- 4г. Комплектація: детермінована валідація і верифікація ----------
@@ -2216,6 +2218,10 @@ async function runCheck(req, res, job) {
   /* єдине джерело правди про мову всього user-facing контенту звіту:
      явна локаль CalCar; невідома чи відсутня -> English */
   const lang = resolveLocale(req.body?.lang);
+  /* бюджет часу всього аналізу: функція живе 300 с від POST, тому кожен
+     довгий крок (consensus, основний виклик, верифікатор) міряється від
+     старту, а не від попереднього кроку */
+  const tRun = Date.now();
   try {
     const rawUrl = String((req.body || {}).url || '').trim();
     const decisionStyle = ['a', 'b'].includes(req.body?.decision_style)
@@ -2558,7 +2564,7 @@ async function runCheck(req, res, job) {
       ];
       const readHv = async label => {
         try {
-          const d = await callModel(modelBody(hvContent), 110000);
+          const d = await callModel(modelBody(hvContent), 90000);
           if (d?.error) { console.log('[hv-consensus] read', label, 'error:', String(d.error.message || '').slice(0, 120)); return null; }
           const j = JSON.parse((d.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim());
           const hv = sanitizeHistoricalVisual(j && j.historical_visual, auctionPhotos.length);
@@ -2571,9 +2577,13 @@ async function runCheck(req, res, job) {
         let reads = ab.filter(Boolean);
         let cons = hvConsensus(reads);
         if (cons && !cons.resolved) {
-          const c = await readHv('C');
-          if (c) reads.push(c);
-          cons = hvConsensus(reads);
+          /* третє читання лише якщо лишається час на основний виклик */
+          if (Date.now() - tRun < 150000) {
+            const c = await readHv('C');
+            if (c) reads.push(c);
+            cons = hvConsensus(reads);
+          }
+          if (cons && !cons.resolved) cons = hvConsensus(reads, { force: true });
         }
         if (cons && cons.hv) {
           const canonical = sanitizeHistoricalVisual(cons.hv, auctionPhotos.length);
@@ -2583,11 +2593,12 @@ async function runCheck(req, res, job) {
             hvCache.consensus = {
               reads_count: cons.reads_count, conflict_detected: cons.conflict_detected,
               canonicalized_at: new Date().toISOString(), extractor_version: HISTORICAL_VISUAL_VERSION,
-              disagreed_fields: cons.disagreed_fields, reads: reads.map(hvMaterial), majority: cons.majority,
+              disagreed_fields: cons.disagreed_fields, reads: reads.map(hvMaterial), majority: cons.majority, tie_break: cons.tie_break,
             };
-            const ok = await writeHvCache(listing.vin, hvCache.fingerprint, hvCache.source, auctionPhotos.map(u => photoOriginByData.get(u) || u), canonical, hvCache.consensus);
+            /* у кеш іде лише розвʼязаний consensus; tie-break без C живе один прогін */
+            const ok = cons.tie_break ? false : await writeHvCache(listing.vin, hvCache.fingerprint, hvCache.source, auctionPhotos.map(u => photoOriginByData.get(u) || u), canonical, hvCache.consensus);
             hvCache.written = ok;
-            console.log('[hv-consensus]', JSON.stringify({ reads: cons.reads_count, conflict: cons.conflict_detected, disagreed: cons.disagreed_fields, written: ok, ms: Date.now() - tHv }));
+            console.log('[hv-consensus]', JSON.stringify({ reads: cons.reads_count, conflict: cons.conflict_detected, disagreed: cons.disagreed_fields, tie_break: cons.tie_break, written: ok, ms: Date.now() - tHv }));
           }
         } else console.log('[hv-consensus] no usable reads, falling back to main-call visual');
       } catch (e) { console.log('[hv-consensus] failed:', e.message); }
@@ -2669,7 +2680,8 @@ async function runCheck(req, res, job) {
 
     progress('ai');
     const t0 = Date.now();
-    let data = await callModel(modelBody(content), Math.max(90000, 240000 - hvConsensusMs));
+    /* решта бюджету функції на основний виклик: після consensus він менший за звичні 240 с */
+    let data = await callModel(modelBody(content), Math.max(100000, Math.min(240000, 268000 - (Date.now() - tRun))));
 
     if (data?.error && /reasoning_effort|unknown|unsupported|unrecognized/i.test(String(data.error.message || ''))) {
       data = await callModel(modelBody(content, false), Math.max(60000, 250000 - (Date.now() - t0)));
@@ -3009,7 +3021,7 @@ async function runCheck(req, res, job) {
       const elapsedEq = Date.now() - t0;
       if (!claims.length) {
         eqVerifier = { status: 'skipped', reason: 'no_claims' };
-      } else if (elapsedEq > 190000) {
+      } else if (elapsedEq > 190000 || Date.now() - tRun > 235000) {
         eqVerifier = { status: 'skipped', reason: 'time_budget', elapsed_ms: elapsedEq };
       } else {
         const tv = Date.now();
