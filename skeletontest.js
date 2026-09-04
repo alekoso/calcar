@@ -42,10 +42,21 @@ const PROGRESS_PAGES = ['check.html', 'import.html', 'result-check.html'];
     if (/pendingSet\(|calcar_pending_check/.test(j)) errs.push('у спільний JS протік стан Check');
     if (!/ld\.setStage = i =>/.test(j)) errs.push('нема входу для реальних стадій із сервера');
   }
-  /* кожна сторінка оголошує свої стадії і контейнер */
+  /* кожна сторінка оголошує свої стадії, контейнер і залежності блоку.
+     esc() і t() мусять існувати в ТІЙ САМІЙ області видимості, інакше
+     loadingStart() падає на першому ж рядку, а сторінка мовчки лишається
+     без індикатора: саме так це і зламалось на Import */
   for (const p of PROGRESS_PAGES) {
     if (!/id="loadBox"/.test(S[p])) errs.push(p + ': нема контейнера індикатора');
     if (!/const LOAD_LOG = '(chk|imp)';/.test(S[p])) errs.push(p + ': нема префікса логів індикатора');
+    const scripts = S[p].match(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g) || [];
+    const host = scripts.find(x => x.includes('function loadingStart()'));
+    if (!host) { errs.push(p + ': блок індикатора не знайдено у скрипті сторінки'); continue; }
+    if (!/function esc\(|const esc =/.test(host)) errs.push(p + ': у області видимості індикатора нема esc()');
+    for (const dep of ['LOAD_STAGES', 'LOAD_STAGE_AT', 'LOAD_LONG_AT', 'LOAD_LOG']) {
+      if (!new RegExp('(const|let|var) ' + dep + '\\b').test(host)) errs.push(p + ': ' + dep + ' оголошено поза областю видимості індикатора');
+    }
+    if (!/function run\(|const run =|run = /.test(host)) errs.push(p + ': нема run() для повтору після помилки');
   }
   /* Check і його звіт показують ОДНІ стадії: це той самий аналіз */
   const stagesOf = s => {
