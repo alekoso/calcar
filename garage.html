@@ -218,7 +218,7 @@ header{background:rgba(255,255,255,.88);backdrop-filter:blur(10px);-webkit-backd
 .acc-wrap.anon .acc-menu{display:none!important}
 .acc-menu a{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;font-size:13.5px;font-weight:600;color:var(--ink);text-decoration:none}
 .acc-menu a:hover{background:var(--surface-2)}
-.acc-menu a svg{width:18px;height:18px;flex:0 0 auto;color:var(--ink-2);opacity:.85}
+.acc-menu a svg{width:18px;height:18px;flex:0 0 auto;overflow:visible;color:var(--ink-2);opacity:.85}
 
   /* ---- лаунчер продуктів CalCar ----------------------------------------
      Спільний блок, однаковий на всіх сторінках. Панель і підкладка лежать у
@@ -272,6 +272,20 @@ header{background:rgba(255,255,255,.88);backdrop-filter:blur(10px);-webkit-backd
   body.chat-docked .wrap-sec,
   body.chat-docked .header-in,
   body.chat-docked .footer-in{max-width:none}
+  /* skeleton:start ---- CalCar skeleton: примітиви стану завантаження.
+     Блок побайтово однаковий на сторінках. Геометрію задає той, хто ставить
+     примітив: ширина і висота беруться від майбутнього вмісту, тому поява
+     даних не рухає сусідні блоки. Кольори нейтральні, без лайму; анімація
+     ледь помітна і вимикається за prefers-reduced-motion. ---- */
+  .sk{display:inline-block;background:#ECEEEA;border-radius:8px;animation:skp 1.5s ease-in-out infinite}
+  .sk-line{display:block;height:12px;border-radius:6px}
+  .sk-line.sm{height:10px}
+  .sk-title{display:block;height:16px;border-radius:7px}
+  .sk-circle{border-radius:50%}
+  .sk-img{border-radius:10px}
+  @keyframes skp{0%,100%{opacity:1}50%{opacity:.55}}
+  @media (prefers-reduced-motion:reduce){.sk{animation:none;opacity:.8}}
+  /* skeleton:end */
   .lnc-backdrop{position:fixed;inset:0;background:rgba(20,22,25,.32);z-index:45;display:none}
 
   /* Місток під панеллю: між кнопкою і панеллю 10px порожнечі, і без нього курсор
@@ -294,11 +308,11 @@ header{background:rgba(255,255,255,.88);backdrop-filter:blur(10px);-webkit-backd
   .lnc-x{display:none;border:none;background:transparent;color:var(--muted);cursor:pointer;padding:6px;margin:-6px;border-radius:8px;font-family:inherit}
   .lnc-x:hover{background:var(--surface-2);color:var(--ink)}
   /* сітка з рівними рядками: усі продукти однієї висоти незалежно від довжини опису */
-  .lnc-list{display:grid;grid-auto-rows:1fr;gap:5px}
+  .lnc-list{display:grid;gap:4px}
 
   .lnc-item{
-    display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:center;
-    padding:8px 10px;border:1px solid var(--line);border-radius:12px;background:var(--card);
+    display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;
+    padding:7px 10px;border:1px solid var(--line);border-radius:12px;background:var(--card);
     color:var(--ink);text-decoration:none;cursor:pointer;transition:background .15s,border-color .15s;
   }
   a.lnc-item:hover{background:var(--surface-2)}
@@ -307,11 +321,11 @@ header{background:rgba(255,255,255,.88);backdrop-filter:blur(10px);-webkit-backd
   /* поточний продукт це статус, а не заклик до дії: без CTA і без наведення */
   .lnc-item.is-current{background:var(--brand-soft);border-color:#DCEFAE}
   .lnc-item:not(.is-current) .lnc-badge{display:none}
-  .lnc-ic{display:block;width:38px;height:38px;flex:0 0 auto}
-  .lnc-ic svg{display:block;width:38px;height:38px}
-  .lnc-name{display:block;font-size:14.5px;font-weight:700;line-height:1.25}
-  .lnc-desc{display:block;font-size:12.5px;color:var(--muted);margin-top:2px;line-height:1.3}
-  .lnc-badge{display:inline-block;margin-top:4px;padding:1px 8px;font-size:11px;font-weight:600;color:var(--brand-ink);background:var(--card);border:1px solid #DCEFAE;border-radius:20px}
+  .lnc-ic{display:block;width:30px;height:30px;flex:0 0 auto}
+  .lnc-ic svg{display:block;width:30px;height:30px}
+  .lnc-name{display:block;font-size:14px;font-weight:700;line-height:1.25}
+  .lnc-desc{display:block;font-size:12px;color:var(--muted);margin-top:1px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lnc-badge{display:inline-block;margin:0;padding:1px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;color:var(--brand-ink);background:var(--card);border:1px solid #DCEFAE;border-radius:20px}
 
   /* Логотип мусить стояти рівно там, де стояв до лаунчера. У контейнері 1160px
      ліворуч від логотипа є лише 20px падінгу, а кнопці треба 50px, тому в рядку
@@ -351,10 +365,11 @@ header{background:rgba(255,255,255,.88);backdrop-filter:blur(10px);-webkit-backd
     .lnc-x{display:inline-flex;align-items:center;justify-content:center}
     .lnc-head{margin:2px 2px 12px}
     .lnc-title{font-size:16px}
-    .lnc-item{padding:9px 11px;gap:12px}
-    .lnc-ic,.lnc-ic svg{width:38px;height:38px}
-    .lnc-name{font-size:15px}
-    .lnc-desc{font-size:13px;margin-top:2px}
+    .lnc-item{padding:8px 10px;gap:11px}
+    .lnc-ic,.lnc-ic svg{width:32px;height:32px}
+    .lnc-name{font-size:14.5px}
+    .lnc-desc{font-size:12.5px;margin-top:1px}
+    .lnc-badge{font-size:10px;padding:1px 7px}
   }
   @keyframes lnc-up{from{transform:translateY(16px)}to{transform:none}}
   .lang-menu button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:none;background:none;padding:9px 10px;border-radius:8px;font-size:13.5px;color:var(--ink);cursor:pointer;font-family:inherit}
@@ -379,6 +394,11 @@ h1{font-size:27px;letter-spacing:-.01em}
 /* список машин */
 .car-row{display:flex;gap:16px;align-items:center;padding:14px;cursor:pointer;transition:border-color .15s;margin-bottom:12px}
 .car-row:hover{border-color:var(--line-strong)}
+/* скелетон гаража: геометрія .car-row і прев'ю 132x88 один в один */
+.car-sk{display:flex;gap:16px;align-items:center;padding:14px;margin-bottom:12px}
+.car-sk .sk-thumb{width:132px;height:88px;border-radius:10px;flex:none}
+.car-sk .sk-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}
+.car-sk .sk-side{width:64px;height:26px;flex:none}
 .car-thumb{width:132px;height:88px;border-radius:10px;background:var(--surface-2);object-fit:cover;flex:none;display:flex;align-items:center;justify-content:center;color:var(--faint);font-size:12px;overflow:hidden}
 .car-thumb img{width:100%;height:100%;object-fit:cover}
 .car-main{flex:1;min-width:0}
@@ -497,6 +517,16 @@ h1{font-size:27px;letter-spacing:-.01em}
 .feed-nav-btn.on{color:var(--ink)}
 .feed-nav-btn.on::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;border-radius:2px;background:var(--brand)}
 .feed-list{display:flex;flex-direction:column;gap:14px}
+/* скелетон стрічки: та сама картка, та сама шапка 40px і ті самі відступи,
+   тому справжні пости стають на місце плейсхолдерів без стрибка */
+.feed-loading{display:none;flex-direction:column;gap:14px}
+.feed[data-state="loading"] .feed-loading{display:flex}
+.post-sk{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px 20px 18px}
+.post-sk-head{display:grid;grid-template-columns:40px minmax(0,1fr) auto;align-items:center;gap:12px;min-height:40px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.post-sk-head .sk-av{width:40px;height:40px;border-radius:11px}
+.post-sk-head .sk-who{display:flex;flex-direction:column;gap:6px;min-width:0}
+.post-sk-head .sk-kind{width:74px;height:22px;border-radius:20px}
+.post-sk-body{padding-top:12px;display:flex;flex-direction:column;gap:9px}
 .feed-note{font-size:12.5px;color:var(--faint);text-align:center;padding:6px 0 0}
 .feed-state{display:none;padding:40px 20px;text-align:center;background:var(--card);border:1px solid var(--line);border-radius:var(--radius)}
 .feed-state b{font-size:16px}
@@ -611,33 +641,6 @@ h1{font-size:27px;letter-spacing:-.01em}
     <div class="lnc-title">CalCar menu</div>
     <button class="lnc-x" type="button" id="lncClose" title="Close" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   </div>
-  <div class="lnc-sec">Products</div>
-  <div class="lnc-list">
-    <a class="lnc-item" data-prod="check" href="/check">
-      <span class="lnc-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="none" stroke="#141619" stroke-width="64" stroke-linecap="butt"><path d="M229.72 322.19 A 84 84 0 1 1 229.72 189.81"/><path d="M430.72 322.19 A 84 84 0 1 1 430.72 189.81"/></g></svg></span>
-      <span class="lnc-body">
-        <span class="lnc-name">CalCar Check</span>
-        <span class="lnc-desc">Pre-purchase car check</span>
-        <span class="lnc-badge">Current product</span>
-      </span>
-    </a>
-    <a class="lnc-item" data-prod="import" href="/import">
-      <span class="lnc-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="#141619"><path d="M160 244 L204 168 Q212 156 227 156 L299 156 Q314 156 322 168 L366 244 Z"/><rect x="76" y="238" width="360" height="58" rx="24"/><circle cx="162" cy="314" r="44"/><circle cx="350" cy="314" r="44"/></g><path d="M190 230 L228 176 Q233 170 240 170 L286 170 Q293 170 298 176 L336 230 Z" fill="#B8F23D"/></svg></span>
-      <span class="lnc-body">
-        <span class="lnc-name">CalCar Import</span>
-        <span class="lnc-desc">What a US car really costs in Ukraine</span>
-        <span class="lnc-badge">Current product</span>
-      </span>
-    </a>
-    <a class="lnc-item" data-prod="garage" href="/garage">
-      <span class="lnc-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="#141619"><path d="M60 244 L256 112 L452 244 L452 300 L256 168 L60 300 Z"/><rect x="112" y="286" width="288" height="146" rx="18"/></g><g fill="#B8F23D"><rect x="140" y="316" width="232" height="18" rx="9"/><rect x="140" y="352" width="232" height="18" rx="9"/><rect x="140" y="388" width="232" height="18" rx="9"/></g></svg></span>
-      <span class="lnc-body">
-        <span class="lnc-name">CalCar Garage</span>
-        <span class="lnc-desc">Car owners community</span>
-        <span class="lnc-badge">Current product</span>
-      </span>
-    </a>
-  </div>
   <div class="lnc-sec">Account</div>
   <div class="acc-wrap anon">
     <a class="btn-auth" href="/cabinet.html" id="authLink">
@@ -647,8 +650,35 @@ h1{font-size:27px;letter-spacing:-.01em}
     <div class="acc-menu">
      <a href="/cabinet.html#reports"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>Reports</a>
      <a href="/cabinet.html#memory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8z"/><path d="M5 17l.9 2.1L8 20l-2.1.9L5 23l-.9-2.1L2 20l2.1-.9z"/></svg>Assistant memory</a>
-     <a href="/cabinet.html#account"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 7 19.4a1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9H1a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 2.6 7a1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H7a1.7 1.7 0 0 0 1-1.5V1a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V7a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Account settings</a>
+     <a href="/cabinet.html#account"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/></svg>Account settings</a>
     </div>
+  </div>
+  <div class="lnc-sec">Products</div>
+  <div class="lnc-list">
+    <a class="lnc-item" data-prod="check" href="/check">
+      <span class="lnc-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="none" stroke="#141619" stroke-width="64" stroke-linecap="butt"><path d="M229.72 322.19 A 84 84 0 1 1 229.72 189.81"/><path d="M430.72 322.19 A 84 84 0 1 1 430.72 189.81"/></g></svg></span>
+      <span class="lnc-body">
+        <span class="lnc-name">CalCar Check</span>
+        <span class="lnc-desc">Pre-purchase car check</span>
+      </span>
+      <span class="lnc-badge">Current product</span>
+    </a>
+    <a class="lnc-item" data-prod="import" href="/import">
+      <span class="lnc-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="#141619"><path d="M160 244 L204 168 Q212 156 227 156 L299 156 Q314 156 322 168 L366 244 Z"/><rect x="76" y="238" width="360" height="58" rx="24"/><circle cx="162" cy="314" r="44"/><circle cx="350" cy="314" r="44"/></g><path d="M190 230 L228 176 Q233 170 240 170 L286 170 Q293 170 298 176 L336 230 Z" fill="#B8F23D"/></svg></span>
+      <span class="lnc-body">
+        <span class="lnc-name">CalCar Import</span>
+        <span class="lnc-desc">What a US car really costs in Ukraine</span>
+      </span>
+      <span class="lnc-badge">Current product</span>
+    </a>
+    <a class="lnc-item" data-prod="garage" href="/garage">
+      <span class="lnc-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="#141619"><path d="M60 244 L256 112 L452 244 L452 300 L256 168 L60 300 Z"/><rect x="112" y="286" width="288" height="146" rx="18"/></g><g fill="#B8F23D"><rect x="140" y="316" width="232" height="18" rx="9"/><rect x="140" y="352" width="232" height="18" rx="9"/><rect x="140" y="388" width="232" height="18" rx="9"/></g></svg></span>
+      <span class="lnc-body">
+        <span class="lnc-name">CalCar Garage</span>
+        <span class="lnc-desc">Car owners community</span>
+      </span>
+      <span class="lnc-badge">Current product</span>
+    </a>
   </div>
   <div class="lnc-sec">Language</div>
   <div class="lang-dd" id="langDd">
@@ -687,9 +717,12 @@ h1{font-size:27px;letter-spacing:-.01em}
           <button class="feed-nav-btn on" type="button" role="tab" data-feed="for-you" aria-selected="true">For you</button>
           <button class="feed-nav-btn" type="button" role="tab" data-feed="following" aria-selected="false">Following</button>
         </div>
-        <!-- стани: loading / loaded / empty / error через data-state; скелетон стане у .feed-loading окремою ітерацією -->
+        <!-- стани: loading / loaded / empty / error через data-state; у .feed-loading стоїть скелетон постів -->
         <div class="feed" id="feed" data-state="loading">
-          <div class="feed-loading" aria-hidden="true"></div>
+          <div class="feed-loading" aria-hidden="true">
+          <div class="post-sk"><div class="post-sk-head"><span class="sk sk-av"></span><span class="sk-who"><span class="sk sk-title" style="width:38%"></span><span class="sk sk-line sm" style="width:56%"></span></span><span class="sk sk-kind"></span></div><div class="post-sk-body"><span class="sk sk-title" style="width:72%;height:19px"></span><span class="sk sk-line" style="width:96%"></span><span class="sk sk-line" style="width:88%"></span><span class="sk sk-img" style="width:100%;height:190px;margin-top:4px"></span></div></div>
+          <div class="post-sk"><div class="post-sk-head"><span class="sk sk-av"></span><span class="sk-who"><span class="sk sk-title" style="width:32%"></span><span class="sk sk-line sm" style="width:48%"></span></span><span class="sk sk-kind"></span></div><div class="post-sk-body"><span class="sk sk-title" style="width:64%;height:19px"></span><span class="sk sk-line" style="width:94%"></span><span class="sk sk-line" style="width:76%"></span></div></div>
+        </div>
           <div class="feed-list" id="feedList"></div>
           <div class="feed-state" id="feedEmpty"><b id="feedEmptyTitle"></b><p id="feedEmptyText"></p></div>
           <div class="feed-state" id="feedError"><b>The feed did not load</b><p>Try again a little later.</p></div>
@@ -717,7 +750,7 @@ h1{font-size:27px;letter-spacing:-.01em}
           </div>
           <button class="btn" id="btnAddCar">+ Add car</button>
         </div>
-        <div id="carList"></div>
+        <div id="carList"><div class="card car-sk" aria-hidden="true"><span class="sk sk-thumb"></span><span class="sk-main"><span class="sk sk-title" style="width:46%"></span><span class="sk sk-line sm" style="width:34%"></span><span class="sk sk-line sm" style="width:28%"></span></span><span class="sk sk-side"></span></div><div class="card car-sk" aria-hidden="true"><span class="sk sk-thumb"></span><span class="sk-main"><span class="sk sk-title" style="width:38%"></span><span class="sk sk-line sm" style="width:30%"></span><span class="sk sk-line sm" style="width:24%"></span></span><span class="sk sk-side"></span></div></div>
         <div class="card empty" id="emptyGarage" style="display:none">
           <b>Your garage is empty</b>
           <p class="muted" style="margin:8px auto 16px;max-width:430px">Add your car: VIN and mileage. CalCar will identify the make, model and specs, then you can keep a service log.</p>
@@ -938,6 +971,7 @@ h1{font-size:27px;letter-spacing:-.01em}
   }
   async function renderList() {
     show('listView', true); show('carView', false);
+    /* дані приїхали: скелетон замінюється списком або чесним порожнім станом */
     var box = $('carList'); box.innerHTML = '';
     show('emptyGarage', !cars.length);
     if (!cars.length) return;
@@ -1453,7 +1487,7 @@ h1{font-size:27px;letter-spacing:-.01em}
    Джерела стрічки (FEEDS) промісні, справжній API стане на їх місце. Демо-пости
    це статична презентація: у БД не пишуться і за живі публікації не видаються.
    Стани стрічки: loading / loaded / empty / error через data-state на #feed,
-   скелетон приїде окремою ітерацією в .feed-loading. */
+   у .feed-loading стоїть скелетон постів тієї самої геометрії. */
 (function () {
   var t = window.t || function (x) { return x; };
   function $(id) { return document.getElementById(id); }

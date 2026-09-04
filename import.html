@@ -253,7 +253,7 @@
   .acc-wrap.anon .acc-menu{display:none!important}
   .acc-menu a{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;font-size:13.5px;font-weight:600;color:var(--ink);text-decoration:none}
   .acc-menu a:hover{background:var(--surface-2)}
-  .acc-menu a svg{width:18px;height:18px;flex:0 0 auto;color:var(--ink-2);opacity:.85}
+  .acc-menu a svg{width:18px;height:18px;flex:0 0 auto;overflow:visible;color:var(--ink-2);opacity:.85}
 
   /* ---- лаунчер продуктів CalCar ----------------------------------------
      Спільний блок, однаковий на всіх сторінках. Панель і підкладка лежать у
@@ -307,6 +307,20 @@
   body.chat-docked .wrap-sec,
   body.chat-docked .header-in,
   body.chat-docked .footer-in{max-width:none}
+  /* skeleton:start ---- CalCar skeleton: примітиви стану завантаження.
+     Блок побайтово однаковий на сторінках. Геометрію задає той, хто ставить
+     примітив: ширина і висота беруться від майбутнього вмісту, тому поява
+     даних не рухає сусідні блоки. Кольори нейтральні, без лайму; анімація
+     ледь помітна і вимикається за prefers-reduced-motion. ---- */
+  .sk{display:inline-block;background:#ECEEEA;border-radius:8px;animation:skp 1.5s ease-in-out infinite}
+  .sk-line{display:block;height:12px;border-radius:6px}
+  .sk-line.sm{height:10px}
+  .sk-title{display:block;height:16px;border-radius:7px}
+  .sk-circle{border-radius:50%}
+  .sk-img{border-radius:10px}
+  @keyframes skp{0%,100%{opacity:1}50%{opacity:.55}}
+  @media (prefers-reduced-motion:reduce){.sk{animation:none;opacity:.8}}
+  /* skeleton:end */
   .lnc-backdrop{position:fixed;inset:0;background:rgba(20,22,25,.32);z-index:45;display:none}
 
   /* Місток під панеллю: між кнопкою і панеллю 10px порожнечі, і без нього курсор
@@ -329,11 +343,11 @@
   .lnc-x{display:none;border:none;background:transparent;color:var(--muted);cursor:pointer;padding:6px;margin:-6px;border-radius:8px;font-family:inherit}
   .lnc-x:hover{background:var(--surface-2);color:var(--ink)}
   /* сітка з рівними рядками: усі продукти однієї висоти незалежно від довжини опису */
-  .lnc-list{display:grid;grid-auto-rows:1fr;gap:5px}
+  .lnc-list{display:grid;gap:4px}
 
   .lnc-item{
-    display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:center;
-    padding:8px 10px;border:1px solid var(--line);border-radius:12px;background:var(--card);
+    display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;
+    padding:7px 10px;border:1px solid var(--line);border-radius:12px;background:var(--card);
     color:var(--ink);text-decoration:none;cursor:pointer;transition:background .15s,border-color .15s;
   }
   a.lnc-item:hover{background:var(--surface-2)}
@@ -342,11 +356,11 @@
   /* поточний продукт це статус, а не заклик до дії: без CTA і без наведення */
   .lnc-item.is-current{background:var(--brand-soft);border-color:#DCEFAE}
   .lnc-item:not(.is-current) .lnc-badge{display:none}
-  .lnc-ic{display:block;width:38px;height:38px;flex:0 0 auto}
-  .lnc-ic svg{display:block;width:38px;height:38px}
-  .lnc-name{display:block;font-size:14.5px;font-weight:700;line-height:1.25}
-  .lnc-desc{display:block;font-size:12.5px;color:var(--muted);margin-top:2px;line-height:1.3}
-  .lnc-badge{display:inline-block;margin-top:4px;padding:1px 8px;font-size:11px;font-weight:600;color:var(--brand-ink);background:var(--card);border:1px solid #DCEFAE;border-radius:20px}
+  .lnc-ic{display:block;width:30px;height:30px;flex:0 0 auto}
+  .lnc-ic svg{display:block;width:30px;height:30px}
+  .lnc-name{display:block;font-size:14px;font-weight:700;line-height:1.25}
+  .lnc-desc{display:block;font-size:12px;color:var(--muted);margin-top:1px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lnc-badge{display:inline-block;margin:0;padding:1px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;color:var(--brand-ink);background:var(--card);border:1px solid #DCEFAE;border-radius:20px}
 
   /* Логотип мусить стояти рівно там, де стояв до лаунчера. У контейнері 1160px
      ліворуч від логотипа є лише 20px падінгу, а кнопці треба 50px, тому в рядку
@@ -386,10 +400,11 @@
     .lnc-x{display:inline-flex;align-items:center;justify-content:center}
     .lnc-head{margin:2px 2px 12px}
     .lnc-title{font-size:16px}
-    .lnc-item{padding:9px 11px;gap:12px}
-    .lnc-ic,.lnc-ic svg{width:38px;height:38px}
-    .lnc-name{font-size:15px}
-    .lnc-desc{font-size:13px;margin-top:2px}
+    .lnc-item{padding:8px 10px;gap:11px}
+    .lnc-ic,.lnc-ic svg{width:32px;height:32px}
+    .lnc-name{font-size:14.5px}
+    .lnc-desc{font-size:12.5px;margin-top:1px}
+    .lnc-badge{font-size:10px;padding:1px 7px}
   }
   @keyframes lnc-up{from{transform:translateY(16px)}to{transform:none}}
 
@@ -592,6 +607,31 @@
     position:absolute;top:2px;right:2px;width:18px;height:18px;border:none;border-radius:50%;
     background:rgba(0,0,0,.55);color:#fff;font-size:11px;line-height:1;cursor:pointer;
   }
+  /* progress:start ---- багатоетапний індикатор аналізу. Спільний компонент
+     Check та Import: цей блок побайтово однаковий на сторінках, стадії
+     задає сама сторінка через LOAD_STAGES ---- */
+  .ld{margin-top:14px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 18px;display:none;text-align:left}
+  .ld.on{display:block}
+  /* структура "indicator column | content column": title і subtitle живуть
+     в одній content-колонці, тому лівий край у них ПІКСЕЛЬ-В-ПІКСЕЛЬ один
+     для всіх стадій, підписів і мов, без порядкових margin-підгонок */
+  .ld-row{display:flex;align-items:flex-start;gap:12px;padding:6px 0}
+  .ld-ico{width:22px;height:22px;flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid var(--line);font-size:12px;color:transparent;margin-top:-1px}
+  .ld-row.done .ld-ico{background:var(--brand);border-color:var(--brand);color:var(--ink);font-weight:800}
+  .ld-row.active .ld-ico{border:none}
+  .ld-body{flex:1;min-width:0}
+  .ld-t{font-size:14px;font-weight:600;color:var(--faint)}
+  .ld-row.active .ld-t{color:var(--ink)}
+  .ld-row.passed .ld-t{color:var(--muted)}
+  .ld-row.done .ld-t{color:var(--text)}
+  .ld-sub{font-size:12.5px;color:var(--muted);margin-top:3px;display:none}
+  .ld-row.active .ld-sub{display:block}
+  .ld-note{margin-top:10px;font-size:12.5px;color:var(--muted);display:none}
+  .ld-note.on{display:block}
+  .ld-err{font-size:13.5px;color:var(--red)}
+  .ld-err a{color:var(--brand-ink);font-weight:600}
+  @media (max-width:560px){.ld{padding:12px 14px}}
+  /* progress:end */
   .hf-status{margin-top:10px;font-size:13.5px;font-weight:600;display:none}
   .hf-status.info{display:block;color:var(--text)}
   .hf-status a{color:var(--ink);text-decoration:underline}
@@ -639,33 +679,6 @@
     <div class="lnc-title">CalCar menu</div>
     <button class="lnc-x" type="button" id="lncClose" title="Close" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   </div>
-  <div class="lnc-sec">Products</div>
-  <div class="lnc-list">
-    <a class="lnc-item" data-prod="check" href="/check">
-      <span class="lnc-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="none" stroke="#141619" stroke-width="64" stroke-linecap="butt"><path d="M229.72 322.19 A 84 84 0 1 1 229.72 189.81"/><path d="M430.72 322.19 A 84 84 0 1 1 430.72 189.81"/></g></svg></span>
-      <span class="lnc-body">
-        <span class="lnc-name">CalCar Check</span>
-        <span class="lnc-desc">Pre-purchase car check</span>
-        <span class="lnc-badge">Current product</span>
-      </span>
-    </a>
-    <a class="lnc-item" data-prod="import" href="/import">
-      <span class="lnc-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="#141619"><path d="M160 244 L204 168 Q212 156 227 156 L299 156 Q314 156 322 168 L366 244 Z"/><rect x="76" y="238" width="360" height="58" rx="24"/><circle cx="162" cy="314" r="44"/><circle cx="350" cy="314" r="44"/></g><path d="M190 230 L228 176 Q233 170 240 170 L286 170 Q293 170 298 176 L336 230 Z" fill="#B8F23D"/></svg></span>
-      <span class="lnc-body">
-        <span class="lnc-name">CalCar Import</span>
-        <span class="lnc-desc">What a US car really costs in Ukraine</span>
-        <span class="lnc-badge">Current product</span>
-      </span>
-    </a>
-    <a class="lnc-item" data-prod="garage" href="/garage">
-      <span class="lnc-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="#141619"><path d="M60 244 L256 112 L452 244 L452 300 L256 168 L60 300 Z"/><rect x="112" y="286" width="288" height="146" rx="18"/></g><g fill="#B8F23D"><rect x="140" y="316" width="232" height="18" rx="9"/><rect x="140" y="352" width="232" height="18" rx="9"/><rect x="140" y="388" width="232" height="18" rx="9"/></g></svg></span>
-      <span class="lnc-body">
-        <span class="lnc-name">CalCar Garage</span>
-        <span class="lnc-desc">Car owners community</span>
-        <span class="lnc-badge">Current product</span>
-      </span>
-    </a>
-  </div>
   <div class="lnc-sec">Account</div>
   <div class="acc-wrap anon">
     <a class="btn-auth" href="/cabinet.html" id="authLink">
@@ -675,8 +688,35 @@
     <div class="acc-menu">
      <a href="/cabinet.html#reports"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>Reports</a>
      <a href="/cabinet.html#memory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8z"/><path d="M5 17l.9 2.1L8 20l-2.1.9L5 23l-.9-2.1L2 20l2.1-.9z"/></svg>Assistant memory</a>
-     <a href="/cabinet.html#account"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 7 19.4a1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9H1a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 2.6 7a1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H7a1.7 1.7 0 0 0 1-1.5V1a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V7a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Account settings</a>
+     <a href="/cabinet.html#account"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/></svg>Account settings</a>
     </div>
+  </div>
+  <div class="lnc-sec">Products</div>
+  <div class="lnc-list">
+    <a class="lnc-item" data-prod="check" href="/check">
+      <span class="lnc-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="none" stroke="#141619" stroke-width="64" stroke-linecap="butt"><path d="M229.72 322.19 A 84 84 0 1 1 229.72 189.81"/><path d="M430.72 322.19 A 84 84 0 1 1 430.72 189.81"/></g></svg></span>
+      <span class="lnc-body">
+        <span class="lnc-name">CalCar Check</span>
+        <span class="lnc-desc">Pre-purchase car check</span>
+      </span>
+      <span class="lnc-badge">Current product</span>
+    </a>
+    <a class="lnc-item" data-prod="import" href="/import">
+      <span class="lnc-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="#141619"><path d="M160 244 L204 168 Q212 156 227 156 L299 156 Q314 156 322 168 L366 244 Z"/><rect x="76" y="238" width="360" height="58" rx="24"/><circle cx="162" cy="314" r="44"/><circle cx="350" cy="314" r="44"/></g><path d="M190 230 L228 176 Q233 170 240 170 L286 170 Q293 170 298 176 L336 230 Z" fill="#B8F23D"/></svg></span>
+      <span class="lnc-body">
+        <span class="lnc-name">CalCar Import</span>
+        <span class="lnc-desc">What a US car really costs in Ukraine</span>
+      </span>
+      <span class="lnc-badge">Current product</span>
+    </a>
+    <a class="lnc-item" data-prod="garage" href="/garage">
+      <span class="lnc-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="#141619"><path d="M60 244 L256 112 L452 244 L452 300 L256 168 L60 300 Z"/><rect x="112" y="286" width="288" height="146" rx="18"/></g><g fill="#B8F23D"><rect x="140" y="316" width="232" height="18" rx="9"/><rect x="140" y="352" width="232" height="18" rx="9"/><rect x="140" y="388" width="232" height="18" rx="9"/></g></svg></span>
+      <span class="lnc-body">
+        <span class="lnc-name">CalCar Garage</span>
+        <span class="lnc-desc">Car owners community</span>
+      </span>
+      <span class="lnc-badge">Current product</span>
+    </a>
   </div>
   <div class="lnc-sec">Language</div>
   <div class="lang-dd" id="langDd">
@@ -701,6 +741,7 @@
         <button class="btn-primary" id="analyzeBtn">Calculate</button>
       </div>
       <div class="hf-status" id="status"></div>
+      <div class="ld" id="loadBox"></div>
       <details class="manual" id="manualBlock">
         <summary>No link? Upload photos manually or calculate by VIN only</summary>
         <label class="dropzone" for="photoInput">
@@ -890,10 +931,120 @@ photoInput.addEventListener('change', async () => {
   renderPreviews();
 });
 
-const LOAD_MSGS_FULL = [t('Uploading photos…'),t('Identifying the car…'),t('Reading the VIN…'),t('Looking for damage…'),t('Checking airbags and structure…'),t('Building the estimate…'),t('Almost there…')];
-const LOAD_MSGS_VIN = [t('Reading the VIN…'),t('Fetching factory data…')];
+/* Стадії Import за РЕАЛЬНИМИ межами пайплайна:
+   1) /api/lot (Apify) або підготовка власних кадрів;
+   2) /api/analyze: декодування VIN у NHTSA і транспорт кадрів;
+   3) /api/analyze: Vision-розбір пошкоджень (найдовший крок);
+   4) кошторис: деталі, роботи, розмитнення і логістика у звіті.
+   Прогін лише за VIN не має Vision, тому в нього три стадії, а не чотири:
+   вигаданого етапу під інтерфейс тут нема. */
+const STAGES_LOT = [
+  { title: 'Fetching the lot data', subs: ['opening the auction card', 'reading the lot fields', 'loading the auction photos'] },
+  { title: 'Identifying the car', subs: ['decoding the VIN', 'reading the factory build', 'checking the trim and engine'] },
+  { title: 'Analyzing the damage', subs: ['reviewing the body', 'checking airbags and the interior', 'estimating how deep the impact went'] },
+  { title: 'Building the estimate', subs: ['matching parts and works', 'calculating customs and delivery', 'preparing the final number'] },
+];
+const STAGES_PHOTOS = [
+  { title: 'Preparing the photos', subs: ['reading the frames', 'preparing them for analysis'] },
+  { title: 'Identifying the car', subs: ['decoding the VIN', 'reading the factory build', 'checking the trim and engine'] },
+  { title: 'Analyzing the damage', subs: ['reviewing the body', 'checking airbags and the interior', 'estimating how deep the impact went'] },
+  { title: 'Building the estimate', subs: ['matching parts and works', 'calculating customs and delivery', 'preparing the final number'] },
+];
+const STAGES_VIN = [
+  { title: 'Identifying the car', subs: ['decoding the VIN', 'checking the trim and engine'] },
+  { title: 'Reading the factory build', subs: ['engine and transmission', 'drivetrain and equipment'] },
+  { title: 'Building the estimate', subs: ['calculating customs and delivery', 'preparing the final number'] },
+];
+let LOAD_STAGES = STAGES_LOT;
+let LOAD_STAGE_AT = [0, 25000, 45000, 105000];
+const LOAD_LONG_AT = 170000;
+const LOAD_LOG = 'imp';
 
-btn.addEventListener('click', async () => {
+/* progress:start ---- багатоетапний індикатор аналізу.
+   Спільний компонент Check та Import: цей блок побайтово однаковий на
+   сторінках, різняться лише стадії. Сторінка задає LOAD_STAGES (title +
+   subs), LOAD_STAGE_AT (коли переходити далі, мс), LOAD_LONG_AT, LOAD_LOG
+   (префікс логів), контейнер #loadBox і функцію run() для повтору;
+   опційно loadingCleanup() для прибирання власного стану. Реальні стадії
+   з сервера рухають індикатор через ld.setStage(i). ---- */
+let ld = null;
+
+function loadingStart() {
+  const rid = LOAD_LOG + '_' + Math.random().toString(36).slice(2, 10);
+  console.log('[' + LOAD_LOG + '-load]', rid, 'start');
+  const box = document.getElementById('loadBox');
+  box.innerHTML = LOAD_STAGES.map((st, i) =>
+    '<div class="ld-row" data-i="' + i + '"><span class="ld-ico">✓</span><div class="ld-body"><div class="ld-t">' + esc(t(st.title)) + '</div><div class="ld-sub"></div></div></div>'
+  ).join('') + '<div class="ld-note" id="ldNote">' + esc(t('The analysis is taking a bit longer. Some cars need extra checks.')) + '</div>';
+  box.className = 'ld on';
+  ld = { rid, stage: -1, subIdx: 0, timers: [], rot: null, done: false };
+  const setStage = i => {
+    if (!ld || ld.done) return;
+    console.log('[' + LOAD_LOG + '-load]', rid, 'stage', i + 1, LOAD_STAGES[i].title);
+    box.querySelectorAll('.ld-row').forEach((row, j) => {
+      row.className = 'ld-row' + (j < i ? ' passed' : j === i ? ' active' : '');
+      if (j === i) row.querySelector('.ld-ico').innerHTML = '<span class="spin"></span>';
+      else if (j < i) row.querySelector('.ld-ico').textContent = '·';
+      else row.querySelector('.ld-ico').textContent = '✓';
+    });
+    ld.stage = i;
+    ld.subIdx = 0;
+    rotateSub();
+  };
+  const rotateSub = () => {
+    if (!ld || ld.done || ld.stage < 0) return;
+    const st = LOAD_STAGES[ld.stage];
+    const sub = box.querySelector('.ld-row[data-i="' + ld.stage + '"] .ld-sub');
+    if (sub) sub.textContent = t(st.subs[ld.subIdx % st.subs.length]);
+    ld.subIdx++;
+  };
+  setStage(0);
+  /* реальні стадії з сервера (durable job) рухають індикатор вперед */
+  ld.setStage = i => { if (ld && !ld.done && i > ld.stage) setStage(i); };
+  for (let i = 1; i < LOAD_STAGES.length; i++) ld.timers.push(setTimeout(() => setStage(i), LOAD_STAGE_AT[i]));
+  ld.rot = setInterval(rotateSub, 18000);
+  /* довше за звичайне: нейтральний текст, без обіцянок дедлайну */
+  ld.timers.push(setTimeout(() => { if (ld && !ld.done) document.getElementById('ldNote').className = 'ld-note on'; }, LOAD_LONG_AT));
+  return rid;
+}
+
+function loadingStop() {
+  if (!ld) return;
+  ld.done = true;
+  ld.timers.forEach(clearTimeout);
+  clearInterval(ld.rot);
+}
+
+/* фінальна успішна відповідь: ЄДИНЕ місце, де стадії отримують галочку.
+   Добіг швидкий (~0.7 с сумарно), звіт штучно не затримується */
+function loadingFinish(rid) {
+  loadingStop();
+  const box = document.getElementById('loadBox');
+  const rows = [...box.querySelectorAll('.ld-row')];
+  return new Promise(resolve => {
+    rows.forEach((row, i) => setTimeout(() => {
+      row.className = 'ld-row done';
+      row.querySelector('.ld-ico').textContent = '✓';
+      if (i === rows.length - 1) { console.log('[' + LOAD_LOG + '-load]', rid, 'complete'); setTimeout(resolve, 150); }
+    }, i * 160));
+  });
+}
+
+function loadingError(rid, msg) {
+  loadingStop();
+  /* сторінка прибирає свій стан сама: Check знімає незавершений job */
+  if (typeof loadingCleanup === 'function') loadingCleanup();
+  console.log('[' + LOAD_LOG + '-load]', rid, 'error', msg);
+  const box = document.getElementById('loadBox');
+  box.innerHTML = '<div class="ld-err">' + esc(msg) + ' <a href="#" id="ldRetry">' + esc(t('Try again')) + '</a></div>';
+  document.getElementById('ldRetry').onclick = ev => { ev.preventDefault(); run(); };
+}
+
+/* progress:end */
+
+btn.addEventListener('click', () => run());
+
+async function run() {
   clearStatus();
   const query = document.getElementById('lotQuery').value.trim();
   const vin = document.getElementById('vin').value.trim().toUpperCase();
@@ -907,17 +1058,11 @@ btn.addEventListener('click', async () => {
   }
 
   btn.disabled = true;
-  const MSGS = query
-    ? [t('Fetching lot data…'),t('Loading auction photos…'),t('Identifying the car…'),t('Looking for damage…'),t('Checking airbags and structure…'),t('Building the estimate…'),t('Almost there…')]
-    : (photos.length ? LOAD_MSGS_FULL : LOAD_MSGS_VIN);
-  let msgI = 0;
-  statusEl.className = 'hf-status load';
-  statusEl.innerHTML = '<div class="spinner"></div><span id="loadMsg">' + MSGS[0] + '</span>';
-  const timer = setInterval(() => {
-    msgI = Math.min(msgI + 1, MSGS.length - 1);
-    const el = document.getElementById('loadMsg');
-    if (el) el.textContent = MSGS[msgI];
-  }, 7000);
+  /* набір стадій за реальним режимом прогону */
+  LOAD_STAGES = query ? STAGES_LOT : (photos.length ? STAGES_PHOTOS : STAGES_VIN);
+  LOAD_STAGE_AT = query ? [0, 25000, 45000, 105000]
+    : (photos.length ? [0, 8000, 25000, 95000] : [0, 4000, 9000]);
+  const rid = loadingStart();
 
   /* пошук уже готового звіту за цим самим лотом.
      Головний ключ це НОМЕР ЛОТА, витягнутий із посилання: збережений у звіті
@@ -963,6 +1108,8 @@ btn.addEventListener('click', async () => {
     if (query && window.SB && !window.__forceReanalyze) {
       const existing = await findExistingReport(query);
       if (existing) {
+        loadingStop();
+        document.getElementById('loadBox').className = 'ld';
         statusEl.className = 'hf-status info';
         statusEl.innerHTML = t('This car has already been analyzed.') + ' <a href="/result.html?id=' + existing.id + '">' + t('Open report') + '</a>'
           + ' <span class="reanalyze">' + t('or') + ' <a href="#" id="reanalyzeLink">' + t('re-run the analysis') + '</a></span>';
@@ -983,9 +1130,11 @@ btn.addEventListener('click', async () => {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ query, lang: (window.calcarLang ? calcarLang() : 'en') }),
       });
-      const ld = await safeJson(lr);
-      if (!lr.ok || ld.error) throw new Error(ld.error || t('Could not fetch the lot'));
-      lot = ld.lot;
+      const lotData = await safeJson(lr);
+      if (!lr.ok || lotData.error) throw new Error(lotData.error || t('Could not fetch the lot'));
+      lot = lotData.lot;
+      /* реальна межа: дані лота отримані, далі ідентифікація авто */
+      if (ld && ld.setStage) ld.setStage(1);
     }
 
     const r = await fetch('/api/analyze', {
@@ -1000,6 +1149,8 @@ btn.addEventListener('click', async () => {
     });
     const data = await safeJson(r);
     if (!r.ok || data.error) throw new Error(data.error || t('Server error'));
+    /* реальна межа: розбір завершено, лишається зібрати кошторис */
+    if (ld && ld.setStage) ld.setStage(LOAD_STAGES.length - 1);
 
     sessionStorage.setItem('calcarResult', JSON.stringify(data));
     /* прибираємо id попереднього звіту: якщо збереження нижче не спрацює,
@@ -1033,14 +1184,14 @@ btn.addEventListener('click', async () => {
     } catch (e) {
       try { sessionStorage.setItem('calcarPhotos', JSON.stringify((photos || []).slice(0, 6))); } catch (e2) {}
     }
+    await loadingFinish(rid);
     location.href = '/result.html';
   } catch (e) {
-    setError(e.message || t('Something went wrong, please try again'));
+    loadingError(rid, e.message || t('Something went wrong, please try again'));
   } finally {
-    clearInterval(timer);
     btn.disabled = false;
   }
-});
+}
 </script>
 <script src="/config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>

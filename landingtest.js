@@ -50,7 +50,7 @@ for (const [f, s] of Object.entries(PAGES)) {
   /* справжні звіти виграють у прикладів; форма гілки може відрізнятись
      (Check після durable-звітів має ще проміжний гостьовий список) */
   if (!new RegExp('if \\(Array\\.isArray\\(rows\\) && rows\\.length\\)[\\s\\S]{0,40}renderRecent\\w+\\(rows\\)').test(s)) errs.push(f + ': справжні звіти не витісняють приклади');
-  if (!new RegExp('else ' + ex + '\\(\\);').test(s)) errs.push(f + ': приклади не лишились запасним варіантом');
+  if (!new RegExp(ex + '\\(\\);').test(s) || !new RegExp('\\belse\\b[\\s\\S]{0,220}' + ex + '\\(\\);').test(s)) errs.push(f + ': приклади не лишились запасним варіантом');
   /* тіло функції прикладів вирізається за балансом дужок: в Import вона живе всередині IIFE */
   const demoBlock = (() => { const st = s.indexOf('function ' + ex + '(){'); if (st < 0) return ''; let i = s.indexOf('{', st), d = 0; for (; i < s.length; i++) { if (s[i] === '{') d++; else if (s[i] === '}' && --d === 0) break; } return s.slice(st, i + 1); })();
   if (/href=/.test(demoBlock)) errs.push(f + ': demo-картки клікаються');
@@ -135,8 +135,8 @@ function render(page, fnName, rowsIn) {
   let i = src.indexOf('{', start), depth = 0;
   for (; i < src.length; i++) { if (src[i] === '{') depth++; else if (src[i] === '}' && --depth === 0) break; }
   const m = [src.slice(start, i + 1)];
-  const box = { cls: new Set(), classList: { add(c) { box.cls.add(c); } } };
-  const grid = { innerHTML: '', querySelectorAll: () => [] };
+  const box = { cls: new Set(), classList: { add(c) { box.cls.add(c); }, remove(c) { box.cls.delete(c); } } };
+  const grid = { innerHTML: '', querySelectorAll: () => [], removeAttribute() {}, setAttribute() {} };
   const ctx = {
     document: { getElementById: id => (id === 'recent' ? box : id === 'recentGrid' ? grid : null) },
     window: { calcarLocale: () => 'en-US' }, Date, Number, Array, String, Math, encodeURIComponent,

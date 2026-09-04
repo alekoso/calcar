@@ -137,8 +137,9 @@ const REPORTS = [
     if (/progress-bar|ld-bar/i.test(page)) errs.push('зʼявились відсотки чи прогрес-бар');
     /* lifecycle-лог із rid, без логу кожного рендера */
     for (const ev of ["'start'", "'stage'", "'complete'", "'error'"]) {
-      if (!page.includes("console.log('[check-load]', rid, " + ev)) errs.push('нема lifecycle-логу ' + ev);
+      if (!page.includes("console.log('[' + LOAD_LOG + '-load]', rid, " + ev)) errs.push('нема lifecycle-логу ' + ev);
     }
+    if (!/const LOAD_LOG = 'chk';/.test(page)) errs.push('Check не називає себе в логах індикатора');
     /* довгий аналіз: нейтральний текст без обіцянок секунд */
     if (!page.includes('The analysis is taking a bit longer. Some cars need extra checks.')) errs.push('нема нейтрального тексту довгого аналізу');
     if (/ще кілька секунд/.test(page)) errs.push('обіцянка "ще кілька секунд" присутня');
