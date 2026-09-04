@@ -102,6 +102,12 @@ for (const f of PAGES) {
   if (!/setOpen\(true, true\); pinned = true/.test(s)) errs.push('клік не віддає фокус панелі: ' + f);
 
   /* 5г. акаунт і мова переїхали в панель лаунчера: у шапці їх дропдаунів нема */
+  /* поточний продукт видно станом картки, текстового бейджа нема: він
+     переповнював компактний рядок і вилазив за праву межу панелі */
+  if (/lnc-badge|Current product/.test(s)) errs.push('текстовий бейдж поточного продукту повернувся: ' + f);
+  if (!/\.lnc-item\.is-current\{background:var\(--brand-soft\)/.test(s)) errs.push('поточний продукт не позначений станом картки: ' + f);
+  if (!/grid-template-columns:auto minmax\(0,1fr\)/.test(s)) errs.push('рядок продукту без колонки, що вміє стискатись: ' + f);
+  if (!/\.lnc-body\{min-width:0\}/.test(s)) errs.push('вміст рядка не може стискатись, опис вилізе за панель: ' + f);
   const headerRight = (s.match(/<div class="header-right">[\s\S]*?<\/div>/) || [''])[0];
   if (/lang|auth|acc-/.test(headerRight)) errs.push('мова або акаунт лишились у правій частині шапки: ' + f);
   if (/id="langBtn"/.test(s)) errs.push('стара кнопка мовного дропдауна лишилась: ' + f);
@@ -197,7 +203,7 @@ if (!vercel.rewrites.some(r => r.source === '/import' && r.destination === '/imp
 if (!fs.existsSync('import.html')) errs.push('немає import.html, вести нікуди');
 
 /* 9. нові рядки інтерфейсу мусять бути в обох словниках, інакше RU/EN сторінка стане мішаною */
-const KEYS = ['CalCar menu', 'Products', 'Account', 'Language', 'Pre-purchase car check', 'Current product',
+const KEYS = ['CalCar menu', 'Products', 'Account', 'Language', 'Pre-purchase car check',
               'What a US car really costs in Ukraine'];
 for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
   const s = fs.readFileSync(d, 'utf8');

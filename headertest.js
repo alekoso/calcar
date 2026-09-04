@@ -88,22 +88,42 @@ for (const p of PAGES) {
   const block = blocks.get('check.html') || '';
   const src = block.replace(/^<script>\n/, '').replace(/\n<\/script>$/, '');
   const listeners = [];
-  let opened = 0, prevented = 0;
-  const aiBtn = {};
+  let prevented = 0;
+  const panel = { open: false };
+  const aiBtn = { attrs: {}, setAttribute(k, v) { aiBtn.attrs[k] = v; } };
+  const chat = {
+    open: () => { panel.open = true; },
+    close: () => { panel.open = false; },
+    toggle: () => { panel.open ? chat.close() : chat.open(); },
+    isOpen: () => panel.open,
+  };
   const ctx = {
-    document: { addEventListener: (t, fn) => listeners.push(fn), querySelector: () => null, getElementById: () => null, querySelectorAll: () => [], activeElement: null },
-    window: { CalCarChat: { open: () => { opened++; }, toggle: () => { opened += 10; } }, matchMedia: () => ({ matches: true }) },
+    document: { addEventListener: (t, fn) => listeners.push({ type: t, fn }), querySelector: () => null, getElementById: id => (id === 'aiBtn' ? aiBtn : null), querySelectorAll: () => [], activeElement: null },
+    window: { CalCarChat: chat, matchMedia: () => ({ matches: true }) },
   };
   ctx.window.document = ctx.document;
   vm.createContext(ctx);
   vm.runInContext(src, ctx);
-  const ev = { target: { closest: sel => (sel === '#aiBtn' ? aiBtn : null) }, preventDefault() { prevented++; } };
-  listeners.forEach(fn => fn(ev));
-  if (opened !== 1) errs.push('кнопка помічника не відкриває спільний помічник (open викликано ' + opened + ' разів)');
+  const fire = (type, ev) => listeners.filter(l => l.type === type).forEach(l => l.fn(ev));
+  const click = () => fire('click', { target: { closest: sel => (sel === '#aiBtn' ? aiBtn : null) }, preventDefault() { prevented++; } });
+  /* закрито -> клік -> відкрито -> клік -> закрито -> клік -> відкрито */
+  click();
+  if (!panel.open) errs.push('перший клік не відкрив помічника');
+  if (aiBtn.attrs['aria-expanded'] !== 'true') errs.push('aria-expanded не став true при відкритті');
+  click();
+  if (panel.open) errs.push('повторний клік не закрив помічника');
+  if (aiBtn.attrs['aria-expanded'] !== 'false') errs.push('aria-expanded не став false при закритті');
+  click();
+  if (!panel.open) errs.push('третій клік не відкрив помічника знову');
   if (!prevented) errs.push('клік по кнопці помічника не зупинений, сторінка може перейти кудись');
-  const evOther = { target: { closest: () => null }, preventDefault() { errs.push('блок реагує на чужі кліки'); } };
-  listeners.forEach(fn => fn(evOther));
-  if (/CalCarChat\.(?!open)/.test(src)) errs.push('блок чіпає помічника не лише через open()');
+  fire('click', { target: { closest: () => null }, preventDefault() { errs.push('блок реагує на чужі кліки'); } });
+  /* панель закрили повз кнопку: шапка дізнається про це подією помічника */
+  chat.close();
+  fire('calcar-chat-state', { detail: { open: false } });
+  if (aiBtn.attrs['aria-expanded'] !== 'false') errs.push('aria-expanded не оновився після закриття помічника повз кнопку');
+  /* стан беремо в помічника, свого прапорця нема */
+  if (/(let|var|const)\s+\w*[Oo]pen\w*\s*=/.test(src)) errs.push('шапка завела власний прапорець стану помічника');
+  if (/CalCarChat\.(?!toggle|isOpen)/.test(src)) errs.push('блок чіпає помічника повз toggle/isOpen');
   if (/thread|memory|registerCapability/.test(src)) errs.push('спільний блок лізе у тред/памʼять помічника');
 }
 

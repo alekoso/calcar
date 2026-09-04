@@ -331,6 +331,28 @@ async function sys(product, memory, extra) {
   if (specMem && !/Людина:[\s\S]*Уподобання й обмеження:[\s\S]*Активний пошук:[\s\S]*Рішення:/.test(specMem)) {
     errs.push('NOTE_SPEC не містить чотирьох розділів у порядку');
   }
+  /* Сторінка керування памʼяттю впізнає ті самі розділи, що пише генератор.
+     Один перелік, одне джерело правди: інакше нотатка показалась би суцільним
+     текстом або, гірше, частина розділів загубилась би при розборі. */
+  {
+    const cab = fs.readFileSync('cabinet.html', 'utf8');
+    const m = cab.match(/const MEM_SECTIONS = \[([^\]]*)\];/);
+    if (!m) errs.push('cabinet.html: нема переліку розділів памʼяті');
+    else {
+      const page = m[1].split(',').map(x => x.trim().replace(/^'|'$/g, '')).filter(Boolean);
+      const spec = (specMem || '').split('\n').map(l => l.trim()).filter(l => /^[^\s].*:$/.test(l) && l.length < 40).map(l => l.slice(0, -1));
+      const want = ['Людина', 'Уподобання й обмеження', 'Активний пошук', 'Рішення'];
+      if (page.join('|') !== want.join('|')) errs.push('cabinet.html: розділи памʼяті розійшлися зі специфікацією: ' + page.join('|'));
+      for (const w of want) if (!spec.includes(w)) errs.push('NOTE_SPEC більше не оголошує розділ "' + w + '"');
+    }
+    /* сторінка памʼяті нічого не ріже мовчки: ліміт той самий, що в генераторі */
+    const apiLimit = (fs.readFileSync('api/memory.js', 'utf8').match(/\.slice\(0, (\d+)\);/g) || []).map(x => +x.replace(/\D/g, ''));
+    const pageLimit = (cab.match(/ta\.value\.trim\(\)\.slice\(0, (\d+)\)/) || [])[1];
+    if (!pageLimit || +pageLimit < Math.max(...apiLimit)) errs.push('сторінка памʼяті ріже нотатку сильніше за генератор: ' + pageLimit + ' проти ' + Math.max(...apiLimit));
+    /* памʼять показується повністю ще до першого редагування */
+    if (!/renderMemory\(saved\);/.test(cab)) errs.push('cabinet.html: памʼять не рендериться при завантаженні');
+    if (!/<div class="mem-view" id="memView">/.test(cab)) errs.push('cabinet.html: нема окремого контейнера памʼяті');
+  }
 
   fs.unlinkSync(tmp);
   if (errs.length) { console.log('FAILED:', errs); process.exit(1); }

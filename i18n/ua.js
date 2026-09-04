@@ -8,6 +8,7 @@ window.CALCAR_DICTS.ua = {
   'CalCar menu': 'Меню CalCar',
   'Language': 'Мова',
   'Check the connection and try again.': 'Перевір звʼязок і спробуй ще раз.',
+  'Empty for now': 'Поки порожньо',
   'My account': 'Кабінет',
   'Sign in': 'Увійти',
   'Sign out': 'Вийти',

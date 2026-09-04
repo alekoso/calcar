@@ -311,7 +311,7 @@ header{background:rgba(255,255,255,.88);backdrop-filter:blur(10px);-webkit-backd
   .lnc-list{display:grid;gap:4px}
 
   .lnc-item{
-    display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;
+    display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:center;width:100%;
     padding:7px 10px;border:1px solid var(--line);border-radius:12px;background:var(--card);
     color:var(--ink);text-decoration:none;cursor:pointer;transition:background .15s,border-color .15s;
   }
@@ -320,12 +320,11 @@ header{background:rgba(255,255,255,.88);backdrop-filter:blur(10px);-webkit-backd
   .lnc-item:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
   /* поточний продукт це статус, а не заклик до дії: без CTA і без наведення */
   .lnc-item.is-current{background:var(--brand-soft);border-color:#DCEFAE}
-  .lnc-item:not(.is-current) .lnc-badge{display:none}
   .lnc-ic{display:block;width:30px;height:30px;flex:0 0 auto}
   .lnc-ic svg{display:block;width:30px;height:30px}
+  .lnc-body{min-width:0}
   .lnc-name{display:block;font-size:14px;font-weight:700;line-height:1.25}
   .lnc-desc{display:block;font-size:12px;color:var(--muted);margin-top:1px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .lnc-badge{display:inline-block;margin:0;padding:1px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;color:var(--brand-ink);background:var(--card);border:1px solid #DCEFAE;border-radius:20px}
 
   /* Логотип мусить стояти рівно там, де стояв до лаунчера. У контейнері 1160px
      ліворуч від логотипа є лише 20px падінгу, а кнопці треба 50px, тому в рядку
@@ -369,7 +368,6 @@ header{background:rgba(255,255,255,.88);backdrop-filter:blur(10px);-webkit-backd
     .lnc-ic,.lnc-ic svg{width:32px;height:32px}
     .lnc-name{font-size:14.5px}
     .lnc-desc{font-size:12.5px;margin-top:1px}
-    .lnc-badge{font-size:10px;padding:1px 7px}
   }
   @keyframes lnc-up{from{transform:translateY(16px)}to{transform:none}}
   .lang-menu button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:none;background:none;padding:9px 10px;border-radius:8px;font-size:13.5px;color:var(--ink);cursor:pointer;font-family:inherit}
@@ -661,7 +659,6 @@ h1{font-size:27px;letter-spacing:-.01em}
         <span class="lnc-name">CalCar Check</span>
         <span class="lnc-desc">Pre-purchase car check</span>
       </span>
-      <span class="lnc-badge">Current product</span>
     </a>
     <a class="lnc-item" data-prod="import" href="/import">
       <span class="lnc-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="#141619"><path d="M160 244 L204 168 Q212 156 227 156 L299 156 Q314 156 322 168 L366 244 Z"/><rect x="76" y="238" width="360" height="58" rx="24"/><circle cx="162" cy="314" r="44"/><circle cx="350" cy="314" r="44"/></g><path d="M190 230 L228 176 Q233 170 240 170 L286 170 Q293 170 298 176 L336 230 Z" fill="#B8F23D"/></svg></span>
@@ -669,7 +666,6 @@ h1{font-size:27px;letter-spacing:-.01em}
         <span class="lnc-name">CalCar Import</span>
         <span class="lnc-desc">What a US car really costs in Ukraine</span>
       </span>
-      <span class="lnc-badge">Current product</span>
     </a>
     <a class="lnc-item" data-prod="garage" href="/garage">
       <span class="lnc-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="#141619"><path d="M60 244 L256 112 L452 244 L452 300 L256 168 L60 300 Z"/><rect x="112" y="286" width="288" height="146" rx="18"/></g><g fill="#B8F23D"><rect x="140" y="316" width="232" height="18" rx="9"/><rect x="140" y="352" width="232" height="18" rx="9"/><rect x="140" y="388" width="232" height="18" rx="9"/></g></svg></span>
@@ -677,7 +673,6 @@ h1{font-size:27px;letter-spacing:-.01em}
         <span class="lnc-name">CalCar Garage</span>
         <span class="lnc-desc">Car owners community</span>
       </span>
-      <span class="lnc-badge">Current product</span>
     </a>
   </div>
   <div class="lnc-sec">Language</div>
@@ -1819,7 +1814,18 @@ document.addEventListener('click', function (e) {
   var b = e.target.closest ? e.target.closest('#aiBtn') : null;
   if (!b) return;
   e.preventDefault();
-  if (window.CalCarChat) window.CalCarChat.open();
+  if (!window.CalCarChat) return;
+  /* ПЕРЕМИКАННЯ, а не лише відкриття: стан беремо в самого помічника
+     (isOpen), свого прапорця не заводимо, інакше він розійдеться з панеллю.
+     Розмова, тред і контекст не змінюються, панель не перебудовується. */
+  window.CalCarChat.toggle();
+  b.setAttribute('aria-expanded', window.CalCarChat.isOpen() ? 'true' : 'false');
+});
+/* панель можна закрити і повз кнопку (хрестик, Esc, підкладка): тримаємо
+   aria-expanded у згоді з реальним станом помічника */
+document.addEventListener('calcar-chat-state', function (e) {
+  var b = document.getElementById('aiBtn');
+  if (b) b.setAttribute('aria-expanded', e.detail && e.detail.open ? 'true' : 'false');
 });
 window.calcarAuthState = function (signedIn) {
   window.CALCAR_SIGNED_IN = !!signedIn;

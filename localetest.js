@@ -215,6 +215,11 @@ const read = f => fs.readFileSync(f, 'utf8');
   /* raw-розмітка англійська: жодної кирилиці у видимому тексті, атрибутах,
      title чи meta поза script/style, крім назв мов у перемикачі */
   const SWITCHER = new Set(['Українська', 'Русский', 'English']);
+  /* Заголовки розділів памʼяті це формат самої нотатки (api/memory.js,
+     api/chat.js), а не текст інтерфейсу: сторінка керування памʼяттю лише
+     впізнає їх у збереженому тексті. Перекладати їх не можна, інакше
+     розбір нотатки зламається. chattest звіряє цей перелік із NOTE_SPEC. */
+  const MEM_HEADINGS = new Set(['Людина', 'Уподобання й обмеження', 'Активний пошук', 'Рішення']);
   const decode = s => s.replace(/&#(\d+);/g, (m, n) => String.fromCharCode(+n)).replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ');
   /* бренди і технічні токени, що свідомо не перекладаються */
   const UNTRANSLATED = /^(Cal|Car|beta|UA|RU|EN|English|CalCar( Check| Import| Garage| Score)?|Google|VIN|you@example\.com|OK|PDF|AI)$/;
@@ -246,6 +251,7 @@ const read = f => fs.readFileSync(f, 'utf8');
     while ((x = lit.exec(js))) {
       if (!cyr.test(x[2])) continue;
       if (SWITCHER.has(x[2])) continue;   /* назви мов у перемикачі свідомо не перекладаються */
+      if (MEM_HEADINGS.has(x[2])) continue;   /* заголовки розділів нотатки памʼяті це дані, не інтерфейс */
       const before = js.slice(Math.max(0, x.index - 12), x.index);
       if (/(?:^|[^A-Za-z_$])[tT]\(\s*$/.test(before)) continue;
       if (/RegExp\(\s*$/.test(before) || /\(\?:/.test(x[2]) || /\\[sdw]/.test(x[2])) continue;

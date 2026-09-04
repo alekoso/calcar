@@ -140,8 +140,16 @@ const PROGRESS_PAGES = ['check.html', 'import.html', 'result-check.html'];
   /* CHECK: недавні перевірки */
   const ch = S['check.html'];
   if (!/function renderRecentSkeleton\(n\)\{/.test(ch)) errs.push('check: нема скелетона недавніх');
-  if (!/\.rc-sk \.sk-ph\{flex:0 0 76px;width:76px;height:54px/.test(ch)) errs.push('check: кадр скелетона не збігається з .rc-ph 76x54');
-  if (!/if \(hasSession \|\| localMine\.length\) renderRecentSkeleton/.test(ch)) errs.push('check: скелетон показується там, де чекати нема чого');
+  /* плейсхолдер це та сама картка .rc з тими самими класами кадру, тіла і
+     колонки оцінки: сітка, ширина, висота і відступи збігаються за побудовою */
+  if (!/'<div class="rc rc-sk" aria-hidden="true">'/.test(ch)) errs.push('check: скелетон недавніх не використовує розмітку справжньої картки');
+  for (const cls of ['rc-ph', 'rc-body', 'rc-t', 'rc-m', 'rc-v', 'rc-score']) {
+    if (!new RegExp("class=\"" + cls + "|" + cls + " sk").test(ch.slice(ch.indexOf('function renderRecentSkeleton'), ch.indexOf('function renderRecentSkeleton') + 1200))) errs.push('check: у скелетоні недавніх нема ' + cls);
+  }
+  if (/\.rc-sk \.sk-ph\{/.test(ch)) errs.push('check: лишилась стара окрема геометрія скелетона недавніх');
+  /* кількість карток дорівнює тій, яку покаже готовий стан */
+  if (!/if \(hasSession\) renderRecentSkeleton\(3\);/.test(ch)) errs.push('check: для акаунта скелетон не показує три картки, як готовий список');
+  if (!/else if \(localMine\.length\) renderRecentSkeleton\(Math\.min\(3, localMine\.length\)\);/.test(ch)) errs.push('check: у гостя кількість плейсхолдерів не дорівнює його списку');
   if (!/grid\.removeAttribute\('aria-busy'\);/.test(ch)) errs.push('check: стан завантаження не знімається при рендері');
   if (!/box\.classList\.remove\('on'\); return;/.test(ch)) errs.push('check: порожній результат лишає скелетон висіти');
 

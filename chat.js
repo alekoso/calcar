@@ -544,6 +544,11 @@
   /* Десктоп: помічник це друга панель сторінки, а не шар поверх неї. Сторінка
      ужимається вліво (body.chat-docked), затемнення нема, читати можна далі.
      Вузьке вікно і телефон: звична шторка з підкладкою. */
+  /* єдине джерело правди про стан це сама панель; подія лише повідомляє
+     сторінку, щоб та не заводила власний прапорець */
+  function announce(open) {
+    try { document.dispatchEvent(new CustomEvent('calcar-chat-state', { detail: { open: open } })); } catch (e) {}
+  }
   function layout() {
     var dock = window.innerWidth > DOCK_MIN;
     document.body.classList.toggle('chat-docked', dock);
@@ -632,6 +637,7 @@
       if (typeof opts.quote === 'string') { quote = opts.quote.trim().slice(0, 500); renderQuote(); }
       renderFocus(); renderEmpty(); renderSugg();
       els.panel.classList.add('open');
+      announce(true);
       layout();
       loadMemory();
       if (window.innerWidth > 560) setTimeout(function () { els.text.focus(); }, 60);
@@ -640,6 +646,7 @@
     close: function () {
       if (!booted) return;
       els.panel.classList.remove('open'); els.ov.classList.remove('open');
+      announce(false);
       document.body.classList.remove('chat-docked');
       document.documentElement.style.overflow = '';
     },
