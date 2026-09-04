@@ -94,6 +94,7 @@ const PROGRESS_PAGES = ['check.html', 'import.html', 'result-check.html'];
   if (!/body\.await-job \.report-skel\{display:none\}/.test(rc)) errs.push('звіт показує скелетон поверх незавершеного аналізу');
   if (!/document\.body\.classList\.add\('await-job'\); document\.title = t\('The report is not ready yet'\); loadingStart\(\);/.test(rc)) errs.push('незавершений job не вмикає індикатор стадій');
   if (/getElementById\('skeleton'\)/.test(rc)) errs.push('мертве посилання на неіснуючий #skeleton лишилось');
+  if (!/if \(AWAIT_TITLE\) document\.title = AWAIT_TITLE;/.test(rc)) errs.push('назва вкладки лишається "звіт не готовий" після появи звіту');
 }
 
 /* ---------- 2. спільні примітиви скелетона ---------- */

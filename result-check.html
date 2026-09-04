@@ -1216,6 +1216,8 @@ function loadingError(rid, msg) {
 
 /* progress:end */
 
+/* назва вкладки на час очікування; після появи звіту повертається */
+let AWAIT_TITLE = null;
 (async function init(){
   if (OPEN_TOKEN) {
     const q = 'token=' + encodeURIComponent(OPEN_TOKEN);
@@ -1231,12 +1233,12 @@ function loadingError(rid, msg) {
       /* автор повернувся до ще не готового аналізу: показуємо той самий
          багатоетапний індикатор, що й на сторінці запуску, і рухаємо його
          реальною стадією з сервера */
-      if (!ld) { document.body.classList.add('await-job'); document.title = t('The report is not ready yet'); loadingStart(); }
+      if (!ld) { document.body.classList.add('await-job'); AWAIT_TITLE = document.title; document.title = t('The report is not ready yet'); loadingStart(); }
       if (ld && ld.setStage && j && STAGE_IDX[j.stage] != null) ld.setStage(STAGE_IDX[j.stage]);
       await new Promise(r => setTimeout(r, document.visibilityState === 'visible' ? 3000 : 8000));
     }
     if (!j || !j.report) { location.replace('/'); return; }
-    if (ld) { await loadingFinish(ld.rid); document.body.classList.remove('await-job'); }
+    if (ld) { await loadingFinish(ld.rid); document.body.classList.remove('await-job'); if (AWAIT_TITLE) document.title = AWAIT_TITLE; }
     DATA = j.report;
     READONLY = !(isLocalAuthor(OPEN_TOKEN) || (DATA._meta && DATA._meta.share_token && isLocalAuthor(DATA._meta.share_token)));
     /* власник акаунта, що відкрив свій звіт за публічним посиланням, теж
