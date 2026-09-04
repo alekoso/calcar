@@ -639,7 +639,10 @@
   body.await-job .await-box{display:block}
   body.await-job .report-skel{display:none}
   body.await-job .ld{margin-top:0}
-  .report-skel{max-width:1160px;margin:0 auto;padding:20px}
+  /* Той самий випадок, що з блоком недавніх: скелетон це flex-елемент
+     сторінки з авто-полями, тому без width:100% його ширина рахувалась від
+     плейсхолдерів і була вужчою за майбутній звіт */
+  .report-skel{max-width:1160px;width:100%;margin:0 auto;padding:20px}
   body.report-ready .report-skel{display:none}
   body:not(.report-ready) .wrap{display:none}
   .skel-top{display:flex;align-items:center;margin-bottom:20px}

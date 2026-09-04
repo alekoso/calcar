@@ -170,6 +170,8 @@ const PROGRESS_PAGES = ['check.html', 'import.html', 'result-check.html'];
     if (!/body\.report-ready \.report-skel\{display:none\}/.test(S[p])) errs.push(p + ': скелетон звіту не зникає у готовому стані');
     if (!/report-ready/.test(S[p])) errs.push(p + ': нема готового стану звіту');
     if (!/aria-hidden="true"/.test((S[p].match(/<div class="report-skel"[^>]*>/) || [''])[0])) errs.push(p + ': скелетон звіту не схований від зчитувача екрана');
+    /* ширина від сторінки, а не від плейсхолдерів: інакше скелетон вужчий за звіт */
+    if (!/\.report-skel\{max-width:1160px;width:100%/.test(S[p])) errs.push(p + ': ширина скелетона звіту залежить від вмісту');
   }
 }
 
