@@ -574,7 +574,10 @@
   @keyframes sp{to{transform:rotate(360deg)}}
 
   /* ---- недавня активність: компактні картки, ті самі адреси звітів, що в кабінеті ---- */
-  .recent{max-width:1160px;margin:26px auto 0;padding:0 20px;display:none}
+  /* Блок це flex-елемент сторінки з авто-полями: без width:100% його ширина
+     рахується від вмісту, і скелетон (короткі плейсхолдери) виходив вужчим
+     за готові картки. Фіксована ширина робить обидва стани однаковими */
+  .recent{max-width:1160px;width:100%;margin:26px auto 0;padding:0 20px;display:none}
   .recent.on{display:block}
   .recent-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px}
   .recent-h b{font-size:14px;font-weight:700}

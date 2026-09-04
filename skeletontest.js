@@ -147,6 +147,9 @@ const PROGRESS_PAGES = ['check.html', 'import.html', 'result-check.html'];
     if (!new RegExp("class=\"" + cls + "|" + cls + " sk").test(ch.slice(ch.indexOf('function renderRecentSkeleton'), ch.indexOf('function renderRecentSkeleton') + 1200))) errs.push('check: у скелетоні недавніх нема ' + cls);
   }
   if (/\.rc-sk \.sk-ph\{/.test(ch)) errs.push('check: лишилась стара окрема геометрія скелетона недавніх');
+  /* ширина блока не має залежати від вмісту: інакше скелетон вужчий за
+     готові картки, хоч кожна картка окремо і збігається */
+  if (!/\.recent\{max-width:1160px;width:100%/.test(ch)) errs.push('check: ширина блока недавніх залежить від вмісту');
   /* кількість карток дорівнює тій, яку покаже готовий стан */
   if (!/if \(hasSession\) renderRecentSkeleton\(3\);/.test(ch)) errs.push('check: для акаунта скелетон не показує три картки, як готовий список');
   if (!/else if \(localMine\.length\) renderRecentSkeleton\(Math\.min\(3, localMine\.length\)\);/.test(ch)) errs.push('check: у гостя кількість плейсхолдерів не дорівнює його списку');
