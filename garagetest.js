@@ -45,7 +45,8 @@ if (!fs.readFileSync('result.html','utf8').includes('.header-right{margin-left:a
 /* 3. меню на всіх сторінках */
 for (const f of ['garage.html','cabinet.html','check.html','import.html','result-check.html','result.html']) {
   const s = fs.readFileSync(f,'utf8');
-  if (!s.includes('href="/garage"')) errs.push('нема пункту Гараж у ' + f);
+  /* beta-prep: Гараж прибраний із навігації (меню і футер), сторінка і маршрути живуть */
+  if (f !== 'garage.html' && /href="\/garage"/.test(s.replace(/<script[\s\S]*?<\/script>/g, ''))) errs.push('Гараж повернувся в навігацію ' + f);
   /* акаунт живе в панелі лаунчера звичайними посиланнями, без hover-меню */
   if (s.includes('.acc-wrap::after')) errs.push('лишився міст наведення від старого меню акаунта у ' + f);
   if (!/<div class="acc-wrap anon">[\s\S]{0,300}id="authLink"/.test(s)) errs.push('нема блоку акаунта в панелі у ' + f);

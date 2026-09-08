@@ -53,7 +53,9 @@ const NOTE = [
 
 function run(text) {
   const view = makeEl();
-  const ctx = { t: x => x, document: { getElementById: id => (id === 'memView' ? view : null) } };
+  /* t() як у справжній UA-локалі: label розділу повертається українським заголовком */
+  const LABELS = { Person: 'Людина', 'Preferences and limits': 'Уподобання й обмеження', 'Current search': 'Активний пошук', Decisions: 'Рішення' };
+  const ctx = { t: x => LABELS[x] || x, document: { getElementById: id => (id === 'memView' ? view : null) } };
   vm.createContext(ctx);
   vm.runInContext(secs + '\nconst memView = document.getElementById("memView");\n' + escFn + '\n' + renderFn + '\nrenderMemory(TEXT);', Object.assign(ctx, { TEXT: text }));
   return view.innerHTML;
@@ -103,6 +105,14 @@ function run(text) {
   const h2 = run(mixed);
   if (!h2.includes('Невідомий розділ:') || !h2.includes('текст під ним')) errs.push('невідомий заголовок ковтається разом із текстом');
   if (!run('').includes('mem-empty')) errs.push('порожня памʼять не має чесного порожнього стану');
+  /* порожня памʼять пропонує перенести профіль із ChatGPT/Claude, а не глухий кут */
+  if (!run('').includes('id="memTransferBtn"')) errs.push('порожня памʼять без кнопки перенесення з ChatGPT/Claude');
+  if (!/id="memPromptSrc" hidden>Analyze our past conversations/.test(page)) errs.push('нема тексту запиту для ChatGPT/Claude у розмітці');
+  if (!/id="memPaste"/.test(page) || !/id="memPasteSave"/.test(page)) errs.push('нема поля вставки профілю або кнопки збереження');
+  if (!/trPaste\.value\.trim\(\)\.slice\(0, 2800\)/.test(page)) errs.push('вставлений профіль ріжеться не за лімітом генератора');
+  /* заголовки: у нотатці лишаються українськими, на екрані через t(label) */
+  const en = (() => { const v = makeEl(); const c = { t: x => x, document: { getElementById: id => (id === 'memView' ? v : null) } }; vm.createContext(c); vm.runInContext(secs + '\nconst memView = document.getElementById("memView");\n' + escFn + '\n' + renderFn + '\nrenderMemory(TEXT);', Object.assign(c, { TEXT: NOTE })); return v.innerHTML; })();
+  if (!en.includes('<b>Person</b>') || !en.includes('<b>Decisions</b>')) errs.push('заголовки розділів не показуються мовою інтерфейсу');
 }
 
 /* ---------- 5. стани сторінки: читання, правка, скасування ---------- */

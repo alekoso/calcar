@@ -46,11 +46,18 @@ for (const f of PAGES) {
   if (!(panel > headEnd)) errs.push('панель лаунчера всередині <header>, мобільна шторка приліпне до шапки: ' + f);
   if (!s.includes('header{background:rgba(255,255,255,.88);backdrop-filter:blur(10px)')) errs.push('шапка без backdrop-filter, перевір причину виносу панелі: ' + f);
 
-  /* 4. Import веде в наявний flow, Check у свій; поточний продукт ставить код */
-  if (!s.includes('<a class="lnc-item" data-prod="import" href="/import">')) errs.push('картка Import не веде на /import: ' + f);
-  if (!s.includes('<a class="lnc-item" data-prod="check" href="/check">')) errs.push('картка Check не веде на /check: ' + f);
-  if ((s.match(/class="lnc-item"/g) || []).length !== 3) errs.push('у лаунчері не три продукти: ' + f);
-  if (!s.includes('<a class="lnc-item" data-prod="garage" href="/garage">')) errs.push('картка Garage не веде на /garage: ' + f);
+  /* 4. beta-prep: продукти це один рядок-перехід, а не список карток. На
+     сторінках Check показується "Пригін авто зі США →", на Import "← Назад
+     до перевірки"; який саме, ставить код зі шляху. Гараж із меню прибраний,
+     його маршрути і сторінка лишаються */
+  if (!s.includes('<a class="lnc-row" data-to="import" href="/import"><span>Car import from the US</span>')) errs.push('рядок Import не веде на /import: ' + f);
+  if (!s.includes('<a class="lnc-row" data-to="check" href="/check">')) errs.push('рядок Check не веде на /check: ' + f);
+  if ((s.match(/class="lnc-row"/g) || []).length !== 2) errs.push('у лаунчері не два рядки-переходи: ' + f);
+  if (/class="lnc-item"|lnc-list|data-prod="garage"/.test(s)) errs.push('картки продуктів повернулись у лаунчер: ' + f);
+  if (/<div class="lnc-sec">Products<\/div>/.test(s)) errs.push('великий розділ Products повернувся: ' + f);
+  const panelHtml = (s.match(BLOCKS.panel) || [''])[0];
+  if (/\/garage/.test(panelHtml)) errs.push('Гараж лишився в панелі меню: ' + f);
+  if (!/\.lnc-row\{display:none/.test(s) || !/\.lnc-row\.on\{display:flex\}/.test(s)) errs.push('рядки-переходи не перемикаються класом on: ' + f);
 
   /* 5. на телефоні звільняємо місце чипом beta, інакше шапка стає дворядковою */
   if (!/@media\(max-width:620px\)\{[\s\S]{0,600}header \.prod\{display:none\}/.test(s)) errs.push('нема мобільного правила header .prod: ' + f);
@@ -86,8 +93,8 @@ for (const f of PAGES) {
      Import сама є посиланням, тож кнопка всередині посилання це і зайвий шум,
      і вкладена інтерактивність */
   if (/lnc-cta|lnc-note/.test(s)) errs.push('CTA або другий рядок повернулись у картку: ' + f);
-  if (!/a\.lnc-item:hover\{background:var\(--surface-2\)\}/.test(s)) errs.push('нема підсвітки картки на наведення: ' + f);
-  if (!/\.lnc-item\{[^}]*cursor:pointer/.test(s)) errs.push('нема cursor:pointer на картці: ' + f);
+  if (!/\.lnc-row:hover\{background:var\(--brand-soft\)\}/.test(s)) errs.push('нема підсвітки рядка на наведення: ' + f);
+  if (!/\.lnc-row\{[^}]*cursor:pointer/.test(s)) errs.push('нема cursor:pointer на рядку: ' + f);
 
   /* 5в. відкриття наведенням: місток над панеллю плюс затримка, інакше меню
      зникає, поки курсор іде від кнопки до нього. Затримка мусить бути в межах
@@ -104,10 +111,7 @@ for (const f of PAGES) {
   /* 5г. акаунт і мова переїхали в панель лаунчера: у шапці їх дропдаунів нема */
   /* поточний продукт видно станом картки, текстового бейджа нема: він
      переповнював компактний рядок і вилазив за праву межу панелі */
-  if (/lnc-badge|Current product/.test(s)) errs.push('текстовий бейдж поточного продукту повернувся: ' + f);
-  if (!/\.lnc-item\.is-current\{background:var\(--brand-soft\)/.test(s)) errs.push('поточний продукт не позначений станом картки: ' + f);
-  if (!/grid-template-columns:auto minmax\(0,1fr\)/.test(s)) errs.push('рядок продукту без колонки, що вміє стискатись: ' + f);
-  if (!/\.lnc-body\{min-width:0\}/.test(s)) errs.push('вміст рядка не може стискатись, опис вилізе за панель: ' + f);
+  if (/lnc-badge|Current product|is-current/.test(s)) errs.push('бейдж або стан поточного продукту повернувся: ' + f);
   const headerRight = (s.match(/<div class="header-right">[\s\S]*?<\/div>/) || [''])[0];
   if (/lang|auth|acc-/.test(headerRight)) errs.push('мова або акаунт лишились у правій частині шапки: ' + f);
   if (/id="langBtn"/.test(s)) errs.push('стара кнопка мовного дропдауна лишилась: ' + f);
@@ -122,7 +126,7 @@ for (const f of PAGES) {
   if (!/max-height:calc\(100dvh - 16px\);overflow:auto/.test(s)) errs.push('шторка без обмеження висоти на телефоні: ' + f);
   /* акаунт: "Кабінет" і "Звіти" вели в одне місце, лишились самі розділи */
   if (!/\.acc-wrap:not\(\.anon\) \.btn-auth\{display:none\}/.test(s)) errs.push('дубль "Кабінет" лишився в меню: ' + f);
-  if (!/<div class="lnc-sec">Products<\/div>\s*<div class="lnc-list">/.test(s)) errs.push('групи "Продукти" нема в панелі: ' + f);
+  if (!/<\/div>\s*<!-- продукти: один рядок-перехід[\s\S]{0,200}<div class="lnc-alt">/.test(s)) errs.push('рядка-переходу нема після групи акаунта: ' + f);
   if (!/\.lnc-panel \.acc-menu,\.lnc-panel \.lang-menu\{position:static/.test(s)) errs.push('меню в панелі лишились випадаючими: ' + f);
 
   /* 5д. кнопка лаунчера завжди ліворуч: праворуч у шапці лише помічник */
@@ -147,8 +151,7 @@ for (const f of PAGES) {
 function resolveProduct(pathname) {
   const cards = {
     check: { prod: 'check', cls: [], attrs: { href: '/check' } },
-    'import': { prod: 'import', cls: [], attrs: { href: '/import' } },
-    garage: { prod: 'garage', cls: [], attrs: { href: '/garage' } }
+    'import': { prod: 'import', cls: [], attrs: { href: '/import' } }
   };
   const el = (extra) => Object.assign({
     addEventListener() {}, focus() {}, offsetWidth: 344,
@@ -159,7 +162,7 @@ function resolveProduct(pathname) {
   }, extra);
   const panel = el({
     querySelector(sel) {
-      const m = /data-prod="([^"]+)"/.exec(sel);
+      const m = /data-to="([^"]+)"/.exec(sel);
       const c = m && cards[m[1]];
       if (!c) return null;
       return el({
@@ -180,22 +183,23 @@ function resolveProduct(pathname) {
   const src = fs.readFileSync('check.html', 'utf8').match(BLOCKS.js)[0]
     .replace(/^<script>\n/, '').replace(/\n<\/script>$/, '');
   new Function('document', 'location', 'window', src)(sandbox.document, sandbox.location, sandbox.window);
-  const cur = Object.values(cards).filter(c => c.cls.includes('is-current')).map(c => c.prod);
-  if (cur.length > 1) return 'НЕОДНОЗНАЧНО:' + cur.join(',');
-  return cur[0] || '';
+  /* повертає, куди веде увімкнений рядок-перехід */
+  const on = Object.values(cards).filter(c => c.cls.includes('on')).map(c => c.prod);
+  if (on.length !== 1) return 'НЕОДНОЗНАЧНО:' + on.join(',');
+  return on[0];
 }
+/* на сторінках Check, кабінету і гаража рядок веде в Import; на сторінках
+   Import назад у Check: шлях назад Import -> Check завжди є */
 const ROUTES = {
-  '/': 'check', '/check': 'check', '/check/aB3xZ9': 'check', '/check.html': 'check',
-  '/result-check.html': 'check',
-  '/import': 'import', '/import.html': 'import', '/result.html': 'import',
-  '/garage': 'garage', '/garage/12': 'garage', '/garage.html': 'garage', '/garage/post/demo-1': 'garage', '/garage/article/bmw': 'garage', '/cabinet.html': ''
+  '/': 'import', '/check': 'import', '/check/aB3xZ9': 'import', '/check.html': 'import',
+  '/result-check.html': 'import',
+  '/import': 'check', '/import.html': 'check', '/result.html': 'check',
+  '/garage': 'import', '/garage/12': 'import', '/garage.html': 'import', '/garage/post/demo-1': 'import', '/garage/article/bmw': 'import', '/cabinet.html': 'import'
 };
 for (const [path, want] of Object.entries(ROUTES)) {
   const got = resolveProduct(path);
-  if (got !== want) errs.push('шлях ' + path + ': поточний продукт "' + got + '", очікували "' + (want || 'жоден') + '"');
+  if (got !== want) errs.push('шлях ' + path + ': рядок-перехід веде в "' + got + '", очікували "' + want + '"');
 }
-/* картка поточного продукту мусить втратити href: це статус, а не навігація */
-if (resolveProduct('/check') !== 'check') errs.push('Check не позначається поточним на /check');
 
 /* 8. маршрут Import справді існує, інакше картка веде в 404 */
 const vercel = JSON.parse(fs.readFileSync('vercel.json', 'utf8'));
@@ -203,8 +207,7 @@ if (!vercel.rewrites.some(r => r.source === '/import' && r.destination === '/imp
 if (!fs.existsSync('import.html')) errs.push('немає import.html, вести нікуди');
 
 /* 9. нові рядки інтерфейсу мусять бути в обох словниках, інакше RU/EN сторінка стане мішаною */
-const KEYS = ['CalCar menu', 'Products', 'Account', 'Language', 'Pre-purchase car check',
-              'What a US car really costs in Ukraine'];
+const KEYS = ['CalCar menu', 'Account', 'Language', 'Car import from the US', 'Back to vehicle check'];
 for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
   const s = fs.readFileSync(d, 'utf8');
   for (const k of KEYS) if (!s.includes("'" + k + "':")) errs.push('нема ключа "' + k + '" у ' + d);

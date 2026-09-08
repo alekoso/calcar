@@ -79,7 +79,8 @@ for (const [f, s] of Object.entries(PAGES)) {
   if (!/<a class="logo" href="\/">/.test(foot) || !/© 2026 CalCar/.test(foot)) errs.push(f + ': футер без логотипа або копірайту');
   if (/beta|calcar\.io|Privacy|Terms|Support|About/i.test(foot.replace(/<[^>]+>/g, ''))) errs.push(f + ': у футері зайве (beta/calcar.io/фейкові сторінки)');
   const links = (foot.match(/<a href="([^"]+)"/g) || []).map(x => x.replace(/<a href="([^"]+)"/, '$1'));
-  if (links.join('|') !== '/check|/import|/cabinet.html#reports|/garage') errs.push(f + ': посилання футера не ті: ' + links.join(', '));
+  if (links.join('|') !== '/check|/import|/cabinet.html#reports') errs.push(f + ': посилання футера не ті: ' + links.join(', '));
+  if (!/<div class="ft-col" id="ftContacts" hidden><b>Contact<\/b><\/div>/.test(foot)) errs.push(f + ': у футері нема прихованої колонки контактів');
 }
 
 /* 7а. Check demo: підказка (i), компонент оцінки, вердикт стилем звіту, рівна висота */

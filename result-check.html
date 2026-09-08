@@ -286,7 +286,7 @@
      body, а не в шапці: у header є backdrop-filter, а він робить із шапки
      containing block для position:fixed, і мобільна шторка приліпала б до
      шапки замість вікна. Позицію на десктопі рахує JS через --lnc-x/--lnc-y.
-     Новий продукт додається одним блоком .lnc-item, решта не міняється. */
+     Продукти не є списком карток: у меню лише рядок-перехід Check/Import. */
   .lnc-btn{
     display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;flex:0 0 auto;
     border:none;background:transparent;border-radius:10px;padding:0;
@@ -306,7 +306,6 @@
   .btn-ai .ai-short{display:none}
   /* ---- групи лаунчера: продукти, акаунт, мова ---- */
   .lnc-sec{margin:10px 6px 5px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
-  .lnc-list + .lnc-sec{margin-top:12px}
   .lnc-panel .acc-wrap{position:static;display:block}
   .lnc-panel .btn-auth{display:flex;align-items:center;gap:10px;width:100%;height:auto;padding:9px 12px;border:0;border-radius:8px;background:none;font-size:13.5px;font-weight:600;color:var(--ink);text-decoration:none}
   .lnc-panel .btn-auth:hover{background:var(--surface-2)}
@@ -368,24 +367,16 @@
   .lnc-title{font-size:14px;font-weight:700;color:var(--ink);letter-spacing:.01em}
   .lnc-x{display:none;border:none;background:transparent;color:var(--muted);cursor:pointer;padding:6px;margin:-6px;border-radius:8px;font-family:inherit}
   .lnc-x:hover{background:var(--surface-2);color:var(--ink)}
-  /* сітка з рівними рядками: усі продукти однієї висоти незалежно від довжини опису */
-  .lnc-list{display:grid;gap:4px}
-
-  .lnc-item{
-    display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:center;width:100%;
-    padding:7px 10px;border:1px solid var(--line);border-radius:12px;background:var(--card);
-    color:var(--ink);text-decoration:none;cursor:pointer;transition:background .15s,border-color .15s;
-  }
-  a.lnc-item:hover{background:var(--surface-2)}
-  a.lnc-item[data-prod="import"]:hover{background:var(--brand-soft);border-color:#DCEFAE}
-  .lnc-item:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
-  /* поточний продукт це статус, а не заклик до дії: без CTA і без наведення */
-  .lnc-item.is-current{background:var(--brand-soft);border-color:#DCEFAE}
-  .lnc-ic{display:block;width:30px;height:30px;flex:0 0 auto}
-  .lnc-ic svg{display:block;width:30px;height:30px}
-  .lnc-body{min-width:0}
-  .lnc-name{display:block;font-size:14px;font-weight:700;line-height:1.25}
-  .lnc-desc{display:block;font-size:12px;color:var(--muted);margin-top:1px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* Продукти в меню це один компактний рядок-перехід: на сторінках Check
+     "Пригін авто зі США →", на сторінках Import "← Назад до перевірки авто".
+     Який із двох показати, вирішує скрипт зі шляху (клас .on). */
+  .lnc-alt{margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+  .lnc-row{display:none;align-items:center;justify-content:space-between;gap:10px;padding:9px 10px;border-radius:10px;color:var(--ink);font-size:13.5px;font-weight:600;text-decoration:none;cursor:pointer;transition:background .15s}
+  .lnc-row.on{display:flex}
+  .lnc-row:hover{background:var(--brand-soft)}
+  .lnc-row:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  .lnc-row[data-to="check"]{justify-content:flex-start}
+  .lnc-arr{color:var(--muted)}
 
   /* Логотип мусить стояти рівно там, де стояв до лаунчера. У контейнері 1160px
      ліворуч від логотипа є лише 20px падінгу, а кнопці треба 50px, тому в рядку
@@ -425,10 +416,7 @@
     .lnc-x{display:inline-flex;align-items:center;justify-content:center}
     .lnc-head{margin:2px 2px 12px}
     .lnc-title{font-size:16px}
-    .lnc-item{padding:8px 10px;gap:11px}
-    .lnc-ic,.lnc-ic svg{width:32px;height:32px}
-    .lnc-name{font-size:14.5px}
-    .lnc-desc{font-size:12.5px;margin-top:1px}
+    .lnc-row{padding:11px 12px;font-size:14.5px}
   }
   @keyframes lnc-up{from{transform:translateY(16px)}to{transform:none}}
 
@@ -772,6 +760,17 @@
   .pd-cta-btn:active{background:var(--brand-active)}
   .pd-cta-hint{font-size:12.5px;color:var(--muted);line-height:1.45;flex:1;min-width:180px}
   @media print{.pd-cta{display:none}}
+  /* відгук про звіт: два кліки після вердикту, без модалки; на Score не впливає */
+  .fb{margin-top:14px;padding-top:12px;border-top:1px dashed var(--line);font-size:13.5px;color:var(--muted)}
+  .fb-q{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .fb-btn{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:5px 10px;font-size:16px;line-height:1;cursor:pointer;font-family:inherit;transition:background .15s,border-color .15s}
+  .fb-btn:hover{background:var(--surface-2)}
+  .fb-btn.on{background:var(--brand-soft);border-color:#DCEFAE}
+  .fb-more{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;margin-top:10px}
+  .fb-more textarea{flex:1;min-width:220px;border:1px solid var(--line-strong);border-radius:10px;padding:9px 12px;font:inherit;font-size:13.5px;color:var(--text);resize:vertical;min-height:44px;background:var(--card)}
+  .fb-send{border:none;border-radius:10px;background:var(--ink);color:#fff;font-weight:700;font-size:13px;padding:9px 14px;cursor:pointer;font-family:inherit}
+  .fb-done{margin-top:8px;color:var(--ink);font-weight:600}
+  @media print{.fb{display:none}}
   .srcline{font-size:12.5px;color:var(--muted);word-break:break-all}
   .srcline a{color:var(--brand-ink)}
   .lightbox{position:fixed;inset:0;background:rgba(10,18,28,.88);z-index:200;display:none;align-items:center;justify-content:center;cursor:zoom-out}
@@ -810,6 +809,9 @@
 <!-- єдиний CalCar Assistant: API доступне скриптам сторінки, розмітка будується на DOMContentLoaded.
      Плаваючої кнопки помічника нема (прибрана глобально в chat.js): входи тут
      контекстні, CTA у висновку і кнопка біля виділеного тексту. -->
+<!-- публічні ідентифікатори (не секрети) і тонкий шар подій: без ключів працює вхолосту -->
+<script src="/calcar-public.js"></script>
+<script src="/analytics.js"></script>
 <script src="/chat.js"></script>
 </head>
 <body>
@@ -848,29 +850,11 @@
      <a href="/cabinet.html#account"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/></svg>Account settings</a>
     </div>
   </div>
-  <div class="lnc-sec">Products</div>
-  <div class="lnc-list">
-    <a class="lnc-item" data-prod="check" href="/check">
-      <span class="lnc-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="none" stroke="#141619" stroke-width="64" stroke-linecap="butt"><path d="M229.72 322.19 A 84 84 0 1 1 229.72 189.81"/><path d="M430.72 322.19 A 84 84 0 1 1 430.72 189.81"/></g></svg></span>
-      <span class="lnc-body">
-        <span class="lnc-name">CalCar Check</span>
-        <span class="lnc-desc">Pre-purchase car check</span>
-      </span>
-    </a>
-    <a class="lnc-item" data-prod="import" href="/import">
-      <span class="lnc-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="#141619"><path d="M160 244 L204 168 Q212 156 227 156 L299 156 Q314 156 322 168 L366 244 Z"/><rect x="76" y="238" width="360" height="58" rx="24"/><circle cx="162" cy="314" r="44"/><circle cx="350" cy="314" r="44"/></g><path d="M190 230 L228 176 Q233 170 240 170 L286 170 Q293 170 298 176 L336 230 Z" fill="#B8F23D"/></svg></span>
-      <span class="lnc-body">
-        <span class="lnc-name">CalCar Import</span>
-        <span class="lnc-desc">What a US car really costs in Ukraine</span>
-      </span>
-    </a>
-    <a class="lnc-item" data-prod="garage" href="/garage">
-      <span class="lnc-ic" aria-hidden="true"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#B8F23D"/><g fill="#141619"><path d="M60 244 L256 112 L452 244 L452 300 L256 168 L60 300 Z"/><rect x="112" y="286" width="288" height="146" rx="18"/></g><g fill="#B8F23D"><rect x="140" y="316" width="232" height="18" rx="9"/><rect x="140" y="352" width="232" height="18" rx="9"/><rect x="140" y="388" width="232" height="18" rx="9"/></g></svg></span>
-      <span class="lnc-body">
-        <span class="lnc-name">CalCar Garage</span>
-        <span class="lnc-desc">Car owners community</span>
-      </span>
-    </a>
+  <!-- продукти: один рядок-перехід між Check та Import, без списку карток;
+       Гараж із навігації прибраний, маршрути й код лишаються -->
+  <div class="lnc-alt">
+    <a class="lnc-row" data-to="import" href="/import"><span>Car import from the US</span><span class="lnc-arr" aria-hidden="true">→</span></a>
+    <a class="lnc-row" data-to="check" href="/check"><span class="lnc-arr" aria-hidden="true">←</span><span>Back to vehicle check</span></a>
   </div>
   <div class="lnc-sec">Language</div>
   <div class="lang-dd" id="langDd">
@@ -958,6 +942,12 @@
         <div class="pd-cta">
           <button class="pd-cta-btn" id="pdChatBtn" type="button"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg><span>Discuss this car in chat</span></button>
           <span class="pd-cta-hint">Ask about the accident, mileage, options, risks, or compare with other cars</span>
+        </div>
+        <!-- відгук: чи був аналіз корисним; текст блокується в session replay -->
+        <div class="fb" id="fbBox">
+          <div class="fb-q"><span>Was this analysis useful?</span><button class="fb-btn" type="button" data-fb="positive" aria-label="Useful">👍</button><button class="fb-btn" type="button" data-fb="negative" aria-label="Not useful">👎</button></div>
+          <div class="fb-more" id="fbMore" hidden data-private-block><textarea id="fbText" rows="2" maxlength="1000" placeholder="What was missing?"></textarea><button class="fb-send" id="fbSend" type="button">Send</button></div>
+          <div class="fb-done" id="fbDone" hidden></div>
         </div>
       </div>
       <div class="v-text" id="vText"></div>
@@ -1063,7 +1053,8 @@
     </div>
     <nav class="ft-cols">
       <div class="ft-col"><b>Products</b><a href="/check">Vehicle Checks</a><a href="/import">Car Import</a></div>
-      <div class="ft-col"><b>My account</b><a href="/cabinet.html#reports">Reports</a><a href="/garage">Garage</a></div>
+      <div class="ft-col"><b>My account</b><a href="/cabinet.html#reports">Reports</a></div>
+      <div class="ft-col" id="ftContacts" hidden><b>Contact</b></div>
     </nav>
   </div>
   <div class="footer-bottom"><div class="footer-in">© 2026 CalCar</div></div>
@@ -1079,7 +1070,7 @@ const SB = (typeof supabase !== 'undefined' && window.CALCAR_SUPABASE?.url)
   ? supabase.createClient(window.CALCAR_SUPABASE.url, window.CALCAR_SUPABASE.anon)
   : null;
 /* стан входу в шапці: "Кабінет" лише за реальною сесією, інакше "Увійти" */
-if (SB) SB.auth.getSession().then(({ data }) => { window.CALCAR_SIGNED_IN = !!data?.session; if (window.calcarAuthState) window.calcarAuthState(window.CALCAR_SIGNED_IN); });
+if (SB) SB.auth.getSession().then(({ data }) => { window.CALCAR_USER_ID = data?.session?.user?.id || null; window.CALCAR_SIGNED_IN = !!data?.session; if (window.calcarAuthState) window.calcarAuthState(window.CALCAR_SIGNED_IN); });
 
 /* публічний read-only звіт: /check/r/<slug>/<token>. Slug (make-model-year)
    лише для людини, звіт визначає непрозорий токен; неправильний slug
@@ -1328,6 +1319,7 @@ function fill(cardId, listId, arr, tpl) {
 }
 
 function boot(){
+  if (window.calcar) window.calcar.track('report_viewed', { product: 'check', readonly: !!READONLY, shared_link: !!OPEN_TOKEN });
   M = DATA._meta || {};
   boot2(DATA);
   shareSetup();
@@ -1814,8 +1806,42 @@ function shareToast(msg){
   el.textContent = msg; el.classList.add('on');
   clearTimeout(shareToast._t); shareToast._t = setTimeout(() => el.classList.remove('on'), 2200);
 }
+/* Відгук про звіт: 👍/👎 після вердикту і необовʼязкове "чого не вистачило".
+   Пишеться в report_feedback через /api/feedback з посиланням на звіт
+   (токен публічного посилання або public_id), на Score не впливає.
+   Текст відгуку в аналітику не йде. */
+(function () {
+  const box = document.getElementById('fbBox'); if (!box) return;
+  const more = document.getElementById('fbMore'), done = document.getElementById('fbDone'), txt = document.getElementById('fbText'), sendBtn = document.getElementById('fbSend');
+  let verdict = null, busy = false;
+  function ref() { return OPEN_TOKEN || (DATA && DATA._meta && DATA._meta.share_token) || OPEN_ID || null; }
+  async function post(text) {
+    const r = ref(); if (!r || !verdict) return false;
+    const headers = { 'content-type': 'application/json' };
+    try { const { data: s } = SB ? await SB.auth.getSession() : { data: null }; if (s && s.session) headers.authorization = 'Bearer ' + s.session.access_token; } catch (e) {}
+    const body = { report_ref: r, product: 'check', verdict, text: text || '', anon_id: window.calcar ? window.calcar.aid() : null, page: location.pathname.replace(/\/check\/.*/, '/check/*'), lang: window.calcarLang() };
+    try { const res = await fetch('/api/feedback', { method: 'POST', headers, body: JSON.stringify(body) }); return res.ok; } catch (e) { return false; }
+  }
+  box.addEventListener('click', async e => {
+    const b = e.target.closest('.fb-btn'); if (!b || busy) return;
+    if (!ref()) { box.hidden = true; return; }   /* звіт лише в цьому браузері: нема на що посилатись */
+    verdict = b.dataset.fb;
+    box.querySelectorAll('.fb-btn').forEach(x => x.classList.toggle('on', x === b));
+    more.hidden = false; done.hidden = true;
+    busy = true; const ok = await post(''); busy = false;
+    if (!ok) { done.textContent = t('Could not send, try again'); done.hidden = false; }
+  });
+  sendBtn.onclick = async () => {
+    if (!verdict || busy) return;
+    busy = true; const ok = await post(txt.value.trim().slice(0, 1000)); busy = false;
+    done.textContent = ok ? t('Thanks for the feedback') : t('Could not send, try again');
+    done.hidden = false; if (ok) more.hidden = true;
+  };
+})();
+
 async function shareReport(){
   const url = await ensureShareToken(); if (!url) { shareToast(t('Could not copy the link')); return; }
+  if (window.calcar) window.calcar.track('report_shared', { product: 'check', method: (/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) && navigator.share) ? 'web_share' : 'copy' });
   const title = t('Check this car: {title}').replace('{title}', (DATA && DATA.vehicle && DATA.vehicle.title) || 'CalCar');
   const mobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
   if (mobile && navigator.share) {
@@ -2046,8 +2072,22 @@ document.addEventListener('calcar-chat-state', function (e) {
   var b = document.getElementById('aiBtn');
   if (b) b.setAttribute('aria-expanded', e.detail && e.detail.open ? 'true' : 'false');
 });
+/* контакти у футері: з публічного конфігу calcar-public.js. Порожнє
+   значення означає "ще не задано", тоді колонки контактів нема зовсім */
+(function () {
+  var col = document.getElementById('ftContacts'), c = window.CALCAR_PUBLIC && window.CALCAR_PUBLIC.contacts;
+  if (!col || !c) return;
+  var tg = /^https:\/\/t\.me\/[A-Za-z0-9_]+$/.test(c.telegram || '') ? c.telegram : '';
+  var em = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email || '') ? c.email : '';
+  if (!tg && !em) return;
+  if (tg) { var a = document.createElement('a'); a.href = tg; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Telegram'; col.appendChild(a); }
+  if (em) { var b = document.createElement('a'); b.href = 'mailto:' + em; b.textContent = em; col.appendChild(b); }
+  col.hidden = false;
+})();
 window.calcarAuthState = function (signedIn) {
   window.CALCAR_SIGNED_IN = !!signedIn;
+  /* аналітика: анонімна історія цього браузера склеюється з акаунтом */
+  if (signedIn && window.CALCAR_USER_ID && window.calcar) window.calcar.identify(window.CALCAR_USER_ID);
   var w = document.querySelector('.acc-wrap'), lab = document.getElementById('authLabel');
   if (!w || !lab) return;
   var tr = window.t || function (x) { return x; };
@@ -2059,10 +2099,87 @@ window.calcarAuthState = function (signedIn) {
 if (window.CALCAR_SIGNED_IN !== undefined) window.calcarAuthState(window.CALCAR_SIGNED_IN);
 </script>
 <script>
+/* Перший запуск CalCar: тур із двох кроків, без бібліотек. Спільний блок,
+   однаковий на всіх сторінках.
+   Крок 1 підсвічує кнопку "Мій CalCar AI" у шапці, крок 2 кнопку меню і
+   розповідає про памʼять помічника. Показується один раз на браузер
+   (localStorage calcar_tour: done|skip) і не показується тому, хто вже
+   користувався помічником (у треді є повідомлення) чи памʼяттю (кабінет
+   ставить done, коли нотатка не порожня), а також на публічному read-only
+   звіті. Пульсація вимикається за prefers-reduced-motion. Стан гостя лише
+   локальний: між пристроями він не переноситься, і ми цього не обіцяємо. */
+(function () {
+  var KEY = 'calcar_tour';
+  function get() { try { return localStorage.getItem(KEY); } catch (e) { return 'skip'; } }
+  function set(v) { try { localStorage.setItem(KEY, v); } catch (e) {} }
+  function usedAssistant() {
+    try { var th = JSON.parse(localStorage.getItem('calcar_assistant_thread') || 'null'); return !!(th && th.messages && th.messages.length); } catch (e) { return false; }
+  }
+  function eligible() {
+    if (get()) return false;
+    if (usedAssistant()) return false;
+    if (/^\/check\/r\//.test(location.pathname)) return false;
+    if (document.body.classList.contains('readonly')) return false;
+    return !!(document.getElementById('aiBtn') && document.getElementById('lncBtn'));
+  }
+  var tr = function (s) { return window.t ? window.t(s) : s; };
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  var css = '.tour-pulse{position:relative;z-index:61}.tour-pulse::after{content:"";position:absolute;inset:-6px;border-radius:26px;border:2px solid var(--brand);animation:tour-pulse 1.6s ease-out infinite;pointer-events:none}@keyframes tour-pulse{0%{transform:scale(.9);opacity:.9}100%{transform:scale(1.25);opacity:0}}'
+    + '.tour-pop{position:fixed;z-index:62;width:min(320px,calc(100vw - 24px));background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:14px 16px;box-shadow:0 14px 40px rgba(20,22,25,.16);font-size:13.5px;line-height:1.5}'
+    + '.tour-pop p{margin:0 0 12px}.tour-step{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-bottom:6px}'
+    + '.tour-act{display:flex;gap:8px;justify-content:flex-end}.tour-act button{font-family:inherit;font-size:13px;font-weight:700;border-radius:10px;padding:7px 12px;cursor:pointer;border:1px solid var(--line-strong);background:var(--card);color:var(--muted)}.tour-act .tour-main{border-color:transparent;background:var(--brand);color:var(--ink)}'
+    + '@media (prefers-reduced-motion:reduce){.tour-pulse::after{animation:none;opacity:.8}}';
+  var pop = null, target = null, step = 0;
+  function clear() { if (target) target.classList.remove('tour-pulse'); target = null; if (pop) pop.remove(); pop = null; }
+  function place() {
+    if (!pop || !target) return;
+    var r = target.getBoundingClientRect(), w = pop.offsetWidth || 320;
+    var x = Math.min(Math.max(12, r.left + r.width / 2 - w / 2), Math.max(12, window.innerWidth - w - 12));
+    pop.style.left = Math.round(x) + 'px'; pop.style.top = Math.round(r.bottom + 12) + 'px';
+  }
+  function finish(v) { set(v); clear(); step = 0; }
+  function show(n) {
+    clear(); step = n;
+    target = document.getElementById(n === 1 ? 'aiBtn' : 'lncBtn');
+    if (!target) return finish('done');
+    target.classList.add('tour-pulse');
+    var text = n === 1
+      ? tr('This is your personal car assistant. It knows your current reports, can explain any conclusion, and over time remembers which cars and conditions suit you.')
+      : tr('This is where CalCar keeps what it knows about your preferences. If you have already discussed choosing a car with ChatGPT or Claude, you can bring that context here instead of starting from scratch.');
+    var main = n === 1 ? tr('Next') : tr('Open memory'), side = n === 1 ? tr('Skip') : tr('Done');
+    pop = document.createElement('div'); pop.className = 'tour-pop'; pop.setAttribute('role', 'dialog');
+    pop.innerHTML = '<div class="tour-step">' + n + ' / 2</div><p>' + esc(text) + '</p><div class="tour-act"><button type="button" class="tour-side">' + esc(side) + '</button><button type="button" class="tour-main">' + esc(main) + '</button></div>';
+    document.body.appendChild(pop); place();
+    pop.querySelector('.tour-main').onclick = function () { if (n === 1) show(2); else { finish('done'); location.href = '/cabinet.html#memory'; } };
+    pop.querySelector('.tour-side').onclick = function () { finish(n === 1 ? 'skip' : 'done'); };
+  }
+  function start() {
+    if (!eligible()) return;
+    var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
+    show(1);
+    window.addEventListener('resize', place); window.addEventListener('scroll', place, true);
+    /* клік по кнопці помічника (або будь-яке відкриття панелі) це і є крок 1 */
+    document.addEventListener('click', function (e) { if (step === 1 && e.target.closest && e.target.closest('#aiBtn')) show(2); });
+    document.addEventListener('calcar-chat-state', function (e) { if (step === 1 && e.detail && e.detail.open) show(2); });
+  }
+  function boot() {
+    /* на сторінці звіту read-only стає відомо лише після завантаження даних:
+       чекаємо готовності звіту, а не таймера */
+    if (/^\/check\//.test(location.pathname) && !document.body.classList.contains('report-ready')) {
+      var mo = new MutationObserver(function () { if (document.body.classList.contains('report-ready')) { mo.disconnect(); setTimeout(start, 900); } });
+      mo.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+      return;
+    }
+    setTimeout(start, 900);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+})();
+</script>
+<script>
 /* Лаунчер продуктів CalCar: спільний блок, однаковий на всіх сторінках.
    Поточний продукт визначається зі шляху, тому розмітка скрізь та сама, а
    позначку "Поточний продукт" ставить код. Новий продукт: додати шлях у
-   PRODUCT_PATHS і картку .lnc-item у панель, більше нічого не міняється. */
+   PRODUCT_PATHS, більше нічого не міняється. */
 (function () {
   var btn = document.getElementById('lncBtn');
   var panel = document.getElementById('lncPanel');
@@ -2077,11 +2194,12 @@ if (window.CALCAR_SIGNED_IN !== undefined) window.calcarAuthState(window.CALCAR_
   var p = location.pathname.replace(/\/+$/, '') || '/';
   var cur = /^\/check\//.test(p) ? 'check' : /^\/garage\//.test(p) ? 'garage' : '';
   for (var k in PRODUCT_PATHS) if (!cur && PRODUCT_PATHS[k].indexOf(p) > -1) cur = k;
-  if (cur) {
-    var card = panel.querySelector('.lnc-item[data-prod="' + cur + '"]');
-    /* поточний продукт нікуди не веде: посилання на самих себе це не навігація */
-    if (card) { card.classList.add('is-current'); card.removeAttribute('href'); card.setAttribute('aria-current', 'page'); }
-  }
+  /* Продукти в меню: один рядок-перехід. На сторінках Import він веде назад
+     до перевірки, скрізь інде (Check, кабінет, гараж) до пригону зі США.
+     Гараж із навігації прибраний, його маршрути і код лишаються */
+  var alt = cur === 'import' ? 'check' : 'import';
+  var row = panel.querySelector('.lnc-row[data-to="' + alt + '"]');
+  if (row) row.classList.add('on');
 
   function mobile() { return window.matchMedia('(max-width:620px)').matches; }
   function place() {

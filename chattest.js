@@ -339,7 +339,9 @@ async function sys(product, memory, extra) {
     const m = cab.match(/const MEM_SECTIONS = \[([^\]]*)\];/);
     if (!m) errs.push('cabinet.html: нема переліку розділів памʼяті');
     else {
-      const page = m[1].split(',').map(x => x.trim().replace(/^'|'$/g, '')).filter(Boolean);
+      /* у переліку обʼєкти { head, label }: head це формат нотатки, label
+         показ мовою інтерфейсу; зі специфікацією звіряється саме head */
+      const page = [...m[1].matchAll(/head: '([^']+)'/g)].map(x => x[1]);
       const spec = (specMem || '').split('\n').map(l => l.trim()).filter(l => /^[^\s].*:$/.test(l) && l.length < 40).map(l => l.slice(0, -1));
       const want = ['Людина', 'Уподобання й обмеження', 'Активний пошук', 'Рішення'];
       if (page.join('|') !== want.join('|')) errs.push('cabinet.html: розділи памʼяті розійшлися зі специфікацією: ' + page.join('|'));
