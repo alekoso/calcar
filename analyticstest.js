@@ -311,7 +311,8 @@ tourChecks();
     const s = S[f];
     if (!s.includes("var col = document.getElementById('ftContacts'), c = window.CALCAR_PUBLIC && window.CALCAR_PUBLIC.contacts;")) errs.push(f + ': контакти футера не читаються з конфігу');
   }
-  if (!/contacts: \{\n    telegram: '',\n    email: '',\n  \}/.test(pub)) errs.push('calcar-public.js: контакти не порожні за замовчуванням або іншої форми');
+  /* Telegram заданий власником (публічний канал підтримки), email лишається порожнім, поки не заданий */
+  if (!/contacts: \{\n    telegram: 'https:\/\/t\.me\/calcar_ai',\n    email: '',\n  \}/.test(pub)) errs.push('calcar-public.js: контакти не ті (Telegram t.me/calcar_ai, email порожній)');
   for (const key of ['posthog_key', 'posthog_host', 'ga4_id', 'contacts.telegram', 'contacts.email']) if (!pub.includes(key)) errs.push('calcar-public.js: у коментарі нема, що заповнити: ' + key);
   /* контакти: під заглушкою з заповненим конфігом колонка зʼявляється */
   const hdr = (S['check.html'].match(/<script>\n\/\* Спільна поведінка шапки[\s\S]*?<\/script>/) || [''])[0].replace(/^<script>\n/, '').replace(/\n<\/script>$/, '');

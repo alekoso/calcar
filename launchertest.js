@@ -6,7 +6,7 @@
    мусить ховатися чип beta, інакше рядок шапки переноситься і вона росте. */
 const fs = require('fs');
 
-const PAGES = ['import.html', 'check.html', 'result.html', 'result-check.html', 'cabinet.html', 'garage.html'];
+const PAGES = ['import.html', 'check.html', 'result.html', 'result-check.html', 'cabinet.html', 'garage.html', 'privacy.html', 'terms.html'];
 const BLOCKS = {
   css: /  \/\* ---- лаунчер продуктів CalCar[\s\S]*?@keyframes lnc-up\{[^}]*\}/,
   btn: /<button class="lnc-btn"[\s\S]*?<\/button>/,

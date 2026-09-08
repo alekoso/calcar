@@ -18,7 +18,7 @@ window.CALCAR_PUBLIC = {
     ga4_id: '',
   },
   contacts: {
-    telegram: '',
+    telegram: 'https://t.me/calcar_ai',
     email: '',
   },
 };

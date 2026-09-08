@@ -77,9 +77,9 @@ for (const [f, s] of Object.entries(PAGES)) {
   /* футер: справжній логотип, опис, лише реальні маршрути, копірайт; без beta, calcar.io і фейкових сторінок */
   const foot = (s.match(/<footer>[\s\S]*?<\/footer>/) || [''])[0];
   if (!/<a class="logo" href="\/">/.test(foot) || !/© 2026 CalCar/.test(foot)) errs.push(f + ': футер без логотипа або копірайту');
-  if (/beta|calcar\.io|Privacy|Terms|Support|About/i.test(foot.replace(/<[^>]+>/g, ''))) errs.push(f + ': у футері зайве (beta/calcar.io/фейкові сторінки)');
+  if (/beta|calcar\.io|Support|About/i.test(foot.replace(/<[^>]+>/g, ''))) errs.push(f + ': у футері зайве (beta/calcar.io/фейкові сторінки)');
   const links = (foot.match(/<a href="([^"]+)"/g) || []).map(x => x.replace(/<a href="([^"]+)"/, '$1'));
-  if (links.join('|') !== '/check|/import|/cabinet.html#reports') errs.push(f + ': посилання футера не ті: ' + links.join(', '));
+  if (links.join('|') !== '/check|/import|/cabinet.html#reports|/privacy|/terms') errs.push(f + ': посилання футера не ті: ' + links.join(', '));
   if (!/<div class="ft-col" id="ftContacts" hidden><b>Contact<\/b><\/div>/.test(foot)) errs.push(f + ': у футері нема прихованої колонки контактів');
 }
 

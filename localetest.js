@@ -13,7 +13,7 @@ const path = require('path');
 const vm = require('vm');
 
 const errs = [];
-const PAGES = ['import.html', 'check.html', 'result.html', 'result-check.html', 'cabinet.html', 'garage.html'];
+const PAGES = ['import.html', 'check.html', 'result.html', 'result-check.html', 'cabinet.html', 'garage.html', 'privacy.html', 'terms.html'];
 const read = f => fs.readFileSync(f, 'utf8');
 
 (async () => {

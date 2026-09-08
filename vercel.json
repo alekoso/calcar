@@ -20,6 +20,14 @@
       "destination": "/check.html"
     },
     {
+      "source": "/privacy",
+      "destination": "/privacy.html"
+    },
+    {
+      "source": "/terms",
+      "destination": "/terms.html"
+    },
+    {
       "source": "/check/r/:slug/:token",
       "destination": "/result-check.html?r=:token&slug=:slug"
     },

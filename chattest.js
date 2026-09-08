@@ -81,11 +81,11 @@ async function sys(product, memory, extra) {
       if (/undefined|\[object Object\]|null|42/.test(head)) errs.push('сміття замість памʼяті для ' + JSON.stringify(empty) + p);
     }
 
-    /* 6. довга нотатка ріжеться по 3000, а не валить запит */
-    const long = 'А'.repeat(2990) + 'ХВІСТ' + 'Б'.repeat(1000);
+    /* 6. довга нотатка ріжеться по 6000 (ліміт памʼяті), а не валить запит */
+    const long = 'А'.repeat(5990) + 'ХВІСТ' + 'Б'.repeat(1000);
     const cut = await sys(product, long);
-    if (!cut.includes('А'.repeat(2990))) errs.push('обрізало памʼять раніше за 3000 символів' + p);
-    if (cut.includes('Б'.repeat(20))) errs.push('памʼять не обрізана по 3000 символів' + p);
+    if (!cut.includes('А'.repeat(5990))) errs.push('обрізало памʼять раніше за 6000 символів' + p);
+    if (cut.includes('Б'.repeat(20))) errs.push('памʼять не обрізана по 6000 символів' + p);
 
     /* 7. службовий блок памʼяті: просимо лише коли є куди зберегти (memory рядком) */
     if (!withMem.includes('СЛУЖБОВИЙ БЛОК ПАМʼЯТІ')) errs.push('нема службового блоку памʼяті при рядковій memory' + p);
@@ -349,7 +349,8 @@ async function sys(product, memory, extra) {
     }
     /* сторінка памʼяті нічого не ріже мовчки: ліміт той самий, що в генераторі */
     const apiLimit = (fs.readFileSync('api/memory.js', 'utf8').match(/\.slice\(0, (\d+)\);/g) || []).map(x => +x.replace(/\D/g, ''));
-    const pageLimit = (cab.match(/ta\.value\.trim\(\)\.slice\(0, (\d+)\)/) || [])[1];
+    /* сторінка не ріже: вона тримає той самий ліміт константою MEM_LIMIT і відмовляє довшому тексту явно */
+    const pageLimit = (cab.match(/const MEM_LIMIT = (\d+);/) || [])[1];
     if (!pageLimit || +pageLimit < Math.max(...apiLimit)) errs.push('сторінка памʼяті ріже нотатку сильніше за генератор: ' + pageLimit + ' проти ' + Math.max(...apiLimit));
     /* памʼять показується повністю ще до першого редагування */
     if (!/renderMemory\(saved\);/.test(cab)) errs.push('cabinet.html: памʼять не рендериться при завантаженні');

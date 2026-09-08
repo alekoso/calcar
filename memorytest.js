@@ -92,8 +92,13 @@ function run(text) {
   const long = NOTE + '\n' + 'x'.repeat(2400);
   const html = run(long);
   if (!html.includes('x'.repeat(2400))) errs.push('довга нотатка обрізана при показі');
-  const limit = (page.match(/ta\.value\.trim\(\)\.slice\(0, (\d+)\)/) || [])[1];
-  if (!limit || +limit < 2800) errs.push('збереження ріже нотатку сильніше за генератор: ' + limit);
+  /* ліміт один на UI і генератор (api/memory.js, api/chat.js): 6000; довше не
+     ріжеться мовчки, а показується людині */
+  const limit = (page.match(/const MEM_LIMIT = (\d+);/) || [])[1];
+  if (+limit !== 6000) errs.push('ліміт памʼяті на сторінці не 6000: ' + limit);
+  for (const f of ['api/memory.js', 'api/chat.js']) if (!/slice\(0, 6000\)/.test(fs.readFileSync(f, 'utf8'))) errs.push(f + ': ліміт памʼяті не 6000');
+  if (/slice\(0, 2800\)/.test(page)) errs.push('сторінка досі ріже по 2800');
+  if (!/if \(tooLong\(v, trSt\)\) return;/.test(page) || !/if \(tooLong\(v, st\)\) return;/.test(page)) errs.push('задовгий текст ріжеться мовчки замість повідомлення');
 }
 
 /* ---------- 4. нерозпізнаний формат не губиться ---------- */
@@ -109,7 +114,8 @@ function run(text) {
   if (!run('').includes('id="memTransferBtn"')) errs.push('порожня памʼять без кнопки перенесення з ChatGPT/Claude');
   if (!/id="memPromptSrc" hidden>Analyze our past conversations/.test(page)) errs.push('нема тексту запиту для ChatGPT/Claude у розмітці');
   if (!/id="memPaste"/.test(page) || !/id="memPasteSave"/.test(page)) errs.push('нема поля вставки профілю або кнопки збереження');
-  if (!/trPaste\.value\.trim\(\)\.slice\(0, 2800\)/.test(page)) errs.push('вставлений профіль ріжеться не за лімітом генератора');
+  if (!run('').includes('id="memManualBtn"')) errs.push('порожня памʼять без дії "Заповнити вручну"');
+  if (!/Return a compact but sufficiently detailed structured profile in English\./.test(page)) errs.push('текст запиту не оновлений');
   /* заголовки: у нотатці лишаються українськими, на екрані через t(label) */
   const en = (() => { const v = makeEl(); const c = { t: x => x, document: { getElementById: id => (id === 'memView' ? v : null) } }; vm.createContext(c); vm.runInContext(secs + '\nconst memView = document.getElementById("memView");\n' + escFn + '\n' + renderFn + '\nrenderMemory(TEXT);', Object.assign(c, { TEXT: NOTE })); return v.innerHTML; })();
   if (!en.includes('<b>Person</b>') || !en.includes('<b>Decisions</b>')) errs.push('заголовки розділів не показуються мовою інтерфейсу');
@@ -120,19 +126,31 @@ function run(text) {
   const setModeFn = grab(page, 'setMode');
   if (!setModeFn) errs.push('нема setMode');
   else {
-    const view = makeEl(), ta = makeEl(), bEdit = makeEl(), bSave = makeEl(), bCancel = makeEl();
+    const view = makeEl(), ta = makeEl(), bEdit = makeEl(), bSave = makeEl(), bCancel = makeEl(), bClear = makeEl(), useRow = makeEl(), memActions = makeEl();
+    const trBox = { hidden: true };
     ta.value = NOTE;
     let rendered = null;
     const ctx = {
-      ta, memView: view, bEdit, bSave, bCancel,
+      ta, memView: view, bEdit, bSave, bCancel, bClear, useRow, memActions, trBox, saved: NOTE, String,
       autoGrow() {}, renderMemory(v) { rendered = v; },
     };
     vm.createContext(ctx);
     vm.runInContext(setModeFn + '\nsetMode(false);', ctx);
     if (ta.style.display !== 'none' || view.style.display !== '') errs.push('у режимі читання видно поле, а не контейнер памʼяті');
     if (rendered !== NOTE) errs.push('режим читання показує не весь текст');
+    if (bEdit.style.display !== '' || bClear.style.display !== '' || useRow.style.display !== '') errs.push('непорожня памʼять у читанні без Змінити/Видалити/прапорця');
     vm.runInContext('setMode(true);', ctx);
     if (ta.style.display !== '' || view.style.display !== 'none') errs.push('у режимі правки не видно поле');
+    if (bSave.style.display !== '' || bCancel.style.display !== '' || bEdit.style.display !== 'none') errs.push('у режимі правки не ті кнопки');
+    /* імпорт: окремий стан, не редактор і не читання */
+    vm.runInContext('setMode("import");', ctx);
+    if (trBox.hidden || ta.style.display !== 'none' || view.style.display !== 'none' || memActions.style.display !== 'none') errs.push('режим імпорту змішаний з іншими станами');
+    /* порожня памʼять у читанні: онбординг без редактора, Видалити, Скасувати і прапорця */
+    ctx.saved = ''; ta.value = '';
+    vm.runInContext('setMode(false);', ctx);
+    if (ta.style.display !== 'none' || view.style.display !== '') errs.push('порожня памʼять відкриває редактор замість онбордингу');
+    if (bClear.style.display !== 'none' || bCancel.style.display !== 'none' || bEdit.style.display !== 'none' || useRow.style.display !== 'none' || memActions.style.display !== 'none') errs.push('порожня памʼять показує Видалити/Скасувати/Змінити або прапорець');
+    if (trBox.hidden !== true) errs.push('порожнє читання показує панель імпорту');
     /* Скасувати повертає рівно збережений текст */
     const cancel = (page.match(/bCancel\.onclick = \(\) => \{[^}]*\};/) || [''])[0];
     if (!/ta\.value = saved;/.test(cancel)) errs.push('Скасувати не повертає збережений текст');
@@ -143,6 +161,7 @@ function run(text) {
   if (!/\.mem-view\{[^}]*border:1px solid var\(--line\)/.test(page)) errs.push('контейнер памʼяті без власної рамки');
   if (!/<textarea id="memText" rows="6" style="display:none"/.test(page)) errs.push('поле правки видно в режимі читання');
   if (!/renderMemory\(saved\);/.test(page)) errs.push('памʼять не рендериться одразу при завантаженні');
+  if (/if \(!ta\.value\) setMode\(true\)/.test(page)) errs.push('порожня памʼять знову відкриває редактор при завантаженні');
   /* прапорець і видалення памʼяті лишились */
   if (!/id="memUse"/.test(page) || !/id="memClear"/.test(page)) errs.push('зник прапорець використання або видалення памʼяті');
 }

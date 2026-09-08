@@ -7,7 +7,7 @@
 const fs = require('fs');
 const vm = require('vm');
 const errs = [];
-const PAGES = ['check.html', 'import.html', 'result.html', 'result-check.html', 'cabinet.html', 'garage.html'];
+const PAGES = ['check.html', 'import.html', 'result.html', 'result-check.html', 'cabinet.html', 'garage.html', 'privacy.html', 'terms.html'];
 const S = Object.fromEntries(PAGES.map(p => [p, fs.readFileSync(p, 'utf8')]));
 const PROD_CSS = ".prod{font-family:'Caveat',cursive;font-size:22px;font-weight:600;font-style:normal;color:var(--brand-active);letter-spacing:0;line-height:1;position:relative;top:1px}";
 const PROD = { 'check.html': 'Check', 'result-check.html': 'Check', 'import.html': 'Import', 'result.html': 'Import', 'garage.html': 'Garage' };

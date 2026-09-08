@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Privacy Policy · CalCar</title>
+<meta name="description" content="How CalCar collects, uses and stores data: account, reports, assistant memory, analytics, vehicle data, Google sign-in.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@800&display=swap&text=CalCarheck" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600&display=swap&text=CheckImportGarage" rel="stylesheet">
+<style>html.i18n-wait body{visibility:hidden}</style>
+<script>
+/* i18n-core:start */
+/* CalCar i18n, ядро. Вбудоване в кожну сторінку ПОБАЙТОВО однаково між
+   маркерами i18n-core:start/end; localetest.js звіряє копії. Семантика:
+   - SOURCE: мова самої розмітки.
+   - DEFAULT_LOCALE і FALLBACK_LOCALE: англійська. Явно збережений вибір
+     користувача сильніший за мову браузера; невідома, зіпсована чи
+     непідтримувана мова ніколи не показує нічого, крім англійської.
+     Жодного визначення за IP чи країною.
+   - t(): переклад обраною мовою, інакше АНГЛІЙСЬКИЙ переклад, і лише коли
+     нема й його, вихідна фраза розмітки. Вихідна фраза ніколи не є
+     user-facing фолбеком, поки існує англійський варіант.
+   - Словники /i18n/<code>.js реєструються у window.CALCAR_DICTS[code];
+     вантажиться лише обрана мова: фолбек (англійська) і є мовою розмітки. */
+(function () {
+  var LS = 'calcar_lang';
+  var SOURCE = 'en';
+  var DEFAULT_LOCALE = 'en';
+  var FALLBACK_LOCALE = 'en';
+  var LANGS = [
+    { code: 'ua', label: 'Українська', short: 'UA', locale: 'uk-UA', html: 'uk' },
+    { code: 'ru', label: 'Русский',    short: 'RU', locale: 'ru-RU', html: 'ru' },
+    { code: 'en', label: 'English',    short: 'EN', locale: 'en-US', html: 'en' },
+  ];
+  var DICT_V = '6';           /* міняти при зміні словників чи їх формату, щоб скинути кеш */
+
+  /* єдиний резолвер локалі: явна підтримувана -> нормалізований код, усе
+     інше -> null (той, хто викликає, підставляє DEFAULT чи FALLBACK).
+     Внутрішній код української лишається 'ua' (localStorage, _meta.lang,
+     кеш перекладів); 'uk' і 'uk-UA' нормалізуються в нього */
+  function resolveLocale(raw) {
+    var n = String(raw == null ? '' : raw).toLowerCase().replace(/^\s+|\s+$/g, '');
+    if (!n) return null;
+    if (n === 'ua' || n === 'uk' || n.indexOf('uk-') === 0 || n.indexOf('ua-') === 0) return 'ua';
+    if (n === 'ru' || n.indexOf('ru-') === 0) return 'ru';
+    if (n === 'en' || n.indexOf('en-') === 0) return 'en';
+    return null;
+  }
+  function meta(c) {
+    for (var i = 0; i < LANGS.length; i++) if (LANGS[i].code === c) return LANGS[i];
+    return meta(FALLBACK_LOCALE);
+  }
+  function saved() {
+    var v = null;
+    try { v = localStorage.getItem(LS); } catch (e) {}
+    return resolveLocale(v);
+  }
+  /* мова браузера, лише якщо вона підтримувана; інакше нічого не вгадуємо */
+  function detect() {
+    var list = [];
+    try {
+      list = (navigator.languages && navigator.languages.length)
+        ? navigator.languages : [navigator.language || ''];
+    } catch (e) { list = []; }
+    for (var i = 0; i < list.length; i++) {
+      var r = resolveLocale(list[i]);
+      if (r) return r;
+    }
+    return null;
+  }
+  /* пріоритет: явний збережений вибір -> підтримувана мова браузера -> en */
+  function lang() { return saved() || detect() || DEFAULT_LOCALE; }
+  window.CALCAR_LANGS = LANGS;
+  window.calcarLang = lang;
+  window.calcarLocale = function () { return meta(lang()).locale; };
+  window.calcarResolveLocale = function (raw) { return resolveLocale(raw) || FALLBACK_LOCALE; };
+
+  var cur = lang();
+  /* розмітка не мовою користувача: ховаємо вміст до застосування перекладу,
+     страховка 400 мс, щоб сторінка ніколи не лишилась порожньою */
+  if (cur !== SOURCE) {
+    try {
+      document.documentElement.className += ' i18n-wait';
+      setTimeout(function () { document.documentElement.classList.remove('i18n-wait'); }, 400);
+    } catch (e) {}
+  }
+  /* синхронне довантаження словників: тег пишеться під час парсингу head,
+     тому переклад готовий ще до першого рендера, без миготіння */
+  window.CALCAR_DICTS = window.CALCAR_DICTS || {};
+  function load(code) {
+    document.write('<scr' + 'ipt src="/i18n/' + code + '.js?v=' + DICT_V + '"></scr' + 'ipt>');
+  }
+  if (cur !== SOURCE) load(cur);
+  /* фолбек-словник потрібен лише коли фолбек не є мовою самої розмітки */
+  if (cur !== SOURCE && cur !== FALLBACK_LOCALE && FALLBACK_LOCALE !== SOURCE) load(FALLBACK_LOCALE);
+
+  function norm(s) { return String(s).replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, ''); }
+
+  /* ключі словника нормалізуються один раз на мову: у розмітці той самий
+     рядок може мати пробіли по краях або перенос рядка */
+  var _idx = {};
+  function dict(code) {
+    var raw = window.CALCAR_DICTS[code];
+    if (!raw) return null;
+    if (_idx[code] && _idx[code].__src === raw) return _idx[code];
+    var out = { __src: raw };
+    for (var k in raw) if (Object.prototype.hasOwnProperty.call(raw, k)) out[norm(k)] = raw[k];
+    _idx[code] = out;
+    return out;
+  }
+  function lookupIn(code, s) {
+    var d = dict(code);
+    if (!d) return null;
+    var v = d[norm(s)];
+    return (v === undefined || v === null) ? null : v;
+  }
+  /* переклад обраною мовою, інакше англійський; пробіли по краях збережені */
+  function lookup(s, l) {
+    if (l === SOURCE) return null;
+    var v = lookupIn(l, s);
+    if (v === null && l !== FALLBACK_LOCALE) v = lookupIn(FALLBACK_LOCALE, s);
+    if (v === null) return null;
+    return (s.match(/^\s*/) || [''])[0] + v + (s.match(/\s*$/) || [''])[0];
+  }
+  function ready(l) { return l === SOURCE || !!window.CALCAR_DICTS[l] || (FALLBACK_LOCALE !== SOURCE && !!window.CALCAR_DICTS[FALLBACK_LOCALE]); }
+  window.t = function (s, l) {
+    l = resolveLocale(l) || lang();
+    if (l === SOURCE) return s;
+    return lookup(s, l) || s;
+  };
+
+  /* перемикач: делегування на document, працює незалежно від моменту рендера.
+     Список мов живе в лаунчері, окремої кнопки біля нього більше нема */
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest) return;
+    var pick = e.target.closest('.lang-menu button');
+    if (!pick || !pick.dataset.lang) return;
+    e.preventDefault();
+    try { localStorage.setItem(LS, resolveLocale(pick.dataset.lang) || DEFAULT_LOCALE); } catch (err) {}
+    location.reload();
+  });
+
+  function markSwitch() {
+    var menu = document.getElementById('langMenu');
+    if (!menu) return;
+    var l = lang();
+    menu.querySelectorAll('button').forEach(function (b) {
+      b.classList.toggle('on', b.dataset.lang === l);
+    });
+  }
+
+  function apply() {
+    var l = lang();
+    document.documentElement.lang = meta(l).html;
+    if (l !== SOURCE && ready(l)) {
+      /* локалізується лише видимий текст. Вміст SCRIPT, STYLE, TEMPLATE,
+         NOSCRIPT і TEXTAREA (код, шаблони, введений користувачем текст)
+         НІКОЛИ не підміняється, інакше збіг фрази з ключем словника
+         зламав би inline JS чи CSS */
+      var SKIP = 'script,style,template,noscript,textarea';
+      function skip(nd) {
+        var p = nd.parentNode;
+        return !!(p && p.closest && p.closest(SKIP));
+      }
+      var w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null), nodes = [], n;
+      while ((n = w.nextNode())) if (!skip(n)) nodes.push(n);
+      nodes.forEach(function (nd) {
+        if (!norm(nd.nodeValue || '')) return;
+        var v = lookup(nd.nodeValue, l);
+        if (v) nd.nodeValue = v;
+      });
+      ['placeholder', 'title', 'aria-label', 'alt'].forEach(function (a) {
+        document.querySelectorAll('[' + a + ']').forEach(function (el) {
+          var v = lookup(el.getAttribute(a) || '', l);
+          if (v) el.setAttribute(a, v.replace(/^\s+|\s+$/g, ''));
+        });
+      });
+      var dt = lookup(document.title, l);
+      if (dt) document.title = dt.replace(/^\s+|\s+$/g, '');
+    }
+    markSwitch();
+    /* показуємо сторінку лише коли переклад реально застосовано:
+       перший виклик apply() може статися ще до завантаження словника */
+    if (ready(l)) document.documentElement.classList.remove('i18n-wait');
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply);
+  else apply();
+})();
+/* i18n-core:end */
+</script>
+<style>
+  :root{
+    --hdr-line:1px;
+    /* Brand */
+    --brand:#B8F23D;
+    --brand-hover:#A7DF31;
+    --brand-active:#96CC27;
+    --brand-soft:#F0FBD9;
+    --brand-ink:#3F5D11;
+    /* Neutrals */
+    --ink:#141619;
+    --ink-2:#30343A;
+    --graphite:#141619;
+    --graphite-2:#202328;
+    --text:#141619;
+    --muted:#697079;
+    --faint:#90969D;
+    --bg:#F7F8F6;
+    --card:#FFFFFF;
+    --surface-2:#F1F3F0;
+    --line:#E2E5E0;
+    --line-strong:#CDD2CB;
+    /* Semantic */
+    --green:#218A4A;
+    --green-soft:#EEF7F0;
+    --amber:#C8790A;
+    --amber-soft:#FFF7E8;
+    --red:#D83A3A;
+    --red-soft:#FDEEEE;
+    --radius:12px;
+    --hdr-h:56px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  /* каркас: футер завжди притиснутий до низу, навіть на короткій сторінці */
+  body{min-height:100vh;display:flex;flex-direction:column}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    background:var(--bg);color:var(--text);font-size:15px;line-height:1.45;
+  }
+  .num{font-variant-numeric:tabular-nums}
+
+  /* шапка і футер спільні для всього CalCar: однакові в обох режимах */
+  header{background:rgba(255,255,255,.88);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line);color:var(--text);position:sticky;top:0;z-index:50}
+  .header-in{max-width:1160px;margin:0 auto;padding:0 20px;height:56px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center}
+  .hleft{display:flex;align-items:center;gap:14px;justify-self:start}
+  .header-right{margin-left:0;grid-column:3;justify-self:end;display:flex;align-items:center;gap:16px;font-size:13px}
+  /* футер: бренд з описом ліворуч, два стовпці реальних маршрутів праворуч,
+     копірайт під тонкою лінією. Фон трохи темніший за сторінку, без кнопок */
+  footer{border-top:1px solid var(--line);background:var(--surface-2);margin-top:auto}
+  .footer-in{max-width:1160px;margin:0 auto;padding:40px 20px 32px;display:flex;justify-content:space-between;align-items:flex-start;gap:32px;flex-wrap:wrap}
+  .ft-brand{max-width:380px}
+  .ft-brand .logo{font-size:14px}
+  .ft-brand p{margin:12px 0 0;font-size:13.5px;line-height:1.5;color:var(--muted)}
+  .ft-cols{display:flex;gap:56px}
+  .ft-col{display:flex;flex-direction:column;gap:8px;min-width:120px}
+  .ft-col b{font-size:13px;font-weight:700;color:var(--ink);margin-bottom:2px}
+  .ft-col a{font-size:13.5px;color:var(--muted);text-decoration:none;width:fit-content}
+  .ft-col a:hover{color:var(--ink);text-decoration:underline;text-decoration-color:var(--brand);text-decoration-thickness:2px;text-underline-offset:4px}
+  .footer-bottom{border-top:1px solid var(--line)}
+  .footer-bottom .footer-in{padding:14px 20px;font-size:12.5px;color:var(--faint)}
+  @media(max-width:620px){.footer-in{flex-direction:column;gap:24px;padding:32px 16px 24px}.ft-cols{gap:36px}.footer-bottom .footer-in{padding:12px 16px}}
+
+  .logo{display:inline-flex;align-items:stretch;border-radius:.46em;overflow:hidden;font-weight:800;font-size:15px;letter-spacing:.01em;line-height:1;text-decoration:none;font-family:'Sora',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+  .logo .l{background:var(--brand);color:var(--ink);padding:.62em 1.05em .62em .72em;clip-path:polygon(0 0,100% 0,calc(100% - .46em) 100%,0 100%)}
+  .logo .r{background:var(--graphite);color:#fff;padding:.62em .72em .62em .98em;margin-left:-.26em;clip-path:polygon(.46em 0,100% 0,100% 100%,0 100%)}
+  .prod{font-family:'Caveat',cursive;font-size:22px;font-weight:600;font-style:normal;color:var(--brand-active);letter-spacing:0;line-height:1;position:relative;top:1px}
+  .prod::after{content:attr(data-prod)}
+  .header-right a{color:var(--muted);text-decoration:none}
+  .header-right a:hover{color:var(--ink)}
+  .btn-auth{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line-strong);border-radius:20px;padding:7px 14px;background:var(--card);color:var(--ink)!important;font-weight:600;font-size:13px;text-decoration:none;transition:background .15s,border-color .15s}
+  .btn-auth:hover{background:var(--surface-2)}
+
+  /* ---- меню акаунта: випадає з кнопки кабінету в шапці ---- */
+  .acc-wrap{position:relative;display:inline-flex}
+  .acc-menu{
+    position:absolute;top:calc(100% + 8px);right:0;min-width:216px;padding:6px;z-index:70;
+    background:var(--card);border:1px solid var(--line);border-radius:12px;
+    box-shadow:0 10px 28px rgba(20,22,25,.12);display:none;
+  }
+  /* тач: перший тап відкриває меню класом, бо :hover там залипає, а клік по посиланню вів би на сторінку */
+  /* анонімний глядач: кнопка веде у вхід, меню кабінету не існує */
+  .acc-wrap.anon .acc-menu{display:none!important}
+  .acc-menu a{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;font-size:13.5px;font-weight:600;color:var(--ink);text-decoration:none}
+  .acc-menu a:hover{background:var(--surface-2)}
+  .acc-menu a svg{width:18px;height:18px;flex:0 0 auto;overflow:visible;color:var(--ink-2);opacity:.85}
+
+  /* ---- лаунчер продуктів CalCar ----------------------------------------
+     Спільний блок, однаковий на всіх сторінках. Панель і підкладка лежать у
+     body, а не в шапці: у header є backdrop-filter, а він робить із шапки
+     containing block для position:fixed, і мобільна шторка приліпала б до
+     шапки замість вікна. Позицію на десктопі рахує JS через --lnc-x/--lnc-y.
+     Продукти не є списком карток: у меню лише рядок-перехід Check/Import. */
+  .lnc-btn{
+    display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;flex:0 0 auto;
+    border:none;background:transparent;border-radius:10px;padding:0;
+    color:var(--faint);cursor:pointer;font-family:inherit;transition:background .15s,color .15s;
+  }
+  .lnc-btn:hover,.lnc-btn[aria-expanded="true"]{background:var(--surface-2);color:var(--ink)}
+  .lnc-btn:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  .lnc-btn svg{display:block}
+  html.lnc-locked,html.lnc-locked body{overflow:hidden}
+
+  /* ---- єдиний глобальний вхід у помічника: помітна дія праворуч у шапці ---- */
+  .btn-ai{display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 15px;border:1px solid rgba(20,22,25,.10);border-radius:20px;background:var(--brand);color:var(--ink);font-family:inherit;font-size:13.5px;font-weight:700;line-height:1;cursor:pointer;white-space:nowrap;transition:background .15s}
+  .btn-ai:hover{background:var(--brand-hover)}
+  .btn-ai:active{background:var(--brand-active)}
+  .btn-ai:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  .btn-ai svg{width:15px;height:15px;flex:0 0 auto}
+  .btn-ai .ai-short{display:none}
+  /* ---- групи лаунчера: продукти, акаунт, мова ---- */
+  .lnc-sec{margin:10px 6px 5px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
+  .lnc-panel .acc-wrap{position:static;display:block}
+  .lnc-panel .btn-auth{display:flex;align-items:center;gap:10px;width:100%;height:auto;padding:9px 12px;border:0;border-radius:8px;background:none;font-size:13.5px;font-weight:600;color:var(--ink);text-decoration:none}
+  .lnc-panel .btn-auth:hover{background:var(--surface-2)}
+  .lnc-panel .btn-auth svg{width:18px;height:18px;flex:0 0 auto;color:var(--ink-2);opacity:.85}
+  .lnc-panel .acc-menu,.lnc-panel .lang-menu{position:static;display:block;min-width:0;margin:0;padding:0;border:0;border-radius:0;box-shadow:none;background:none}
+  .lnc-panel .lang-menu button{width:100%;padding:9px 12px;border-radius:8px;font-size:13.5px;font-weight:600;color:var(--ink)}
+  .lnc-panel .lang-dd{position:static}
+  .lnc-panel .lang-cur{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:9px 12px;border:0;border-radius:8px;background:none;font-family:inherit;font-size:13.5px;font-weight:600;color:var(--ink);cursor:pointer}
+  .lnc-panel .lang-cur:hover{background:var(--surface-2)}
+  .lnc-panel .lang-chev{flex:0 0 auto;color:var(--faint);transition:transform .15s}
+  .lnc-panel .lang-dd.lang-open .lang-chev{transform:rotate(180deg)}
+  .lnc-panel .lang-menu{display:none}
+  .lnc-panel .lang-dd.lang-open .lang-menu{display:block}
+  /* "Кабінет" і "Звіти" вели в одне місце: у меню лишаються самі розділи */
+  .acc-wrap:not(.anon) .btn-auth{display:none}
+
+  /* ---- докований помічник: сторінка ужимається вліво, а не ховається під ним ----
+     Десктоп віддає праву частину вікна панелі помічника, решту лишає сторінці:
+     без затемнення, без перекриття, без горизонтального переповнення. Закриття
+     повертає сторінку рівно в попередній стан. */
+  body{transition:padding-right .25s ease}
+  body.chat-docked{padding-right:380px}
+  body.chat-docked .wrap,
+  body.chat-docked .wrap-sec,
+  body.chat-docked .header-in,
+  body.chat-docked .footer-in{max-width:none}
+  /* skeleton:start ---- CalCar skeleton: примітиви стану завантаження.
+     Блок побайтово однаковий на сторінках. Геометрію задає той, хто ставить
+     примітив: ширина і висота беруться від майбутнього вмісту, тому поява
+     даних не рухає сусідні блоки. Кольори нейтральні, без лайму; анімація
+     ледь помітна і вимикається за prefers-reduced-motion. ---- */
+  .sk{display:inline-block;background:#ECEEEA;border-radius:8px;animation:skp 1.5s ease-in-out infinite}
+  .sk-line{display:block;height:12px;border-radius:6px}
+  .sk-line.sm{height:10px}
+  .sk-title{display:block;height:16px;border-radius:7px}
+  .sk-circle{border-radius:50%}
+  .sk-img{border-radius:10px}
+  @keyframes skp{0%,100%{opacity:1}50%{opacity:.55}}
+  @media (prefers-reduced-motion:reduce){.sk{animation:none;opacity:.8}}
+  /* skeleton:end */
+  .lnc-backdrop{position:fixed;inset:0;background:rgba(20,22,25,.32);z-index:45;display:none}
+
+  /* Місток під панеллю: між кнопкою і панеллю 10px порожнечі, і без нього курсор
+     на шляху вниз виходив би за межі обох, а меню закривалося б по дорозі.
+     Порожнеча між кнопкою і панеллю інакше закривала б меню по дорозі. */
+  .lnc-panel::before{content:"";position:absolute;left:0;right:0;bottom:100%;height:12px}
+  .lnc-backdrop.open{display:block}
+
+  .lnc-panel{
+    position:fixed;left:var(--lnc-x,20px);top:var(--lnc-y,64px);width:344px;z-index:410;
+    background:var(--card);border:1px solid var(--line);border-radius:18px;padding:10px;
+    max-height:calc(100dvh - 84px);overflow:auto;overscroll-behavior:contain;
+    box-shadow:0 14px 40px rgba(20,22,25,.13),0 2px 6px rgba(20,22,25,.05);display:none;
+  }
+  .lnc-panel.open{display:block}
+  .lnc-panel:focus{outline:none}
+  .lnc-grab{display:none;width:38px;height:4px;border-radius:4px;background:var(--line-strong);margin:2px auto 10px}
+  .lnc-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:4px 6px 8px}
+  .lnc-title{font-size:14px;font-weight:700;color:var(--ink);letter-spacing:.01em}
+  .lnc-x{display:none;border:none;background:transparent;color:var(--muted);cursor:pointer;padding:6px;margin:-6px;border-radius:8px;font-family:inherit}
+  .lnc-x:hover{background:var(--surface-2);color:var(--ink)}
+  /* Продукти в меню це один компактний рядок-перехід: на сторінках Check
+     "Пригін авто зі США →", на сторінках Import "← Назад до перевірки авто".
+     Який із двох показати, вирішує скрипт зі шляху (клас .on). */
+  .lnc-alt{margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+  .lnc-row{display:none;align-items:center;justify-content:space-between;gap:10px;padding:9px 10px;border-radius:10px;color:var(--ink);font-size:13.5px;font-weight:600;text-decoration:none;cursor:pointer;transition:background .15s}
+  .lnc-row.on{display:flex}
+  .lnc-row:hover{background:var(--brand-soft)}
+  .lnc-row:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  .lnc-row[data-to="check"]{justify-content:flex-start}
+  .lnc-arr{color:var(--muted)}
+
+  /* Логотип мусить стояти рівно там, де стояв до лаунчера. У контейнері 1160px
+     ліворуч від логотипа є лише 20px падінгу, а кнопці треба 50px, тому в рядку
+     вона неминуче зсуває логотип. На широкому екрані виводимо кнопку з потоку
+     в поле поруч із контейнером: логотип повертається на свій x, кнопка лишається
+     ліворуч від нього з тим самим зазором 14px, а панель якориться до кнопки, бо
+     позицію рахує JS від її rect. Поріг 1240px це 1160 + 2x40: рівно стільки поля
+     треба, щоб кнопка не влізла у край вікна. Вужче поля фізично немає, і кнопка
+     лишається в рядку, як була. chat-docked знімає max-width у шапки звіту, поле
+     зникає разом із ним: там теж лишаємо в рядку. */
+  @media(min-width:1240px){
+    header .header-in{position:relative}
+    body:not(.chat-docked) .lnc-btn{position:absolute;left:-30px;top:50%;margin-top:-18px}
+  }
+
+  @media(max-width:620px){
+    /* лаунчер це новий елемент шапки, і на телефоні рядок шапки від нього
+       переносився: 56px перетворювались на 95px на кожній сторінці. Місце
+       звільняє назва продукту біля логотипа, вона лишається на десктопі. Так
+       шапка тримає один рядок від 328px, тобто на всіх реальних телефонах */
+    header .prod{display:none}
+    .btn-ai{height:34px;padding:0 13px;font-size:13px}
+    .btn-ai .ai-full{display:none}
+    .btn-ai .ai-short{display:inline}
+    .lnc-sec{margin:16px 2px 6px;font-size:12px}
+    .lnc-panel .btn-auth,.lnc-panel .lang-cur,.lnc-panel .lang-menu button,.lnc-panel .acc-menu a{padding:10px 12px;font-size:14.5px}
+    .lnc-panel{
+      left:0;right:0;bottom:0;top:auto;width:auto;
+      border-radius:20px 20px 0 0;border-left:0;border-right:0;border-bottom:0;
+      padding:8px 16px calc(14px + env(safe-area-inset-bottom,0px));
+      max-height:calc(100dvh - 16px);overflow:auto;overscroll-behavior:contain;
+      box-shadow:0 -12px 44px rgba(20,22,25,.18);
+    }
+    .lnc-panel.open{animation:lnc-up .18s ease-out}
+    .lnc-grab,.lnc-x{display:block}
+    .lnc-panel::before{display:none}
+    .lnc-x{display:inline-flex;align-items:center;justify-content:center}
+    .lnc-head{margin:2px 2px 12px}
+    .lnc-title{font-size:16px}
+    .lnc-row{padding:11px 12px;font-size:14.5px}
+  }
+  @keyframes lnc-up{from{transform:translateY(16px)}to{transform:none}}
+
+  /* ---- юридичні сторінки: одна колонка тексту в системі CalCar ---- */
+  .legal{max-width:820px;width:100%;margin:0 auto;padding:36px 20px 64px}
+  .legal h1{font-size:30px;font-weight:800;letter-spacing:-.02em;margin:0 0 6px}
+  .legal .upd{font-size:13px;color:var(--muted);margin:0 0 28px}
+  .legal h2{font-size:18px;font-weight:800;margin:30px 0 10px}
+  .legal p,.legal li{font-size:15px;line-height:1.65;color:var(--text)}
+  .legal p{margin:0 0 12px}
+  .legal ul{margin:0 0 12px 22px}
+  .legal li{margin:4px 0}
+  .legal a{color:var(--ink);text-decoration:underline;text-decoration-color:var(--brand);text-decoration-thickness:2px;text-underline-offset:3px}
+  .legal .see{margin-top:28px;padding-top:18px;border-top:1px solid var(--line)}
+  @media(max-width:620px){.legal{padding:24px 16px 48px}.legal h1{font-size:24px}.legal h2{font-size:16.5px}}
+  html{scrollbar-gutter:stable}
+  header{view-transition-name:site-header}
+  footer{view-transition-name:site-footer}
+</style>
+<!-- спільний інтерфейс контексту сторінки для помічника CalCar -->
+<script src="/context.js"></script>
+<!-- єдиний CalCar Assistant: API доступне скриптам сторінки, розмітка будується на DOMContentLoaded -->
+<!-- публічні ідентифікатори (не секрети) і тонкий шар подій: без ключів працює вхолосту -->
+<script src="/calcar-public.js"></script>
+<script src="/analytics.js"></script>
+<script src="/chat.js"></script>
+</head>
+<body>
+
+<header>
+  <div class="header-in">
+    <div class="hleft">
+      <button class="lnc-btn" type="button" id="lncBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="lncPanel" title="CalCar menu" aria-label="CalCar menu"><svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor" aria-hidden="true"><rect x="0" y="0" width="4" height="4" rx="1.2"/><rect x="7" y="0" width="4" height="4" rx="1.2"/><rect x="14" y="0" width="4" height="4" rx="1.2"/><rect x="0" y="7" width="4" height="4" rx="1.2"/><rect x="7" y="7" width="4" height="4" rx="1.2"/><rect x="14" y="7" width="4" height="4" rx="1.2"/><rect x="0" y="14" width="4" height="4" rx="1.2"/><rect x="7" y="14" width="4" height="4" rx="1.2"/><rect x="14" y="14" width="4" height="4" rx="1.2"/></svg></button>
+      <a class="logo" href="/"><span class="l">Cal</span><span class="r">Car</span></a>
+    </div>
+    <div class="header-right">
+      <button class="btn-ai" id="aiBtn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.7 4.6L18 9.3l-4.3 1.7L12 15.6l-1.7-4.6L6 9.3l4.3-1.7z"/><path d="M18.5 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></svg><span class="ai-full">My CalCar AI</span><span class="ai-short">CalCar AI</span></button>
+    </div>
+  </div>
+</header>
+
+<div class="lnc-backdrop" id="lncBackdrop"></div>
+<div class="lnc-panel" id="lncPanel" role="dialog" tabindex="-1" aria-label="CalCar menu">
+  <div class="lnc-grab" aria-hidden="true"></div>
+  <div class="lnc-head">
+    <div class="lnc-title">CalCar menu</div>
+    <button class="lnc-x" type="button" id="lncClose" title="Close" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+  <div class="lnc-sec">Account</div>
+  <div class="acc-wrap anon">
+    <a class="btn-auth" href="/cabinet.html" id="authLink">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg>
+      <span id="authLabel">Sign in</span>
+    </a>
+    <div class="acc-menu">
+     <a href="/cabinet.html#reports"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>Reports</a>
+     <a href="/cabinet.html#memory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8z"/><path d="M5 17l.9 2.1L8 20l-2.1.9L5 23l-.9-2.1L2 20l2.1-.9z"/></svg>Assistant memory</a>
+     <a href="/cabinet.html#account"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/></svg>Account settings</a>
+    </div>
+  </div>
+  <!-- продукти: один рядок-перехід між Check та Import, без списку карток;
+       Гараж із навігації прибраний, маршрути й код лишаються -->
+  <div class="lnc-alt">
+    <a class="lnc-row" data-to="import" href="/import"><span>Car import from the US</span><span class="lnc-arr" aria-hidden="true">→</span></a>
+    <a class="lnc-row" data-to="check" href="/check"><span class="lnc-arr" aria-hidden="true">←</span><span>Back to vehicle check</span></a>
+  </div>
+  <div class="lnc-sec">Language</div>
+  <div class="lang-dd" id="langDd">
+    <button class="lang-cur" type="button" id="langCur" aria-expanded="false" aria-controls="langMenu"><span id="langCurName">English</span><svg class="lang-chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+  <div class="lang-menu" id="langMenu">
+    <button data-lang="ua" type="button"><i></i>Українська</button>
+    <button data-lang="ru" type="button"><i></i>Русский</button>
+    <button data-lang="en" type="button"><i></i>English</button>
+  </div>
+  </div>
+</div>
+
+<main class="legal">
+  <h1>Privacy Policy</h1>
+  <p class="upd">Last updated: 8 September 2026</p>
+  <p>CalCar (calcar.io) is an online service that helps you understand whether a specific car is worth buying: it checks listings, calculates the cost of importing a car from US auctions and keeps a car assistant with a memory of your preferences. This policy explains what data CalCar collects, why, and what you can do about it.</p>
+  <p>CalCar is an early-stage product operated by the CalCar project team. The legal entity, its registered address and the applicable law will be added to this page once they are finalised.</p>
+  <h2>What CalCar collects</h2>
+  <ul>
+    <li>Account information. When you sign in with Google or an email link, CalCar receives your email address and, from Google, the basic profile data that Google shares at sign-in (name and profile picture). CalCar uses the email address as your account identity; the profile data is stored by the authentication provider and is not shown publicly.</li>
+    <li>Reports and check history: the listings you analyse, the resulting reports and their public share links, if you create them.</li>
+    <li>Assistant conversations: your messages to the CalCar assistant and its replies. The current thread is also kept in your browser.</li>
+    <li>Assistant memory: a short note about your preferences that the assistant maintains and that you can view, edit or erase in your account.</li>
+    <li>Feedback: optional ratings and comments you leave on reports.</li>
+    <li>Listing URLs and vehicle data that you submit for analysis, including photos you upload for an import estimate.</li>
+    <li>An anonymous browser identifier: a random ID stored in your browser that lets CalCar count visits and analyses without knowing who you are.</li>
+    <li>Analytics events: which pages you open, when an analysis is started or completed, when a report is viewed or shared, when the assistant or the memory is opened.</li>
+    <li>Acquisition data: UTM parameters and the referring site of your first visit.</li>
+    <li>Technical information that analytics providers collect by default: browser and device type, screen size, approximate location derived from the IP address, and session timing.</li>
+  </ul>
+  <h2>Analytics</h2>
+  <p>CalCar uses PostHog and Google Analytics (GA4) when they are enabled in its configuration. They help us understand how the product is used: which steps people complete, where they drop off, whether they come back, how well the interface works and where visitors come from.</p>
+  <p>PostHog may record sessions to help us fix interface problems. In the current implementation all form inputs are masked, and the assistant panel, the memory editor and the sign-in form are excluded from recording, so assistant messages, memory content and sign-in details are not captured as readable content.</p>
+  <p>Analytics events never include the text of your assistant messages, memory content, seller descriptions or payment details. Analytics providers may set their own cookies or local storage entries.</p>
+  <h2>Authentication and infrastructure</h2>
+  <p>Sign-in is handled by Supabase Auth, using Google OAuth or a one-time email link. Data is stored in Supabase (database and file storage), and the site with its server functions runs on Vercel.</p>
+  <h2>AI processing</h2>
+  <p>CalCar uses third-party AI models (currently OpenAI models) to analyse listings, vehicle data and photos, to write reports and to power the assistant and its memory. The data needed for a given task, including listing text, vehicle data, photos, your assistant messages and your memory note, is sent to the model provider for processing. CalCar does not claim that any provider never receives this data.</p>
+  <h2>Vehicle data</h2>
+  <p>To build the history of a specific car (Vehicle Memory), CalCar may store publicly available data it finds about that car: VIN, listings, prices, mileage readings, seller descriptions, photos, auction and historical records and other public information. This data describes the vehicle, not you, and is kept separately from your personal data. It comes from public listing sites, auction and history sources, VIN decoding services and web search.</p>
+  <h2>Assistant memory</h2>
+  <p>The memory note is created from your conversations with the assistant or from a profile you paste yourself. You can view and edit it in your account, disable its use in report conclusions, or erase it completely. Erasing removes the note from the database.</p>
+  <h2>Feedback</h2>
+  <p>If you rate a report or write what was missing, this feedback is stored together with the report reference and your account or anonymous identifier, and is used only to improve the product.</p>
+  <h2>Cookies and browser storage</h2>
+  <p>CalCar stores the following in your browser: the authentication session, your language choice, the anonymous analytics identifier and first-visit attribution, onboarding state, the current assistant thread, the list of recent checks on this device and other local application state. Analytics providers, when enabled, use their own cookies and storage.</p>
+  <h2>Who receives your data</h2>
+  <p>CalCar shares data with the categories of providers needed to run the service:</p>
+  <ul>
+    <li>infrastructure and hosting (Vercel, Supabase);</li>
+    <li>authentication (Google OAuth through Supabase Auth);</li>
+    <li>analytics (PostHog, Google Analytics), when enabled;</li>
+    <li>AI model providers (currently OpenAI);</li>
+    <li>vehicle data providers and public sources: listing sites, auction and vehicle history sources, VIN decoding services, web search and page-fetching services.</li>
+  </ul>
+  <p>CalCar does not sell your personal data and does not use it for third-party advertising.</p>
+  <h2>Retention and deletion</h2>
+  <ul>
+    <li>You can erase the assistant memory and delete your reports in your account at any time.</li>
+    <li>To delete your account and the personal data linked to it, contact us using the details below; we will remove the account, its reports, memory and feedback.</li>
+    <li>Public vehicle data collected for Vehicle Memory describes the car rather than a person and may be retained under its own rules even after an account is deleted.</li>
+    <li>Analytics data is retained according to the settings of the analytics providers.</li>
+  </ul>
+  <h2>Google user data</h2>
+  <p>When you sign in with Google, CalCar requests only the basic sign-in scopes: your email address and basic profile information (name and profile picture). CalCar uses this data solely to create and identify your account and to show that you are signed in. It is not used for advertising, is not sold and is not shared with anyone except the authentication provider that stores it. CalCar's use of information received from Google APIs adheres to the Google API Services User Data Policy, including the Limited Use requirements. You can revoke CalCar's access in your Google account settings and request deletion of your account data using the contact below.</p>
+  <h2>Changes</h2>
+  <p>We may update this policy as the product evolves. The date at the top shows the latest version.</p>
+  <h2>Contact</h2>
+  <p>Questions and deletion requests: Telegram <a href="https://t.me/calcar_ai" target="_blank" rel="noopener">t.me/calcar_ai</a><span id="legalEmail"></span></p>
+  <p class="see"><a href="/terms">See also: Terms of Service</a></p>
+</main>
+
+<footer>
+  <div class="footer-in">
+    <div class="ft-brand">
+      <a class="logo" href="/"><span class="l">Cal</span><span class="r">Car</span></a>
+      <p>Check specific cars before buying and calculate the real cost of importing them.</p>
+    </div>
+    <nav class="ft-cols">
+      <div class="ft-col"><b>Products</b><a href="/check">Vehicle Checks</a><a href="/import">Car Import</a></div>
+      <div class="ft-col"><b>My account</b><a href="/cabinet.html#reports">Reports</a></div>
+      <div class="ft-col"><b>Legal</b><a href="/privacy">Privacy</a><a href="/terms">Terms</a></div>
+      <div class="ft-col" id="ftContacts" hidden><b>Contact</b></div>
+    </nav>
+  </div>
+  <div class="footer-bottom"><div class="footer-in">© 2026 CalCar</div></div>
+</footer>
+
+<script src="/config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* Публічна сторінка: жодної стіни входу. Сесія читається лише для того,
+   щоб шапка показала "Кабінет" або "Увійти". */
+const cfg = window.CALCAR_SUPABASE || {};
+if (typeof supabase !== 'undefined' && cfg.url && cfg.anon) {
+  const SB = supabase.createClient(cfg.url, cfg.anon); window.SB = SB;
+  SB.auth.getSession().then(({ data }) => { window.CALCAR_USER_ID = data?.session?.user?.id || null; window.CALCAR_SIGNED_IN = !!data?.session; if (window.calcarAuthState) window.calcarAuthState(window.CALCAR_SIGNED_IN); });
+}
+/* контакт з публічного конфігу: email показується лише коли заданий */
+(function () {
+  var c = window.CALCAR_PUBLIC && window.CALCAR_PUBLIC.contacts, s = document.getElementById('legalEmail');
+  var em = c && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email || '') ? c.email : '';
+  if (!em || !s) return;
+  s.textContent = ' · ';
+  var a = document.createElement('a'); a.href = 'mailto:' + em; a.textContent = em; s.appendChild(a);
+})();
+</script>
+<script>
+/* Спільна поведінка шапки: одна на всі сторінки.
+   Праворуч у шапці лише глобальний вхід у помічника; продукти, акаунт і мова
+   живуть у лаунчері зліва, тому окремих випадаючих меню в шапці більше нема.
+   Кнопка помічника відкриває ТОЙ САМИЙ unified Assistant: свого чату,
+   треду чи контексту вона не створює. */
+document.addEventListener('click', function (e) {
+  var b = e.target.closest ? e.target.closest('#aiBtn') : null;
+  if (!b) return;
+  e.preventDefault();
+  if (!window.CalCarChat) return;
+  /* ПЕРЕМИКАННЯ, а не лише відкриття: стан беремо в самого помічника
+     (isOpen), свого прапорця не заводимо, інакше він розійдеться з панеллю.
+     Розмова, тред і контекст не змінюються, панель не перебудовується. */
+  window.CalCarChat.toggle();
+  b.setAttribute('aria-expanded', window.CalCarChat.isOpen() ? 'true' : 'false');
+});
+/* панель можна закрити і повз кнопку (хрестик, Esc, підкладка): тримаємо
+   aria-expanded у згоді з реальним станом помічника */
+document.addEventListener('calcar-chat-state', function (e) {
+  var b = document.getElementById('aiBtn');
+  if (b) b.setAttribute('aria-expanded', e.detail && e.detail.open ? 'true' : 'false');
+});
+/* контакти у футері: з публічного конфігу calcar-public.js. Порожнє
+   значення означає "ще не задано", тоді колонки контактів нема зовсім */
+(function () {
+  var col = document.getElementById('ftContacts'), c = window.CALCAR_PUBLIC && window.CALCAR_PUBLIC.contacts;
+  if (!col || !c) return;
+  var tg = /^https:\/\/t\.me\/[A-Za-z0-9_]+$/.test(c.telegram || '') ? c.telegram : '';
+  var em = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email || '') ? c.email : '';
+  if (!tg && !em) return;
+  if (tg) { var a = document.createElement('a'); a.href = tg; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Telegram'; col.appendChild(a); }
+  if (em) { var b = document.createElement('a'); b.href = 'mailto:' + em; b.textContent = em; col.appendChild(b); }
+  col.hidden = false;
+})();
+window.calcarAuthState = function (signedIn) {
+  window.CALCAR_SIGNED_IN = !!signedIn;
+  /* аналітика: анонімна історія цього браузера склеюється з акаунтом */
+  if (signedIn && window.CALCAR_USER_ID && window.calcar) window.calcar.identify(window.CALCAR_USER_ID);
+  var w = document.querySelector('.acc-wrap'), lab = document.getElementById('authLabel');
+  if (!w || !lab) return;
+  var tr = window.t || function (x) { return x; };
+  if (signedIn) { w.classList.remove('anon'); lab.textContent = tr('My account'); }
+  else { w.classList.add('anon'); lab.textContent = tr('Sign in'); }
+};
+/* сесія могла підтвердитись РАНІШЕ, ніж виконався цей блок: скрипти сторінки
+   лежать вище за нього. Тоді стан чекає у CALCAR_SIGNED_IN і застосовується тут */
+if (window.CALCAR_SIGNED_IN !== undefined) window.calcarAuthState(window.CALCAR_SIGNED_IN);
+</script>
+<script>
+/* Перший запуск CalCar: тур із двох кроків, без бібліотек. Спільний блок,
+   однаковий на всіх сторінках.
+   Крок 1 підсвічує кнопку "Мій CalCar AI" у шапці. Крок 2 сам відкриває
+   меню, підсвічує рядок "Памʼять помічника" і ставить поповер ПОРУЧ із
+   меню (праворуч від панелі на десктопі, над шторкою на телефоні), тому
+   меню лишається видимим і робочим, а поповер не ховається під нього.
+   Стан у localStorage calcar_tour: step2 (крок 1 пройдено, крок 2 попереду;
+   переживає перехід між сторінками), done, skip. Не показується тому, хто
+   вже користувався помічником (у треді є повідомлення) чи памʼяттю (кабінет
+   ставить done, коли нотатка не порожня), і на публічному read-only звіті.
+   Пульсація вимикається за prefers-reduced-motion. Стан гостя лише
+   локальний: між пристроями не переноситься, і ми цього не обіцяємо. */
+(function () {
+  var KEY = 'calcar_tour', MEMORY_HREF = '/cabinet.html#memory';
+  function get() { try { return localStorage.getItem(KEY); } catch (e) { return 'skip'; } }
+  function set(v) { try { localStorage.setItem(KEY, v); } catch (e) {} }
+  function usedAssistant() {
+    try { var th = JSON.parse(localStorage.getItem('calcar_assistant_thread') || 'null'); return !!(th && th.messages && th.messages.length); } catch (e) { return false; }
+  }
+  function eligible() {
+    var st = get();
+    if (st && st !== 'step2') return false;
+    if (usedAssistant()) return false;
+    if (/^\/check\/r\//.test(location.pathname)) return false;
+    if (document.body.classList.contains('readonly')) return false;
+    return !!(document.getElementById('aiBtn') && document.getElementById('lncBtn') && document.getElementById('lncPanel'));
+  }
+  var tr = function (s) { return window.t ? window.t(s) : s; };
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function mobile() { return window.matchMedia('(max-width:620px)').matches; }
+  function panel() { return document.getElementById('lncPanel'); }
+  var css = '.tour-pulse{position:relative;z-index:61}.tour-pulse::after{content:"";position:absolute;inset:-6px;border-radius:26px;border:2px solid var(--brand);animation:tour-pulse 1.6s ease-out infinite;pointer-events:none}.tour-pulse.tour-row::after{inset:-3px;border-radius:12px}@keyframes tour-pulse{0%{transform:scale(.9);opacity:.9}100%{transform:scale(1.25);opacity:0}}'
+    /* z-index вищий за панель меню (410): поповер стоїть поруч із меню і ніколи не під ним */
+    + '.tour-pop{position:fixed;z-index:420;width:min(320px,calc(100vw - 24px));background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:14px 16px;box-shadow:0 14px 40px rgba(20,22,25,.16);font-size:13.5px;line-height:1.5}'
+    + '.tour-pop p{margin:0 0 12px}.tour-step{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-bottom:6px}'
+    + '.tour-act{display:flex;gap:8px;justify-content:flex-end}.tour-act button{font-family:inherit;font-size:13px;font-weight:700;border-radius:10px;padding:7px 12px;cursor:pointer;border:1px solid var(--line-strong);background:var(--card);color:var(--muted)}.tour-act .tour-main{border-color:transparent;background:var(--brand);color:var(--ink)}'
+    /* гостю пункти кабінету не показуються: на час кроку 2 відкриваємо лише рядок памʼяті */
+    + '.acc-wrap.anon.tour-memory .acc-menu{display:block!important}.acc-wrap.anon.tour-memory .acc-menu a:not([href="' + MEMORY_HREF + '"]){display:none}'
+    + '@media (prefers-reduced-motion:reduce){.tour-pulse::after{animation:none;opacity:.8}}';
+  var pop = null, target = null, step = 0, mo = null;
+  function clear() {
+    if (target) target.classList.remove('tour-pulse', 'tour-row');
+    target = null;
+    if (pop) pop.remove();
+    pop = null;
+    var w = document.querySelector('.acc-wrap'); if (w) w.classList.remove('tour-memory');
+    if (mo) { mo.disconnect(); mo = null; }
+  }
+  function place() {
+    if (!pop || !target) return;
+    var w = pop.offsetWidth || 320, h = pop.offsetHeight || 160, r = target.getBoundingClientRect(), x, y;
+    if (step === 2 && panel()) {
+      /* поруч із відкритим меню, не поверх нього: праворуч від панелі (або
+         ліворуч, якщо праворуч нема місця); на телефоні над шторкою */
+      var p = panel().getBoundingClientRect();
+      if (mobile()) { x = 12; y = Math.max(12, p.top - h - 12); }
+      else {
+        x = p.right + 12 + w <= window.innerWidth - 12 ? p.right + 12 : Math.max(12, p.left - w - 12);
+        y = Math.min(Math.max(12, r.top - 8), Math.max(12, window.innerHeight - h - 12));
+      }
+    } else {
+      x = Math.min(Math.max(12, r.left + r.width / 2 - w / 2), Math.max(12, window.innerWidth - w - 12));
+      y = r.bottom + 12;
+    }
+    pop.style.left = Math.round(x) + 'px'; pop.style.top = Math.round(y) + 'px';
+  }
+  function finish(v) { set(v); clear(); step = 0; }
+  function memoryRow() {
+    var w = document.querySelector('.acc-wrap');
+    if (w && w.classList.contains('anon')) w.classList.add('tour-memory');
+    return document.querySelector('.acc-menu a[href="' + MEMORY_HREF + '"]');
+  }
+  function openMenu() {
+    var p = panel(), b = document.getElementById('lncBtn');
+    if (p && b && !p.classList.contains('open')) b.click();
+  }
+  function show(n) {
+    clear(); step = n;
+    if (n === 2) { set('step2'); openMenu(); target = memoryRow(); }
+    else target = document.getElementById('aiBtn');
+    if (!target) return finish('done');
+    target.classList.add('tour-pulse'); if (n === 2) target.classList.add('tour-row');
+    var text = n === 1
+      ? tr('This is your personal car assistant. It knows your current reports, can explain any conclusion, and over time remembers which cars and conditions suit you.')
+      : tr('This is where CalCar keeps what it knows about your preferences. If you have already discussed choosing a car with ChatGPT or Claude, you can bring that context here instead of starting from scratch.');
+    var main = n === 1 ? tr('Next') : tr('Open memory'), side = n === 1 ? tr('Skip') : tr('Done');
+    pop = document.createElement('div'); pop.className = 'tour-pop'; pop.setAttribute('role', 'dialog');
+    pop.innerHTML = '<div class="tour-step">' + n + ' / 2</div><p>' + esc(text) + '</p><div class="tour-act"><button type="button" class="tour-side">' + esc(side) + '</button><button type="button" class="tour-main">' + esc(main) + '</button></div>';
+    /* кліки по поповеру не доходять до документа: інакше лаунчер вважав би
+       їх кліком "поза меню" і закривав його */
+    pop.addEventListener('click', function (e) { e.stopPropagation(); });
+    document.body.appendChild(pop); place();
+    pop.querySelector('.tour-main').onclick = function () { if (n === 1) next(); else { finish('done'); location.href = MEMORY_HREF; } };
+    pop.querySelector('.tour-side').onclick = function () { finish(n === 1 ? 'skip' : 'done'); };
+    if (n === 2 && panel()) {
+      /* меню закрили повз тур (клік поза ним, Esc): підказка без меню не має сенсу */
+      var p = panel();
+      mo = new MutationObserver(function () { if (step === 2 && !p.classList.contains('open')) finish('done'); });
+      mo.observe(p, { attributes: true, attributeFilter: ['class'] });
+    }
+  }
+  /* крок 2 відкривається після поточної події: відкриття меню всередині
+     чужого кліку лаунчер одразу ж закрив би як клік поза меню */
+  function next() { set('step2'); clear(); step = 0; setTimeout(function () { show(2); }, 0); }
+  function start() {
+    if (!eligible()) return;
+    var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
+    show(get() === 'step2' ? 2 : 1);
+    window.addEventListener('resize', place); window.addEventListener('scroll', place, true);
+    /* відкриття помічника це і є крок 1; крок 2 чекає, поки панель помічника
+       закриють, щоб меню не відкривалось поверх розмови */
+    var pending = false;
+    document.addEventListener('calcar-chat-state', function (e) {
+      if (!e.detail) return;
+      if (e.detail.open && step === 1) { set('step2'); clear(); step = 0; pending = true; }
+      else if (!e.detail.open && pending) { pending = false; next(); }
+    });
+  }
+  function boot() {
+    /* на сторінці звіту read-only стає відомо лише після завантаження даних:
+       чекаємо готовності звіту, а не таймера */
+    if (/^\/check\//.test(location.pathname) && !document.body.classList.contains('report-ready')) {
+      var ro = new MutationObserver(function () { if (document.body.classList.contains('report-ready')) { ro.disconnect(); setTimeout(start, 900); } });
+      ro.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+      return;
+    }
+    setTimeout(start, 900);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+})();
+</script>
+<script>
+/* Лаунчер продуктів CalCar: спільний блок, однаковий на всіх сторінках.
+   Поточний продукт визначається зі шляху, тому розмітка скрізь та сама, а
+   позначку "Поточний продукт" ставить код. Новий продукт: додати шлях у
+   PRODUCT_PATHS, більше нічого не міняється. */
+(function () {
+  var btn = document.getElementById('lncBtn');
+  var panel = document.getElementById('lncPanel');
+  var back = document.getElementById('lncBackdrop');
+  if (!btn || !panel || !back) return;
+
+  var PRODUCT_PATHS = {
+    check: ['/', '/check', '/check.html', '/result-check.html'],
+    'import': ['/import', '/import.html', '/result.html'],
+    garage: ['/garage', '/garage.html']
+  };
+  var p = location.pathname.replace(/\/+$/, '') || '/';
+  var cur = /^\/check\//.test(p) ? 'check' : /^\/garage\//.test(p) ? 'garage' : '';
+  for (var k in PRODUCT_PATHS) if (!cur && PRODUCT_PATHS[k].indexOf(p) > -1) cur = k;
+  /* Продукти в меню: один рядок-перехід. На сторінках Import він веде назад
+     до перевірки, скрізь інде (Check, кабінет, гараж) до пригону зі США.
+     Гараж із навігації прибраний, його маршрути і код лишаються */
+  var alt = cur === 'import' ? 'check' : 'import';
+  var row = panel.querySelector('.lnc-row[data-to="' + alt + '"]');
+  if (row) row.classList.add('on');
+
+  function mobile() { return window.matchMedia('(max-width:620px)').matches; }
+  function place() {
+    if (mobile()) return;
+    var r = btn.getBoundingClientRect(), w = panel.offsetWidth || 344;
+    var x = Math.min(Math.max(12, r.left), Math.max(12, window.innerWidth - w - 12));
+    panel.style.setProperty('--lnc-x', Math.round(x) + 'px');
+    panel.style.setProperty('--lnc-y', Math.round(r.bottom + 10) + 'px');
+  }
+  function focusables() {
+    return [].slice.call(panel.querySelectorAll('a[href],button')).filter(function (el) { return el.offsetParent !== null; });
+  }
+  /* Кнопка лаунчера завжди ліворуч: це ліва частина контракту шапки
+     (лаунчер, логотип, назва продукту). Ширше 1240px медіазапит виводить її
+     з потоку в поле ліворуч від логотипа, щоб логотип не зсувався; вужче,
+     а також коли помічник докований і поля немає, вона просто стоїть у
+     рядку перед логотипом. У правий кластер вона не переїжджає: праворуч
+     живе лише глобальний вхід у помічника. */
+
+  /* Мова: один компактний рядок із поточною мовою, список розкривається за
+     потреби. Сам перемикач лишається старим механізмом i18n: клік по пункту
+     обробляє ядро, тут тільки показ і згортання. */
+  var langDd = document.getElementById('langDd');
+  if (langDd) {
+    var langCur = document.getElementById('langCur'), langName = document.getElementById('langCurName');
+    var active = function () {
+      var l = window.calcarLang ? window.calcarLang() : 'en';
+      return langDd.querySelector('.lang-menu button[data-lang="' + l + '"]');
+    };
+    var b = active();
+    if (b && langName) langName.textContent = b.textContent.trim();
+    if (langCur) langCur.addEventListener('click', function (e) {
+      e.preventDefault();
+      var on = langDd.classList.toggle('lang-open');
+      langCur.setAttribute('aria-expanded', on ? 'true' : 'false');
+      if (on) place();
+    });
+  }
+
+  var open = false, pinned = false, hoverTimer = null;
+  function setOpen(v, moveFocus) {
+    open = v;
+    if (!v) pinned = false;
+    panel.classList.toggle('open', v);
+    back.classList.toggle('open', v && mobile());
+    document.documentElement.classList.toggle('lnc-locked', v && mobile());
+    btn.setAttribute('aria-expanded', v ? 'true' : 'false');
+    if (v) { place(); if (moveFocus) panel.focus(); }
+  }
+  function close(refocus) {
+    cancelClose(); if (!open) return;
+    setOpen(false);
+    /* наступне відкриття починається з компактного вигляду */
+    if (langDd) { langDd.classList.remove('lang-open'); if (langCur) langCur.setAttribute('aria-expanded', 'false'); }
+    if (refocus) btn.focus();
+  }
+
+  /* Наведення тільки для миші: на тачі hover залипає після тапа і шторка
+     відкривалася б сама. Затримка плюс місток над панеллю дають курсору
+     спокійно дійти від кнопки до меню. */
+  function hoverable() { return !mobile() && window.matchMedia('(hover:hover) and (pointer:fine)').matches; }
+  function cancelClose() { if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; } }
+  function scheduleClose() {
+    cancelClose();
+    hoverTimer = setTimeout(function () { hoverTimer = null; if (!pinned) close(false); }, 200);
+  }
+  [btn, panel].forEach(function (el) {
+    el.addEventListener('mouseenter', function () {
+      if (!hoverable()) return;
+      cancelClose();
+      /* фокус не забираємо: меню відкрилось саме, людина його не просила */
+      if (!open) setOpen(true, false);
+    });
+    el.addEventListener('mouseleave', function () { if (hoverable()) scheduleClose(); });
+  });
+
+  btn.addEventListener('click', function (e) {
+    e.preventDefault();
+    cancelClose();
+    if (!open) { setOpen(true, true); pinned = true; }
+    else if (!pinned) pinned = true;   /* меню вже відкрите наведенням: клік закріплює його */
+    else close(true);
+  });
+  panel.addEventListener('click', function (e) {
+    if (e.target.closest && e.target.closest('#lncClose')) { e.preventDefault(); close(true); }
+  });
+  back.addEventListener('click', function () { close(false); });
+  /* клік поза лаунчером закриває, клік усередині нічого не робить */
+  document.addEventListener('click', function (e) {
+    if (!open || !e.target.closest) return;
+    if (e.target.closest('#lncPanel') || e.target.closest('#lncBtn')) return;
+    close(false);
+  });
+  document.addEventListener('keydown', function (e) {
+    if (!open) return;
+    if (e.key === 'Escape') { e.preventDefault(); close(true); return; }
+    if (e.key !== 'Tab') return;
+    var f = focusables();
+    if (!f.length) return;
+    var first = f[0], last = f[f.length - 1], at = document.activeElement;
+    if (mobile()) {
+      /* шторка це модальний шар: фокус ходить по колу всередині неї */
+      if (e.shiftKey && at === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && at === last) { e.preventDefault(); first.focus(); }
+    } else if ((!e.shiftKey && at === last) || (e.shiftKey && at === first)) {
+      close(false);   /* на десктопі це звичайне меню: Tab за межі просто закриває */
+    }
+  });
+  window.addEventListener('resize', function () {
+    if (!open) return;
+    back.classList.toggle('open', mobile());
+    document.documentElement.classList.toggle('lnc-locked', mobile());
+    place();
+  });
+  window.addEventListener('scroll', function () { if (open) place(); }, { passive: true });
+})();
+</script>
+<script>
+/* Що бачить людина: публічна юридична сторінка, конкретного авто нема. */
+if (window.CalCarContext) window.CalCarContext.register(function () { return { page_type: 'legal_privacy' }; });
+</script>
+</body>
+</html>

@@ -29,7 +29,7 @@ const NOTE_SPEC = `Нотатка ведеться ЧОТИРМА розділа
 - Свіже перемагає застаріле. Без повторів, без разових дрібниць.
 - Дані конкретних звітів (кошториси, ціни, VIN, деталі пошкоджень) не копіюй: вони приходять окремо разом зі звітом.
 - Порожній розділ лишай самим заголовком, не вигадуй вміст.
-- Пиши стисло, рядками. Мʼякий ліміт 2500 символів: наближаючись до нього, стискай формулювання і викидай найменш цінне.
+- Пиши стисло, рядками. Мʼякий ліміт 5000 символів: наближаючись до нього, стискай формулювання і викидай найменш цінне.
 - Мовою інтерфейсу CalCar, яку сервіс передає окремим рядком МОВА НОТАТКИ (українська, російська або англійська), незалежно від того, якою мовою людина писала в чаті. Заголовки чотирьох розділів лишаються рівно такими, як у цій специфікації: за ними сервіс розбирає нотатку. Факти від зміни мови не змінюються.
 - НІКОЛИ не використовуй символ довгого тире.`;
 
@@ -59,7 +59,7 @@ export default async function handler(req, res) {
       .join('\n');
     if (!hist) return res.status(400).json({ error: errText(lang, 'memory_empty') });
 
-    const cur = typeof memory === 'string' ? memory.slice(0, 3000) : '';
+    const cur = typeof memory === 'string' ? memory.slice(0, 6000) : '';
 
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), 45000);
@@ -87,7 +87,7 @@ export default async function handler(req, res) {
     if (data?.error) return res.status(502).json({ error: 'AI: ' + (data.error.message || errText(lang, 'ai_request_failed')) });
     let out = (data?.choices?.[0]?.message?.content || '').trim();
     /* модель інколи обгортає лапками або пише "(порожня)": чистимо */
-    out = out.replace(/^["'`]+|["'`]+$/g, '').replace(/^\(порожня\)$/i, '').slice(0, 2800);
+    out = out.replace(/^["'`]+|["'`]+$/g, '').replace(/^\(порожня\)$/i, '').slice(0, 6000);
     return res.status(200).json({ memory: out });
   } catch (e) {
     if (e.name === 'AbortError') return res.status(504).json({ error: errText(lang, 'memory_timeout') });

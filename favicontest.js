@@ -7,7 +7,7 @@ const zlib = require('zlib');
 
 const BRAND = [0xB8, 0xF2, 0x3D];   // --brand
 const INK = [0x14, 0x16, 0x19];     // --ink
-const PAGES = ['import.html', 'check.html', 'result.html', 'result-check.html', 'cabinet.html', 'garage.html'];
+const PAGES = ['import.html', 'check.html', 'result.html', 'result-check.html', 'cabinet.html', 'garage.html', 'privacy.html', 'terms.html'];
 const LINKS = [
   ['<link rel="icon" href="/favicon.svg" type="image/svg+xml">', 'SVG-іконка'],
   ['<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">', 'PNG 32'],

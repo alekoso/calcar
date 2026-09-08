@@ -377,7 +377,9 @@
  .mem-tr textarea{display:block;width:100%;box-sizing:border-box;border:1px solid var(--line-strong);border-radius:10px;padding:10px 12px;font:inherit;font-size:13px;line-height:1.5;color:var(--text);background:var(--card);resize:vertical;min-height:110px;max-height:50vh}
  .mem-tr textarea[readonly]{color:var(--muted)}
  .mem-tr-row{display:flex;flex-direction:column;gap:8px;align-items:flex-start;margin-bottom:12px}
- .mem-tr-act{display:flex;align-items:center;gap:10px;margin-top:10px}
+ .mem-tr-act{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
+ .mem-tr-lbl{display:block;font-size:13px;font-weight:700;color:var(--ink);margin:0 0 6px}
+ .mem-onb-act{display:flex;gap:10px;flex-wrap:wrap}
  #memText{display:block;width:calc(100% - 40px);margin:0 20px;border:1px solid var(--line-strong);border-radius:12px;padding:14px 16px;font:inherit;font-size:13.5px;line-height:1.6;color:var(--text);resize:vertical;min-height:180px;max-height:60vh;background:var(--card);overflow-y:auto}
  #memText:focus{outline:none;border-color:var(--brand)}
  .mem-actions{display:flex;align-items:center;gap:10px;padding:12px 20px 16px}
@@ -609,38 +611,41 @@
    <span class="mem-hint">The assistant remembers what matters from your chats: name, budget, what you are looking for. You can edit or erase it</span>
   </div>
   <div class="mem-view" id="memView"></div>
-  <div id="memPromptSrc" hidden>Analyze our past conversations where we discussed choosing, buying or comparing cars.
+  <div id="memPromptSrc" hidden>Analyze our past conversations in which we discussed choosing, buying or comparing cars.
 
-I may not have stated my requirements directly and I did not fill in any questionnaire. I may have simply sent listing links, asked "what do you think of this car?", compared one car with another, said why I liked or disliked something, rejected options, discussed price, mileage, accidents, equipment, engines, electric cars, maintenance and other things.
+I may not have stated my requirements directly and I did not fill in any questionnaire. I may have simply sent listing links, asked "what do you think of this car?", compared one car with another, said why I like or dislike something, rejected options, discussed price, mileage, accidents, equipment, engines, electric cars, maintenance and other things.
 
-Based on all of that, build my profile as a car buyer.
+Based on all of this correspondence, build my profile as a car buyer.
 
 Use only what actually follows from our conversations. Do not invent anything.
 
-Try to determine:
+Determine, if it was actually discussed:
 
-- what budget I was actually considering;
-- which market/country is relevant for me;
-- which cars, brands, models and body types interest me;
-- which cars I have already considered;
+- budget and acceptable price range;
+- the relevant country/market;
+- how the car will be used;
+- brands, models and types of cars I am interested in;
+- cars I have already considered;
 - what I liked about them;
 - why I rejected specific options;
-- what really matters to me;
-- which parameters are desirable;
-- which things are deal-breakers;
-- my attitude to mileage, age, accidents and rebuilt cars;
-- preferences on power, engine, EV/hybrid/ICE, if discussed;
-- attitude to equipment, comfort, dynamics, reliability and maintenance cost;
-- any other recurring preferences that are really visible from our conversations.
+- the characteristics that matter most to me;
+- desirable parameters;
+- deal-breakers;
+- attitude to mileage and age;
+- attitude to accidents and rebuilt cars;
+- preferences on power and dynamics;
+- EV / hybrid / ICE preferences;
+- attitude to equipment, comfort, reliability and maintenance cost;
+- any recurring preferences that are really visible from our communication.
 
 Split the result into:
 
 1. Confirmed preferences
-   what I said explicitly.
+   - what I said explicitly.
 
 2. Likely preferences
-   conclusions from my recurring behaviour or choices.
-   Always mark them as assumptions, not facts.
+   - conclusions from my recurring behaviour and choices.
+   Always mark them as assumptions.
 
 3. Deal-breakers / what does not suit me.
 
@@ -648,21 +653,23 @@ Split the result into:
    and what I liked or disliked about them.
 
 5. Current context of choice,
-   if it is clear from the conversation what I am looking for now.
+   if it is clear from our conversations what I am looking for now.
 
-If there is no data for some point, skip it.
+If there is no information, do not add it.
 If the information is contradictory, say so.
-Do not try to fill gaps with guesses.
+Do not fill gaps with guesses.
 
-Return a compact but sufficiently detailed structured profile in English that I can paste in full into the memory of my car AI assistant.</div>
+Return a compact but sufficiently detailed structured profile in English.
+It will be pasted in full into the memory of my car AI assistant.</div>
   <div class="mem-tr" id="memTransfer" hidden>
-   <div class="mem-tr-h">Copy this prompt into ChatGPT or Claude, then paste the profile you get below.</div>
+   <div class="mem-tr-h">Copy this prompt into ChatGPT or Claude, then paste the reply below.</div>
    <div class="mem-tr-row"><textarea id="memPrompt" rows="7" readonly spellcheck="false"></textarea><button class="mem-clear" id="memCopy" type="button">Copy</button></div>
-   <textarea id="memPaste" rows="6" placeholder="Paste the profile you received" spellcheck="false"></textarea>
-   <div class="mem-tr-act"><button class="mem-save" id="memPasteSave" type="button">Save to memory</button><button class="mem-clear" id="memTrClose" type="button">Cancel</button></div>
+   <label class="mem-tr-lbl" for="memPaste">Paste the ChatGPT or Claude reply here</label>
+   <textarea id="memPaste" rows="8" spellcheck="false"></textarea>
+   <div class="mem-tr-act"><button class="mem-save" id="memPasteSave" type="button">Save to memory</button><button class="mem-clear" id="memTrClose" type="button">Cancel</button><span class="mem-status" id="memTrStatus"></span></div>
   </div>
-  <textarea id="memText" rows="6" style="display:none" placeholder="Empty for now. Talk to the assistant in any report and a note will appear here"></textarea>
-  <label class="mem-use"><input type="checkbox" id="memUse" checked><span>Use memory in report conclusions</span></label>
+  <textarea id="memText" rows="6" style="display:none" placeholder="Describe yourself as a car buyer: budget, market, body type, what matters, what you have already rejected"></textarea>
+  <label class="mem-use" id="memUseRow"><input type="checkbox" id="memUse" checked><span>Use memory in report conclusions</span></label>
   <div class="mem-actions">
    <button class="mem-save" id="memEdit">Change</button>
    <button class="mem-save" id="memSave" style="display:none">Save</button>
@@ -766,8 +773,9 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
   if (!raw.trim()) {
    /* порожньо: не глухий кут, а пропозиція перенести контекст з іншого AI */
    memView.innerHTML = '<div class="mem-onb"><b>' + memEsc(t('CalCar does not know much about you yet')) + '</b>'
-     + '<p class="mem-empty">' + memEsc(t('You can bring here what ChatGPT or Claude has already learned about your car preferences from past conversations.')) + '</p>'
-     + '<button class="mem-save" type="button" id="memTransferBtn">' + memEsc(t('Transfer from ChatGPT / Claude')) + '</button></div>';
+     + '<p class="mem-empty">' + memEsc(t('If you have already discussed choosing cars with ChatGPT or Claude, you can bring that context here so CalCar immediately understands which cars suit you.')) + '</p>'
+     + '<div class="mem-onb-act"><button class="mem-save" type="button" id="memTransferBtn">' + memEsc(t('Transfer from ChatGPT / Claude')) + '</button>'
+     + '<button class="mem-clear" type="button" id="memManualBtn">' + memEsc(t('Fill in manually')) + '</button></div></div>';
    return;
   }
   const secs = [];
@@ -790,6 +798,9 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  const bEdit = document.getElementById('memEdit');
  const bSave = document.getElementById('memSave');
  const bCancel = document.getElementById('memCancel');
+ const bClear = document.getElementById('memClear');
+ const useRow = document.getElementById('memUseRow');
+ const memActions = document.querySelector('#memCard .mem-actions');
  let saved = ta.value;   /* останній збережений текст: для скасування */
  /* початковий рендер: без нього сторінка показувала лише перші рядки поля,
     і повний вміст зʼявлявся аж після Змінити -> Зберегти */
@@ -797,19 +808,33 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  /* хто вже має памʼять, тур першого запуску не побачить */
  if (saved.trim()) { try { localStorage.setItem('calcar_tour', 'done'); } catch (e) {} }
 
- /* Перенесення профілю з ChatGPT/Claude: людина копіює запит, вставляє
-    отриманий профіль, і він стає памʼяттю (той самий ліміт 2800, що й у
-    генератора). Далі помічник веде нотатку як звичайно. */
+ /* Ліміт памʼяті: той самий, що в генераторі (api/memory.js, api/chat.js
+    ріжуть по 6000; БД: text без обмеження). Довший текст НЕ обрізається
+    мовчки: людина бачить довжину і сама скорочує. */
+ const MEM_LIMIT = 6000;
+ function tooLong(v, el) {
+  if (v.length <= MEM_LIMIT) return false;
+  el.textContent = t('Too long: ') + v.length + ' / ' + MEM_LIMIT;
+  return true;
+ }
+
+ /* Перенесення профілю з ChatGPT/Claude: окремий стан картки. Людина копіює
+    запит, вставляє відповідь, і вона цілком стає памʼяттю. Далі помічник
+    веде нотатку як звичайно. */
  const trBox = document.getElementById('memTransfer');
  const trPrompt = document.getElementById('memPrompt');
  const trPaste = document.getElementById('memPaste');
+ const trSt = document.getElementById('memTrStatus');
  memView.addEventListener('click', e => {
-  if (!e.target.closest('#memTransferBtn')) return;
-  /* текст запиту лежить у розмітці і вже перекладений ядром i18n на мову інтерфейсу */
-  trPrompt.value = document.getElementById('memPromptSrc').textContent.trim();
-  trBox.hidden = false; trPaste.focus();
+  if (e.target.closest('#memTransferBtn')) {
+   /* текст запиту лежить у розмітці і вже перекладений ядром i18n на мову інтерфейсу */
+   trPrompt.value = document.getElementById('memPromptSrc').textContent.trim();
+   setMode('import'); trPaste.focus();
+  } else if (e.target.closest('#memManualBtn')) {
+   ta.value = ''; setMode(true);
+  }
  });
- document.getElementById('memTrClose').onclick = () => { trBox.hidden = true; };
+ document.getElementById('memTrClose').onclick = () => { trSt.textContent = ''; setMode(false); };
  document.getElementById('memCopy').onclick = async () => {
   const b = document.getElementById('memCopy');
   try { await navigator.clipboard.writeText(trPrompt.value); }
@@ -817,9 +842,11 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
   b.textContent = t('Copied'); setTimeout(() => { b.textContent = t('Copy'); }, 1800);
  };
  document.getElementById('memPasteSave').onclick = () => {
-  const v = trPaste.value.trim().slice(0, 2800);
+  const v = trPaste.value.trim();
   if (!v) { trPaste.focus(); return; }
-  ta.value = v; trBox.hidden = true; trPaste.value = '';
+  if (tooLong(v, trSt)) return;
+  trSt.textContent = '';
+  ta.value = v; trPaste.value = '';
   save(v, t('Saved ✓'));
  };
 
@@ -830,16 +857,28 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  }
  ta.addEventListener('input', autoGrow);
 
- /* режим читання за замовчуванням: правити можна лише після "Змінити" */
+ /* Чотири стани картки, які не змішуються:
+      read + порожньо   онбординг (перенести з ChatGPT/Claude або заповнити вручну),
+                        без редактора, без Видалити/Скасувати, без прапорця;
+      import            запит + поле вставки + Зберегти/Скасувати;
+      edit              поле редактора + Зберегти/Скасувати;
+      read + є нотатка  повна нотатка в рамці, Змінити, Видалити, прапорець.
+    editing: false (read), true (edit) або 'import'. */
  function setMode(editing) {
- ta.readOnly = !editing;
- ta.style.display = editing ? '' : 'none';
- memView.style.display = editing ? 'none' : '';
- bEdit.style.display = editing ? 'none' : '';
- bSave.style.display = editing ? '' : 'none';
- bCancel.style.display = editing ? '' : 'none';
- if (editing) { autoGrow(); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
- else renderMemory(ta.value);
+ const mode = editing === 'import' ? 'import' : editing ? 'edit' : 'read';
+ const empty = !String(saved || '').trim();
+ ta.readOnly = mode !== 'edit';
+ ta.style.display = mode === 'edit' ? '' : 'none';
+ memView.style.display = mode === 'read' ? '' : 'none';
+ trBox.hidden = mode !== 'import';
+ bEdit.style.display = mode === 'read' && !empty ? '' : 'none';
+ bSave.style.display = mode === 'edit' ? '' : 'none';
+ bCancel.style.display = mode === 'edit' ? '' : 'none';
+ bClear.style.display = mode === 'read' && !empty ? '' : 'none';
+ useRow.style.display = empty ? 'none' : '';
+ memActions.style.display = mode === 'import' || (mode === 'read' && empty) ? 'none' : '';
+ if (mode === 'edit') { autoGrow(); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+ else if (mode === 'read') renderMemory(ta.value);
  }
 
  async function save(text, okMsg) {
@@ -854,10 +893,9 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
 
  bEdit.onclick = () => setMode(true);
  bCancel.onclick = () => { ta.value = saved; setMode(false); };
- /* ліміт той самий, що в генераторі памʼяті (api/memory.js): сторінка
-    керування памʼяттю не ріже те, що помічник щойно записав */
- bSave.onclick = () => save(ta.value.trim().slice(0, 2800), t('Saved ✓'));
- document.getElementById('memClear').onclick = async () => {
+ /* ліміт той самий, що в генераторі памʼяті: нічого не ріжеться мовчки */
+ bSave.onclick = () => { const v = ta.value.trim(); if (tooLong(v, st)) return; save(v, t('Saved ✓')); };
+ bClear.onclick = async () => {
  if (!confirm(t('Erase the assistant memory? This cannot be undone'))) return;
  ta.value = '';
  renderMemory('');
@@ -876,9 +914,8 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
   setTimeout(() => { st.textContent = ''; }, 2600);
  };
 
+ /* порожня памʼять це онбординг у режимі читання, а не відкритий редактор */
  setMode(false);
- /* порожня памʼять: одразу даємо писати, ховати нічого */
- if (!ta.value) setMode(true);
  }
 
  /* ---- вкладки кабінету: Звіти / Памʼять / Акаунт, з підтримкою #хеша ---- */
