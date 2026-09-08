@@ -814,7 +814,7 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  const MEM_LIMIT = 6000;
  function tooLong(v, el) {
   if (v.length <= MEM_LIMIT) return false;
-  el.textContent = t('Too long: ') + v.length + ' / ' + MEM_LIMIT;
+  el.textContent = t('Too long') + ': ' + v.length + ' / ' + MEM_LIMIT;
   return true;
  }
 
