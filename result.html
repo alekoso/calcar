@@ -2328,73 +2328,128 @@ if (window.CALCAR_SIGNED_IN !== undefined) window.calcarAuthState(window.CALCAR_
 <script>
 /* Перший запуск CalCar: тур із двох кроків, без бібліотек. Спільний блок,
    однаковий на всіх сторінках.
-   Крок 1 підсвічує кнопку "Мій CalCar AI" у шапці, крок 2 кнопку меню і
-   розповідає про памʼять помічника. Показується один раз на браузер
-   (localStorage calcar_tour: done|skip) і не показується тому, хто вже
-   користувався помічником (у треді є повідомлення) чи памʼяттю (кабінет
-   ставить done, коли нотатка не порожня), а також на публічному read-only
-   звіті. Пульсація вимикається за prefers-reduced-motion. Стан гостя лише
-   локальний: між пристроями він не переноситься, і ми цього не обіцяємо. */
+   Крок 1 підсвічує кнопку "Мій CalCar AI" у шапці. Крок 2 сам відкриває
+   меню, підсвічує рядок "Памʼять помічника" і ставить поповер ПОРУЧ із
+   меню (праворуч від панелі на десктопі, над шторкою на телефоні), тому
+   меню лишається видимим і робочим, а поповер не ховається під нього.
+   Стан у localStorage calcar_tour: step2 (крок 1 пройдено, крок 2 попереду;
+   переживає перехід між сторінками), done, skip. Не показується тому, хто
+   вже користувався помічником (у треді є повідомлення) чи памʼяттю (кабінет
+   ставить done, коли нотатка не порожня), і на публічному read-only звіті.
+   Пульсація вимикається за prefers-reduced-motion. Стан гостя лише
+   локальний: між пристроями не переноситься, і ми цього не обіцяємо. */
 (function () {
-  var KEY = 'calcar_tour';
+  var KEY = 'calcar_tour', MEMORY_HREF = '/cabinet.html#memory';
   function get() { try { return localStorage.getItem(KEY); } catch (e) { return 'skip'; } }
   function set(v) { try { localStorage.setItem(KEY, v); } catch (e) {} }
   function usedAssistant() {
     try { var th = JSON.parse(localStorage.getItem('calcar_assistant_thread') || 'null'); return !!(th && th.messages && th.messages.length); } catch (e) { return false; }
   }
   function eligible() {
-    if (get()) return false;
+    var st = get();
+    if (st && st !== 'step2') return false;
     if (usedAssistant()) return false;
     if (/^\/check\/r\//.test(location.pathname)) return false;
     if (document.body.classList.contains('readonly')) return false;
-    return !!(document.getElementById('aiBtn') && document.getElementById('lncBtn'));
+    return !!(document.getElementById('aiBtn') && document.getElementById('lncBtn') && document.getElementById('lncPanel'));
   }
   var tr = function (s) { return window.t ? window.t(s) : s; };
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
-  var css = '.tour-pulse{position:relative;z-index:61}.tour-pulse::after{content:"";position:absolute;inset:-6px;border-radius:26px;border:2px solid var(--brand);animation:tour-pulse 1.6s ease-out infinite;pointer-events:none}@keyframes tour-pulse{0%{transform:scale(.9);opacity:.9}100%{transform:scale(1.25);opacity:0}}'
-    + '.tour-pop{position:fixed;z-index:62;width:min(320px,calc(100vw - 24px));background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:14px 16px;box-shadow:0 14px 40px rgba(20,22,25,.16);font-size:13.5px;line-height:1.5}'
+  function mobile() { return window.matchMedia('(max-width:620px)').matches; }
+  function panel() { return document.getElementById('lncPanel'); }
+  var css = '.tour-pulse{position:relative;z-index:61}.tour-pulse::after{content:"";position:absolute;inset:-6px;border-radius:26px;border:2px solid var(--brand);animation:tour-pulse 1.6s ease-out infinite;pointer-events:none}.tour-pulse.tour-row::after{inset:-3px;border-radius:12px}@keyframes tour-pulse{0%{transform:scale(.9);opacity:.9}100%{transform:scale(1.25);opacity:0}}'
+    /* z-index вищий за панель меню (410): поповер стоїть поруч із меню і ніколи не під ним */
+    + '.tour-pop{position:fixed;z-index:420;width:min(320px,calc(100vw - 24px));background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:14px 16px;box-shadow:0 14px 40px rgba(20,22,25,.16);font-size:13.5px;line-height:1.5}'
     + '.tour-pop p{margin:0 0 12px}.tour-step{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-bottom:6px}'
     + '.tour-act{display:flex;gap:8px;justify-content:flex-end}.tour-act button{font-family:inherit;font-size:13px;font-weight:700;border-radius:10px;padding:7px 12px;cursor:pointer;border:1px solid var(--line-strong);background:var(--card);color:var(--muted)}.tour-act .tour-main{border-color:transparent;background:var(--brand);color:var(--ink)}'
+    /* гостю пункти кабінету не показуються: на час кроку 2 відкриваємо лише рядок памʼяті */
+    + '.acc-wrap.anon.tour-memory .acc-menu{display:block!important}.acc-wrap.anon.tour-memory .acc-menu a:not([href="' + MEMORY_HREF + '"]){display:none}'
     + '@media (prefers-reduced-motion:reduce){.tour-pulse::after{animation:none;opacity:.8}}';
-  var pop = null, target = null, step = 0;
-  function clear() { if (target) target.classList.remove('tour-pulse'); target = null; if (pop) pop.remove(); pop = null; }
+  var pop = null, target = null, step = 0, mo = null;
+  function clear() {
+    if (target) target.classList.remove('tour-pulse', 'tour-row');
+    target = null;
+    if (pop) pop.remove();
+    pop = null;
+    var w = document.querySelector('.acc-wrap'); if (w) w.classList.remove('tour-memory');
+    if (mo) { mo.disconnect(); mo = null; }
+  }
   function place() {
     if (!pop || !target) return;
-    var r = target.getBoundingClientRect(), w = pop.offsetWidth || 320;
-    var x = Math.min(Math.max(12, r.left + r.width / 2 - w / 2), Math.max(12, window.innerWidth - w - 12));
-    pop.style.left = Math.round(x) + 'px'; pop.style.top = Math.round(r.bottom + 12) + 'px';
+    var w = pop.offsetWidth || 320, h = pop.offsetHeight || 160, r = target.getBoundingClientRect(), x, y;
+    if (step === 2 && panel()) {
+      /* поруч із відкритим меню, не поверх нього: праворуч від панелі (або
+         ліворуч, якщо праворуч нема місця); на телефоні над шторкою */
+      var p = panel().getBoundingClientRect();
+      if (mobile()) { x = 12; y = Math.max(12, p.top - h - 12); }
+      else {
+        x = p.right + 12 + w <= window.innerWidth - 12 ? p.right + 12 : Math.max(12, p.left - w - 12);
+        y = Math.min(Math.max(12, r.top - 8), Math.max(12, window.innerHeight - h - 12));
+      }
+    } else {
+      x = Math.min(Math.max(12, r.left + r.width / 2 - w / 2), Math.max(12, window.innerWidth - w - 12));
+      y = r.bottom + 12;
+    }
+    pop.style.left = Math.round(x) + 'px'; pop.style.top = Math.round(y) + 'px';
   }
   function finish(v) { set(v); clear(); step = 0; }
+  function memoryRow() {
+    var w = document.querySelector('.acc-wrap');
+    if (w && w.classList.contains('anon')) w.classList.add('tour-memory');
+    return document.querySelector('.acc-menu a[href="' + MEMORY_HREF + '"]');
+  }
+  function openMenu() {
+    var p = panel(), b = document.getElementById('lncBtn');
+    if (p && b && !p.classList.contains('open')) b.click();
+  }
   function show(n) {
     clear(); step = n;
-    target = document.getElementById(n === 1 ? 'aiBtn' : 'lncBtn');
+    if (n === 2) { set('step2'); openMenu(); target = memoryRow(); }
+    else target = document.getElementById('aiBtn');
     if (!target) return finish('done');
-    target.classList.add('tour-pulse');
+    target.classList.add('tour-pulse'); if (n === 2) target.classList.add('tour-row');
     var text = n === 1
       ? tr('This is your personal car assistant. It knows your current reports, can explain any conclusion, and over time remembers which cars and conditions suit you.')
       : tr('This is where CalCar keeps what it knows about your preferences. If you have already discussed choosing a car with ChatGPT or Claude, you can bring that context here instead of starting from scratch.');
     var main = n === 1 ? tr('Next') : tr('Open memory'), side = n === 1 ? tr('Skip') : tr('Done');
     pop = document.createElement('div'); pop.className = 'tour-pop'; pop.setAttribute('role', 'dialog');
     pop.innerHTML = '<div class="tour-step">' + n + ' / 2</div><p>' + esc(text) + '</p><div class="tour-act"><button type="button" class="tour-side">' + esc(side) + '</button><button type="button" class="tour-main">' + esc(main) + '</button></div>';
+    /* кліки по поповеру не доходять до документа: інакше лаунчер вважав би
+       їх кліком "поза меню" і закривав його */
+    pop.addEventListener('click', function (e) { e.stopPropagation(); });
     document.body.appendChild(pop); place();
-    pop.querySelector('.tour-main').onclick = function () { if (n === 1) show(2); else { finish('done'); location.href = '/cabinet.html#memory'; } };
+    pop.querySelector('.tour-main').onclick = function () { if (n === 1) next(); else { finish('done'); location.href = MEMORY_HREF; } };
     pop.querySelector('.tour-side').onclick = function () { finish(n === 1 ? 'skip' : 'done'); };
+    if (n === 2 && panel()) {
+      /* меню закрили повз тур (клік поза ним, Esc): підказка без меню не має сенсу */
+      var p = panel();
+      mo = new MutationObserver(function () { if (step === 2 && !p.classList.contains('open')) finish('done'); });
+      mo.observe(p, { attributes: true, attributeFilter: ['class'] });
+    }
   }
+  /* крок 2 відкривається після поточної події: відкриття меню всередині
+     чужого кліку лаунчер одразу ж закрив би як клік поза меню */
+  function next() { set('step2'); clear(); step = 0; setTimeout(function () { show(2); }, 0); }
   function start() {
     if (!eligible()) return;
     var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
-    show(1);
+    show(get() === 'step2' ? 2 : 1);
     window.addEventListener('resize', place); window.addEventListener('scroll', place, true);
-    /* клік по кнопці помічника (або будь-яке відкриття панелі) це і є крок 1 */
-    document.addEventListener('click', function (e) { if (step === 1 && e.target.closest && e.target.closest('#aiBtn')) show(2); });
-    document.addEventListener('calcar-chat-state', function (e) { if (step === 1 && e.detail && e.detail.open) show(2); });
+    /* відкриття помічника це і є крок 1; крок 2 чекає, поки панель помічника
+       закриють, щоб меню не відкривалось поверх розмови */
+    var pending = false;
+    document.addEventListener('calcar-chat-state', function (e) {
+      if (!e.detail) return;
+      if (e.detail.open && step === 1) { set('step2'); clear(); step = 0; pending = true; }
+      else if (!e.detail.open && pending) { pending = false; next(); }
+    });
   }
   function boot() {
     /* на сторінці звіту read-only стає відомо лише після завантаження даних:
        чекаємо готовності звіту, а не таймера */
     if (/^\/check\//.test(location.pathname) && !document.body.classList.contains('report-ready')) {
-      var mo = new MutationObserver(function () { if (document.body.classList.contains('report-ready')) { mo.disconnect(); setTimeout(start, 900); } });
-      mo.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+      var ro = new MutationObserver(function () { if (document.body.classList.contains('report-ready')) { ro.disconnect(); setTimeout(start, 900); } });
+      ro.observe(document.body, { attributes: true, attributeFilter: ['class'] });
       return;
     }
     setTimeout(start, 900);

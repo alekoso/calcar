@@ -213,50 +213,82 @@ function tourChecks() {
     if (!src.includes("'" + k + "'")) errs.push('у турі нема тексту "' + k.slice(0, 30) + '"');
     for (const d of ['i18n/ua.js', 'i18n/ru.js']) if (!fs.readFileSync(d, 'utf8').includes("'" + k + "':")) errs.push('нема перекладу туру "' + k.slice(0, 30) + '" у ' + d);
   }
-  /* поведінка під заглушкою: показ, крок 1 -> клік по помічнику -> крок 2 -> Готово; повторно не показується */
+  if (!/z-index:420/.test(src)) errs.push('поповер туру не вище за панель меню (410)');
+  if (!/p\.right \+ 12/.test(src) || !/p\.top - h - 12/.test(src)) errs.push('поповер кроку 2 не ставиться поруч із меню (праворуч на десктопі, над шторкою на телефоні)');
+  if (!/pop\.addEventListener\('click', function \(e\) \{ e\.stopPropagation\(\); \}\)/.test(src)) errs.push('кліки по поповеру доходять до лаунчера і закривають меню');
+  /* поведінка під заглушкою: крок 1 -> Далі -> меню відкрите, рядок памʼяті
+     підсвічений, поповер поруч -> Готово; гість бачить рядок памʼяті; Skip;
+     клік по помічнику; продовження після переходу; повторно не показується */
   function run(opts) {
     const store = Object.assign({}, opts.storage || {});
-    const listeners = {}; const els = {}; let pops = [];
-    const mk = id => ({ id, cls: new Set(), classList: { add(c) { this._.cls.add(c); }, remove(c) { this._.cls.delete(c); }, contains(c) { return this._.cls.has(c); } }, getBoundingClientRect: () => ({ left: 100, width: 120, bottom: 50 }), closest(sel) { return sel === '#' + id ? this : null; } });
-    for (const id of ['aiBtn', 'lncBtn']) { els[id] = mk(id); els[id].classList._ = els[id]; }
+    const listeners = {}; const els = {}; let pops = []; let timers = [];
+    const mkCls = () => { const set = new Set(); return { add(...c) { c.forEach(x => set.add(x)); }, remove(...c) { c.forEach(x => set.delete(x)); }, contains: c => set.has(c), _set: set }; };
+    const mk = id => { const e = { id, classList: mkCls(), getBoundingClientRect: () => ({ left: 100, width: 120, top: 30, bottom: 50, right: 456 }), closest(sel) { return sel === '#' + id ? e : null; } }; e.cls = e.classList._set; return e; };
+    for (const id of ['aiBtn', 'lncBtn', 'lncPanel']) els[id] = mk(id);
+    els.lncBtn.click = () => { els.lncPanel.classList.add('open'); };
+    const wrap = mk('accWrap'); if (opts.anon) wrap.classList.add('anon');
+    const memRow = mk('memRow');
     const body = { cls: new Set(opts.bodyCls || []), classList: { contains(c) { return body.cls.has(c); } }, appendChild(el) { pops.push(el); } };
-    let timers = [];
     const doc = {
       readyState: 'complete', body, head: { appendChild() {} },
       addEventListener: (t, fn) => { (listeners[t] = listeners[t] || []).push(fn); },
       getElementById: id => (opts.noBtns ? null : els[id] || null),
+      querySelector: sel => (sel === '.acc-wrap' ? wrap : sel === '.acc-menu a[href="/cabinet.html#memory"]' ? memRow : null),
       createElement: tag => {
-        const el = { tag, style: {}, buttons: {}, _html: '', remove() { pops = pops.filter(p => p !== el); }, setAttribute() {}, offsetWidth: 320,
+        const el = { tag, style: {}, buttons: {}, _html: '', offsetWidth: 320, offsetHeight: 160, remove() { pops = pops.filter(p => p !== el); }, setAttribute() {}, addEventListener() {},
           querySelector(sel) { return el.buttons[sel] || (el.buttons[sel] = { onclick: null }); } };
         Object.defineProperty(el, 'innerHTML', { set(v) { el._html = v; }, get() { return el._html; } });
         return el;
       },
     };
-    const win = { document: doc, localStorage: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); } }, location: { pathname: opts.path || '/', href: '' }, t: x => x, innerWidth: 1200, addEventListener() {}, setTimeout: (fn) => { timers.push(fn); }, MutationObserver: function () { this.observe = () => {}; this.disconnect = () => {}; }, JSON, Math, String, Object };
+    const win = { document: doc, localStorage: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); } }, location: { pathname: opts.path || '/', href: '' }, t: x => x, innerWidth: 1200, innerHeight: 800, addEventListener() {}, matchMedia: () => ({ matches: !!opts.mobile }), setTimeout: fn => { timers.push(fn); }, MutationObserver: function () { this.observe = () => {}; this.disconnect = () => {}; }, JSON, Math, String, Object };
     win.window = win;
     vm.createContext(win);
     vm.runInContext(src, win);
-    timers.forEach(fn => fn());
-    return { store, els, pops: () => pops, fire: (t, ev) => (listeners[t] || []).forEach(fn => fn(ev)), win };
+    const flush = () => { while (timers.length) timers.shift()(); };
+    flush();
+    return { store, els, wrap, memRow, pops: () => pops, flush, fire: (t, ev) => { (listeners[t] || []).forEach(fn => fn(ev)); flush(); }, win };
   }
   let r = run({ path: '/check' });
   if (!r.els.aiBtn.cls.has('tour-pulse')) errs.push('крок 1 не підсвічує кнопку помічника');
   if (r.pops().length !== 1 || !/1 \/ 2/.test(r.pops()[0]._html)) errs.push('крок 1 без поповера');
-  r.fire('click', { target: r.els.aiBtn });
-  if (r.els.aiBtn.cls.has('tour-pulse') || !r.els.lncBtn.cls.has('tour-pulse')) errs.push('клік по помічнику не переводить на крок 2');
+  r.pops()[0].buttons['.tour-main'].onclick(); r.flush();
+  if (!r.els.lncPanel.cls.has('open')) errs.push('Далі не відкриває меню');
+  if (r.els.aiBtn.cls.has('tour-pulse') || !r.memRow.cls.has('tour-pulse') || !r.memRow.cls.has('tour-row')) errs.push('крок 2 не підсвічує рядок памʼяті помічника');
+  if (r.els.lncBtn.cls.has('tour-pulse')) errs.push('крок 2 підсвічує кнопку меню замість рядка памʼяті');
   if (!/2 \/ 2/.test((r.pops()[0] || {})._html || '')) errs.push('крок 2 без поповера про памʼять');
+  if (r.store.calcar_tour !== 'step2') errs.push('крок 2 не запамʼятовується як step2');
+  if (r.pops()[0].style.left !== '468px') errs.push('поповер кроку 2 не праворуч від меню: left=' + r.pops()[0].style.left);
+  if (r.wrap.cls.has('tour-memory')) errs.push('увійшлому користувачу вмикається гостьовий показ рядка памʼяті');
   r.pops()[0].buttons['.tour-side'].onclick();
-  if (r.store.calcar_tour !== 'done' || r.pops().length) errs.push('Готово не завершує тур');
+  if (r.store.calcar_tour !== 'done' || r.pops().length || r.memRow.cls.has('tour-pulse')) errs.push('Готово не завершує тур');
+  /* гість: рядок памʼяті тимчасово показується, після туру ховається знову */
+  r = run({ path: '/', anon: true });
+  r.pops()[0].buttons['.tour-main'].onclick(); r.flush();
+  if (!r.wrap.cls.has('tour-memory')) errs.push('гостю не показується рядок памʼяті на кроці 2');
+  r.pops()[0].buttons['.tour-main'].onclick();
+  if (r.store.calcar_tour !== 'done' || r.win.location.href !== '/cabinet.html#memory') errs.push('Відкрити памʼять не веде в памʼять кабінету');
+  if (r.wrap.cls.has('tour-memory')) errs.push('гостьовий показ рядка памʼяті не знімається після туру');
+  /* телефон: поповер над шторкою */
+  r = run({ path: '/', mobile: true });
+  r.pops()[0].buttons['.tour-main'].onclick(); r.flush();
+  if (r.pops()[0].style.left !== '12px' || r.pops()[0].style.top !== '12px') errs.push('на телефоні поповер кроку 2 не над шторкою: ' + r.pops()[0].style.left + '/' + r.pops()[0].style.top);
+  r.pops()[0].buttons['.tour-side'].onclick();
   /* Пропустити на кроці 1 */
   r = run({ path: '/' });
   r.pops()[0].buttons['.tour-side'].onclick();
   if (r.store.calcar_tour !== 'skip' || r.els.aiBtn.cls.has('tour-pulse')) errs.push('Пропустити не завершує тур');
-  /* Далі -> крок 2 -> Відкрити памʼять */
+  /* відкриття помічника = крок 1; крок 2 після закриття панелі помічника */
   r = run({ path: '/' });
-  r.pops()[0].buttons['.tour-main'].onclick();
-  if (!r.els.lncBtn.cls.has('tour-pulse')) errs.push('Далі не переводить на крок 2');
-  r.pops()[0].buttons['.tour-main'].onclick();
-  if (r.store.calcar_tour !== 'done' || r.win.location.href !== '/cabinet.html#memory') errs.push('Відкрити памʼять не веде в памʼять кабінету');
+  r.fire('calcar-chat-state', { detail: { open: true } });
+  if (r.els.aiBtn.cls.has('tour-pulse') || r.pops().length) errs.push('після відкриття помічника крок 1 не знято');
+  if (r.els.lncPanel.cls.has('open')) errs.push('меню відкрилось поверх розмови з помічником');
+  if (r.store.calcar_tour !== 'step2') errs.push('відкриття помічника не запамʼятовує крок 1 як пройдений');
+  r.fire('calcar-chat-state', { detail: { open: false } });
+  if (!r.els.lncPanel.cls.has('open') || !r.memRow.cls.has('tour-pulse')) errs.push('після закриття помічника крок 2 не показався');
+  /* продовження після переходу: step2 у сховищі -> одразу крок 2 */
+  r = run({ path: '/import', storage: { calcar_tour: 'step2' } });
+  if (!r.els.lncPanel.cls.has('open') || !r.memRow.cls.has('tour-pulse') || !/2 \/ 2/.test((r.pops()[0] || {})._html || '')) errs.push('крок 2 не продовжується на наступній сторінці');
   /* повторно не показується: done, skip, тред помічника, публічний звіт, read-only */
   for (const [name, opts] of Object.entries({
     'після done': { storage: { calcar_tour: 'done' } },
@@ -266,7 +298,7 @@ function tourChecks() {
     'на read-only звіті': { path: '/check/AB12CD', bodyCls: ['readonly', 'report-ready'] },
   })) {
     const x = run(opts);
-    if (x.pops().length || x.els.aiBtn.cls.has('tour-pulse')) errs.push('тур показується ' + name);
+    if (x.pops().length || x.els.aiBtn.cls.has('tour-pulse') || x.els.lncPanel.cls.has('open')) errs.push('тур показується ' + name);
   }
   /* хто вже має памʼять: кабінет ставить done */
   if (!/if \(saved\.trim\(\)\) \{ try \{ localStorage\.setItem\('calcar_tour', 'done'\); \}/.test(S['cabinet.html'])) errs.push('кабінет не відмічає тур пройденим для тих, хто вже має памʼять');

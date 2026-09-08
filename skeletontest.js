@@ -134,6 +134,13 @@ const PROGRESS_PAGES = ['check.html', 'import.html', 'result-check.html'];
   if (!/\.rcard-sk \.rph-sk\{flex:0 0 132px;width:132px;height:96px/.test(cab)) errs.push('кабінет: прев’ю скелетона іншого розміру, ніж справжнє');
   if (!/\.rph,\.rcard-sk \.rph-sk\{flex-basis:104px;width:104px;height:78px\}/.test(cab)) errs.push('кабінет: на телефоні скелетон і картка розходяться в розмірі');
   if (!/box\.removeAttribute\('aria-busy'\);/.test(cab)) errs.push('кабінет: стан завантаження не знімається');
+  /* виміряна геометрія: тіло на всю висоту з центруванням і проміжком 14px,
+     оцінка 36x22 у правому верхньому куті, як справжня .rscore, а не плашка
+     56x30 по центру */
+  if (!/\.rcard-sk \.rbody-sk\{flex:1;min-width:0;align-self:stretch;display:flex;flex-direction:column;justify-content:center;gap:14px\}/.test(cab)) errs.push('кабінет: тіло скелетона не повторює .rbody');
+  if (!/\.rcard-sk \.rval-sk\{flex:0 0 auto;align-self:stretch;width:36px;padding-top:2px/.test(cab)) errs.push('кабінет: колонка оцінки скелетона не повторює .rval');
+  if (!/\.rcard-sk \.rval-sk \.sk\{width:36px;height:22px/.test(cab)) errs.push('кабінет: плейсхолдер оцінки не 36x22, як .rscore');
+  if ((cab.match(/<span class="rval-sk"><span class="sk"><\/span><\/span>/g) || []).length !== 4) errs.push('кабінет: у скелетонах звітів не та колонка оцінки');
   if (!/rempty[\s\S]{0,200}Could not load the list[\s\S]{0,400}rretry/.test(cab)) errs.push('кабінет: помилка не має компактного стану з повтором');
   if (!/TABS\[kind\]\.empty/.test(cab)) errs.push('кабінет: зник осмислений порожній стан');
 
@@ -151,7 +158,13 @@ const PROGRESS_PAGES = ['check.html', 'import.html', 'result-check.html'];
      готові картки, хоч кожна картка окремо і збігається */
   if (!/\.recent\{max-width:1160px;width:100%/.test(ch)) errs.push('check: ширина блока недавніх залежить від вмісту');
   /* кількість карток дорівнює тій, яку покаже готовий стан */
-  if (!/if \(hasSession\) renderRecentSkeleton\(3\);/.test(ch)) errs.push('check: для акаунта скелетон не показує три картки, як готовий список');
+  /* для акаунта: стільки карток, скільки показали минулого разу (1..3), за
+     замовчуванням три; кількість запамʼятовується після справжнього рендера */
+  if (!/if \(hasSession\) renderRecentSkeleton\(remembered\);/.test(ch)) errs.push('check: для акаунта скелетон не показує запамʼятовану кількість карток');
+  if (!/localStorage\.setItem\(RECENT_N_KEY, String\(Math\.min\(3, rows\.length\)\)\)/.test(ch)) errs.push('check: кількість справжніх карток не запамʼятовується для наступного скелетона');
+  if (!/if \(n >= 1 && n <= 3\) remembered = n;/.test(ch)) errs.push('check: запамʼятована кількість карток не обмежена 1..3');
+  /* виміряна геометрія тексту: смужки стоять на гліфах справжніх рядків */
+  if (!/\.rc-sk \.rc-m\{height:12\.5px;border-radius:6px;margin-top:8px\}/.test(ch)) errs.push('check: рядок дати у скелетоні не на гліфі справжнього рядка (margin-top:8px)');
   if (!/else if \(localMine\.length\) renderRecentSkeleton\(Math\.min\(3, localMine\.length\)\);/.test(ch)) errs.push('check: у гостя кількість плейсхолдерів не дорівнює його списку');
   if (!/grid\.removeAttribute\('aria-busy'\);/.test(ch)) errs.push('check: стан завантаження не знімається при рендері');
   if (!/box\.classList\.remove\('on'\); return;/.test(ch)) errs.push('check: порожній результат лишає скелетон висіти');
@@ -162,6 +175,10 @@ const PROGRESS_PAGES = ['check.html', 'import.html', 'result-check.html'];
   if ((g.match(/class="post-sk"/g) || []).length < 2) errs.push('гараж: замало плейсхолдерів постів');
   if (!/\.post-sk-head\{display:grid;grid-template-columns:40px minmax\(0,1fr\) auto/.test(g)) errs.push('гараж: шапка скелетона не повторює геометрію .post-head');
   if (!/\.car-sk \.sk-thumb\{width:132px;height:88px/.test(g)) errs.push('гараж: прев’ю авто в скелетоні іншого розміру, ніж .car-thumb');
+  /* виміряна геометрія: смужки на гліфах назви/VIN/пробігу, права колонка як .car-side */
+  if (!/\.car-sk \.sk-main\{[^}]*gap:11px\}/.test(g)) errs.push('гараж: рядки скелетона авто не на гліфах справжніх рядків (gap:11px)');
+  if (!/\.car-sk \.sk-side\{width:116px;flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:6px\}/.test(g)) errs.push('гараж: права колонка скелетона не повторює .car-side');
+  if ((g.match(/<span class="sk-side"><span class="sk" style="width:60px"><\/span><span class="sk" style="width:104px"><\/span><span class="sk" style="width:92px"><\/span><\/span>/g) || []).length !== 2) errs.push('гараж: у скелетонах авто не та права колонка');
   if (!/data-state="empty"/.test(g) || !/data-state="error"/.test(g)) errs.push('гараж: нема станів empty/error');
   if (!/var box = \$\('carList'\); box\.innerHTML = '';/.test(g)) errs.push('гараж: скелетон авто не змінюється списком');
 

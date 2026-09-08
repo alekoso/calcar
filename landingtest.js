@@ -49,7 +49,7 @@ for (const [f, s] of Object.entries(PAGES)) {
   if (!/\(demo \? '<div class="rc rc-demo">' : '<a class="rc" href=/.test(s)) errs.push(f + ': demo-картка не div без переходу');
   /* справжні звіти виграють у прикладів; форма гілки може відрізнятись
      (Check після durable-звітів має ще проміжний гостьовий список) */
-  if (!new RegExp('if \\(Array\\.isArray\\(rows\\) && rows\\.length\\)[\\s\\S]{0,40}renderRecent\\w+\\(rows\\)').test(s)) errs.push(f + ': справжні звіти не витісняють приклади');
+  if (!new RegExp('if \\(Array\\.isArray\\(rows\\) && rows\\.length\\)[\\s\\S]{0,200}renderRecent\\w+\\(rows\\)').test(s)) errs.push(f + ': справжні звіти не витісняють приклади');
   if (!new RegExp(ex + '\\(\\);').test(s) || !new RegExp('\\belse\\b[\\s\\S]{0,220}' + ex + '\\(\\);').test(s)) errs.push(f + ': приклади не лишились запасним варіантом');
   /* тіло функції прикладів вирізається за балансом дужок: в Import вона живе всередині IIFE */
   const demoBlock = (() => { const st = s.indexOf('function ' + ex + '(){'); if (st < 0) return ''; let i = s.indexOf('{', st), d = 0; for (; i < s.length; i++) { if (s[i] === '{') d++; else if (s[i] === '}' && --d === 0) break; } return s.slice(st, i + 1); })();
