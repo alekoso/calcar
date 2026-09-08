@@ -51,7 +51,9 @@ for (const p of LEGAL) {
   if (!/@media\(max-width:620px\)\{\.legal\{/.test(s)) errs.push(p + ': нема мобільних правил тексту');
   if ((s.match(/<h2>/g) || []).length < 8) errs.push(p + ': замало розділів');
   /* контакт: Telegram із завдання власника; email лише з публічного конфігу */
-  if (!s.includes('<a href="https://t.me/calcar_ai" target="_blank" rel="noopener">t.me/calcar_ai</a><span id="legalEmail"></span>')) errs.push(p + ': нема контакту Telegram або гнізда для email з конфігу');
+  /* контакт без канцеляриту: просто "Contact" посиланням на Telegram; право запросити видалення лишається в тексті політики */
+  if (!s.includes('<p class="legal-contact"><a href="https://t.me/calcar_ai" target="_blank" rel="noopener">Contact</a><span id="legalEmail"></span></p>')) errs.push(p + ': контакт не простим "Contact" на Telegram або нема гнізда для email з конфігу');
+  if (/Questions and deletion requests|Questions about these terms/.test(s)) errs.push(p + ': лишилось канцелярське формулювання контакту');
   if (/@calcar\.io|@gmail\.com/.test(s)) errs.push(p + ': захардкоджений email');
   /* нічого вигаданого про юрособу */
   if (/\b(LLC|Ltd\.?|Inc\.?|GmbH|ТОВ|ФОП|LLP)\b|registered (office|address) (is|at)|governed by the laws of/.test(s)) errs.push(p + ': вигадані юридичні реквізити');
@@ -65,6 +67,7 @@ for (const p of LEGAL) {
   for (const need of ['What CalCar collects', 'Analytics', 'Authentication and infrastructure', 'AI processing', 'Vehicle data', 'Assistant memory', 'Feedback', 'Cookies and browser storage', 'Who receives your data', 'Retention and deletion', 'Google user data', 'Contact']) {
     if (!text.includes('<h2>' + need + '</h2>')) errs.push('privacy: нема розділу "' + need + '"');
   }
+  if (!text.includes('contact us using the details below; we will remove the account')) errs.push('privacy: зникло право запросити видалення даних');
   for (const need of ['PostHog', 'Google Analytics (GA4)', 'Supabase Auth', 'Google OAuth', 'Vercel', 'OpenAI', 'all form inputs are masked', 'the assistant panel, the memory editor and the sign-in form are excluded from recording',
     'anonymous browser identifier', 'UTM parameters', 'VIN, listings, prices, mileage readings, seller descriptions, photos, auction and historical records', 'describes the vehicle, not you',
     'erase it completely', 'authentication session', 'anonymous analytics identifier', 'onboarding state', 'does not sell your personal data', 'Google API Services User Data Policy', 'Limited Use', 'delete your account']) {

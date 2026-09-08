@@ -209,7 +209,7 @@ function tourChecks() {
   if (!src) return;
   if (!/prefers-reduced-motion:reduce\)\{\.tour-pulse::after\{animation:none/.test(src)) errs.push('пульсація не вимикається за prefers-reduced-motion');
   if (!/'calcar_tour'/.test(src)) errs.push('стан туру не в localStorage calcar_tour');
-  for (const k of ['Next', 'Skip', 'Done', 'Open memory', 'This is your personal car assistant. It knows your current reports, can explain any conclusion, and over time remembers which cars and conditions suit you.', 'This is where CalCar keeps what it knows about your preferences. If you have already discussed choosing a car with ChatGPT or Claude, you can bring that context here instead of starting from scratch.']) {
+  for (const k of ['Next', 'Skip', 'Done', 'Open memory', 'This is your personal car assistant. It knows your current reports, can explain any conclusion, and over time remembers which cars and conditions suit you.', 'This is where CalCar keeps what it knows about your preferences. If you have already discussed choosing a car with another AI assistant, you can bring that context here instead of starting from scratch.']) {
     if (!src.includes("'" + k + "'")) errs.push('у турі нема тексту "' + k.slice(0, 30) + '"');
     for (const d of ['i18n/ua.js', 'i18n/ru.js']) if (!fs.readFileSync(d, 'utf8').includes("'" + k + "':")) errs.push('нема перекладу туру "' + k.slice(0, 30) + '" у ' + d);
   }
@@ -331,7 +331,7 @@ tourChecks();
   if (!c.includes('<div class="hf-help">For example, paste a link to an AUTO.RIA listing</div>')) errs.push('check.html: нема підказки під полем');
   for (const d of ['i18n/ua.js', 'i18n/ru.js']) {
     const t = fs.readFileSync(d, 'utf8');
-    for (const k of ['Car listing link', 'For example, paste a link to an AUTO.RIA listing', 'Contact', 'Was this analysis useful?', 'What was missing?', 'Transfer from ChatGPT / Claude', 'CalCar does not know much about you yet']) if (!t.includes("'" + k + "':")) errs.push(d + ': нема ключа "' + k + '"');
+    for (const k of ['Car listing link', 'For example, paste a link to an AUTO.RIA listing', 'Contact', 'Was this analysis useful?', 'What was missing?', 'Transfer from an AI chat', 'CalCar does not know much about you yet']) if (!t.includes("'" + k + "':")) errs.push(d + ': нема ключа "' + k + '"');
   }
   /* мова памʼяті: одна й та сама правило в обох специфікаціях, мова інтерфейсу передається */
   const mem = fs.readFileSync('api/memory.js', 'utf8'), chat = fs.readFileSync('api/chat.js', 'utf8');

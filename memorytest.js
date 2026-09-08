@@ -29,7 +29,8 @@ if (!secs || !escFn || !renderFn) { console.log('MEMORY TEST FAILED: не зна
 
 /* ---------- заглушка DOM ---------- */
 function makeEl() {
-  return { innerHTML: '', style: {}, value: '', readOnly: false, attrs: {},
+  const cls = new Set();
+  return { innerHTML: '', style: {}, value: '', readOnly: false, attrs: {}, classList: { add: c => cls.add(c), remove: c => cls.delete(c), contains: c => cls.has(c) },
     setAttribute(k, v) { this.attrs[k] = v; }, focus() {}, setSelectionRange() {}, addEventListener() {} };
 }
 const NOTE = [
@@ -116,6 +117,23 @@ function run(text) {
   if (!/id="memPaste"/.test(page) || !/id="memPasteSave"/.test(page)) errs.push('нема поля вставки профілю або кнопки збереження');
   if (!run('').includes('id="memManualBtn"')) errs.push('порожня памʼять без дії "Заповнити вручну"');
   if (!/Return a compact but sufficiently detailed structured profile in English\./.test(page)) errs.push('текст запиту не оновлений');
+  /* generic AI: провайдери згадуються один раз як приклади в онбордингу, у промпті і кнопках їх нема */
+  const promptSrc = (page.match(/<div id="memPromptSrc" hidden>([\s\S]*?)<\/div>/) || ['', ''])[1];
+  if (/ChatGPT|Claude|Gemini/.test(promptSrc)) errs.push('промпт привʼязаний до конкретного AI');
+  const script = page.replace(/<div id="memPromptSrc" hidden>[\s\S]*?<\/div>/, '');
+  const mentions = (script.match(/ChatGPT, Claude or Gemini/g) || []).length, other = (script.replace(/ChatGPT, Claude or Gemini/g, '').match(/ChatGPT|Claude|Gemini/g) || []).length;
+  if (mentions !== 1 || other) errs.push('ChatGPT/Claude/Gemini мають згадуватись рівно один раз як приклади (знайдено ' + mentions + ' + ' + other + ' інших)');
+  if (!run('').includes('Transfer from an AI chat')) errs.push('головна дія онбордингу не "Перенести з AI-чату"');
+  if (!run('').includes('mem-view-empty') && !/memView\.classList\.add\('mem-view-empty'\)/.test(page)) errs.push('порожній стан без мʼякої картки');
+  /* покроковий імпорт: два заголовки, біла картка промпта (не textarea), вторинна кнопка копіювання */
+  if (!/<div class="mem-step"><b>1\. Copy this prompt<\/b>/.test(page) || !/<div class="mem-step"><b>2\. Paste the profile you received<\/b>/.test(page)) errs.push('імпорт без двох пронумерованих кроків');
+  if (!/<div class="mem-prompt-card"><div class="mem-prompt" id="memPrompt"><\/div><\/div>/.test(page)) errs.push('промпт не в білій картці як текст');
+  if (/<textarea id="memPrompt"/.test(page)) errs.push('промпт знову textarea');
+  if (!/\.mem-prompt-card\{background:var\(--card\);border:1px solid var\(--line\)/.test(page)) errs.push('картка промпта не біла з нейтральною рамкою');
+  if (/\.mem-tr\{[^}]*background:var\(--surface-2\)/.test(page)) errs.push('імпорт знову суцільний сірий блок');
+  if (!/<button class="mem-copy" id="memCopy" type="button">Copy<\/button>/.test(page) || /\.mem-copy\{[^}]*var\(--brand\)/.test(page)) errs.push('кнопка копіювання не вторинна');
+  if (!/b\.textContent = t\('Copied ✓'\)/.test(page)) errs.push('нема стану "Скопійовано ✓"');
+  if (!/id="memPaste" rows="7" placeholder="Paste the profile you received here\.\.\."/.test(page)) errs.push('поле вставки не те (рядки/плейсхолдер)');
   /* заголовки: у нотатці лишаються українськими, на екрані через t(label) */
   const en = (() => { const v = makeEl(); const c = { t: x => x, document: { getElementById: id => (id === 'memView' ? v : null) } }; vm.createContext(c); vm.runInContext(secs + '\nconst memView = document.getElementById("memView");\n' + escFn + '\n' + renderFn + '\nrenderMemory(TEXT);', Object.assign(c, { TEXT: NOTE })); return v.innerHTML; })();
   if (!en.includes('<b>Person</b>') || !en.includes('<b>Decisions</b>')) errs.push('заголовки розділів не показуються мовою інтерфейсу');

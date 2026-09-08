@@ -369,17 +369,25 @@
  .mem-sec b{display:block;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
  .mem-sec p{white-space:pre-wrap;overflow-wrap:anywhere}
  .mem-empty{color:var(--muted)}
- /* порожня памʼять: не "нічого нема", а пропозиція перенести контекст із ChatGPT/Claude */
- .mem-onb b{display:block;font-size:14.5px;color:var(--ink);margin-bottom:6px}
- .mem-onb p{margin:0 0 12px}
- .mem-tr{margin:12px 20px 0;border:1px solid var(--line);border-radius:12px;background:var(--surface-2);padding:14px 16px;font-size:13.5px;line-height:1.5;color:var(--text)}
- .mem-tr-h{margin-bottom:10px;color:var(--muted)}
- .mem-tr textarea{display:block;width:100%;box-sizing:border-box;border:1px solid var(--line-strong);border-radius:10px;padding:10px 12px;font:inherit;font-size:13px;line-height:1.5;color:var(--text);background:var(--card);resize:vertical;min-height:110px;max-height:50vh}
- .mem-tr textarea[readonly]{color:var(--muted)}
- .mem-tr-row{display:flex;flex-direction:column;gap:8px;align-items:flex-start;margin-bottom:12px}
- .mem-tr-act{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
- .mem-tr-lbl{display:block;font-size:13px;font-weight:700;color:var(--ink);margin:0 0 6px}
+ /* порожня памʼять: мʼяка картка з пропозицією перенести контекст з AI-чату, без зайвої висоти */
+ .mem-view.mem-view-empty{background:var(--surface-2);border-color:transparent;padding:16px 18px}
+ .mem-onb b{display:block;font-size:15px;color:var(--ink);margin-bottom:4px}
+ .mem-onb p{margin:0 0 12px;line-height:1.5}
  .mem-onb-act{display:flex;gap:10px;flex-wrap:wrap}
+ /* перенесення: два пронумеровані кроки зверху вниз, промпт у білій картці,
+    жодного суцільного сірого блоку; лайм лише на головній дії */
+ .mem-tr{margin:0 20px;font-size:13.5px;line-height:1.5;color:var(--text)}
+ .mem-step{margin:4px 0 10px}
+ .mem-step + .mem-step,.mem-copy + .mem-step{margin-top:22px}
+ .mem-step b{display:block;font-size:15px;font-weight:700;color:var(--ink)}
+ .mem-step span{display:block;font-size:13px;color:var(--muted);margin-top:3px}
+ .mem-prompt-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+ .mem-prompt{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13.5px;line-height:1.55;color:var(--text);max-height:340px;overflow:auto}
+ .mem-copy{margin-top:10px;border:1px solid var(--line-strong);border-radius:10px;background:var(--card);color:var(--ink);font-weight:700;font-size:13px;padding:8px 14px;cursor:pointer;font-family:inherit}
+ .mem-copy:hover{background:var(--surface-2)}
+ .mem-tr textarea{display:block;width:100%;box-sizing:border-box;border:1px solid var(--line-strong);border-radius:10px;padding:10px 12px;font:inherit;font-size:13.5px;line-height:1.5;color:var(--text);background:var(--card);resize:vertical;min-height:140px;max-height:50vh}
+ .mem-tr textarea:focus{outline:none;border-color:var(--brand)}
+ .mem-tr-act{display:flex;align-items:center;gap:10px;margin-top:12px;margin-bottom:16px;flex-wrap:wrap}
  #memText{display:block;width:calc(100% - 40px);margin:0 20px;border:1px solid var(--line-strong);border-radius:12px;padding:14px 16px;font:inherit;font-size:13.5px;line-height:1.6;color:var(--text);resize:vertical;min-height:180px;max-height:60vh;background:var(--card);overflow-y:auto}
  #memText:focus{outline:none;border-color:var(--brand)}
  .mem-actions{display:flex;align-items:center;gap:10px;padding:12px 20px 16px}
@@ -613,9 +621,9 @@
   <div class="mem-view" id="memView"></div>
   <div id="memPromptSrc" hidden>Analyze our past conversations in which we discussed choosing, buying or comparing cars.
 
-I may not have stated my requirements directly and I did not fill in any questionnaire. I may have simply sent listing links, asked "what do you think of this car?", compared one car with another, said why I like or dislike something, rejected options, discussed price, mileage, accidents, equipment, engines, electric cars, maintenance and other things.
+I may not have stated my requirements directly. I may have simply sent listing links, asked "what do you think of this car?", compared different cars, said why I like or dislike something, rejected options, discussed price, mileage, accidents, equipment, engines, electric cars, maintenance and other related things.
 
-Based on all of this correspondence, build my profile as a car buyer.
+Based on this correspondence, build my profile as a car buyer.
 
 Use only what actually follows from our conversations. Do not invent anything.
 
@@ -662,10 +670,11 @@ Do not fill gaps with guesses.
 Return a compact but sufficiently detailed structured profile in English.
 It will be pasted in full into the memory of my car AI assistant.</div>
   <div class="mem-tr" id="memTransfer" hidden>
-   <div class="mem-tr-h">Copy this prompt into ChatGPT or Claude, then paste the reply below.</div>
-   <div class="mem-tr-row"><textarea id="memPrompt" rows="7" readonly spellcheck="false"></textarea><button class="mem-clear" id="memCopy" type="button">Copy</button></div>
-   <label class="mem-tr-lbl" for="memPaste">Paste the ChatGPT or Claude reply here</label>
-   <textarea id="memPaste" rows="8" spellcheck="false"></textarea>
+   <div class="mem-step"><b>1. Copy this prompt</b><span>Paste it into the AI chat where you have already discussed choosing cars.</span></div>
+   <div class="mem-prompt-card"><div class="mem-prompt" id="memPrompt"></div></div>
+   <button class="mem-copy" id="memCopy" type="button">Copy</button>
+   <div class="mem-step"><b>2. Paste the profile you received</b><span>Come back here and paste the AI assistant's reply in full.</span></div>
+   <textarea id="memPaste" rows="7" placeholder="Paste the profile you received here..." spellcheck="false"></textarea>
    <div class="mem-tr-act"><button class="mem-save" id="memPasteSave" type="button">Save to memory</button><button class="mem-clear" id="memTrClose" type="button">Cancel</button><span class="mem-status" id="memTrStatus"></span></div>
   </div>
   <textarea id="memText" rows="6" style="display:none" placeholder="Describe yourself as a car buyer: budget, market, body type, what matters, what you have already rejected"></textarea>
@@ -772,12 +781,14 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
   const raw = String(text || '');
   if (!raw.trim()) {
    /* порожньо: не глухий кут, а пропозиція перенести контекст з іншого AI */
+   memView.classList.add('mem-view-empty');
    memView.innerHTML = '<div class="mem-onb"><b>' + memEsc(t('CalCar does not know much about you yet')) + '</b>'
-     + '<p class="mem-empty">' + memEsc(t('If you have already discussed choosing cars with ChatGPT or Claude, you can bring that context here so CalCar immediately understands which cars suit you.')) + '</p>'
-     + '<div class="mem-onb-act"><button class="mem-save" type="button" id="memTransferBtn">' + memEsc(t('Transfer from ChatGPT / Claude')) + '</button>'
+     + '<p class="mem-empty">' + memEsc(t('If you have already discussed choosing cars with another AI assistant, for example ChatGPT, Claude or Gemini, you can bring that context here so CalCar immediately understands what you are looking for.')) + '</p>'
+     + '<div class="mem-onb-act"><button class="mem-save" type="button" id="memTransferBtn">' + memEsc(t('Transfer from an AI chat')) + '</button>'
      + '<button class="mem-clear" type="button" id="memManualBtn">' + memEsc(t('Fill in manually')) + '</button></div></div>';
    return;
   }
+  memView.classList.remove('mem-view-empty');
   const secs = [];
   let cur = null;
   for (const line of raw.split(/\r?\n/)) {
@@ -818,7 +829,7 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
   return true;
  }
 
- /* Перенесення профілю з ChatGPT/Claude: окремий стан картки. Людина копіює
+ /* Перенесення профілю з будь-якого AI-чату: окремий стан картки. Людина копіює
     запит, вставляє відповідь, і вона цілком стає памʼяттю. Далі помічник
     веде нотатку як звичайно. */
  const trBox = document.getElementById('memTransfer');
@@ -828,7 +839,7 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  memView.addEventListener('click', e => {
   if (e.target.closest('#memTransferBtn')) {
    /* текст запиту лежить у розмітці і вже перекладений ядром i18n на мову інтерфейсу */
-   trPrompt.value = document.getElementById('memPromptSrc').textContent.trim();
+   trPrompt.textContent = document.getElementById('memPromptSrc').textContent.trim();
    setMode('import'); trPaste.focus();
   } else if (e.target.closest('#memManualBtn')) {
    ta.value = ''; setMode(true);
@@ -837,9 +848,12 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  document.getElementById('memTrClose').onclick = () => { trSt.textContent = ''; setMode(false); };
  document.getElementById('memCopy').onclick = async () => {
   const b = document.getElementById('memCopy');
-  try { await navigator.clipboard.writeText(trPrompt.value); }
-  catch (e) { trPrompt.focus(); trPrompt.select(); try { document.execCommand('copy'); } catch (e2) {} }
-  b.textContent = t('Copied'); setTimeout(() => { b.textContent = t('Copy'); }, 1800);
+  try { await navigator.clipboard.writeText(trPrompt.textContent); }
+  catch (e) {
+   /* без Clipboard API: виділяємо текст картки і копіюємо командою */
+   try { const r = document.createRange(); r.selectNodeContents(trPrompt); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); document.execCommand('copy'); sel.removeAllRanges(); } catch (e2) {}
+  }
+  b.textContent = t('Copied ✓'); setTimeout(() => { b.textContent = t('Copy'); }, 2200);
  };
  document.getElementById('memPasteSave').onclick = () => {
   const v = trPaste.value.trim();
@@ -858,7 +872,7 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  ta.addEventListener('input', autoGrow);
 
  /* Чотири стани картки, які не змішуються:
-      read + порожньо   онбординг (перенести з ChatGPT/Claude або заповнити вручну),
+      read + порожньо   онбординг (перенести з AI-чату або заповнити вручну),
                         без редактора, без Видалити/Скасувати, без прапорця;
       import            запит + поле вставки + Зберегти/Скасувати;
       edit              поле редактора + Зберегти/Скасувати;
@@ -1227,7 +1241,7 @@ if (window.CALCAR_SIGNED_IN !== undefined) window.calcarAuthState(window.CALCAR_
     target.classList.add('tour-pulse'); if (n === 2) target.classList.add('tour-row');
     var text = n === 1
       ? tr('This is your personal car assistant. It knows your current reports, can explain any conclusion, and over time remembers which cars and conditions suit you.')
-      : tr('This is where CalCar keeps what it knows about your preferences. If you have already discussed choosing a car with ChatGPT or Claude, you can bring that context here instead of starting from scratch.');
+      : tr('This is where CalCar keeps what it knows about your preferences. If you have already discussed choosing a car with another AI assistant, you can bring that context here instead of starting from scratch.');
     var main = n === 1 ? tr('Next') : tr('Open memory'), side = n === 1 ? tr('Skip') : tr('Done');
     pop = document.createElement('div'); pop.className = 'tour-pop'; pop.setAttribute('role', 'dialog');
     pop.innerHTML = '<div class="tour-step">' + n + ' / 2</div><p>' + esc(text) + '</p><div class="tour-act"><button type="button" class="tour-side">' + esc(side) + '</button><button type="button" class="tour-main">' + esc(main) + '</button></div>';

@@ -2411,7 +2411,7 @@ if (window.CALCAR_SIGNED_IN !== undefined) window.calcarAuthState(window.CALCAR_
     target.classList.add('tour-pulse'); if (n === 2) target.classList.add('tour-row');
     var text = n === 1
       ? tr('This is your personal car assistant. It knows your current reports, can explain any conclusion, and over time remembers which cars and conditions suit you.')
-      : tr('This is where CalCar keeps what it knows about your preferences. If you have already discussed choosing a car with ChatGPT or Claude, you can bring that context here instead of starting from scratch.');
+      : tr('This is where CalCar keeps what it knows about your preferences. If you have already discussed choosing a car with another AI assistant, you can bring that context here instead of starting from scratch.');
     var main = n === 1 ? tr('Next') : tr('Open memory'), side = n === 1 ? tr('Skip') : tr('Done');
     pop = document.createElement('div'); pop.className = 'tour-pop'; pop.setAttribute('role', 'dialog');
     pop.innerHTML = '<div class="tour-step">' + n + ' / 2</div><p>' + esc(text) + '</p><div class="tour-act"><button type="button" class="tour-side">' + esc(side) + '</button><button type="button" class="tour-main">' + esc(main) + '</button></div>';

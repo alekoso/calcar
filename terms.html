@@ -429,6 +429,8 @@
   .legal ul{margin:0 0 12px 22px}
   .legal li{margin:4px 0}
   .legal a{color:var(--ink);text-decoration:underline;text-decoration-color:var(--brand);text-decoration-thickness:2px;text-underline-offset:3px}
+  .legal .legal-contact a{display:inline-flex;align-items:center;gap:8px;padding:9px 14px;border:1px solid var(--line-strong);border-radius:10px;background:var(--card);font-weight:700;text-decoration:none}
+  .legal .legal-contact a:hover{background:var(--surface-2)}
   .legal .see{margin-top:28px;padding-top:18px;border-top:1px solid var(--line)}
   @media(max-width:620px){.legal{padding:24px 16px 48px}.legal h1{font-size:24px}.legal h2{font-size:16.5px}}
   html{scrollbar-gutter:stable}
@@ -539,7 +541,7 @@
   <h2>Changes to these terms</h2>
   <p>We may update these terms as the product evolves. Continued use of CalCar after an update means you accept the new terms. The date at the top shows the latest version.</p>
   <h2>Contact</h2>
-  <p>Questions about these terms: Telegram <a href="https://t.me/calcar_ai" target="_blank" rel="noopener">t.me/calcar_ai</a><span id="legalEmail"></span></p>
+  <p class="legal-contact"><a href="https://t.me/calcar_ai" target="_blank" rel="noopener">Contact</a><span id="legalEmail"></span></p>
   <p class="see"><a href="/privacy">See also: Privacy Policy</a></p>
 </main>
 
@@ -712,7 +714,7 @@ if (window.CALCAR_SIGNED_IN !== undefined) window.calcarAuthState(window.CALCAR_
     target.classList.add('tour-pulse'); if (n === 2) target.classList.add('tour-row');
     var text = n === 1
       ? tr('This is your personal car assistant. It knows your current reports, can explain any conclusion, and over time remembers which cars and conditions suit you.')
-      : tr('This is where CalCar keeps what it knows about your preferences. If you have already discussed choosing a car with ChatGPT or Claude, you can bring that context here instead of starting from scratch.');
+      : tr('This is where CalCar keeps what it knows about your preferences. If you have already discussed choosing a car with another AI assistant, you can bring that context here instead of starting from scratch.');
     var main = n === 1 ? tr('Next') : tr('Open memory'), side = n === 1 ? tr('Skip') : tr('Done');
     pop = document.createElement('div'); pop.className = 'tour-pop'; pop.setAttribute('role', 'dialog');
     pop.innerHTML = '<div class="tour-step">' + n + ' / 2</div><p>' + esc(text) + '</p><div class="tour-act"><button type="button" class="tour-side">' + esc(side) + '</button><button type="button" class="tour-main">' + esc(main) + '</button></div>';
