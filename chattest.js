@@ -58,6 +58,8 @@ async function sys(product, memory, extra) {
     const withMem = await sys(product, MEM);
     if (!withMem.includes(MEM)) errs.push('памʼять не потрапила в системну інструкцію' + p);
     if (!withMem.includes('ПРОФІЛЬ ВЛАСНИКА')) errs.push('нема блоку профілю власника' + p);
+    /* памʼять це дані профілю, не інструкції: правила CalCar і Score вона не міняє */
+    if (!withMem.includes('МЕЖА ДОВІРИ')) errs.push('у профілі власника нема межі довіри (памʼять як дані, не команди)' + p);
     if (!withMem.includes('Audi Q7')) errs.push('нинішнє авто власника загубилось' + p);
 
     /* 2. предметна область не підмінилась */

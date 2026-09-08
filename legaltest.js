@@ -52,7 +52,9 @@ for (const p of LEGAL) {
   if ((s.match(/<h2>/g) || []).length < 8) errs.push(p + ': замало розділів');
   /* контакт: Telegram із завдання власника; email лише з публічного конфігу */
   /* контакт без канцеляриту: просто "Contact" посиланням на Telegram; право запросити видалення лишається в тексті політики */
-  if (!s.includes('<p class="legal-contact"><a href="https://t.me/calcar_ai" target="_blank" rel="noopener">Contact</a><span id="legalEmail"></span></p>')) errs.push(p + ': контакт не простим "Contact" на Telegram або нема гнізда для email з конфігу');
+  /* контакт: заголовок "Звʼязатися", під ним іконка Telegram і @calcar_ai (посилання на t.me), без кнопки і без голої адреси */
+  if (!/<p class="legal-contact"><a href="https:\/\/t\.me\/calcar_ai" target="_blank" rel="noopener"><svg class="tg-ic"[^>]*>[\s\S]*?<\/svg>@calcar_ai<\/a><span id="legalEmail"><\/span><\/p>/.test(s)) errs.push(p + ': контакт не "іконка Telegram + @calcar_ai" або нема гнізда для email з конфігу');
+  if (/>t\.me\/calcar_ai</.test(s) || />Contact<\/a>/.test(s)) errs.push(p + ': у контакті гола адреса або кнопка "Contact"');
   if (/Questions and deletion requests|Questions about these terms/.test(s)) errs.push(p + ': лишилось канцелярське формулювання контакту');
   if (/@calcar\.io|@gmail\.com/.test(s)) errs.push(p + ': захардкоджений email');
   /* нічого вигаданого про юрособу */

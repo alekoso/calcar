@@ -252,6 +252,8 @@
   .ft-col b{font-size:13px;font-weight:700;color:var(--ink);margin-bottom:2px}
   .ft-col a{font-size:13.5px;color:var(--muted);text-decoration:none;width:fit-content}
   .ft-col a:hover{color:var(--ink);text-decoration:underline;text-decoration-color:var(--brand);text-decoration-thickness:2px;text-underline-offset:4px}
+  .ft-tg{display:inline-flex;align-items:center;gap:6px}
+  .ft-tg .tg-ic{width:15px;height:15px;color:#229ED9}
   .footer-bottom{border-top:1px solid var(--line)}
   .footer-bottom .footer-in{padding:14px 20px;font-size:12.5px;color:var(--faint)}
   @media(max-width:620px){.footer-in{flex-direction:column;gap:24px;padding:32px 16px 24px}.ft-cols{gap:36px}.footer-bottom .footer-in{padding:12px 16px}}
@@ -429,8 +431,9 @@
   .legal ul{margin:0 0 12px 22px}
   .legal li{margin:4px 0}
   .legal a{color:var(--ink);text-decoration:underline;text-decoration-color:var(--brand);text-decoration-thickness:2px;text-underline-offset:3px}
-  .legal .legal-contact a{display:inline-flex;align-items:center;gap:8px;padding:9px 14px;border:1px solid var(--line-strong);border-radius:10px;background:var(--card);font-weight:700;text-decoration:none}
-  .legal .legal-contact a:hover{background:var(--surface-2)}
+  .legal .legal-contact a{display:inline-flex;align-items:center;gap:8px;font-weight:700;text-decoration:none}
+  .legal .legal-contact a:hover{text-decoration:underline}
+  .legal .tg-ic{width:18px;height:18px;flex:0 0 auto;color:#229ED9}
   .legal .see{margin-top:28px;padding-top:18px;border-top:1px solid var(--line)}
   @media(max-width:620px){.legal{padding:24px 16px 48px}.legal h1{font-size:24px}.legal h2{font-size:16.5px}}
   html{scrollbar-gutter:stable}
@@ -551,7 +554,7 @@
   <h2>Changes</h2>
   <p>We may update this policy as the product evolves. The date at the top shows the latest version.</p>
   <h2>Contact</h2>
-  <p class="legal-contact"><a href="https://t.me/calcar_ai" target="_blank" rel="noopener">Contact</a><span id="legalEmail"></span></p>
+  <p class="legal-contact"><a href="https://t.me/calcar_ai" target="_blank" rel="noopener"><svg class="tg-ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21.9 3.3 2.7 10.7c-1.3.5-1.3 1.3-.2 1.6l4.9 1.5 11.4-7.2c.5-.3 1-.1.6.2l-9.2 8.3-.3 4.8c.5 0 .7-.2 1-.5l2.4-2.3 4.9 3.6c.9.5 1.6.2 1.8-.8l3.2-15.2c.3-1.3-.5-1.9-1.3-1.4z"/></svg>@calcar_ai</a><span id="legalEmail"></span></p>
   <p class="see"><a href="/terms">See also: Terms of Service</a></p>
 </main>
 
@@ -621,7 +624,8 @@ document.addEventListener('calcar-chat-state', function (e) {
   var tg = /^https:\/\/t\.me\/[A-Za-z0-9_]+$/.test(c.telegram || '') ? c.telegram : '';
   var em = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email || '') ? c.email : '';
   if (!tg && !em) return;
-  if (tg) { var a = document.createElement('a'); a.href = tg; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Telegram'; col.appendChild(a); }
+  /* показуємо @handle з іконкою, а не голу адресу: людині одразу видно, що відкриється Telegram */
+  if (tg) { var a = document.createElement('a'); a.href = tg; a.target = '_blank'; a.rel = 'noopener'; a.className = 'ft-tg'; a.innerHTML = '<svg class="tg-ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21.9 3.3 2.7 10.7c-1.3.5-1.3 1.3-.2 1.6l4.9 1.5 11.4-7.2c.5-.3 1-.1.6.2l-9.2 8.3-.3 4.8c.5 0 .7-.2 1-.5l2.4-2.3 4.9 3.6c.9.5 1.6.2 1.8-.8l3.2-15.2c.3-1.3-.5-1.9-1.3-1.4z"/></svg>' + '@' + tg.replace(/^https:\/\/t\.me\//, ''); col.appendChild(a); }
   if (em) { var b = document.createElement('a'); b.href = 'mailto:' + em; b.textContent = em; col.appendChild(b); }
   col.hidden = false;
 })();

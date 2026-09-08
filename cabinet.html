@@ -364,14 +364,16 @@
  /* Памʼять це вміст, а не пояснення сторінки: вона живе у власній мʼякій
     рамці всередині картки. Режим читання показує ВСЮ нотатку розділами,
     режим правки той самий текст у полі. Нічого не скорочується. */
- .mem-view{margin:0 20px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2);padding:14px 16px;font-size:13.5px;line-height:1.6;color:var(--text)}
+ .mem-view{margin:0 20px 16px;border:1px solid var(--line);border-radius:12px;background:var(--card);padding:14px 16px;font-size:13.5px;line-height:1.6;color:var(--text)}
  .mem-sec + .mem-sec{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
  .mem-sec b{display:block;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
  .mem-sec p{white-space:pre-wrap;overflow-wrap:anywhere}
  .mem-empty{color:var(--muted)}
- /* порожня памʼять: мʼяка картка з пропозицією перенести контекст з AI-чату, без зайвої висоти */
- .mem-view.mem-view-empty{background:var(--surface-2);border-color:transparent;padding:16px 18px}
- .mem-onb b{display:block;font-size:15px;color:var(--ink);margin-bottom:4px}
+ /* порожня памʼять: біла внутрішня картка з тонкою рамкою всередині білої
+    зовнішньої, з відступом знизу, без сірої заливки і без перетину рамок */
+ .mem-view.mem-view-empty{padding:16px 18px 18px}
+ .mem-onb b{display:flex;align-items:center;gap:8px;font-size:15px;color:var(--ink);margin-bottom:4px}
+ .mem-onb-ic{width:18px;height:18px;flex:0 0 auto;color:var(--brand-active)}
  .mem-onb p{margin:0 0 12px;line-height:1.5}
  .mem-onb-act{display:flex;gap:10px;flex-wrap:wrap}
  /* перенесення: два пронумеровані кроки зверху вниз, промпт у білій картці,
@@ -621,56 +623,52 @@
   <div class="mem-view" id="memView"></div>
   <div id="memPromptSrc" hidden>Analyze our past conversations in which we discussed choosing, buying or comparing cars.
 
-I may not have stated my requirements directly. I may have simply sent listing links, asked "what do you think of this car?", compared different cars, said why I like or dislike something, rejected options, discussed price, mileage, accidents, equipment, engines, electric cars, maintenance and other related things.
+I may not have stated my requirements directly at all. I may have simply sent listing links, asked "what do you think of this car?", asked you to compare one car with another, said why I like or dislike something, rejected options, discussed price, mileage, accidents, equipment, engines, electric cars, maintenance and other car-related things.
 
-Based on this correspondence, build my profile as a car buyer.
+Based on all of our correspondence, build my profile as a car buyer.
 
 Use only what actually follows from our conversations. Do not invent anything.
 
-Determine, if it was actually discussed:
+Try to determine, if it was actually discussed:
 
-- budget and acceptable price range;
-- the relevant country/market;
-- how the car will be used;
-- brands, models and types of cars I am interested in;
-- cars I have already considered;
+- my budget or price range;
+- the country / market where I am looking at cars;
+- which brands, models and types of cars interest me;
+- which specific cars I have already considered;
 - what I liked about them;
-- why I rejected specific options;
-- the characteristics that matter most to me;
-- desirable parameters;
-- deal-breakers;
-- attitude to mileage and age;
-- attitude to accidents and rebuilt cars;
+- why I rejected particular options;
+- what matters most to me in a car;
+- which characteristics are desirable for me;
+- what is a deal-breaker;
+- my attitude to a car's mileage and age;
+- my attitude to accidents and rebuilt cars;
 - preferences on power and dynamics;
-- EV / hybrid / ICE preferences;
+- preferences on EVs, hybrids and combustion engines, if discussed;
 - attitude to equipment, comfort, reliability and maintenance cost;
-- any recurring preferences that are really visible from our communication.
+- which advice or approaches to choosing a car I clearly did not like, if I said so;
+- any other stable preferences that are really visible from our conversations.
 
 Split the result into:
 
 1. Confirmed preferences
-   - what I said explicitly.
+   What I said directly.
 
 2. Likely preferences
-   - conclusions from my recurring behaviour and choices.
-   Always mark them as assumptions.
+   What can be assumed from my recurring decisions, but always mark it as an assumption.
 
 3. Deal-breakers / what does not suit me.
 
-4. Cars I have already considered,
-   and what I liked or disliked about them.
+4. Cars I have already considered, and what I liked or disliked about them.
 
-5. Current context of choice,
-   if it is clear from our conversations what I am looking for now.
+5. Current context of choice, if it is clear from recent conversations which cars I am considering now.
 
-If there is no information, do not add it.
+If there is no information on some point, skip it.
 If the information is contradictory, say so.
 Do not fill gaps with guesses.
 
-Return a compact but sufficiently detailed structured profile in English.
-It will be pasted in full into the memory of my car AI assistant.</div>
+Return a compact but sufficiently detailed structured profile in the language we usually use.</div>
   <div class="mem-tr" id="memTransfer" hidden>
-   <div class="mem-step"><b>1. Copy this prompt</b><span>Paste it into the AI chat where you have already discussed choosing cars.</span></div>
+   <div class="mem-step"><b>1. Copy this prompt</b><span>Paste it into the AI chat where you have already discussed cars.</span></div>
    <div class="mem-prompt-card"><div class="mem-prompt" id="memPrompt"></div></div>
    <button class="mem-copy" id="memCopy" type="button">Copy</button>
    <div class="mem-step"><b>2. Paste the profile you received</b><span>Come back here and paste the AI assistant's reply in full.</span></div>
@@ -782,8 +780,8 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
   if (!raw.trim()) {
    /* порожньо: не глухий кут, а пропозиція перенести контекст з іншого AI */
    memView.classList.add('mem-view-empty');
-   memView.innerHTML = '<div class="mem-onb"><b>' + memEsc(t('CalCar does not know much about you yet')) + '</b>'
-     + '<p class="mem-empty">' + memEsc(t('If you have already discussed choosing cars with another AI assistant, for example ChatGPT, Claude or Gemini, you can bring that context here so CalCar immediately understands what you are looking for.')) + '</p>'
+   memView.innerHTML = '<div class="mem-onb"><b>' + '<svg class="mem-onb-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.7 4.6L18 9.3l-4.3 1.7L12 15.6l-1.7-4.6L6 9.3l4.3-1.7z"/><path d="M18.5 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></svg>' + memEsc(t('CalCar does not know much about you yet')) + '</b>'
+     + '<p class="mem-empty">' + memEsc(t('If you have already discussed choosing cars with another AI assistant, for example ChatGPT, Claude or Gemini, you can bring that context here so CalCar immediately understands what matters to you when choosing a car.')) + '</p>'
      + '<div class="mem-onb-act"><button class="mem-save" type="button" id="memTransferBtn">' + memEsc(t('Transfer from an AI chat')) + '</button>'
      + '<button class="mem-clear" type="button" id="memManualBtn">' + memEsc(t('Fill in manually')) + '</button></div></div>';
    return;
@@ -1138,7 +1136,8 @@ document.addEventListener('calcar-chat-state', function (e) {
   var tg = /^https:\/\/t\.me\/[A-Za-z0-9_]+$/.test(c.telegram || '') ? c.telegram : '';
   var em = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email || '') ? c.email : '';
   if (!tg && !em) return;
-  if (tg) { var a = document.createElement('a'); a.href = tg; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Telegram'; col.appendChild(a); }
+  /* показуємо @handle з іконкою, а не голу адресу: людині одразу видно, що відкриється Telegram */
+  if (tg) { var a = document.createElement('a'); a.href = tg; a.target = '_blank'; a.rel = 'noopener'; a.className = 'ft-tg'; a.innerHTML = '<svg class="tg-ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21.9 3.3 2.7 10.7c-1.3.5-1.3 1.3-.2 1.6l4.9 1.5 11.4-7.2c.5-.3 1-.1.6.2l-9.2 8.3-.3 4.8c.5 0 .7-.2 1-.5l2.4-2.3 4.9 3.6c.9.5 1.6.2 1.8-.8l3.2-15.2c.3-1.3-.5-1.9-1.3-1.4z"/></svg>' + '@' + tg.replace(/^https:\/\/t\.me\//, ''); col.appendChild(a); }
   if (em) { var b = document.createElement('a'); b.href = 'mailto:' + em; b.textContent = em; col.appendChild(b); }
   col.hidden = false;
 })();

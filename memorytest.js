@@ -116,7 +116,12 @@ function run(text) {
   if (!/id="memPromptSrc" hidden>Analyze our past conversations/.test(page)) errs.push('нема тексту запиту для ChatGPT/Claude у розмітці');
   if (!/id="memPaste"/.test(page) || !/id="memPasteSave"/.test(page)) errs.push('нема поля вставки профілю або кнопки збереження');
   if (!run('').includes('id="memManualBtn"')) errs.push('порожня памʼять без дії "Заповнити вручну"');
-  if (!/Return a compact but sufficiently detailed structured profile in English\./.test(page)) errs.push('текст запиту не оновлений');
+  if (!/Return a compact but sufficiently detailed structured profile in the language we usually use\./.test(page)) errs.push('текст запиту не оновлений');
+  if (!/I may not have stated my requirements directly at all\./.test(page)) errs.push('промпт не розрахований на звичайні розмови (без анкети)');
+  /* порожній стан: біла внутрішня картка з рамкою всередині білої зовнішньої, з відступом знизу, без сірої заливки */
+  if (/\.mem-view\.mem-view-empty\{[^}]*surface-2/.test(page) || /\.mem-view\{[^}]*background:var\(--surface-2\)/.test(page)) errs.push('порожня памʼять знову на сірій заливці');
+  if (!/\.mem-view\{margin:0 20px 16px;border:1px solid var\(--line\)/.test(page)) errs.push('внутрішня картка памʼяті без рамки або без відступу знизу');
+  if (!run('').includes('mem-onb-ic')) errs.push('онбординг без іконки помічника');
   /* generic AI: провайдери згадуються один раз як приклади в онбордингу, у промпті і кнопках їх нема */
   const promptSrc = (page.match(/<div id="memPromptSrc" hidden>([\s\S]*?)<\/div>/) || ['', ''])[1];
   if (/ChatGPT|Claude|Gemini/.test(promptSrc)) errs.push('промпт привʼязаний до конкретного AI');

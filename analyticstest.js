@@ -320,6 +320,8 @@ tourChecks();
   const ctx = { window: { CALCAR_PUBLIC: { contacts: { telegram: 'https://t.me/calcar', email: 'hello@calcar.io' } }, matchMedia: () => ({ matches: true }) }, document: { addEventListener() {}, getElementById: id => (id === 'ftContacts' ? col : null), createElement: () => ({}), querySelector: () => null, querySelectorAll: () => [] } };
   ctx.window.document = ctx.document; vm.createContext(ctx); vm.runInContext(hdr, ctx);
   if (col.hidden || col.kids.length !== 2 || col.kids[0].href !== 'https://t.me/calcar' || col.kids[1].href !== 'mailto:hello@calcar.io') errs.push('контакти футера не заповнюються з конфігу');
+  /* Telegram у футері показується як іконка + @handle, не як слово "Telegram" і не як адреса */
+  if (!/@calcar$/.test(col.kids[0].innerHTML || '') || !/tg-ic/.test(col.kids[0].innerHTML || '')) errs.push('Telegram у футері не "іконка + @handle": ' + col.kids[0].innerHTML);
   const col2 = { hidden: true, kids: [], appendChild(a) { this.kids.push(a); } };
   const ctx2 = { window: { CALCAR_PUBLIC: { contacts: { telegram: 'javascript:alert(1)', email: 'not-an-email' } }, matchMedia: () => ({ matches: true }) }, document: { addEventListener() {}, getElementById: id => (id === 'ftContacts' ? col2 : null), createElement: () => ({}), querySelector: () => null, querySelectorAll: () => [] } };
   ctx2.window.document = ctx2.document; vm.createContext(ctx2); vm.runInContext(hdr, ctx2);
