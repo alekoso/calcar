@@ -234,7 +234,7 @@ for (const x of fs.readdirSync('api').filter(f => f.endsWith('.js'))) {
   for (const k of ['PENDING_KEY', 'RECENT_KEY', 'async function pollJob', 'async function resumePending', 'r.status === 202 && data.job', 'ld.setStage', "t('Recent checks on this device')"]) {
     if (!ch.includes(k)) errs.push('check.html: нема ' + k);
   }
-  if (!src.includes('"kind":"finding|latent"')) errs.push('схема risks без kind');
+  if (!/kind: E\(\['finding', 'latent'\]/.test(fs.readFileSync('api/check-schema.js', 'utf8'))) errs.push('схема risks без kind');
   if (!/HIGH_COST_LATENT_RISK/.test(src) || !/"kind": "latent"/.test(src)) errs.push('промпт без HIGH_COST_LATENT_RISK');
   if (!/MCU1 чи встановлено MCU2/.test(src)) errs.push('промпт без MCU-перевірки');
   if (!/ПРІОРИТИЗАЦІЯ: top risks це 3-5 пунктів/.test(src)) errs.push('промпт без пріоритизації top risks');

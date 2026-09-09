@@ -289,8 +289,9 @@ const GERMAN_FULL = { ...FULL, auction_record_exists: false, auction_us_signal: 
   /* тіньовий режим: легасі оцінка ЛИШАЄТЬСЯ в схемі і промпті check.js,
      v2 рахується кодом і зберігається поруч, чат чистить поля v2 */
   const check = fs.readFileSync('api/check.js', 'utf8');
-  if (!check.includes('"verdict":{"score":7.4')) errs.push('check.js: легасі verdict.score зник зі схеми');
-  if (!check.includes('"verdict.score": чесна оцінка')) errs.push('check.js: легасі правила оцінки зникли з промпту');
+  /* канонічний бал: модель бал НЕ генерує, verdict.score ставить код зі Score v3 */
+  if (/"verdict":\{"score":7\.4|"verdict\.score": чесна оцінка|"verdict\.grade"/.test(check)) errs.push('check.js: модель знову просять генерувати бал чи grade');
+  if (!/parsed\.verdict\.score = \(parsed\.score_breakdown && parsed\.score_breakdown\.score_available !== false && typeof parsed\.score_breakdown\.final === 'number'\)\s*\? parsed\.score_breakdown\.final : null;/.test(check)) errs.push('check.js: verdict.score не ставиться кодом зі score_breakdown.final');
   if (!check.includes('"score_facts"')) errs.push('check.js: score_facts нема в схемі');
   if (!check.includes("import { computeScore } from './score.js'")) errs.push('check.js: не імпортує чистий модуль оцінки');
   if (!check.includes("parsed.score_v2_preview = breakdown.score_available === false ? null : breakdown.final")) errs.push('check.js: не зберігає score_v2_preview з урахуванням gate');

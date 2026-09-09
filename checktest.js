@@ -296,7 +296,8 @@ const REPORTS = [
     if (!api.includes('дистронік це адаптивний круїз')) errs.push('check.js: нема нормалізації народних назв');
     if (!api.includes('КНОПКИ ДОКАЗУЮТЬ КНОПКИ')) errs.push('check.js: нема правила про органи керування');
     if (!api.includes('рівня "ймовірно" НЕ існує')) errs.push('check.js: нема заборони проміжного рівня');
-    if (!api.includes('"equipment_v2":[{')) errs.push('check.js: схема без equipment_v2');
+    const schemaSrc = fs.readFileSync('api/check-schema.js', 'utf8');
+    if (!/equipment_v2: ARR\(OBJ\(\{/.test(schemaSrc)) errs.push('check-schema.js: схема без equipment_v2');
     /* semantic cleanup: софт-стани, не підсилювати понад доказ, без дублів шапки */
     if (!api.includes('софтверні і конфігураційні стани опціями не є')) errs.push('check.js: софт-стани не виключені з комплектації');
     if (!api.includes('НЕ ПІДСИЛЮЙ ВИСНОВОК ПОНАД ДОКАЗ')) errs.push('check.js: нема правила про підсилення висновку');
@@ -430,10 +431,10 @@ const REPORTS = [
     if (!api.includes("if (/^\\d/.test(p)")) errs.push('адаптер не фільтрує числові значення');
     if (!api.includes('source listing_data: структуровані поля площадки')) errs.push('промпт без секції listing_data');
     if (!api.includes('НІКОЛИ не підвищує достовірність опцій')) errs.push('нема правила чесного wording');
-    if (!api.includes('"value_tier":"standard|notable|high_value"')) errs.push('схема без value_tier');
+    if (!/value_tier: E\(\['standard', 'notable', 'high_value'\]\)/.test(fs.readFileSync('api/check-schema.js', 'utf8'))) errs.push('схема без value_tier');
     const chatApi = fs.readFileSync('api/chat.js', 'utf8');
     if (!chatApi.includes('пріоритет у provenance')) errs.push('chat.js: structured provenance не пріоритетний');
-    if (!chatApi.includes('не посилайся на why_consider')) errs.push('chat.js: why_consider не виключений як доказ');
+    if (!chatApi.includes('не посилайся на тексти висновку як на доказ опції')) errs.push('chat.js: тексти висновку не виключені як доказ опції');
     const pg3 = fs.readFileSync('result-check.html', 'utf8');
     if (!pg3.includes("['listing_data', t('Listing data')]")) errs.push('нема групи Дані оголошення');
     if (!pg3.includes('.eq-chip.hv')) errs.push('нема premium-позначення high_value');

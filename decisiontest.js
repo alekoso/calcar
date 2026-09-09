@@ -9,7 +9,7 @@ const errs = [];
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'calcar_dec_'));
 fs.mkdirSync(path.join(dir, 'api'));
 fs.writeFileSync(path.join(dir, 'package.json'), '{"type":"module"}');
-for (const x of ['check.js', 'score.js', 'score-v3.js', 'auction.js', 'locale.js', 'visual-signals.js', 'share.js', 'vehicle-memory.js']) {
+for (const x of ['check.js', 'check-schema.js', 'score.js', 'score-v3.js', 'auction.js', 'locale.js', 'visual-signals.js', 'share.js', 'vehicle-memory.js']) {
   fs.writeFileSync(path.join(dir, 'api', x), fs.readFileSync('api/' + x, 'utf8'));
 }
 
@@ -18,10 +18,7 @@ const VALID = {
   headline: 'Їхати дивитись, але спершу два питання продавцю',
   summary_short: 'Ціна нижча за ринок через ДТП у США, але удар за фото некритичний. Історія пробігу логічна. Головна невідомість: якість відновлення SRS.',
   reasoning: 'Абзац один.\n\nАбзац два.',
-  why_consider: ['Ціна нижча за ринок', 'Логічна хронологія пробігу'],
-  main_concerns: ['Якість відновлення SRS не підтверджена'],
-  must_check: ['SRS: подушки стріляли за аукціонним фото auction_event_1'],
-  questions_for_seller: ['Чому пробіг у поточному оголошенні менший, ніж торік?'],
+  questions_for_seller: ['Чому пробіг у поточному оголошенні менший, ніж торік?', 'Чи є документи на ремонт SRS?'],
   value_context: 'Ціна виглядає нижчою за аналоги, і причина цьому: аукціонне минуле.',
   missing_but_important: ['Сервісної історії нема: попросити виписку з СТО'],
 };
@@ -36,7 +33,8 @@ const VALID = {
 
   /* 1. валідна структура проходить цілою */
   let out = sanitizePurchaseDecision(VALID, 6.5);
-  if (!out || out.recommendation !== 'go_see' || out.why_consider.length !== 2) errs.push('валідне рішення покалічене');
+  if (!out || out.recommendation !== 'go_see' || out.questions_for_seller.length !== 2) errs.push('валідне рішення покалічене');
+  for (const dead of ['why_consider', 'main_concerns', 'must_check']) if (dead in out) errs.push('мертве поле ' + dead + ' повернулось у purchase_decision');
   if (out.score_conflict) errs.push('go_see при 6.5 позначений конфліктом');
 
   /* 2. битий чи відсутній: null, звіт живе, рендер старий */
@@ -46,9 +44,9 @@ const VALID = {
   }
 
   /* 3. summary_short ріжеться по 400, списки по 8, сміття в списках відсіюється */
-  out = sanitizePurchaseDecision({ ...VALID, summary_short: 'Д'.repeat(500), must_check: [...Array(12)].map((x, i) => 'пункт ' + i).concat([42, '', null]) }, 6.5);
+  out = sanitizePurchaseDecision({ ...VALID, summary_short: 'Д'.repeat(500), questions_for_seller: [...Array(12)].map((x, i) => 'пункт ' + i).concat([42, '', null]) }, 6.5);
   if (out.summary_short.length !== 400) errs.push('summary_short не обрізаний по 400: ' + out.summary_short.length);
-  if (out.must_check.length !== 8) errs.push('must_check не обрізаний по 8: ' + out.must_check.length);
+  if (out.questions_for_seller.length !== 8) errs.push('questions_for_seller не обрізаний по 8: ' + out.questions_for_seller.length);
 
   /* 4. сумісність із балом: червоні прапорці */
   out = quiet(() => sanitizePurchaseDecision({ ...VALID, recommendation: 'skip' }, 8.4));
@@ -62,11 +60,12 @@ const VALID = {
   const src = fs.readFileSync('api/check.js', 'utf8');
   for (const k of ['"purchase_decision"', 'recommendation": buy | go_see | negotiate | skip',
     'покупця-перекупника', 'без страхувальної ковдри', 'пасує будь-якому авто цієї моделі, це брак',
-    'ПРИКЛАДИ СТИЛЮ МІРКУВАННЯ', 'decision_style', 'DECISION_STYLE',
+    'ПРИНЦИПИ РІШЕННЯ', 'decision_style', 'DECISION_STYLE',
     '"історія чиста", коли джерела історії не підтверджені, це брак']) {
     if (!src.includes(k)) errs.push('check.js: нема "' + k.slice(0, 40) + '"');
   }
-  if (!/decisionStyle === 'a' \? DECISION_FEWSHOT : ''/.test(src)) errs.push('check.js: варіант B не вимикає few-shot');
+  if (!/decisionStyle === 'a' \? DECISION_PRINCIPLES : ''/.test(src)) errs.push('check.js: варіант B не вимикає принципи рішення');
+  if (/DECISION_FEWSHOT|ПРИКЛАДИ СТИЛЮ МІРКУВАННЯ/.test(src)) errs.push('check.js: старий конфліктний few-shot повернувся');
 
   /* 6. рендер: шари, фолбек без порожніх секцій, рядки в словниках */
   const page = fs.readFileSync('result-check.html', 'utf8');
@@ -218,8 +217,7 @@ const VALID = {
     const pdLang = applyDecisionLanguage({
       recommendation: 'go_see', headline: 'Сильний удар спереду', summary_short: 'Стан SRS невідомий.',
       reasoning: 'Тяжкий удар видно на фото.', value_context: null,
-      why_consider: ['Мала ціна'], main_concerns: ['SRS не перевірено'], must_check: ['Перевірити SRS'],
-      questions_for_seller: [], missing_but_important: [],
+      questions_for_seller: ['Перевірити SRS'], missing_but_important: [],
     }, { severity: 'minor', lang: 'ua' });
     const allText = JSON.stringify(pdLang);
     if (/\bSRS\b/.test(allText)) errs.push('M: SRS лишився в полях рішення');

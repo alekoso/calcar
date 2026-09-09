@@ -72,7 +72,7 @@ if (/_meta\.timings|\.timings\b/.test(ui)) errs.push('сторінка звіт�
   if (!/const canonical = sanitizeHistoricalVisual\(cons\.hv, auctionPhotos\.length\);/.test(src)) errs.push('канонічний hv не проходить sanitize повторно');
   /* окремий effort для описового читання, основний виклик не чіпається */
   if (!/const HV_EFFORT = process\.env\.HV_REASONING_EFFORT \|\| 'low';/.test(src)) errs.push('нема окремого reasoning effort для hv');
-  if (!/let mainBody = modelBody\(content, true, mainSystem\);/.test(src)) errs.push('основний виклик не з системним префіксом правил');
+  if (!/let mainBody = modelBody\(content, true, mainSystem, mainFormat\);/.test(src)) errs.push('основний виклик не з системним префіксом правил і структурною схемою');
   if (!/const EFFORT = process\.env\.REASONING_EFFORT \|\| 'high';/.test(src)) errs.push('reasoning effort основного виклику змінено');
   /* мітка reuse чесно каже single_read */
   if (!/hvCache\.consensus\.mode === 'single' \? 'single_read'/.test(src)) errs.push('reuse.historical_visual не відрізняє одиничне читання');
@@ -86,13 +86,13 @@ if (/_meta\.timings|\.timings\b/.test(ui)) errs.push('сторінка звіт�
     /* жодних даних авто у префіксі: лише правила і статичні варіанти */
     const dyn = (rules.match(/\$\{[^}]*\}/g) || []).filter(x => /\bl\.|nhtsa|langDirective|decisionContext|auction\.text|photos_sent\b(?!\s*\?)/.test(x));
     if (dyn.length) errs.push('у статичному префіксі динамічні дані: ' + dyn.join(' | ').slice(0, 200));
-    if (!/\$\{DECISION_RULES\}\$\{decisionStyle === 'a' \? DECISION_FEWSHOT : ''\}/.test(rules)) errs.push('правила рішення не в префіксі');
+    if (!/\$\{DECISION_RULES\}\$\{decisionStyle === 'a' \? DECISION_PRINCIPLES : ''\}/.test(rules)) errs.push('правила рішення не в префіксі');
     if (/renderDecisionContext\(/.test(rules)) errs.push('контекст рішення (дані) потрапив у префікс');
-    if (!/\$\{auction && auction\.hv_provided \? ' "historical_visual": null,' : HISTORICAL_VISUAL_SCHEMA/.test(rules)) errs.push('схема не дає historical_visual: null при канонічному розборі');
+    if (!/mainResponseFormat\(\{ hvProvided: !!\(auction && auction\.hv_provided\) \}\)/.test(src)) errs.push('структурна схема не знає про канонічний hv (historical_visual: null)');
   }
   /* правила історичного візуалу не дублюються в основний виклик, коли розбір уже є */
   const hr = (src.match(/const MAIN_HISTORICAL_RULES = auction =>[\s\S]*?const METADATA_RULES/) || [''])[0];
-  if (!/\$\{auction\.hv_provided\s*\? 'ІСТОРИЧНИЙ ВІЗУАЛЬНИЙ РОЗБІР \("historical_visual"\) УЖЕ ВИКОНАНИЙ[\s\S]*?: HISTORICAL_VISUAL_RULES\}/.test(hr)) errs.push('HISTORICAL_VISUAL_RULES дублюються в основний виклик навіть із готовим розбором');
+  if (!/auction\.hv_provided \? `\nІСТОРИЧНІ КАДРИ[\s\S]*?\$\{SIDE_RULE\}\n` : `[\s\S]*?\$\{HISTORICAL_VISUAL_RULES\}\n`\)/.test(hr)) errs.push('HISTORICAL_VISUAL_RULES дублюються в основний виклик навіть із готовим розбором');
   /* дані: один раз кожен блок; текст сторінки і price_context не повторюються */
   const md = (src.match(/const MAIN_DATA = \([\s\S]*?\n\};/) || [''])[0];
   if (!md) errs.push('нема MAIN_DATA');
@@ -109,7 +109,7 @@ if (/_meta\.timings|\.timings\b/.test(ui)) errs.push('сторінка звіт�
   /* архівні кадри: лише ті, на які посилається розбір, у high; решта low; без розбору все high */
   if (!/img\(u, !hvFrames \|\| hvFrames\.has\(i \+ 1\) \? 'high' : 'low'\)/.test(src)) errs.push('архівні кадри не за посиланнями розбору');
   /* повтор без кадрів лишає всі текстові частини, не лише останню */
-  if (!/modelBody\(content\.filter\(x => x\.type === 'text'\), true, mainSystem\)/.test(src)) errs.push('текстовий повтор губить дані');
+  if (!/modelBody\(content\.filter\(x => x\.type === 'text'\), true, mainSystem, mainFormat\)/.test(src)) errs.push('текстовий повтор губить дані');
   if (/modelBody\(\[content\[content\.length - 1\]\]\)/.test(src)) errs.push('текстовий повтор шле лише останню частину');
   /* розкладка payload у таймінгах */
   if (!/payload: mainPayload/.test(src)) errs.push('розкладка payload не пишеться в timings');
