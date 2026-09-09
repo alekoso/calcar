@@ -2580,7 +2580,19 @@ async function runCheck(req, res, job) {
        роздає high-слоти найінформативнішим. Фейл чи таймаут: рівномірний
        fallback і чесний gallery_coverage_complete=false */
     let photoIdx, highSet, galleryCoverageComplete, photoSelectorMeta;
-    if (listing.photos.length <= 24) {
+    /* BENCHMARK-режим (photo_pick: 'even' у тілі запиту): детермінований
+       рівномірний вибір тих самих кадрів для кожного прогону одного
+       оголошення, без AI-селектора. Потрібен лише для чесного порівняння
+       варіантів промпту: модель мусить бачити ті самі фото. Продакшн-шлях
+       (селектор при > 24 кадрів) не змінюється */
+    const photoPickEven = (req.body && req.body.photo_pick === 'even') && listing.photos.length > 24;
+    if (photoPickEven) {
+      photoIdx = pickEvenIndexes(listing.photos.length, 24);
+      highSet = new Set(pickEvenIndexes(photoIdx.length, 12));
+      galleryCoverageComplete = false;
+      photoSelectorMeta = { mode: 'even_benchmark' };
+      mark('photo_selector', 0, 'skipped', { reason: 'benchmark_even', photos: listing.photos.length });
+    } else if (listing.photos.length <= 24) {
       photoIdx = listing.photos.map((_, i) => i);
       highSet = new Set(pickEvenIndexes(photoIdx.length, 12));
       galleryCoverageComplete = true;
