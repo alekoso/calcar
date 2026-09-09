@@ -2214,6 +2214,23 @@ async function runCheck(req, res, job) {
      довгий крок (consensus, основний виклик, верифікатор) міряється від
      старту, а не від попереднього кроку */
   const tRun = Date.now();
+  /* ---- інструментування: точний час кожної стадії і usage AI-викликів.
+     Іде в _meta.timings (публічний серіалізатор його не віддає, UI не
+     показує). Нічого не вигадуємо: статус skipped | cached | executed,
+     usage лише коли API його реально повернув */
+  const timings = {};
+  const mark = (name, ms, status, extra) => { timings[name] = Object.assign({ ms: Math.round(ms), status }, extra || {}); };
+  const aiUsage = (data, body) => {
+    const u = data && data.usage && typeof data.usage === 'object' ? data.usage : null;
+    const out = { model: (data && data.model) || (body && body.model) || null, reasoning_effort: (body && body.reasoning_effort) || null };
+    if (u) {
+      if (typeof u.prompt_tokens === 'number') out.input_tokens = u.prompt_tokens;
+      if (typeof u.completion_tokens === 'number') out.output_tokens = u.completion_tokens;
+      if (u.prompt_tokens_details && typeof u.prompt_tokens_details.cached_tokens === 'number') out.cached_tokens = u.prompt_tokens_details.cached_tokens;
+      if (u.completion_tokens_details && typeof u.completion_tokens_details.reasoning_tokens === 'number') out.reasoning_tokens = u.completion_tokens_details.reasoning_tokens;
+    }
+    return out;
+  };
   try {
     const rawUrl = String((req.body || {}).url || '').trim();
     const decisionStyle = ['a', 'b'].includes(req.body?.decision_style)
@@ -2226,6 +2243,7 @@ async function runCheck(req, res, job) {
 
     /* --- сторінка --- */
     let html;
+    const tLf = Date.now();
     try {
       html = await fetchPage(url);
     } catch (e) {
@@ -2236,8 +2254,11 @@ async function runCheck(req, res, job) {
       });
     }
 
+    mark('listing_fetch', Date.now() - tLf, 'executed');
+    const tLx = Date.now();
     const listing = extractListing(html, url);
     listing.history_facts = extractHistoryFacts(listing.text);
+    mark('listing_extract', Date.now() - tLx, 'executed', { photos: listing.photos.length, vin: !!listing.vin });
     progress('listing');
     if (!listing.photos.length && !listing.vin && !listing.text) {
       return res.status(422).json({ error: errText(lang, 'listing_extract_failed') });
@@ -2247,6 +2268,7 @@ async function runCheck(req, res, job) {
     let nhtsa = null;
     /* карта переиспользування дорогих і зовнішніх етапів: у _meta.reuse */
     const reuse = { identity: null, listing_snapshot: null, auction_evidence: null, historical_visual: null, main_analysis: 'executed', equipment_verifier: null };
+    const tDec = Date.now();
     let vehicleRow = listing.vin ? await readVehicle(listing.vin) : null;
     if (vehicleRow && vehicleRow.nhtsa && typeof vehicleRow.nhtsa === 'object' && vehicleRow.decoder_version === NHTSA_DECODER_VERSION) {
       nhtsa = vehicleRow.nhtsa;
@@ -2264,6 +2286,7 @@ async function runCheck(req, res, job) {
         }
       } catch (e) { /* без NHTSA працюємо далі */ }
     }
+    mark('decoder', Date.now() - tDec, reuse.identity === 'vehicles_cache' ? 'cached' : listing.vin ? 'executed' : 'skipped', { reason: listing.vin ? null : 'no_vin' });
 
     /* --- Vehicle Memory: кожен Check це ще й спостереження авто ---
        resolve Vehicle (один рядок на VIN) -> resolve Listing (площадка + id)
@@ -2271,6 +2294,7 @@ async function runCheck(req, res, job) {
        -> зберегти нові унікальні кадри. Усе ДО аналізу, щоб історія
        копилась навіть коли AI впав; персональних даних тут нема */
     const nowIso = new Date().toISOString();
+    const tVm = Date.now();
     if (listing.vin) {
       const up = await upsertVehicle(listing.vin, {
         make: listing.make || (nhtsa && nhtsa.Make) || null, model: listing.model || (nhtsa && nhtsa.Model) || null,
@@ -2298,6 +2322,7 @@ async function runCheck(req, res, job) {
       ? preservePhotos({ snapshotId: snapshot.id, vehicleId: observation.vehicle_id, listingId: observation.listing_id,
           photos: listing.photos.slice(0, 120).map((u, i) => ({ url: u, position: i, kind: 'listing' })), budgetMs: 100000 }).catch(e => ({ error: e.message }))
       : Promise.resolve(null);
+    mark('vehicle_memory', Date.now() - tVm, 'executed', { snapshot: snapshot.status, listing_photos_preserve: needListingPhotos ? 'started' : 'skipped' });
     progress('identity');
 
     /* --- фото "до ремонту": спершу кадри, збережені самою RIA --- */
@@ -2315,6 +2340,7 @@ async function runCheck(req, res, job) {
        і машину за нього не караємо. Діагностика по джерелах іде в логи
        (Runtime Logs покажуть, кого прод-IP не проходить) і в _meta */
     let auctionSearch = null;
+    const tHist = Date.now();
     if (!auction && listing.vin) {
       try {
         const cached = await readAuctionCache(listing.vin);
@@ -2422,6 +2448,8 @@ async function runCheck(req, res, job) {
       } catch (e) { console.log('[auction] пошук впав:', e.message); }
     }
 
+    mark('history_lookup', Date.now() - tHist, auctionSearch ? (auctionSearch.cache === 'hit' ? 'cached' : 'executed') : 'skipped',
+      { reason: auctionSearch ? null : (auction && auction.from_ria ? 'listing_embedded' : auction ? 'external_archive' : (!listing.vin ? 'no_vin' : null)), result: auctionSearch ? auctionSearch.status : null });
     progress('history');
 
     /* кешований історичний візуал: ті самі незмінні кадри вже розібрані.
@@ -2473,12 +2501,15 @@ async function runCheck(req, res, job) {
       highSet = new Set(pickEvenIndexes(photoIdx.length, 12));
       galleryCoverageComplete = true;
       photoSelectorMeta = { mode: 'all' };
+      mark('photo_selector', 0, 'skipped', { reason: 'gallery_le_24', photos: listing.photos.length });
     } else {
       try {
         const tSel = Date.now();
         const selContent = [{ type: 'text', text: 'Класифікуй кадри оголошення авто за типом. Відповідай ЛИШЕ валідним JSON {"frames":[{"i":1,"type":"front"}]} з записом для КОЖНОГО кадру. type СТРОГО з переліку: front | rear | side | dashboard | steering | center_console | doors | front_seats | rear_seats | roof | trunk | engine_bay | wheels | detail | other. i це число з підпису i=N перед кадром.' }];
         listing.photos.forEach((u, i) => { selContent.push({ type: 'text', text: 'i=' + (i + 1) + ':' }); selContent.push(img(u, 'low')); });
-        const sr = await callModel(modelBody(selContent, false), 45000);
+        const selBody = modelBody(selContent, false);
+        const sr = await callModel(selBody, 45000);
+        mark('photo_selector', Date.now() - tSel, 'executed', { photos: listing.photos.length, ai: aiUsage(sr, selBody) });
         const frames = JSON.parse((sr.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim()).frames;
         if (!Array.isArray(frames) || !frames.length) throw new Error('selector: порожня класифікація');
         const types = new Array(listing.photos.length).fill('other');
@@ -2497,6 +2528,7 @@ async function runCheck(req, res, job) {
         highSet = new Set(pickEvenIndexes(photoIdx.length, 12));
         galleryCoverageComplete = false;
         photoSelectorMeta = { mode: 'even_fallback', error: String(e.message || e).slice(0, 80) };
+        if (!timings.photo_selector || timings.photo_selector.status !== 'executed') mark('photo_selector', Date.now() - tSel, 'fallback', { error: String(e.message || e).slice(0, 80) });
         console.log('[photos] селектор впав, рівномірний fallback:', e.message);
       }
     }
@@ -2604,9 +2636,21 @@ async function runCheck(req, res, job) {
         ...auctionPhotos.map(u => img(u, 'high')),
         { type: 'text', text: langDirective + '\n\n' + SIDE_RULE + '\n\n' + HISTORICAL_VISUAL_RULES + '\n\nВідповідь: JSON-обʼєкт рівно з одним ключем:\n{' + HISTORICAL_VISUAL_SCHEMA.replace(/,\s*$/, '') + '}' },
       ];
+      /* Beta: історичний візуал це ОДНЕ фактологічне читання кадрів, без
+         A/B/C-голосування (консенсус лишається за HV_CONSENSUS=1). Вимога
+         до нього: зафіксувати, що реально видно, або "indeterminate";
+         глибина і сигнали тяжкості далі проходять той самий детермінований
+         доказовий гейт (sanitizeHistoricalVisual). Reasoning effort для
+         цього читання окремий (HV_REASONING_EFFORT, типово low): задача
+         описова, а не аналітична; основний виклик не змінюється */
+      const HV_EFFORT = process.env.HV_REASONING_EFFORT || 'low';
+      const hvBody = () => { const b = modelBody(hvContent, false); if (HV_EFFORT !== 'off') b.reasoning_effort = HV_EFFORT; return b; };
       const readHv = async label => {
         try {
-          const d = await callModel(modelBody(hvContent), 90000);
+          const tr = Date.now();
+          const body = hvBody();
+          const d = await callModel(body, 90000);
+          mark('historical_vision_' + label.toLowerCase(), Date.now() - tr, 'executed', { ai: aiUsage(d, body) });
           if (d?.error) { console.log('[hv-consensus] read', label, 'error:', String(d.error.message || '').slice(0, 120)); return null; }
           const j = JSON.parse((d.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim());
           const hv = sanitizeHistoricalVisual(j && j.historical_visual, auctionPhotos.length);
@@ -2615,9 +2659,11 @@ async function runCheck(req, res, job) {
         } catch (e) { console.log('[hv-consensus] read', label, 'failed:', e.message); return null; }
       };
       try {
+        let reads, cons;
+        if (process.env.HV_CONSENSUS === '1') {
         const ab = await Promise.all([readHv('A'), readHv('B')]);
-        let reads = ab.filter(Boolean);
-        let cons = hvConsensus(reads);
+        reads = ab.filter(Boolean);
+        cons = hvConsensus(reads);
         if (cons && !cons.resolved) {
           /* третє читання лише якщо лишається час на основний виклик */
           if (Date.now() - tRun < 150000) {
@@ -2627,12 +2673,21 @@ async function runCheck(req, res, job) {
           }
           if (cons && !cons.resolved) cons = hvConsensus(reads, { force: true });
         }
+        } else {
+          /* штатний beta-шлях: рівно одне читання, без B і C */
+          const a = await readHv('A');
+          mark('historical_vision_b', 0, 'skipped', { reason: 'single_read' });
+          mark('historical_vision_c', 0, 'skipped', { reason: 'single_read' });
+          reads = a ? [a] : [];
+          cons = hvConsensus(reads);
+        }
         if (cons && cons.hv) {
           const canonical = sanitizeHistoricalVisual(cons.hv, auctionPhotos.length);
           if (canonical) {
             cachedHv = canonical;
             hvCache.hit = false;
             hvCache.consensus = {
+              mode: process.env.HV_CONSENSUS === '1' ? 'consensus' : 'single',
               reads_count: cons.reads_count, conflict_detected: cons.conflict_detected,
               canonicalized_at: new Date().toISOString(), extractor_version: HISTORICAL_VISUAL_VERSION,
               disagreed_fields: cons.disagreed_fields, reads: reads.map(hvMaterial), majority: cons.majority, tie_break: cons.tie_break,
@@ -2646,6 +2701,15 @@ async function runCheck(req, res, job) {
       } catch (e) { console.log('[hv-consensus] failed:', e.message); }
       hvConsensusMs = Date.now() - tHv;
     }
+    if (!auctionPhotos.length) {
+      mark('historical_vision_total', 0, 'skipped', { reason: 'no_historical_photos' });
+    } else if (hvCache.hit) {
+      mark('historical_vision_total', 0, 'cached', { fingerprint: hvCache.fingerprint });
+    } else {
+      mark('historical_vision_total', hvConsensusMs, hvCache.consensus ? 'executed' : 'fallback_main_call',
+        { mode: process.env.HV_CONSENSUS === '1' ? 'consensus' : 'single', reads: hvCache.consensus ? hvCache.consensus.reads_count : 0 });
+    }
+    for (const k of ['historical_vision_a', 'historical_vision_b', 'historical_vision_c']) if (!timings[k]) mark(k, 0, 'skipped', { reason: timings.historical_vision_total.status === 'cached' ? 'cached' : 'no_historical_photos' });
     if (auction && !auctionPhotos.length) {
       /* структуроване діагностичне повідомлення для Runtime Logs:
          без секретів, HTML і великих payload */
@@ -2723,17 +2787,21 @@ async function runCheck(req, res, job) {
     progress('ai');
     const t0 = Date.now();
     /* решта бюджету функції на основний виклик: після consensus він менший за звичні 240 с */
-    let data = await callModel(modelBody(content), Math.max(100000, Math.min(240000, 268000 - (Date.now() - tRun))));
+    let mainRetries = 0;
+    let mainBody = modelBody(content);
+    let data = await callModel(mainBody, Math.max(100000, Math.min(240000, 268000 - (Date.now() - tRun))));
 
     if (data?.error && /reasoning_effort|unknown|unsupported|unrecognized/i.test(String(data.error.message || ''))) {
-      data = await callModel(modelBody(content, false), Math.max(60000, 250000 - (Date.now() - t0)));
+      mainRetries++; mainBody = modelBody(content, false);
+      data = await callModel(mainBody, Math.max(60000, 250000 - (Date.now() - t0)));
     }
 
     /* модель не змогла забрати фото за посиланням: повторюємо без фото,
        звіт по тексту кращий за відсутність звіту */
     if (data?.error && /image|url|download|fetch/i.test(String(data.error.message || ''))) {
       console.log('[check] photo urls failed, retrying text-only:', data.error.message);
-      data = await callModel(modelBody([content[content.length - 1]]), Math.max(60000, 250000 - (Date.now() - t0)));
+      mainRetries++; mainBody = modelBody([content[content.length - 1]]);
+      data = await callModel(mainBody, Math.max(60000, 250000 - (Date.now() - t0)));
     }
 
     console.log('[check]', listing.domain,
@@ -2742,6 +2810,7 @@ async function runCheck(req, res, job) {
       '| snapshot', snapshot.status,
       '| ai', Date.now() - t0, 'ms',
       '| tokens', JSON.stringify(data?.usage || {}));
+    mark('main_analysis', Date.now() - t0, 'executed', { retries: mainRetries, ai: aiUsage(data, mainBody) });
 
     if (data.error) {
       return res.status(502).json({ error: 'AI: ' + (data.error.message || errText(lang, 'ai_request_failed')) });
@@ -3090,7 +3159,7 @@ async function runCheck(req, res, job) {
             status: 'done', checked: claims.length, frames: frames.length,
             not_confirmed: verdicts.filter(v => v && v.verdict === 'not_confirmed').length,
             removed: before - parsed.equipment_v2.length, ms: Date.now() - tv,
-            tokens: vd.usage || null,
+            tokens: vd.usage || null, model: vd.model || null,
           };
         } else {
           eqVerifier = { status: 'skipped', reason: 'bad_response', ms: Date.now() - tv };
@@ -3101,8 +3170,11 @@ async function runCheck(req, res, job) {
       console.log('[equipment] верифікатор впав, пропущено:', e.message);
     }
     console.log('[equipment]', JSON.stringify({ items: (parsed.equipment_v2 || []).length, verifier: eqVerifier }));
+    mark('equipment_verifier', eqVerifier.ms || 0, eqVerifier.status === 'done' ? 'executed' : 'skipped',
+      { reason: eqVerifier.reason || null, ai: eqVerifier.status === 'done' ? aiUsage({ usage: eqVerifier.tokens, model: eqVerifier.model }, { model: process.env.OPENAI_MODEL || 'gpt-5.6-terra' }) : null });
 
     /* збереження кадрів іде паралельно з аналізом: чекаємо лише решту бюджету */
+    const tPers = Date.now();
     const photoPreservation = await Promise.race([
       Promise.all([photoPreservePromise, evidencePreservePromise]).then(([listingStats, evidenceStats]) => ({ listing: listingStats, evidence: evidenceStats })),
       new Promise(r => setTimeout(() => r({ listing: 'pending', evidence: 'pending' }), Math.max(1000, 285000 - (Date.now() - tRun)))),
@@ -3161,17 +3233,21 @@ async function runCheck(req, res, job) {
       reuse: {
         ...reuse,
         auction_evidence: auctionSearch ? (auctionSearch.cache === 'hit' ? 'cache' : auctionSearch.status === 'found' ? 'discovery' : auctionSearch.status || null) : (auction && auction.from_ria ? 'listing_embedded' : 'none'),
-        historical_visual: !auctionPhotos.length ? 'none' : hvCache.hit ? 'cache' : (hvCache.consensus ? 'consensus_' + (hvCache.consensus.reads_count || 0) + '_reads' : 'main_call'),
+        historical_visual: !auctionPhotos.length ? 'none' : hvCache.hit ? 'cache' : (hvCache.consensus ? (hvCache.consensus.mode === 'single' ? 'single_read' : 'consensus_' + (hvCache.consensus.reads_count || 0) + '_reads') : 'main_call'),
         equipment_verifier: eqVerifier ? eqVerifier.status : null,
         photo_assets: photoPreservation && photoPreservation.listing && typeof photoPreservation.listing === 'object'
           ? 'preserved_' + (photoPreservation.listing.uploaded || 0) + '_new_' + (photoPreservation.listing.existing || 0) + '_existing'
           : (snapshot.status === 'dedup' ? 'unchanged_snapshot' : 'skipped'),
       },
       analyzed_at: new Date().toISOString(),
+      /* технічні тайминги стадій: для аналізу латентності, не для UI */
+      timings,
     };
+    mark('persistence', Date.now() - tPers, photoPreservation && photoPreservation.listing === 'pending' ? 'pending' : 'executed');
     if (snapshot.id) patchSnapshotClaims(snapshot.id, parsed).catch(() => {});
     /* шар знань: спостереження цього Check. Ніколи не ламає відповідь.
        Результат кроку йде в _meta.knowledge як діагностика */
+    const tKn = Date.now();
     try {
       const kn = await writeKnowledge(parsed, listing, snapshot.id, parsed._meta);
       console.log('[knowledge]', kn);
@@ -3180,6 +3256,8 @@ async function runCheck(req, res, job) {
       console.log('[knowledge] хук впав, Check не зачеплений:', e.message);
       parsed._meta.knowledge = 'hook_error: ' + String(e.message).slice(0, 120);
     }
+    mark('knowledge', Date.now() - tKn, 'executed');
+    timings.total_ms = Date.now() - tRun;
 
     return res.status(200).json(parsed);
   } catch (e) {
