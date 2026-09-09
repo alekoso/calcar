@@ -72,15 +72,63 @@ if (/_meta\.timings|\.timings\b/.test(ui)) errs.push('сторінка звіт�
   if (!/const canonical = sanitizeHistoricalVisual\(cons\.hv, auctionPhotos\.length\);/.test(src)) errs.push('канонічний hv не проходить sanitize повторно');
   /* окремий effort для описового читання, основний виклик не чіпається */
   if (!/const HV_EFFORT = process\.env\.HV_REASONING_EFFORT \|\| 'low';/.test(src)) errs.push('нема окремого reasoning effort для hv');
-  if (!/let mainBody = modelBody\(content\);/.test(src)) errs.push('основний виклик змінив modelBody');
+  if (!/let mainBody = modelBody\(content, true, mainSystem\);/.test(src)) errs.push('основний виклик не з системним префіксом правил');
   if (!/const EFFORT = process\.env\.REASONING_EFFORT \|\| 'high';/.test(src)) errs.push('reasoning effort основного виклику змінено');
   /* мітка reuse чесно каже single_read */
   if (!/hvCache\.consensus\.mode === 'single' \? 'single_read'/.test(src)) errs.push('reuse.historical_visual не відрізняє одиничне читання');
+}
+/* ---------- 4. payload основного виклику: статичний префікс + компактні дані ---------- */
+{
+  const a = src.indexOf('const MAIN_RULES = ('), b = src.indexOf('export function compactHistoricalVisual');
+  const rules = a > 0 && b > a ? src.slice(a, b) : '';
+  if (!rules) errs.push('нема MAIN_RULES');
+  else {
+    /* жодних даних авто у префіксі: лише правила і статичні варіанти */
+    const dyn = (rules.match(/\$\{[^}]*\}/g) || []).filter(x => /\bl\.|nhtsa|langDirective|decisionContext|auction\.text|photos_sent\b(?!\s*\?)/.test(x));
+    if (dyn.length) errs.push('у статичному префіксі динамічні дані: ' + dyn.join(' | ').slice(0, 200));
+    if (!/\$\{DECISION_RULES\}\$\{decisionStyle === 'a' \? DECISION_FEWSHOT : ''\}/.test(rules)) errs.push('правила рішення не в префіксі');
+    if (/renderDecisionContext\(/.test(rules)) errs.push('контекст рішення (дані) потрапив у префікс');
+    if (!/\$\{auction && auction\.hv_provided \? ' "historical_visual": null,' : HISTORICAL_VISUAL_SCHEMA/.test(rules)) errs.push('схема не дає historical_visual: null при канонічному розборі');
+  }
+  /* правила історичного візуалу не дублюються в основний виклик, коли розбір уже є */
+  const hr = (src.match(/const MAIN_HISTORICAL_RULES = auction =>[\s\S]*?const METADATA_RULES/) || [''])[0];
+  if (!/\$\{auction\.hv_provided\s*\? 'ІСТОРИЧНИЙ ВІЗУАЛЬНИЙ РОЗБІР \("historical_visual"\) УЖЕ ВИКОНАНИЙ[\s\S]*?: HISTORICAL_VISUAL_RULES\}/.test(hr)) errs.push('HISTORICAL_VISUAL_RULES дублюються в основний виклик навіть із готовим розбором');
+  /* дані: один раз кожен блок; текст сторінки і price_context не повторюються */
+  const md = (src.match(/const MAIN_DATA = \([\s\S]*?\n\};/) || [''])[0];
+  if (!md) errs.push('нема MAIN_DATA');
+  else {
+    if ((md.match(/l\.text/g) || []).length !== 1) errs.push('текст сторінки передається не один раз');
+    if ((md.match(/l\.price_context/g) || []).length !== 1) errs.push('price_context передається не один раз');
+    if (/seller_text/.test(md)) errs.push('опис продавця дублюється поза текстом сторінки');
+    for (const blk of ['VEHICLE (', 'LISTING, ФАКТИ', 'LISTING, ТЕКСТ', 'VEHICLE_HISTORY', 'HISTORICAL_VISUAL_EVIDENCE', 'DECISION_CONTEXT']) if (!md.includes(blk)) errs.push('нема блоку даних ' + blk);
+    if (!/compactHistoricalVisual\(auction\.hv\)/.test(md)) errs.push('історичний візуал іде в основний виклик не компактно');
+  }
+  /* повідомлення: system = правила, user = дані + кадри; кадри після тексту */
+  if (!/messages: system \? \[\{ role: 'system', content: system \}, \{ role: 'user', content: c \}\] : \[\{ role: 'user', content: c \}\]/.test(src)) errs.push('modelBody не ставить правила системним повідомленням');
+  if (!/\{ type: 'text', text: mainMsg\.user \},\n/.test(src)) errs.push('дані не першою частиною user-повідомлення');
+  /* архівні кадри: лише ті, на які посилається розбір, у high; решта low; без розбору все high */
+  if (!/img\(u, !hvFrames \|\| hvFrames\.has\(i \+ 1\) \? 'high' : 'low'\)/.test(src)) errs.push('архівні кадри не за посиланнями розбору');
+  /* повтор без кадрів лишає всі текстові частини, не лише останню */
+  if (!/modelBody\(content\.filter\(x => x\.type === 'text'\), true, mainSystem\)/.test(src)) errs.push('текстовий повтор губить дані');
+  if (/modelBody\(\[content\[content\.length - 1\]\]\)/.test(src)) errs.push('текстовий повтор шле лише останню частину');
+  /* розкладка payload у таймінгах */
+  if (!/payload: mainPayload/.test(src)) errs.push('розкладка payload не пишеться в timings');
 }
 /* Score v3 не чіпаємо */
 const v3 = fs.readFileSync('api/score-v3.js', 'utf8');
 if (!/severe: 2\.4/.test(v3)) errs.push('Score v3 змінено');
 
-if (errs.length) { console.log('LATENCY TEST FAILED:'); errs.forEach(e => console.log('  - ' + e)); process.exit(1); }
-console.log('latency: 13 стадій + total у _meta.timings зі статусами · usage без вигадок · hv: одне читання штатно, A/B/C лише за HV_CONSENSUS=1, нуль без кадрів · гейт і Score v3 на місці · timings не публічні');
+(async () => {
+  const C = await import('./api/check.js');
+  const hv = { visible_damage_zones: ['капот'], visible_severity: 'moderate', damage_depth: 'exterior_panels_only', damage_depth_claimed: 'exterior_panels_only', damage_depth_downgraded: false, signal_status: { a: 1 }, evidence_downgrades: [], major_deformation_visible: false, airbags_visible_parts: [], summary: 's', evidence: [{ source: 'us_auction', ref: 'auction_photo_2', description: 'd' }], signal_evidence: [{ signal: 'wheel_displacement_visible', frame: 'auction_photo_5', sign: 'x' }], srs_visual_status: 'not_visible' };
+  const c = C.compactHistoricalVisual(hv);
+  for (const k of ['signal_status', 'evidence_downgrades', 'damage_depth_claimed', 'damage_depth_downgraded', 'major_deformation_visible', 'airbags_visible_parts']) if (k in c) errs.push('компактний hv несе службове поле ' + k);
+  for (const k of ['visible_damage_zones', 'visible_severity', 'damage_depth', 'summary', 'evidence', 'signal_evidence', 'srs_visual_status']) if (!(k in c)) errs.push('компактний hv загубив ' + k);
+  const fr = C.hvReferencedFrames(hv);
+  if (!(fr.has(2) && fr.has(5) && fr.size === 2)) errs.push('кадри з розбору читаються неправильно: ' + [...fr]);
+  const pb = C.mainPayloadBreakdown('правила'.repeat(100), [{ type: 'text', text: 'дані' }, { type: 'image_url', image_url: { url: 'u', detail: 'high' } }, { type: 'image_url', image_url: { url: 'v', detail: 'low' } }], { current: 2 });
+  if (pb.images.total !== 2 || pb.images.high !== 1 || pb.images.low !== 1 || pb.images.current !== 2 || !pb.system_rules.chars || !pb.user_text.chars || !pb.text_approx_tokens_total) errs.push('розкладка payload рахує неправильно: ' + JSON.stringify(pb));
+  if (errs.length) { console.log('LATENCY TEST FAILED:'); errs.forEach(e => console.log('  - ' + e)); process.exit(1); }
+  console.log('latency: 13 стадій + total у _meta.timings зі статусами · usage без вигадок · hv: одне читання штатно, A/B/C лише за HV_CONSENSUS=1, нуль без кадрів · гейт і Score v3 на місці · timings не публічні · payload: system-префікс без даних, компактні блоки, hv-правила не дублюються, архівні кадри за посиланнями');
 console.log('LATENCY TEST PASSED');
+})().catch(e => { console.log('LATENCY TEST CRASHED:', e.stack || e.message); process.exit(1); });

@@ -1950,20 +1950,17 @@ function renderDecisionContext(dc) {
    екстрактора історичного візуалу (consensus-читання) */
 const SIDE_RULE = `СТОРОНИ АВТОМОБІЛЯ (ГЛОБАЛЬНЕ ПРАВИЛО для всіх секцій: historical_visual, auction, photo_findings, risks, discrepancies, score_facts, purchase_decision): LEFT/ліва і RIGHT/права це сторони САМОГО АВТОМОБІЛЯ з точки зору водія, що сидить у машині й дивиться вперед, а НЕ сторони кадру. Авто зняте СПЕРЕДУ: права сторона авто візуально ЗЛІВА кадру; зняте ЗЗАДУ: навпаки. Завжди спочатку визнач орієнтацію авто в кадрі. Якщо сторону надійно визначити не можна: пиши "бокова частина"/"бокове пошкодження" і НЕ вгадуй ліво/право: краще unknown, ніж впевнено неправильно. Structured-сторона ДЖЕРЕЛА (auction LEFT/RIGHT, запис площадки) є канонічною для текстів УСІХ розділів однієї події: не перевизначай сторону заново в кожному блоці. Заперечити сторону джерела можна ЛИШЕ за сильних незалежних ознак орієнтації (номерний знак, кермо, написи). Положення лючка бака САМОСТІЙНИМ доказом сторони НЕ є.`;
 
-const PROMPT = (l, nhtsa, auction, langDirective, decisionStyle, auctionMeta, decisionContext) => `Ти експертна система CalCar Check: незалежний розбір оголошення про продаж вживаного авто. Твоя робота: звірити те, що СТВЕРДЖУЄ продавець, із тим, що КАЖУТЬ дані і фото, і чесно відповісти, чи варто брати саме це авто.
-
-${langDirective}
-
-ФАКТИ, ВИТЯГНУТІ ЗІ СТОРІНКИ ОГОЛОШЕННЯ (детермінований парс):
-${JSON.stringify({ title: l.title, vin: l.vin, plate: l.plate, price: l.price, currency: l.currency, odometer_km: l.odometer_km, year: l.year, history_facts: l.history_facts })}
-
-ТЕКСТ СТОРІНКИ ОГОЛОШЕННЯ (опис продавця + офіційні блоки перевірки площадки, якщо є):
-${l.text}
-
-Декодування VIN від NHTSA: ${nhtsa ? JSON.stringify(nhtsa) : 'недоступне'}
-${Array.isArray(l.listing_equipment) && l.listing_equipment.length ? 'СТРУКТУРОВАНІ ОПЦІЇ З ДАНИХ ОГОЛОШЕННЯ (source listing_data: структуровані поля площадки; це НЕ заводські дані і НЕ слова продавця): ' + JSON.stringify(l.listing_equipment) : ''}
-${auction && auction.photos_sent ? `
-ІСТОРИЧНІ ФОТО ПОШКОДЖЕНОГО СТАНУ ДОСТУПНІ (${auction.photos_sent} кадрів, зроблені ДО ремонту, коли авто продавали пошкодженим).${auction.text ? '\nТекст архіву аукціону:\n' + auction.text.slice(0, 2500) : ''}
+/* ---------- основний виклик: СТАТИЧНИЙ префікс правил і ДИНАМІЧНІ дані ----------
+   Правила (цей блок, DECISION_RULES, few-shot, схема відповіді) не містять
+   жодних даних авто і йдуть першим повідомленням (system): однаковий префікс
+   для всіх Check однієї конфігурації, тому провайдер може його кешувати.
+   Дані (VEHICLE, LISTING, VEHICLE_HISTORY, HISTORICAL_VISUAL_EVIDENCE,
+   DECISION_CONTEXT, мова) і кадри йдуть другим повідомленням (MAIN_DATA).
+   Історичний візуал уже канонізований окремим читанням: його правила в
+   основний виклик НЕ дублюються, модель отримує готовий результат і повертає
+   "historical_visual": null (код підставляє канонічний обʼєкт) */
+const MAIN_HISTORICAL_RULES = auction => auction && auction.photos_sent ? `
+ІСТОРИЧНІ ФОТО ПОШКОДЖЕНОГО СТАНУ ДОСТУПНІ: кадри auction_photo_N у блоці HISTORICAL_VISUAL_EVIDENCE, зроблені ДО ремонту, коли авто продавали пошкодженим.
 ЦЕ НАЙЦІННІШЕ ДЖЕРЕЛО ЗВІТУ, і воно у тебе Є: писати "аукціонні фото недоступні" тепер прямо заборонено. Обовʼязково:
 - по аукціонних фото визнач РЕАЛЬНИЙ обсяг пошкоджень: які деталі биті, чи зачеплені подушки, лонжерони, підвіска
 - звір це з тим, як продавець описує пошкодження і ремонт: занижує, чесний чи перебільшує
@@ -1972,9 +1969,23 @@ ${auction && auction.photos_sent ? `
 
 ${SIDE_RULE}
 
-${HISTORICAL_VISUAL_RULES}
+${auction.hv_provided
+    ? 'ІСТОРИЧНИЙ ВІЗУАЛЬНИЙ РОЗБІР ("historical_visual") УЖЕ ВИКОНАНИЙ окремим читанням ТИХ САМИХ архівних кадрів і переданий у блоці HISTORICAL_VISUAL_EVIDENCE як канонічний результат (зони, тяжкість, глибина, структура, SRS, signal_evidence з кадрами). Спирайся на його поля у auction.findings, risks, score_facts і purchase_decision і не переоцінюй їх наново; кадри тобі передані для порівняння "до/після" з нинішніми фото. У відповіді постав "historical_visual": null: код підставить канонічний обʼєкт.'
+    : HISTORICAL_VISUAL_RULES}
 ` : auction && (auction.blocked || (auction.photos || []).length) ? `Архів чи історичні матеріали існують, але кадри автоматично недоступні.
-ЖОРСТКЕ ПРАВИЛО: технічну недоступність архіву чи фото НЕ згадуй НІДЕ у звіті, включно з auction.summary: ані "сервер не пустив", ані "не вдалося завантажити", ані "матеріали недоступні". Користувач бачить лише те, що знайдено; факт недоступності живе тільки в службових логах. auction.summary будуй з наявних фактів (запис про ДТП, дані площадки, слова продавця) без жодного речення про доступ. Роби висновки з того, що маєш: запис про ДТП у США сам по собі є фактом, і оцінювати треба ризик неякісного відновлення, а не відсутність фото.` : 'Архіву аукціону США у сторінці немає.'}
+ЖОРСТКЕ ПРАВИЛО: технічну недоступність архіву чи фото НЕ згадуй НІДЕ у звіті, включно з auction.summary: ані "сервер не пустив", ані "не вдалося завантажити", ані "матеріали недоступні". Користувач бачить лише те, що знайдено; факт недоступності живе тільки в службових логах. auction.summary будуй з наявних фактів (запис про ДТП, дані площадки, слова продавця) без жодного речення про доступ. Роби висновки з того, що маєш: запис про ДТП у США сам по собі є фактом, і оцінювати треба ризик неякісного відновлення, а не відсутність фото.` : 'Архіву аукціону США у сторінці немає.';
+
+/* правила для exact-lot metadata: самі дані лота йдуть у VEHICLE_HISTORY */
+const METADATA_RULES = `
+METADATA EXACT-LOT (надійний historical, передано у блоці VEHICLE_HISTORY):
+- METADATA І VISION ДОПОВНЮЮТЬ ОДНЕ ОДНОГО. Якщо metadata exact-lot прямо каже, що подушки спрацювали (Airbag: Driver/Passenger/Side тощо), створи AIRBAGS_DEPLOYED з evidence source us_auction і ref auction_metadata (НЕ current_photos, НЕ фото). Не вимагай фотопідтвердження салону: надійний exact-lot historical metadata сам є позитивним доказом. Це НЕ inference з характеру удару, а прямий запис аукціону.
+- Damage-зони з metadata (primary/secondary) бери як факт зони удару, навіть якщо кадр цієї зони у Vision відсутній.
+`;
+
+const MAIN_RULES = (auction, decisionStyle, auctionMeta) => `Ти експертна система CalCar Check: незалежний розбір оголошення про продаж вживаного авто. Твоя робота: звірити те, що СТВЕРДЖУЄ продавець, із тим, що КАЖУТЬ дані і фото, і чесно відповісти, чи варто брати саме це авто.
+Дані для розбору передані ОКРЕМИМ повідомленням у блоках: мова відповіді, VEHICLE (декодування VIN), LISTING (факти зі сторінки, структуровані опції, повний текст сторінки з описом продавця і офіційними блоками площадки, price_context), VEHICLE_HISTORY (архів і metadata лота, якщо знайдені), HISTORICAL_VISUAL_EVIDENCE (канонічний розбір архівних кадрів, якщо є), DECISION_CONTEXT (детермінований контекст рішення), а також кадри CURRENT_VISUAL_EVIDENCE (photo_N) і, якщо є, архівні кадри (auction_photo_N). Правила нижче стосуються саме цих блоків.
+
+${MAIN_HISTORICAL_RULES(auction)}
 
 БЛОК ІСТОРІЇ ПОШКОДЖЕНЬ ("auction"): у звіті це розділ "Історія пошкоджень і фото з минулого", і він ГЛОБАЛЬНИЙ, не лише про США. "found": true СТАВ ЛИШЕ коли для авто реально знайдена подія, повʼязана з пошкодженням, ДТП чи відновленням (аукціон пошкоджених авто, запис про ДТП, історичні фото пошкодженого стану). Звичайна реєстраційна історія, зміна власників, минулі оголошення без пошкоджень та інші нейтральні історичні записи самі по собі цей блок НЕ створюють: тоді "found": false, "summary": null, "findings": порожній масив, і жодних текстів на кшталт "записів не знайдено" у summary. Американський контекст (США, IAAI, Copart) згадуй усередині блоку ЛИШЕ коли подія справді американська; для подій з інших країн називай їхнє джерело.
 
@@ -2062,11 +2073,7 @@ ${HISTORICAL_VISUAL_RULES}
 - confirmed_ok для AIRBAGS_DEPLOYED лише зі ЗМІСТОВНИМ підтвердженням відновлення SRS: діагностика без помилок, документи ремонту РАЗОМ із перевіркою. "Нормальний салон на фото" це НЕ підтвердження SRS.
 - РОЗБІЖНОСТІ ПРОДАВЦЯ (слова проти офіційних даних: "другий власник" при чотирьох тощо) живуть у discrepancies і в purchase_decision: матеріальна суперечність продавця йде ПЕРШИМ пунктом main_concerns і питанням у questions_for_seller. У score_facts їх НЕ класифікуй: самі по собі вони технічну чи історичну оцінку авто не погіршують.
 - evidence: масив {source: seller_claim|current_photos|historical_listing|us_auction|registry|document, ref: конкретний запис (listing_3, photo_7, auction_event_1) де можливо, description: коротке доказове речення}. Одна знахідка може мати скільки завгодно доказів.
-${auctionMeta && auctionMeta.status === 'found' ? `
-METADATA EXACT-LOT (надійний historical, джерело ${auctionMeta.source || 'аукціон'}${auctionMeta.lot_id_meta ? ' лот ' + auctionMeta.lot_id_meta : ''}):${auctionMeta.sale_date ? '\n- Дата продажу лота: ' + auctionMeta.sale_date : ''}${auctionMeta.odometer && auctionMeta.odometer.value != null ? '\n- Одометр за metadata лота: ' + JSON.stringify(auctionMeta.odometer) + ' (порівнюй ЛИШЕ за правилами про одиницю, статус і надійні дати)' : ''}${auctionMeta.airbags_meta ? '\n- Подушки за metadata лота: ' + JSON.stringify(auctionMeta.airbags_meta) : ''}${auctionMeta.primary_damage ? '\n- Primary damage: ' + auctionMeta.primary_damage : ''}${auctionMeta.secondary_damage ? '\n- Secondary damage: ' + auctionMeta.secondary_damage : ''}
-- METADATA І VISION ДОПОВНЮЮТЬ ОДНЕ ОДНОГО. Якщо metadata exact-lot прямо каже, що подушки спрацювали (Airbag: Driver/Passenger/Side тощо), створи AIRBAGS_DEPLOYED з evidence source us_auction і ref auction_metadata (НЕ current_photos, НЕ фото). Не вимагай фотопідтвердження салону: надійний exact-lot historical metadata сам є позитивним доказом. Це НЕ inference з характеру удару, а прямий запис аукціону.
-- Damage-зони з metadata (primary/secondary) бери як факт зони удару, навіть якщо кадр цієї зони у Vision відсутній.
-` : ''}
+${auctionMeta && auctionMeta.status === 'found' ? METADATA_RULES : ''}
 - VISION ПО АУКЦІОННИХ ФОТО: зони пошкоджень, подушки та інші візуально визначувані факти з АУКЦІОННИХ кадрів фіксуй evidence із source us_auction і ref auction_photo_N (кадри нумеруються в порядку подачі). НЕ змішуй із current_photos: аукціонна сторінка пройшла перевірку точного VIN, її зображення успадковують звʼязок із цією подією; нинішні фото це лише current-state. Правила скромності діють і тут: салон на аукціонних кадрах не показаний, подушки unknown; зона не видна, unknown; "структура не видна" НЕ означає "структура ціла".
 - СТРУКТУРА, межа висновків: по фото допустимо сказати "видимих слідів структурного пошкодження нема" (no_visible_structural_damage), але НЕ "структура ціла" чи "structure ok", якщо силові елементи не обстежені повністю. Для бокового удару невидимі пороги і стійки лишаються unknown, не "цілі".
 - Для MODIFICATION_TECHNICAL_CONCERN додатково: serious_intervention true, якщо є хоч одне серйозне втручання (прошивка чи наддув, вихлоп із видаленням каталізаторів, інше втручання в силовий агрегат); maintenance_evidence true, лише якщо в матеріалах РЕАЛЬНО є підтвердження обслуговування чи діагностики (сервісні записи, логи, документи). Нема даних = false, не вигадуй.
@@ -2080,8 +2087,7 @@ METADATA EXACT-LOT (надійний historical, джерело ${auctionMeta.so
 
 ПОХОДЖЕННЯ НЕЙТРАЛЬНЕ (загальне правило для всіх ринків і країн): сам факт ввозу з США чи будь-якої іншої країни НЕ є ризиком, НЕ є мінусом, не потребує виправдань і сам по собі не змінює recommendation. Аналізуй конкретну історію конкретної машини: ДТП, характер пошкоджень, SRS, якість відновлення, пробіг, технічні модифікації, поточний стан, ціну. Нейтральний стиль: "Автомобіль ввезений із США після ДТП 2023 року. На архівних фото пошкоджений правий борт і видно спрацьовані бічні шторки", і далі reasoning працює саме з цими фактами. ЗАБОРОНЕНІ риторичні фрази, що сперечаються з уявним користувачем чи продавцем: "це не чиста європейська машина", "я б не відкидав авто лише через американське минуле", "тюнінг не скасовує ДТП" і подібні.
 
-ЦІНОВІ ВИСНОВКИ ЛИШЕ ЗІ STRUCTURED PRICE EVIDENCE${l.price_context ? ' (нижче переданий price_context від площадки)' : ' (price_context ВІДСУТНІЙ)'}:
-${l.price_context ? '- price_context: ' + JSON.stringify(l.price_context) : ''}
+ЦІНОВІ ВИСНОВКИ ЛИШЕ ЗІ STRUCTURED PRICE EVIDENCE (price_context від площадки передається у блоці LISTING; якщо його там нема, price_context ВІДСУТНІЙ):
 - БЕЗ structured price_context ЗАБОРОНЕНІ впевнені ринкові оцінки ціни: "дорого", "дешево", "вигідно", "завищено", "приваблива ціна", "вимоглива ціна", "нижче ринку", "вище ринку" і аналогічні. Сама ціна, факт ДТП, пробіг, тюнінг чи твої загальні знання ринку ринковим доказом НЕ є: тоді чесно не давай цінового вердикту.
 - АТРИБУЦІЯ З price_context: середня ціна (average_price) це ДАНІ ПЛОЩАДКИ, а смуга position (below_average/average/above_average) і delta_percent це РОЗРАХУНОК CalCar за порогом ±7%. Тому формулюй так: "за розрахунком CalCar ціна приблизно на 16% нижча за середній орієнтир порівнянних за даними площадки". ЗАБОРОНЕНО приписувати нашу смугу самій площадці ("за оцінкою площадки ціна нижча за середню"): власна цінова позначка площадки на сторінці може мати інші межі, і їй суперечити не можна. Якщо в тексті сторінки видно власну цінову позначку площадки ("Середня ціна" тощо), можеш назвати її окремо саме як позначку площадки, поруч зі своїм розрахунком у відсотках: це не суперечність, а дві різні шкали.
 - Заявлені продавцем витрати на Stage, гальма, світло, плівку та інші доробки НЕ додаються до ринкової вартості автомобіля автоматично.
@@ -2096,13 +2102,13 @@ POSSIBLE STRUCTURAL: якщо historical_visual.possible_structural_damage = tru
 
 ІСТОРИЧНИЙ ВІЗУАЛ І РІШЕННЯ: purchase_decision ЗОБОВʼЯЗАНИЙ враховувати historical_visual РАЗОМ з фактами історії, поточними фото, заявами продавця, пробігом і болячками моделі, і РОЗРІЗНЯТИ три різні ситуації: (1) видимі ознаки тяжкого/структурного пошкодження; (2) явних тяжких структурних ознак на доступних кадрах НЕ видно; (3) прихована структура, геометрія і SRS лишаються неперевіреними. Друга і третя співіснують: тоді формулюй "на історичному фото видно помітний удар спереду; явних ознак тяжкої деформації силової структури чи зони салону на доступному ракурсі нема, але приховані елементи, геометрію і SRS за цим фото підтвердити не можна". НЕ пиши так, ніби тяжке пошкодження вже знайдене, якщо visual evidence його не показує; і НЕ називай удар мінімальним, якщо на кадрах видно суттєве пошкодження.
 
-${renderDecisionContext(decisionContext)}${DECISION_RULES}${decisionStyle === 'a' ? DECISION_FEWSHOT : ''}
+${DECISION_RULES}${decisionStyle === 'a' ? DECISION_FEWSHOT : ''}
 Відповідай ЛИШЕ валідним JSON без markdown, точно за схемою:
 {
  "vehicle": {"title":"Марка Модель Рік","year":2018,"model_year":"рік за VIN, ЛИШЕ якщо надійно відомий і відрізняється від year, інакше null","fuel":"petrol|diesel|hybrid|electric","engine":"4.4 л бензин V8, 462 к.с. (або null)","transmission":"...","drive":"...","trim":"версія або null","mileage_note":"129 000 км"},
  "auction": {"found":true,"summary":"2-4 речення: що сталося з авто в США за архівом, реальний обсяг пошкоджень по фото, чи чесно продавець його описує","findings":[{"status":"ok|warn|bad|unknown","text":"порівняння до/після, 1 речення"}]},
  "body_wrap": {"present":false,"scope":"full|partial|unknown","sources":["seller","visual","historical"],"inspection_visibility":"limited|normal"},
-${HISTORICAL_VISUAL_SCHEMA}
+${auction && auction.hv_provided ? ' "historical_visual": null,' : HISTORICAL_VISUAL_SCHEMA.replace(/\n$/, '')}
  "risks":[{"title":"назва ризику","level":"high|med|low","kind":"finding|latent","note":"1-2 речення: чому це головна стаття витрат чи ризику саме тут","action":"конкретна перевірка до покупки, 1 рядок"}],
  "equipment_v2":[{"name":"вентиляція передніх сидінь","category":"comfort|interior|multimedia|assist|exterior|performance","confidence_level":"vehicle_data|seller_and_visual|visual|seller, або null лише для суто історичної","highlight":false,"retrofit":false,"retrofit_basis":null,"historical_claim":false,"value_tier":"standard|notable|high_value","evidence":[{"source":"vehicle_data|current_photos|seller_claim|listing_data|historical","ref":"photo_7 чи vin_decode чи назва історичного джерела","sign":"конкретна ознака на кадрі чи коротка цитата джерела"}]}],
  "discrepancies":[{"severity":"high|med|low","title":"коротка назва розбіжності","detail":"2-3 речення: що стверджується, що знайдено, звідки","sources":["опис продавця","перевірка площадки","фото","VIN"]}],
@@ -2120,6 +2126,83 @@ ${HISTORICAL_VISUAL_SCHEMA}
 - ЗАБОРОНЕНО радити користувачу самому діставати дані: build sheet за VIN, аукціонні фото, лоти Copart, платні VIN-звіти, історію. Збір даних це робота CalCar, а не покупця.
 - Кожен пункт мусить випливати з КОНКРЕТНОЇ знахідки цього звіту (розбіжність, запис історії, знахідка на фото, слабке місце цієї версії при цьому пробігу) і називати, ЩО саме шукати і ДЕ. Приклад правильного: "задній лівий кут: звір відтінок ліхтаря і зазор кришки багажника, у 2020 був страховий випадок ззаду". Приклад забороненого: "зробити карту ЛКП товщиноміром по всіх елементах".
 - Загальні ритуали ("діагностика на СТО", "прочитати помилки", "перевірити рівні рідин") дозволені лише якщо привʼязані до конкретного вузла з конкретної причини з цього звіту.`;
+
+/* історичний візуал для основного виклику: лише поля, потрібні для
+   рішення; службові поля гейту (statuses, downgrades, claimed) лишаються
+   у канонічному обʼєкті, який код підставить у відповідь */
+export function compactHistoricalVisual(hv) {
+  if (!hv || typeof hv !== 'object') return null;
+  const drop = new Set(['signal_status', 'evidence_downgrades', 'damage_depth_claimed', 'damage_depth_downgraded', 'major_deformation_visible']);
+  const out = {};
+  for (const k of Object.keys(hv)) {
+    if (drop.has(k)) continue;
+    const v = hv[k];
+    if (v === null || v === undefined) continue;
+    if (Array.isArray(v) && !v.length) continue;
+    out[k] = v;
+  }
+  return out;
+}
+/* кадри, на які посилається канонічний розбір: саме їх основний виклик
+   отримує у високій деталізації для порівняння "до/після" */
+export function hvReferencedFrames(hv) {
+  const set = new Set();
+  if (!hv || typeof hv !== 'object') return set;
+  const add = ref => { const m = /auction_photo_(\d+)/.exec(String(ref || '')); if (m) set.add(parseInt(m[1], 10)); };
+  for (const e of (Array.isArray(hv.evidence) ? hv.evidence : [])) add(e && e.ref);
+  for (const e of (Array.isArray(hv.signal_evidence) ? hv.signal_evidence : [])) add(e && e.frame);
+  return set;
+}
+
+/* ДАНІ основного виклику: компактні канонічні блоки без дублювання.
+   Факти сторінки один раз (JSON), повний текст сторінки один раз (у ньому
+   живе опис продавця, окремо він не повторюється), price_context один раз,
+   metadata лота один раз, історичний візуал один раз у компактному вигляді */
+const MAIN_DATA = (l, nhtsa, auction, langDirective, auctionMeta, decisionContext) => {
+  const blocks = [langDirective];
+  blocks.push('VEHICLE (декодування VIN від NHTSA): ' + (nhtsa ? JSON.stringify(nhtsa) : 'недоступне'));
+  blocks.push('LISTING, ФАКТИ ЗІ СТОРІНКИ ОГОЛОШЕННЯ (детермінований парс): ' + JSON.stringify({ title: l.title, vin: l.vin, plate: l.plate, price: l.price, currency: l.currency, odometer_km: l.odometer_km, year: l.year, history_facts: l.history_facts, price_context: l.price_context || null }));
+  if (Array.isArray(l.listing_equipment) && l.listing_equipment.length) blocks.push('LISTING, СТРУКТУРОВАНІ ОПЦІЇ З ДАНИХ ОГОЛОШЕННЯ (source listing_data: структуровані поля площадки; це НЕ заводські дані і НЕ слова продавця): ' + JSON.stringify(l.listing_equipment));
+  blocks.push('LISTING, ТЕКСТ СТОРІНКИ ОГОЛОШЕННЯ (опис продавця + офіційні блоки перевірки площадки, якщо є):\n' + (l.text || ''));
+  const hist = [];
+  if (auction && auction.text) hist.push('Текст архіву аукціону:\n' + auction.text.slice(0, 2500));
+  if (auctionMeta && auctionMeta.status === 'found') {
+    hist.push('Exact-lot metadata (джерело ' + (auctionMeta.source || 'аукціон') + (auctionMeta.lot_id_meta ? ', лот ' + auctionMeta.lot_id_meta : '') + '):'
+      + (auctionMeta.sale_date ? '\n- Дата продажу лота: ' + auctionMeta.sale_date : '')
+      + (auctionMeta.odometer && auctionMeta.odometer.value != null ? '\n- Одометр за metadata лота: ' + JSON.stringify(auctionMeta.odometer) + ' (порівнюй ЛИШЕ за правилами про одиницю, статус і надійні дати)' : '')
+      + (auctionMeta.airbags_meta ? '\n- Подушки за metadata лота: ' + JSON.stringify(auctionMeta.airbags_meta) : '')
+      + (auctionMeta.primary_damage ? '\n- Primary damage: ' + auctionMeta.primary_damage : '')
+      + (auctionMeta.secondary_damage ? '\n- Secondary damage: ' + auctionMeta.secondary_damage : ''));
+  }
+  if (hist.length) blocks.push('VEHICLE_HISTORY:\n' + hist.join('\n'));
+  if (auction && auction.hv_provided && auction.hv) blocks.push('HISTORICAL_VISUAL_EVIDENCE (канонічний розбір архівних кадрів auction_photo_1..' + (auction.photos_sent || 0) + ', кадри незмінні; у відповіді historical_visual: null): ' + JSON.stringify(compactHistoricalVisual(auction.hv)));
+  const dc = renderDecisionContext(decisionContext);
+  if (dc) blocks.push('DECISION_CONTEXT:\n' + dc);
+  return blocks.join('\n\n');
+};
+const PROMPT = (l, nhtsa, auction, langDirective, decisionStyle, auctionMeta, decisionContext) => ({
+  system: MAIN_RULES(auction, decisionStyle, auctionMeta),
+  user: MAIN_DATA(l, nhtsa, auction, langDirective, auctionMeta, decisionContext),
+});
+
+/* розкладка payload основного виклику: що і скільки реально йде моделі.
+   Токени текстів приблизні (кирилиця ~3.3 символа на токен), кадри
+   рахуються штуками за режимом деталізації; точні числа дає usage */
+export function mainPayloadBreakdown(system, content, extra = {}) {
+  const tx = str => { const chars = String(str || '').length; return { chars, bytes: Buffer.byteLength(String(str || ''), 'utf8'), approx_tokens: Math.round(chars / 3.3) }; };
+  const texts = content.filter(x => x && x.type === 'text');
+  const imgs = content.filter(x => x && x.type === 'image_url');
+  const detail = d => imgs.filter(x => x.image_url && x.image_url.detail === d);
+  const userText = texts.map(x => x.text).join('\n');
+  const out = {
+    system_rules: tx(system),
+    user_text: tx(userText),
+    user_blocks: texts.map(x => ({ head: String(x.text || '').slice(0, 40), ...tx(x.text) })),
+    text_approx_tokens_total: tx(system).approx_tokens + tx(userText).approx_tokens,
+    images: { total: imgs.length, high: detail('high').length, low: detail('low').length, ...extra },
+  };
+  return out;
+}
 
 /* ---------- 5. Durable-аналіз ----------
    Розрахунок більше не привʼязаний до одного довгого запиту браузера:
@@ -2462,12 +2545,13 @@ async function runCheck(req, res, job) {
     const langDirective = languageDirective(lang);
 
     const EFFORT = process.env.REASONING_EFFORT || 'high';
-    const modelBody = (c, withEffort = true) => {
+    const modelBody = (c, withEffort = true, system = null) => {
       const b = {
         model: process.env.OPENAI_MODEL || 'gpt-5.6-terra',
         max_completion_tokens: 16000,
         response_format: { type: 'json_object' },
-        messages: [{ role: 'user', content: c }],
+        /* статичні правила першим повідомленням: однаковий префікс кешується провайдером */
+        messages: system ? [{ role: 'system', content: system }, { role: 'user', content: c }] : [{ role: 'user', content: c }],
       };
       if (withEffort && EFFORT !== 'off') b.reasoning_effort = EFFORT;
       return b;
@@ -2768,31 +2852,41 @@ async function runCheck(req, res, job) {
       }));
     } catch (e) { console.log('[check] decision context failed:', e.message); }
 
+    /* історичний візуал уже канонізований: основний виклик отримує його
+       компактно текстом, а архівні кадри лише для порівняння "до/після":
+       кадри, на які посилається розбір, у високій деталізації, решта в
+       низькій. Без канонічного розбору (читання не вдалося) все як раніше */
+    if (auction) { auction.hv_provided = !!cachedHv; auction.hv = cachedHv || null; }
+    const hvFrames = cachedHv ? hvReferencedFrames(cachedHv) : null;
+    const mainMsg = PROMPT(listing, nhtsa, auction, langDirective, decisionStyle, auctionSearch, decisionContext);
     const content = [
-      { type: 'text', text: 'ФОТО З ОГОЛОШЕННЯ (стан зараз). Нумерація: photo_1..photo_' + photoUrls.length + ' у порядку подачі, на неї посилаються evidence ref. '
+      { type: 'text', text: mainMsg.user },
+{ type: 'text', text: 'CURRENT_VISUAL_EVIDENCE: ФОТО З ОГОЛОШЕННЯ (стан зараз). Нумерація: photo_1..photo_' + photoUrls.length + ' у порядку подачі, на неї посилаються evidence ref. '
         + (galleryCoverageComplete
           ? 'Уся галерея оголошення переглянута (' + listing.photos.length + ' кадрів, передані найінформативніші): якщо якась зона (багажник, задній ряд, салон) відсутня серед кадрів, її справді нема в оголошенні, і про це можна казати прямо.'
           : 'УВАГА: переглянута лише ЧАСТИНА галереї (' + photoUrls.length + ' з ' + listing.photos.length + ' кадрів). ЗАБОРОНЕНО стверджувати, що якась зона (багажник, задній ряд, салон) "не показана" в оголошенні: відсутність серед переданих кадрів не означає відсутності в галереї.')
         + ' Якщо якийсь кадр очевидно належить ІНШОМУ авто (інша модель, інший колір, інший кузов), просто проігноруй його і не згадуй у звіті:' },
       ...photoUrls.map((u, i) => img(u, highSet.has(i) ? 'high' : 'low')),
       ...(auctionPhotos.length
-        ? [{ type: 'text', text: 'ФОТО З АУКЦІОНУ США (до ремонту, архів). Нумерація: auction_photo_1..auction_photo_' + auctionPhotos.length + ' у порядку подачі:' }, ...auctionPhotos.map(u => img(u, 'high'))]
+        ? [{ type: 'text', text: 'HISTORICAL_VISUAL_EVIDENCE, КАДРИ: ФОТО З АУКЦІОНУ США (до ремонту, архів). Нумерація: auction_photo_1..auction_photo_' + auctionPhotos.length + ' у порядку подачі' + (hvFrames ? '; кадри з канонічного розбору передані у високій деталізації, решта в низькій' : '') + ':' },
+           ...auctionPhotos.map((u, i) => img(u, !hvFrames || hvFrames.has(i + 1) ? 'high' : 'low'))]
         : []),
-      ...(cachedHv
-        ? [{ type: 'text', text: 'ІСТОРИЧНИЙ ВІЗУАЛЬНИЙ РОЗБІР (готовий, з попереднього аналізу ТИХ САМИХ архівних кадрів цієї події; кадри незмінні). Використай його як historical_visual БЕЗ змін і врахуй у висновку: ' + JSON.stringify(cachedHv) }]
-        : []),
-      { type: 'text', text: PROMPT(listing, nhtsa, auction, langDirective, decisionStyle, auctionSearch, decisionContext) },
     ];
+    const mainSystem = mainMsg.system;
+    const mainPayload = mainPayloadBreakdown(mainSystem, content, {
+      current: photoUrls.length, current_high: photoUrls.filter((_, i) => highSet.has(i)).length, gallery_total: listing.photos.length,
+      historical: auctionPhotos.length, historical_high: auctionPhotos.filter((_, i) => !hvFrames || hvFrames.has(i + 1)).length,
+    });
 
     progress('ai');
     const t0 = Date.now();
     /* решта бюджету функції на основний виклик: після consensus він менший за звичні 240 с */
     let mainRetries = 0;
-    let mainBody = modelBody(content);
+    let mainBody = modelBody(content, true, mainSystem);
     let data = await callModel(mainBody, Math.max(100000, Math.min(240000, 268000 - (Date.now() - tRun))));
 
     if (data?.error && /reasoning_effort|unknown|unsupported|unrecognized/i.test(String(data.error.message || ''))) {
-      mainRetries++; mainBody = modelBody(content, false);
+      mainRetries++; mainBody = modelBody(content, false, mainSystem);
       data = await callModel(mainBody, Math.max(60000, 250000 - (Date.now() - t0)));
     }
 
@@ -2800,7 +2894,7 @@ async function runCheck(req, res, job) {
        звіт по тексту кращий за відсутність звіту */
     if (data?.error && /image|url|download|fetch/i.test(String(data.error.message || ''))) {
       console.log('[check] photo urls failed, retrying text-only:', data.error.message);
-      mainRetries++; mainBody = modelBody([content[content.length - 1]]);
+      mainRetries++; mainBody = modelBody(content.filter(x => x.type === 'text'), true, mainSystem);
       data = await callModel(mainBody, Math.max(60000, 250000 - (Date.now() - t0)));
     }
 
@@ -2810,7 +2904,7 @@ async function runCheck(req, res, job) {
       '| snapshot', snapshot.status,
       '| ai', Date.now() - t0, 'ms',
       '| tokens', JSON.stringify(data?.usage || {}));
-    mark('main_analysis', Date.now() - t0, 'executed', { retries: mainRetries, ai: aiUsage(data, mainBody) });
+    mark('main_analysis', Date.now() - t0, 'executed', { retries: mainRetries, ai: aiUsage(data, mainBody), payload: mainPayload });
 
     if (data.error) {
       return res.status(502).json({ error: 'AI: ' + (data.error.message || errText(lang, 'ai_request_failed')) });

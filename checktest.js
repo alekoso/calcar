@@ -842,7 +842,7 @@ const REPORTS = [
   if (!/hv_fingerprint/.test(api)) errs.push('відбиток не зберігається в кеш події');
   if (!/cached_historical_visual/.test(api)) errs.push('кешований historical_visual не читається');
   if (!/auctionPhotos\.length < 3 && !cachedHv/.test(api)) errs.push('кеш hv не запобігає повторному платному добору кадрів');
-  if (!/ІСТОРИЧНИЙ ВІЗУАЛЬНИЙ РОЗБІР \(готовий/.test(api)) errs.push('кешований розбір не подається моделі текстом');
+  if (!/HISTORICAL_VISUAL_EVIDENCE \(канонічний розбір архівних кадрів/.test(api)) errs.push('кешований розбір не подається моделі текстом');
   /* провенанс полів події доїжджає до звіту */
   if (!/field_provenance/.test(api)) errs.push('field_provenance не прокидається');
 }
