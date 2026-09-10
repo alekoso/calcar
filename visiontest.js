@@ -185,7 +185,7 @@ const errs = [];
      промпт/контент його не отримує, публічний звіт не віддає, збій не
      ламає Check */
   const check = fs.readFileSync('api/check.js', 'utf8');
-  if (!/const cvMode = process\.env\.CV_MODE === 'shadow' \|\| \(benchAllowed && req\.body && req\.body\.cv_mode === 'shadow'\) \? 'shadow' : null;/.test(check)) errs.push('shadow не за прапорцем CV_MODE / cv_mode доступний без ключа');
+  if (!/const cvMode = process\.env\.CV_MODE === 'off' \? null\s*\n\s*: \(benchAllowed && req\.body && req\.body\.cv_mode === 'off'\) \? null : 'shadow';/.test(check)) errs.push('shadow не керується CV_MODE=off / вимикач доступний без ключа');
   const iStart = check.indexOf("if (cvMode === 'shadow') {"), iMain = check.indexOf("progress('ai');"), iMainDone = check.indexOf("mark('main_analysis'"), iWait = check.indexOf('cvShadowResult = await Promise.race([cvShadow');
   if (!(iStart > 0 && iStart < iMain && iWait > iMainDone)) errs.push('shadow Vision має стартувати до основного виклику і чекатись лише після нього');
   if (!/cvShadow = \(async \(\) => \{/.test(check) || !/\}\)\(\)\.catch\(e => \(\{ status: 'failed'/.test(check)) errs.push('shadow без catch: збій Vision може впустити Check');

@@ -2642,7 +2642,13 @@ async function runCheck(req, res, job) {
        тексту оголошення): одометр читається незалежно, порівняння з
        оголошенням робить код. Збій, невалідна відповідь чи таймаут
        фіксуються в телеметрії і не впливають на Check */
-    const cvMode = process.env.CV_MODE === 'shadow' || (benchAllowed && req.body && req.body.cv_mode === 'shadow') ? 'shadow' : null;
+    /* Shadow-режим Current Vision увімкнений типово (Phase 1 validation):
+       вимикається лише env CV_MODE=off. Виклик іде паралельно, готовий звіт
+       не затримує (максимум CV_SHADOW_MAX_WAIT_MS), результат живе тільки
+       в _meta; збій чи таймаут на Check не впливають. Тіло запиту може
+       вимкнути/увімкнути режим лише з benchmark-ключем */
+    const cvMode = process.env.CV_MODE === 'off' ? null
+      : (benchAllowed && req.body && req.body.cv_mode === 'off') ? null : 'shadow';
     const CV_SHADOW_MAX_WAIT_MS = 8000;
     let cvShadow = null;
     const tCv = Date.now();
