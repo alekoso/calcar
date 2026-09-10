@@ -294,13 +294,15 @@ export const SELECTOR_PROMPT = 'Класифікуй кадри оголошен
 export const ROUTE = {
   exterior: new Set(['front', 'rear', 'side', 'wheels', 'roof', 'engine_bay', 'detail', 'other']),
   interior: new Set(['dashboard', 'steering', 'center_console', 'doors', 'front_seats', 'rear_seats', 'trunk', 'roof', 'detail']),
-  dashboard: ['dashboard', 'steering'],
+  /* приладові факти бувають і на центральному екрані (Tesla: одометр і
+     попередження лише там), тому center_console третім пріоритетом */
+  dashboard: ['dashboard', 'steering', 'center_console'],
 };
 export const DASHBOARD_MAX_FRAMES = 3;
 /* frames: [{gallery_index, url, identity, high}], types: {gallery_index: type}.
    Кадр без типу трактується як detail (іде обом condition-спеціалістам).
-   Dashboard: 1-3 найкращі кадри приладів: спершу type dashboard (high
-   раніше low), потім steering. */
+   Dashboard: 1-3 найкращі кадри приладів/екранів: спершу type dashboard
+   (high раніше low), потім steering, потім center_console. */
 export function routeFrames(frames, types = {}) {
   const t = f => SELECTOR_TYPES.includes(types[f.gallery_index]) ? types[f.gallery_index] : 'detail';
   const exterior = frames.filter(f => ROUTE.exterior.has(t(f)));
