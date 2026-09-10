@@ -136,7 +136,10 @@ if (!/severe: 2\.4/.test(v3)) errs.push('Score v3 змінено');
   for (const [n, f] of [['system', mk('S2', 'U', 'https://cdn2.riastatic.com/photos/a/1.jpg', 'high', '{"a":1}')], ['user', mk('S', 'U2', 'https://cdn2.riastatic.com/photos/a/1.jpg', 'high', '{"a":1}')], ['detail', mk('S', 'U', 'https://cdn2.riastatic.com/photos/a/1.jpg', 'low', '{"a":1}')], ['schema', mk('S', 'U', 'https://cdn2.riastatic.com/photos/a/1.jpg', 'high', '{"a":2}')]]) if (f.input === f0.input) errs.push('відбиток input не реагує на зміну ' + n);
   if (!/mainPayloadBreakdown\(mainSystem, content, \{[\s\S]*?\}, JSON\.stringify\(mainFormat\)\)/.test(src)) errs.push('відбиток схеми не передається у payload основного виклику');
   /* benchmark effort: лише high|medium з тіла запиту, типова поведінка REASONING_EFFORT || medium; інші виклики без effort */
-  if (!/const BENCH_EFFORT = \(req\.body && \(req\.body\.bench_effort === 'high' \|\| req\.body\.bench_effort === 'medium'\)\) \? req\.body\.bench_effort : null;/.test(src)) errs.push('bench_effort не обмежений high|medium');
+  if (!/const BENCH_EFFORT = \(benchAllowed && req\.body && \(req\.body\.bench_effort === 'high' \|\| req\.body\.bench_effort === 'medium'\)\) \? req\.body\.bench_effort : null;/.test(src)) errs.push('bench_effort не обмежений high|medium або доступний без ключа');
+  /* перемикачі з тіла запиту лише за заголовком x-calcar-bench == env BENCH_KEY; без env ключа вимкнені */
+  if (!/const benchAllowed = !!\(process\.env\.BENCH_KEY && req\.headers && req\.headers\['x-calcar-bench'\] === process\.env\.BENCH_KEY\);/.test(src)) errs.push('нема гейта BENCH_KEY для benchmark-перемикачів');
+  if (!/const photoPickEven = benchAllowed && /.test(src)) errs.push('photo_pick доступний без ключа');
   if (!/const EFFORT = BENCH_EFFORT \|\| process\.env\.REASONING_EFFORT \|\| 'medium';/.test(src)) errs.push('типовий effort основного виклику змінився');
   const withEffortLines = src.split('\n').filter(l => /modelBody\(/.test(l) && !/const modelBody/.test(l) && !/, false[,)]/.test(l));
   if (withEffortLines.some(l => !/mainSystem, mainFormat\)/.test(l))) errs.push('effort отримує не лише основний виклик: ' + withEffortLines.map(l => l.trim()).join(' | '));

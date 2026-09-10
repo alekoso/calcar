@@ -420,10 +420,11 @@ export const EQUIPMENT_CONCEPTS = [
   ['harman_kardon', /harman/i], ['bose', /\bbose\b/i], ['burmester', /burmester/i], ['bang_olufsen', /bang|olufsen|b&o/i], ['bowers_wilkins', /bowers|b&w/i], ['premium_audio', /акустик|аудіо|audio|динамік|сабвуфер/i],
   ['panoramic_roof', /панорам|люк|sunroof/i], ['hud', /\bhud\b|проекц/i], ['digital_cluster', /цифров.*(панел|прилад)|virtual cockpit/i], ['central_display', /центральн.*(дисплей|екран)|мультимед.*екран|екран мультимед|сенсорн.*(дисплей|екран)|мультимедійн.*систем/i],
   ['heated_wheel', /підігрів.*керм|керм.*підігрів/i],
+  ['rear_climate', /задн.*(клімат|дефлектор|обдув|вентиляц)|дефлектор.*задн/i], ['paddles', /пелюст/i],
   ['seat_power', /електрорегул|електропривод|електричн.*(сидін|крісл)/i], ['seat_memory', /пам.?ят/i], ['seat_heating', /підігрів/i], ['seat_ventilation', /вентиляц/i], ['seat_massage', /масаж/i], ['sport_seats', /спортивн.*(сид|крісл)|бічн.*підтрим|комфортн.*сид/i], ['leather', /шкір/i],
-  ['rear_climate', /задн.*(клімат|дефлектор|обдув)|дефлектор.*задн/i], ['dual_zone_climate', /двозонн|роздільн.*клімат|клімат-контрол/i], ['ambient_lighting', /підсвіч|підсвіт|ambient/i], ['wood_trim', /дерев/i], ['carbon_trim', /карбон|вуглепласт/i], ['alcantara', /алькантар|замш/i], ['aluminium_trim', /алюмін/i],
+  ['dual_zone_climate', /двозонн|роздільн.*клімат|клімат-контрол/i], ['ambient_lighting', /підсвіч|підсвіт|ambient/i], ['wood_trim', /дерев/i], ['carbon_trim', /карбон|вуглепласт/i], ['alcantara', /алькантар|замш/i], ['aluminium_trim', /алюмін/i],
   ['parking_sensors', /паркув|парктрон|датчик/i], ['rear_camera', /камера заднього|задня камера|камера.*задн/i], ['surround_camera', /кругов|360|камера в корпусі|камер.*дзеркал/i], ['adaptive_cruise', /круїз|cruise|дистрон/i], ['lane_assist', /смуг/i], ['blind_spot', /сліп/i], ['gesture_control', /жест/i], ['navigation', /навігац/i], ['driver_assist_other', /асистент|автопілот|попереджен|гальмуван/i],
-  ['carplay', /carplay|android auto/i], ['m_steering_wheel', /кермо|кермов/i], ['sport_chrono_clock', /chrono|годинник|хронометр/i], ['paddles', /пелюст/i], ['colored_calipers', /супорт/i], ['badge', /edrive|напис|шильд/i], ['roof_rails', /рейлінг/i], ['fog_lights', /протитуман/i], ['manual_gearbox', /механічн.*коробк/i], ['cargo_cover', /шторк|сітк/i], ['keyless', /безключов|keyless/i], ['led_lights', /led|світлодіод|лазерн|адаптивн.*(фар|оптик)/i], ['wireless_charging', /бездрот.*заряд/i], ['heated_wheel', /підігрів.*керм/i],
+  ['carplay', /carplay|android auto/i], ['m_steering_wheel', /кермо|кермов/i], ['sport_chrono_clock', /chrono|годинник|хронометр/i], ['colored_calipers', /супорт/i], ['badge', /edrive|напис|шильд/i], ['roof_rails', /рейлінг/i], ['fog_lights', /протитуман/i], ['manual_gearbox', /механічн.*коробк/i], ['cargo_cover', /шторк|сітк/i], ['keyless', /безключов|keyless/i], ['led_lights', /led|світлодіод|лазерн|адаптивн.*(фар|оптик)/i], ['wireless_charging', /бездрот.*заряд/i], ['heated_wheel', /підігрів.*керм/i],
 ];
 export function equipmentConcept(name) {
   const n = String(name || '').toLowerCase();
@@ -463,9 +464,11 @@ export function frameDetailPlan(frames, types = null, highSet = null) {
 
 /* Візуальний одометр НЕЗАЛЕЖНИЙ від оголошення: модель пробігу оголошення
    не бачить. Порівняння детерміноване і живе лише в телеметрії
-   (Score v3 не змінюється). candidate: розбіжність >= 3% і >= 500 км */
-export const ODOMETER_DISCREPANCY_MIN_PCT = 3;
-export const ODOMETER_DISCREPANCY_MIN_KM = 500;
+   (Score v3 не змінюється). candidate: розбіжність >= 1% і >= 1000 км
+   (продавці округлюють до тисяч: 151 000 проти 151 975 це не розбіжність,
+   163 000 проти 167 612 вже так) */
+export const ODOMETER_DISCREPANCY_MIN_PCT = 1;
+export const ODOMETER_DISCREPANCY_MIN_KM = 1000;
 export function odometerDiscrepancy(cv, listingOdometerKm) {
   const o = cv && cv.dashboard && cv.dashboard.odometer_reading;
   const listing = Number.isFinite(Number(listingOdometerKm)) && Number(listingOdometerKm) > 0 ? Math.round(Number(listingOdometerKm)) : null;

@@ -342,8 +342,12 @@ function extractListing(html, url) {
      одного файлу (BaT/WordPress: ?w=150, ?resize=300,200 ...) згортаються
      до найкращого варіанту, мініатюра ніколи не виграє в оригіналу.
      Загальна нормалізація за photoIdentity, не хак під один сайт */
-  const dedup = dedupePhotoVariants(photos);
-  photos = dedup.photos.slice(0, 120);
+  /* Вікно лишається тим самим (перші 120 URL сторінки), як і до дедуплікації:
+     на сторінках на кшталт BaT далі йдуть зображення інших лотів і графіка
+     сайту, і без вікна вони затопили б галерею. У вікні дублікати
+     згортаються, тож реальних кадрів стає не менше, ніж раніше */
+  const dedup = dedupePhotoVariants(photos.slice(0, 120));
+  photos = dedup.photos;
 
   /* фото аукціону США: RIA зберігає їх у себе, окремою гілкою /photos/auto/usa/.
      Це наше основне джерело кадрів "до ремонту": сам bidfax закритий від
@@ -2537,7 +2541,12 @@ async function runCheck(req, res, job) {
        bench_effort або env). withEffort=true має лише основний
        виклик; селектор кадрів і верифікатор ідуть без effort, історичний
        Vision має свій HV_REASONING_EFFORT: їх benchmark не чіпає */
-    const BENCH_EFFORT = (req.body && (req.body.bench_effort === 'high' || req.body.bench_effort === 'medium')) ? req.body.bench_effort : null;
+    /* benchmark/debug-перемикачі з тіла запиту (bench_effort, photo_pick,
+       cv_mode) діють ЛИШЕ із заголовком x-calcar-bench, що збігається з env
+       BENCH_KEY. Без ключа в env вони ігноруються: сторонній запит не може
+       підняти вартість Check чи запустити додатковий AI-виклик */
+    const benchAllowed = !!(process.env.BENCH_KEY && req.headers && req.headers['x-calcar-bench'] === process.env.BENCH_KEY);
+    const BENCH_EFFORT = (benchAllowed && req.body && (req.body.bench_effort === 'high' || req.body.bench_effort === 'medium')) ? req.body.bench_effort : null;
     const EFFORT = BENCH_EFFORT || process.env.REASONING_EFFORT || 'medium';
     const modelBody = (c, withEffort = true, system = null, responseFormat = null) => {
       const b = {
@@ -2581,7 +2590,7 @@ async function runCheck(req, res, job) {
        оголошення, без AI-селектора. Потрібен лише для чесного порівняння
        варіантів промпту: модель мусить бачити ті самі фото. Продакшн-шлях
        (селектор при > 24 кадрів) не змінюється */
-    const photoPickEven = (req.body && req.body.photo_pick === 'even') && listing.photos.length > 24;
+    const photoPickEven = benchAllowed && (req.body && req.body.photo_pick === 'even') && listing.photos.length > 24;
     if (photoPickEven) {
       photoIdx = pickEvenIndexes(listing.photos.length, 24);
       highSet = new Set(pickEvenIndexes(photoIdx.length, 12));
@@ -2633,7 +2642,7 @@ async function runCheck(req, res, job) {
        тексту оголошення): одометр читається незалежно, порівняння з
        оголошенням робить код. Збій, невалідна відповідь чи таймаут
        фіксуються в телеметрії і не впливають на Check */
-    const cvMode = process.env.CV_MODE === 'shadow' || (req.body && req.body.cv_mode === 'shadow') ? 'shadow' : null;
+    const cvMode = process.env.CV_MODE === 'shadow' || (benchAllowed && req.body && req.body.cv_mode === 'shadow') ? 'shadow' : null;
     const CV_SHADOW_MAX_WAIT_MS = 8000;
     let cvShadow = null;
     const tCv = Date.now();

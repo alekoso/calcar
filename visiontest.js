@@ -163,6 +163,7 @@ const errs = [];
   if (merged.equipment_visual.length !== 1 || merged.dashboard.odometer_reading.value !== 151975 || merged.modification_candidates.length !== 1 || merged.modification_candidates[0].source !== 'exterior') errs.push('злиття опцій/панелі/модифікацій');
   if (!CV.mergeSpecialists({ exterior: ex }, rf6).dashboard || CV.mergeSpecialists({ exterior: ex }, rf6).dashboard.odometer_reading !== null) errs.push('злиття без dashboard-спеціаліста');
   if (CV.equipmentConcept('Камера заднього виду') !== CV.equipmentConcept('задня камера') || CV.equipmentConcept('Harman Kardon') !== 'harman_kardon' || CV.equipmentConcept('підігрів керма') !== 'heated_wheel' || !/^other:/.test(CV.equipmentConcept('щось незвичне'))) errs.push('нормалізація понять');
+  if (CV.equipmentConcept('задні дефлектори вентиляції') !== 'rear_climate' || CV.equipmentConcept('вентиляція передніх сидінь') !== 'seat_ventilation' || CV.equipmentConcept('підкермові пелюстки перемикання передач') !== 'paddles') errs.push('нормалізація: задні дефлектори / пелюстки');
   if (CV.modificationConfirmed({ basis: 'aftermarket_look', confidence: 'high' }) || !CV.modificationConfirmed({ basis: 'brand_readable', confidence: 'medium' }) || CV.modificationConfirmed({ basis: 'visible_alteration', confidence: 'low' })) errs.push('modificationConfirmed');
   if (!/MODES = \['general', 'exterior', 'interior', 'dashboard', 'classify'\]/.test(src2()) || !/UUID_RE\.test\(reportId\)/.test(src2()) || !/kind=eq\.check/.test(src2())) errs.push('ендпоінт: режими/report_id');
 
@@ -172,7 +173,7 @@ const errs = [];
      промпт/контент його не отримує, публічний звіт не віддає, збій не
      ламає Check */
   const check = fs.readFileSync('api/check.js', 'utf8');
-  if (!/const cvMode = process\.env\.CV_MODE === 'shadow' \|\| \(req\.body && req\.body\.cv_mode === 'shadow'\) \? 'shadow' : null;/.test(check)) errs.push('shadow не за прапорцем CV_MODE');
+  if (!/const cvMode = process\.env\.CV_MODE === 'shadow' \|\| \(benchAllowed && req\.body && req\.body\.cv_mode === 'shadow'\) \? 'shadow' : null;/.test(check)) errs.push('shadow не за прапорцем CV_MODE / cv_mode доступний без ключа');
   const iStart = check.indexOf("if (cvMode === 'shadow') {"), iMain = check.indexOf("progress('ai');"), iMainDone = check.indexOf("mark('main_analysis'"), iWait = check.indexOf('cvShadowResult = await Promise.race([cvShadow');
   if (!(iStart > 0 && iStart < iMain && iWait > iMainDone)) errs.push('shadow Vision має стартувати до основного виклику і чекатись лише після нього');
   if (!/cvShadow = \(async \(\) => \{/.test(check) || !/\}\)\(\)\.catch\(e => \(\{ status: 'failed'/.test(check)) errs.push('shadow без catch: збій Vision може впустити Check');
@@ -194,7 +195,8 @@ const errs = [];
   if (CV.frameDetailPlan(fr2, null, null).source !== 'all_high_no_types' || CV.frameDetailPlan(fr2, null, null).low.length) errs.push('без типів усі кадри мають бути high');
   const odo = CV.odometerDiscrepancy({ dashboard: { odometer_reading: { value: 30688, unit: 'km', gallery_index: 10, photo_identity: 'p', confidence: 'high' } } }, 36000);
   if (odo.status !== 'discrepancy_candidate' || odo.delta_km !== -5312 || odo.candidate !== true) errs.push('одометр: розбіжність не зафіксована: ' + JSON.stringify(odo));
-  if (CV.odometerDiscrepancy({ dashboard: { odometer_reading: { value: 151975, unit: 'km', gallery_index: 17, photo_identity: 'p', confidence: 'high' } } }, 151000).status !== 'consistent') errs.push('одометр: 0.6% не має бути кандидатом');
+  if (CV.odometerDiscrepancy({ dashboard: { odometer_reading: { value: 151975, unit: 'km', gallery_index: 17, photo_identity: 'p', confidence: 'high' } } }, 151000).status !== 'consistent') errs.push('одометр: 975 км / 0.6% (округлення продавця) не має бути кандидатом');
+  if (CV.odometerDiscrepancy({ dashboard: { odometer_reading: { value: 167612, unit: 'km', gallery_index: 24, photo_identity: 'p', confidence: 'high' } } }, 163000).candidate !== true) errs.push('одометр: 4 612 км / 2.8% має бути кандидатом');
   if (CV.odometerDiscrepancy({ dashboard: { odometer_reading: { value: 20000, unit: 'mi', gallery_index: 1, photo_identity: 'p', confidence: 'medium' } } }, 32000).visual_km !== 32187) errs.push('одометр: милі не переводяться в км');
   if (CV.odometerDiscrepancy({ dashboard: { odometer_reading: null } }, 1000).status !== 'no_visual_reading' || CV.odometerDiscrepancy(null, 1000).status !== 'no_visual_reading') errs.push('одометр: порожній стан');
   const summ = CV.summarizeCurrentVisual(cv, stats);
@@ -219,7 +221,7 @@ const errs = [];
   /* shadow не тримає готовий звіт довше за коротку паузу */
   const capM = /const CV_SHADOW_MAX_WAIT_MS = (\d+);/.exec(check);
   if (!capM || Number(capM[1]) > 10000 || !/Math\.min\(CV_SHADOW_MAX_WAIT_MS, 280000/.test(check)) errs.push('shadow може тримати звіт довше 10 с');
-  if (!/const dedup = dedupePhotoVariants\(photos\);/.test(check) || !/photo_variants_removed: dedup\.removed/.test(check)) errs.push('extractListing не дедуплікує варіанти кадрів');
+  if (!/const dedup = dedupePhotoVariants\(photos\.slice\(0, 120\)\);/.test(check) || !/photo_variants_removed: dedup\.removed/.test(check)) errs.push('extractListing не дедуплікує варіанти кадрів у тому самому вікні 120 URL');
 
   for (const f of ['api/current-visual.js', 'api/vision-bench.js', 'visiontest.js']) if (/\u2014/.test(fs.readFileSync(f, 'utf8'))) errs.push('довге тире у ' + f);
 
