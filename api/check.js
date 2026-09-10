@@ -12,10 +12,14 @@ import {
   gateSeverityRaisingSignals,
 } from './visual-signals.js';
 import {
-  photoIdentity, photoSetFingerprint, listingFingerprint, snapshotRow, listingKey,
+  photoIdentity, photoSetFingerprint, listingFingerprint, snapshotRow, listingKey, dedupePhotoVariants,
   readVehicle, upsertVehicle, observeListing, patchSnapshotClaims, preservePhotos, snapshotHasPhotos,
   NHTSA_DECODER_VERSION, LISTING_FINGERPRINT_VERSION,
 } from './vehicle-memory.js';
+/* Current Vehicle Vision v1: у production лише SHADOW (CV_MODE=shadow):
+   результат зберігається в _meta для аудиту, основний виклик, Score, UI
+   і Vehicle Memory його не отримують */
+import { CURRENT_VISUAL_RULES, currentVisualResponseFormat, frameContent, normalizeFrames, frameDetailPlan, gateCurrentVisual, frameSetFingerprint, summarizeCurrentVisual, odometerDiscrepancy, CURRENT_VISUAL_VERSION } from './current-visual.js';
 /* спільні ідентичності і версії: тести і сусідні модулі беруть їх звідси */
 export { HISTORICAL_VISUAL_VERSION, photoIdentity, photoSetFingerprint, listingFingerprint, snapshotRow, listingKey, NHTSA_DECODER_VERSION, LISTING_FINGERPRINT_VERSION };
 
@@ -334,7 +338,12 @@ function extractListing(html, url) {
     }
     photos = [...seen];
   }
-  photos = photos.slice(0, 120);
+  /* один фізичний кадр = один елемент галереї: варіанти розміру/query
+     одного файлу (BaT/WordPress: ?w=150, ?resize=300,200 ...) згортаються
+     до найкращого варіанту, мініатюра ніколи не виграє в оригіналу.
+     Загальна нормалізація за photoIdentity, не хак під один сайт */
+  const dedup = dedupePhotoVariants(photos);
+  photos = dedup.photos.slice(0, 120);
 
   /* фото аукціону США: RIA зберігає їх у себе, окремою гілкою /photos/auto/usa/.
      Це наше основне джерело кадрів "до ремонту": сам bidfax закритий від
@@ -459,6 +468,7 @@ function extractListing(html, url) {
     listing_equipment: listingEquipment.slice(0, 60),
     price, currency, odometer_km: odometerKm, year, make, model,
     photos, text: aiText,
+    photo_variants_removed: dedup.removed,
     /* кадри "до ремонту" з аукціону США, збережені самою RIA */
     usa_photos: usaPhotos.slice(0, 12),
     /* посилання на зовнішній архів: лишається як довідка для користувача */
@@ -2615,6 +2625,41 @@ async function runCheck(req, res, job) {
       }
     }
     const photoUrls = photoIdx.map(i => listing.photos[i]);
+
+    /* ---- Current Vehicle Vision v1, SHADOW (Phase 1) ----
+       Стартує одразу після вибору кадрів і йде ПАРАЛЕЛЬНО з історичним
+       Vision і основним викликом; чекається лише перед збереженням, у
+       межах залишку бюджету. Модель отримує ЛИШЕ кадри (без пробігу і
+       тексту оголошення): одометр читається незалежно, порівняння з
+       оголошенням робить код. Збій, невалідна відповідь чи таймаут
+       фіксуються в телеметрії і не впливають на Check */
+    const cvMode = process.env.CV_MODE === 'shadow' || (req.body && req.body.cv_mode === 'shadow') ? 'shadow' : null;
+    let cvShadow = null;
+    const tCv = Date.now();
+    if (cvMode === 'shadow') {
+      cvShadow = (async () => {
+        const typesByIndex = (photoSelectorMeta && Array.isArray(photoSelectorMeta.types))
+          ? Object.fromEntries(photoIdx.map((gi, pos) => [gi, photoSelectorMeta.types[pos]])) : null;
+        const highGallery = new Set(photoIdx.filter((gi, pos) => highSet.has(pos)));
+        const frames0 = normalizeFrames(photoIdx.map(gi => ({ gallery_index: gi, url: listing.photos[gi] })));
+        const plan = frameDetailPlan(frames0, typesByIndex, highGallery);
+        const body = {
+          model: process.env.OPENAI_MODEL || 'gpt-5.6-terra', max_completion_tokens: 12000, reasoning_effort: 'low',
+          response_format: currentVisualResponseFormat(),
+          messages: [{ role: 'system', content: CURRENT_VISUAL_RULES }, { role: 'user', content: frameContent(plan.frames, 'mixed') }],
+        };
+        const d = await callModel(body, 95000);
+        const ms = Date.now() - tCv;
+        const base = { ms, ai: aiUsage(d, body), version: CURRENT_VISUAL_VERSION, fingerprint: frameSetFingerprint(plan.frames),
+          detail_plan: { source: plan.source, high: plan.high, low: plan.low }, photos: { total: plan.frames.length, high: plan.high.length, low: plan.low.length },
+          frames: plan.frames.map(f => ({ gallery_index: f.gallery_index, photo_identity: f.identity, high: f.high, type: f.type })) };
+        if (!d || d.error) return { status: 'failed', error: String((d && d.error && d.error.message) || 'no response').slice(0, 160), ...base };
+        let raw = null;
+        try { raw = JSON.parse(String(d.choices?.[0]?.message?.content || '')); } catch (e) { return { status: 'failed', error: 'invalid_json', ...base }; }
+        const { current_visual, stats } = gateCurrentVisual(raw, plan.frames);
+        return { status: 'ok', ...base, summary: summarizeCurrentVisual(current_visual, stats), odometer_vs_listing: odometerDiscrepancy(current_visual, listing.odometer_km), current_visual };
+      })().catch(e => ({ status: 'failed', ms: Date.now() - tCv, error: String((e && e.message) || e).slice(0, 160) }));
+    }
     /* image-level provenance: у Vision ЛИШЕ кадри, чия належність exact lot
        доведена URL (VIN або lot_id). Generic-галерея (americamotors cs.copart
        без VIN) виключається: вона змішує різні авто. AmericaMotors лишається
@@ -3289,6 +3334,16 @@ async function runCheck(req, res, job) {
     mark('equipment_verifier', eqVerifier.ms || 0, eqVerifier.status === 'done' ? 'executed' : 'skipped',
       { reason: eqVerifier.reason || null, ai: eqVerifier.status === 'done' ? aiUsage({ usage: eqVerifier.tokens, model: eqVerifier.model }, { model: process.env.OPENAI_MODEL || 'gpt-5.6-terra' }) : null });
 
+    /* shadow Vision: чекаємо лише залишок бюджету; результат лише в _meta */
+    let cvShadowResult = null, cvWaited = 0;
+    if (cvShadow) {
+      const tWait = Date.now();
+      cvShadowResult = await Promise.race([cvShadow, new Promise(r => setTimeout(() => r({ status: 'timeout', ms: Date.now() - tCv }), Math.max(1000, Math.min(60000, 280000 - (Date.now() - tRun)))))]);
+      cvWaited = Date.now() - tWait;
+      cvShadowResult.waited_ms = cvWaited;
+      mark('current_vision_shadow', cvShadowResult.ms || 0, cvShadowResult.status, { waited_ms: cvWaited, ai: cvShadowResult.ai || null, photos: cvShadowResult.photos || null, error: cvShadowResult.error || null });
+    }
+
     /* збереження кадрів іде паралельно з аналізом: чекаємо лише решту бюджету */
     const tPers = Date.now();
     const photoPreservation = await Promise.race([
@@ -3358,6 +3413,8 @@ async function runCheck(req, res, job) {
       analyzed_at: new Date().toISOString(),
       /* технічні тайминги стадій: для аналізу латентності, не для UI */
       timings,
+      /* Current Vision v1 у shadow: аудит і телеметрія, не для UI/Score */
+      current_visual_shadow: cvShadowResult,
     };
     mark('persistence', Date.now() - tPers, photoPreservation && photoPreservation.listing === 'pending' ? 'pending' : 'executed');
     if (snapshot.id) patchSnapshotClaims(snapshot.id, parsed).catch(() => {});

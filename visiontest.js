@@ -54,7 +54,8 @@ const errs = [];
   walk(schema, 'root'); walk(schema.$defs.zone, '$defs.zone'); walk(schema.$defs.finding, '$defs.finding');
   if (!schema.$defs || !schema.$defs.zone || Object.values(schema.properties.zones.properties).some(v => v.$ref !== '#/$defs/zone')) errs.push('зони не через $ref');
   const zoneKeys = Object.keys(schema.properties.zones.properties);
-  if (zoneKeys.length !== 18 || CV.ZONES.some(z => !zoneKeys.includes(z))) errs.push('схема без 18 зон');
+  if (zoneKeys.length !== 20 || CV.ZONES.some(z => !zoneKeys.includes(z)) || !zoneKeys.includes('engine_bay') || !zoneKeys.includes('underbody')) errs.push('схема v1 без 20 зон (engine_bay, underbody)');
+  if (JSON.stringify(schema).includes('notable_visual_features')) errs.push('notable_visual_features лишилось у схемі v1');
   if (!CV.ZONES.includes('wheels') || !CV.ZONES.includes('dashboard') || !CV.ZONES.includes('trunk')) errs.push('перелік зон не за ТЗ');
   const rf = CV.currentVisualResponseFormat();
   if (rf.type !== 'json_schema' || rf.json_schema.strict !== true) errs.push('response_format не strict json_schema');
@@ -63,7 +64,8 @@ const errs = [];
   /* 4. правила: межа current/historical, стабільні посилання, доказовість, без вердиктів */
   const R = CV.CURRENT_VISUAL_RULES;
   if (/аукціон|auction|historical|історичн|до ремонту|before\/after|hv/i.test(R)) errs.push('правила Vision згадують історичні/аукціонні дані');
-  for (const need of ['gallery_index', 'ЗОНИ', 'sufficient', 'not_visible', 'ПРИЛАДОВА ПАНЕЛЬ', 'одометр', 'КОМПЛЕКТАЦІЯ', 'МОДИФІКАЦІЇ', 'ДОКАЗОВІСТЬ', 'реальний пробіг', 'базова, платна', 'СТОРОНИ']) if (!R.includes(need)) errs.push('правила без блоку: ' + need);
+  for (const need of ['gallery_index', 'ЗОНИ', 'sufficient', 'not_visible', 'ПРИЛАДОВА ПАНЕЛЬ', 'одометр', 'КОМПЛЕКТАЦІЯ', 'МОДИФІКАЦІЇ', 'ДОКАЗОВІСТЬ', 'реальний пробіг', 'базова, платна', 'СТОРОНИ', 'engine_bay', 'underbody', 'ОДОМЕТР НЕЗАЛЕЖНИЙ', 'Заводське спортивне аеро']) if (!R.includes(need)) errs.push('правила без блоку: ' + need);
+  if (/notable_visual_features/.test(R)) errs.push('правила згадують прибране поле notable');
   if (!/помітної проблеми не знайдено/.test(R) || !/заводська фарба/.test(R)) errs.push('правила не фіксують семантику "проблеми не знайдено"');
   /* кадри підписані gallery_index, деталізація за режимом */
   const fc = CV.frameContent(frames, 'mixed');
@@ -88,7 +90,6 @@ const errs = [];
       { normalized_name: 'Harman Kardon', visible_label_or_feature: 'логотип на решітці динаміка', category: 'audio', gallery_index: 8, sign: 'напис Harman Kardon на решітці динаміка передніх дверей', confidence: 'high' },
       { normalized_name: 'HUD', visible_label_or_feature: 'проектор', category: 'display', gallery_index: 4, sign: 'вікно проектора на торпедо', confidence: 'high' },
     ],
-    notable_visual_features: [{ feature: 'великий задній спойлер', gallery_index: 3, sign: 'спойлер на кришці багажника на всю ширину', confidence: 'high' }],
     modification_candidates: [{ feature: 'диски BBS', basis: 'brand_readable', gallery_index: 8, sign: 'напис BBS на центральній кришці диска', confidence: 'medium' }],
     dashboard: { visible: true, ignition_on: true, odometer_reading: { value: 30688, unit: 'km', gallery_index: 8, sign: 'цифри 30688 km на екрані під спідометром', confidence: 'high' },
       warning_lights: [{ light: 'check engine', gallery_index: 8, sign: 'жовта піктограма двигуна ліворуч від тахометра', confidence: 'high' }, { light: 'abs', gallery_index: 5, sign: 'напис ABS', confidence: 'high' }],
@@ -106,13 +107,14 @@ const errs = [];
   const mismatch = front.findings.find(f => f.kind === 'paint_mismatch');
   if (!mismatch || mismatch.confidence !== 'medium' || mismatch.material !== true) errs.push('gate: paint-знахідка з конкретною ознакою постраждала');
   if (stats.dropped_bad_ref < 3 || stats.dropped_weak_sign !== 1 || stats.downgraded_soft_paint !== 1) errs.push('gate stats: ' + JSON.stringify(stats));
-  if (Object.keys(cv.zones).length !== 20 || cv.zones.left_side.visibility !== 'not_visible' || stats.zones_filled !== 17) errs.push('gate не доповнює 20 зон (18 + engine_bay, underbody)');
+  if (Object.keys(cv.zones).length !== 20 || cv.zones.left_side.visibility !== 'not_visible' || stats.zones_filled !== 17) errs.push('gate не доповнює 20 зон');
   if (cv.zones.rear.visibility !== 'not_visible') errs.push('sufficient без кадрів і знахідок має стати not_visible');
   if (cv.equipment_visual.length !== 1 || cv.equipment_visual[0].photo_identity !== VM.photoIdentity(d)) errs.push('gate комплектації: ' + JSON.stringify(cv.equipment_visual));
   if (!cv.dashboard.odometer_reading || cv.dashboard.odometer_reading.value !== 30688 || cv.dashboard.odometer_reading.unit !== 'km' || cv.dashboard.odometer_reading.photo_identity !== VM.photoIdentity(d)) errs.push('gate одометра: ' + JSON.stringify(cv.dashboard.odometer_reading));
   if (cv.dashboard.warning_lights.length !== 1 || cv.dashboard.readable_messages.length !== 1) errs.push('gate індикаторів/повідомлень');
   if (cv.coverage.quality_flags.join() !== 'studio' || cv.coverage.note !== null) errs.push('gate coverage');
-  if (cv.modification_candidates.length !== 1 || cv.notable_visual_features.length !== 1) errs.push('gate модифікацій/особливостей');
+  if (cv.modification_candidates.length !== 1 || cv.modification_candidates[0].confirmed !== true || cv.notable_visual_features !== undefined) errs.push('gate модифікацій (confirmed) / notable прибрано');
+  if (cv.equipment_visual[0].concept !== 'harman_kardon') errs.push('gate не додає concept до опції');
   if (cv.version !== CV.CURRENT_VISUAL_VERSION) errs.push('результат без версії');
   /* порожня/зламана відповідь не падає */
   const empty = CV.gateCurrentVisual(null, sent).current_visual;
@@ -138,6 +140,7 @@ const errs = [];
     if (!/gallery_index/.test(CV.SPECIALIST_RULES[k]) || /аукціон|auction|historical|історичн|до ремонту/i.test(CV.SPECIALIST_RULES[k])) errs.push('правила спеціаліста ' + k + ' без gallery_index або з історичними даними');
   }
   const exZones = Object.keys(CV.buildSpecialistSchema('exterior').properties.zones.properties);
+  if (CV.buildSpecialistSchema('exterior').properties.zones.properties.underbody === undefined) errs.push('exterior спец без underbody');
   if (exZones.length !== 12 || !exZones.includes('engine_bay') || !exZones.includes('underbody')) errs.push('exterior без engine_bay/underbody');
   if (Object.keys(CV.buildSpecialistSchema('interior').properties.zones.properties).length !== 8) errs.push('interior не 8 зон');
   if (CV.buildSpecialistSchema('dashboard').properties.zones) errs.push('dashboard-спеціаліст має зони');
@@ -163,9 +166,54 @@ const errs = [];
   if (CV.modificationConfirmed({ basis: 'aftermarket_look', confidence: 'high' }) || !CV.modificationConfirmed({ basis: 'brand_readable', confidence: 'medium' }) || CV.modificationConfirmed({ basis: 'visible_alteration', confidence: 'low' })) errs.push('modificationConfirmed');
   if (!/MODES = \['general', 'exterior', 'interior', 'dashboard', 'classify'\]/.test(src2()) || !/UUID_RE\.test\(reportId\)/.test(src2()) || !/kind=eq\.check/.test(src2())) errs.push('ендпоінт: режими/report_id');
 
-  /* 7. production Check модуль не імпортує і не викликає */
+  /* 7. Phase 1 SHADOW: Vision у production лише за CV_MODE=shadow (або cv_mode у тілі
+     запиту для валідації), стартує після вибору кадрів паралельно з рештою,
+     НЕ чекається перед основним викликом, результат лише в _meta, основний
+     промпт/контент його не отримує, публічний звіт не віддає, збій не
+     ламає Check */
   const check = fs.readFileSync('api/check.js', 'utf8');
-  if (/current-visual\.js|vision-bench|gateCurrentVisual|CURRENT_VISUAL_(VERSION|RULES)|currentVisualResponseFormat/.test(check)) errs.push('api/check.js посилається на Phase 0 модуль: production мав лишитись незмінним');
+  if (!/const cvMode = process\.env\.CV_MODE === 'shadow' \|\| \(req\.body && req\.body\.cv_mode === 'shadow'\) \? 'shadow' : null;/.test(check)) errs.push('shadow не за прапорцем CV_MODE');
+  const iStart = check.indexOf("if (cvMode === 'shadow') {"), iMain = check.indexOf("progress('ai');"), iMainDone = check.indexOf("mark('main_analysis'"), iWait = check.indexOf('cvShadowResult = await Promise.race([cvShadow');
+  if (!(iStart > 0 && iStart < iMain && iWait > iMainDone)) errs.push('shadow Vision має стартувати до основного виклику і чекатись лише після нього');
+  if (!/cvShadow = \(async \(\) => \{/.test(check) || !/\}\)\(\)\.catch\(e => \(\{ status: 'failed'/.test(check)) errs.push('shadow без catch: збій Vision може впустити Check');
+  if (!/status: 'timeout'/.test(check) || !/mark\('current_vision_shadow'/.test(check)) errs.push('shadow без таймауту або без таймінгу');
+  const mainContent = check.slice(check.indexOf('const content = ['), check.indexOf("let mainSystem = mainMsg.system;"));
+  if (/cvShadow|current_visual_shadow|CURRENT_VISUAL_RULES|currentVisualResponseFormat|frameContent\(/.test(mainContent)) errs.push('контент основного виклику містить Current Vision');
+  const rulesArea = check.slice(check.indexOf('const DECISION_RULES = `'), check.indexOf('export function compactHistoricalVisual'));
+  if (/current_visual_shadow|CURRENT_VISUAL_EVIDENCE:|cvShadow/.test(rulesArea)) errs.push('правила основного виклику посилаються на shadow Vision');
+  if (!/current_visual_shadow: cvShadowResult/.test(check)) errs.push('результат shadow не зберігається в _meta');
+  if (/current_visual_shadow/.test(fs.readFileSync('api/share.js', 'utf8'))) errs.push('shadow Vision потрапив у публічний allowlist');
+  if (/current_visual_shadow|cvShadow/.test(fs.readFileSync('api/score-v3.js', 'utf8')) || /current_visual_shadow/.test(fs.readFileSync('result-check.html', 'utf8')) || /current_visual_shadow/.test(fs.readFileSync('api/vehicle-memory.js', 'utf8'))) errs.push('shadow Vision використовується Score/UI/Vehicle Memory');
+  if (!/odometerDiscrepancy\(current_visual, listing\.odometer_km\)/.test(check)) errs.push('нема детермінованого порівняння одометра з пробігом оголошення');
+  if (/odometer_km/.test(CV.CURRENT_VISUAL_RULES) || /listing\.odometer_km/.test(check.slice(iStart, check.indexOf('const d = await callModel(body, 95000)')))) errs.push('пробіг оголошення потрапляє у Vision: одометр має читатись незалежно');
+  /* v1 helpers: план деталізації, порівняння одометра, телеметрія */
+  const fr2 = CV.normalizeFrames([{ gallery_index: 0, url: a }, { gallery_index: 5, url: d }]);
+  const plan = CV.frameDetailPlan(fr2, { 0: 'front', 5: 'dashboard' }, new Set());
+  if (plan.source !== 'selector_types' || plan.high.join() !== '5' || plan.low.join() !== '0') errs.push('план деталізації: ' + JSON.stringify(plan));
+  if (CV.frameDetailPlan(fr2, { 0: 'front', 5: 'rear' }, new Set([0])).high.join() !== '0') errs.push('high-слот селектора має лишатись high');
+  if (CV.frameDetailPlan(fr2, null, null).source !== 'all_high_no_types' || CV.frameDetailPlan(fr2, null, null).low.length) errs.push('без типів усі кадри мають бути high');
+  const odo = CV.odometerDiscrepancy({ dashboard: { odometer_reading: { value: 30688, unit: 'km', gallery_index: 10, photo_identity: 'p', confidence: 'high' } } }, 36000);
+  if (odo.status !== 'discrepancy_candidate' || odo.delta_km !== -5312 || odo.candidate !== true) errs.push('одометр: розбіжність не зафіксована: ' + JSON.stringify(odo));
+  if (CV.odometerDiscrepancy({ dashboard: { odometer_reading: { value: 151975, unit: 'km', gallery_index: 17, photo_identity: 'p', confidence: 'high' } } }, 151000).status !== 'consistent') errs.push('одометр: 0.6% не має бути кандидатом');
+  if (CV.odometerDiscrepancy({ dashboard: { odometer_reading: { value: 20000, unit: 'mi', gallery_index: 1, photo_identity: 'p', confidence: 'medium' } } }, 32000).visual_km !== 32187) errs.push('одометр: милі не переводяться в км');
+  if (CV.odometerDiscrepancy({ dashboard: { odometer_reading: null } }, 1000).status !== 'no_visual_reading' || CV.odometerDiscrepancy(null, 1000).status !== 'no_visual_reading') errs.push('одометр: порожній стан');
+  const summ = CV.summarizeCurrentVisual(cv, stats);
+  if (!summ || summ.zones.not_visible !== 18 || summ.equipment.concepts[0] !== 'harman_kardon' || summ.odometer.value !== 30688 || summ.modifications.confirmed !== 1) errs.push('телеметрія shadow: ' + JSON.stringify(summ));
+  /* BaT: один фізичний кадр = один елемент галереї, найкращий варіант, мініатюра не виграє */
+  const fx = JSON.parse(fs.readFileSync('test-fixtures/bat-gallery-120.json', 'utf8'));
+  const g = fx.generator; const base = 'https://bringatrailer.com/wp-content/uploads/2026/08/';
+  const urls = [];
+  g.car.forEach((f, i) => { const v = i === 0 ? g.car_variants_first : f.startsWith('IMG_2693') ? g.car_variants_2693 : f.startsWith('WRX') ? g.car_variants_sticker : g.car_variants; v.forEach(q => urls.push(base + f + q)); });
+  urls.push(...g.extra_after_car); g.site_graphics.forEach(x => g.site_variants.forEach(q => urls.push('https://bringatrailer.com/wp-content/uploads/' + x + q))); urls.push(...g.tail);
+  if (urls.length !== 120) errs.push('фікстура BaT не 120 URL: ' + urls.length);
+  const dd = VM.dedupePhotoVariants(urls);
+  if (dd.photos.length !== fx.expected_physical || dd.removed !== 120 - fx.expected_physical) errs.push('BaT дедуплікація: ' + dd.photos.length + ' кадрів, прибрано ' + dd.removed);
+  for (const [file, best] of Object.entries(fx.expected_best)) { const got = dd.photos.find(u => u.includes(file)); if (got !== best) errs.push('BaT найкращий варіант ' + file + ': ' + got); }
+  if (dd.photos.some(u => /w=150|w=144|resize=144,/.test(u))) errs.push('BaT: мініатюра виграла');
+  if (dd.photos[0] !== base + g.car[0] || dd.photos[1] !== base + g.car[1]) errs.push('BaT: порядок першої появи порушено');
+  if (VM.dedupePhotoVariants(['https://cdn1.riastatic.com/a.webp', 'https://cdn2.riastatic.com/b.webp']).removed !== 0) errs.push('RIA-галерея без варіантів не має втрачати кадри');
+  if (!/const dedup = dedupePhotoVariants\(photos\);/.test(check) || !/photo_variants_removed: dedup\.removed/.test(check)) errs.push('extractListing не дедуплікує варіанти кадрів');
+
   for (const f of ['api/current-visual.js', 'api/vision-bench.js', 'visiontest.js']) if (/\u2014/.test(fs.readFileSync(f, 'utf8'))) errs.push('довге тире у ' + f);
 
   if (errs.length) { console.log('VISION TEST FAILED:'); errs.forEach(e => console.log('  - ' + e)); process.exit(1); }

@@ -17,19 +17,18 @@
    комплектація; 3) помітні особливості / кандидати на модифікації;
    4) факти з приладової панелі (одометр, індикатори). */
 
-import { photoIdentity, photoSetFingerprint } from './vehicle-memory.js';
+import { photoIdentity, photoSetFingerprint, photoVariantWidth } from './vehicle-memory.js';
 
-export const CURRENT_VISUAL_VERSION = 'cv-2026-09-10-p0';
+export const CURRENT_VISUAL_VERSION = 'cv-2026-09-10-v1';
 export const MAX_FRAMES = 24;
 
 export const EXTERIOR_ZONES = ['front', 'rear', 'left_front', 'left_side', 'left_rear', 'right_front', 'right_side', 'right_rear', 'roof', 'wheels'];
 export const INTERIOR_ZONES = ['driver_area', 'front_passenger', 'front_seats', 'rear_seats', 'dashboard', 'center_console', 'doors', 'trunk'];
-export const ZONES = [...EXTERIOR_ZONES, ...INTERIOR_ZONES];
-/* Phase 0B: зони моторного відсіку і днища для exterior-спеціаліста; gate
-   і злиття працюють з повним переліком, загальна схема лишається 18-зонною
-   (baseline Phase 0 без змін) */
+/* v1: моторний відсік і днище це legitimate-зони загального контракту
+   (Phase 0 показала, що без них корозія днища губиться) */
 export const EXTRA_EXTERIOR_ZONES = ['engine_bay', 'underbody'];
-export const ALL_ZONES = [...ZONES, ...EXTRA_EXTERIOR_ZONES];
+export const ZONES = [...EXTERIOR_ZONES, ...EXTRA_EXTERIOR_ZONES, ...INTERIOR_ZONES];
+export const ALL_ZONES = ZONES;
 export const VISIBILITY = ['sufficient', 'partial', 'not_visible'];
 export const FINDING_KINDS = ['scratch_scuff', 'chip', 'dent', 'crack', 'broken_component', 'missing_component', 'panel_gap_alignment', 'paint_mismatch', 'repaint_sign',
   'wheel_damage', 'tire_issue', 'corrosion', 'wear', 'tear', 'plastic_damage', 'trim_damage', 'stain', 'headliner_damage', 'other_visible_damage'];
@@ -65,7 +64,7 @@ const ZONE = OBJ({
   findings: ARR(FINDING),
 });
 
-/* $defs: зона і знахідка описані один раз, 18 зон посилаються через $ref
+/* $defs: зона і знахідка описані один раз, 20 зон посилаються через $ref
    (strict json_schema це підтримує); інакше схема роздувається до ~24 KB
    і коштує токенів у кожному виклику */
 export function buildCurrentVisualSchema() {
@@ -84,12 +83,6 @@ export function buildCurrentVisualSchema() {
       normalized_name: S('string', 'коротка нормалізована назва: "Harman Kardon", "панорамний дах", "HUD"'),
       visible_label_or_feature: S('string', 'що саме видно: логотип, кнопка, елемент'),
       category: E(EQUIPMENT_CATEGORIES),
-      gallery_index: GI,
-      sign: S('string'),
-      confidence: E(CONFIDENCE),
-    })),
-    notable_visual_features: ARR(OBJ({
-      feature: S('string'),
       gallery_index: GI,
       sign: S('string'),
       confidence: E(CONFIDENCE),
@@ -127,22 +120,24 @@ export const CURRENT_VISUAL_RULES = `Ти автомобільний огляд�
 
 СТОРОНИ: left/right це сторони САМОГО АВТО з місця водія, а не сторони кадру. Авто зняте спереду: права сторона авто візуально зліва кадру.
 
-ЗОНИ (обовʼязково пройди КОЖНУ з 18 зон і постав visibility):
+ЗОНИ (обовʼязково пройди КОЖНУ з 20 зон і постав visibility): зовнішні front, rear, left_front, left_side, left_rear, right_front, right_side, right_rear, roof, wheels, engine_bay (моторний відсік), underbody (днище); внутрішні driver_area, front_passenger, front_seats, rear_seats, dashboard, center_console, doors, trunk.
 - sufficient: зона видна достатньо, щоб помітити помітну проблему;
 - partial: видно частково, дрібні дефекти можна пропустити;
 - not_visible: на кадрах зони немає.
 frames: gallery_index кадрів, де зона видна. Зона sufficient з порожнім findings означає лише "на доступному зображенні помітної проблеми не знайдено", і НІКОЛИ: "заводська фарба", "ремонту не було", "прихованих пошкоджень немає".
 
-ЩО ШУКАТИ ЗЗОВНІ (лише те, що справді видно): подряпини і потертості, сколи, вмʼятини, тріщини, зламані чи відсутні деталі, явно нерівний зазор чи посадка панелі, явний різнотон фарби, ознаки перефарбування чи дефекти покриття ЛИШЕ коли зображення реально це показує (шагрень, напил, маскувальні межі, сліди полірування), пошкодження дисків (бордюрні потертості, згини), очевидні проблеми шин (лише коли справді видно: знос до індикатора, тріщини, грижа), корозія, інші очевидні пошкодження.
+ЩО ШУКАТИ ЗЗОВНІ (лише те, що справді видно): подряпини і потертості, сколи, вмʼятини, тріщини, зламані чи відсутні деталі, явно нерівний зазор чи посадка панелі, явний різнотон фарби, ознаки перефарбування чи дефекти покриття ЛИШЕ коли зображення реально це показує (шагрень, напил, маскувальні межі, сліди полірування), пошкодження дисків (бордюрні потертості, згини), очевидні проблеми шин (лише коли справді видно: знос до індикатора, тріщини, грижа), корозія (кузов, днище, вихлоп, кріплення, підрамники), видимі проблеми днища (течі, пошкоджені захисти, зірвані кріплення), видимі проблеми моторного відсіку (течі, пошкодження, відсутні деталі, кустарні переробки), інші очевидні пошкодження. Механічні діагнози по фото заборонені.
 Різнотон і перефарбування: відблиск, різне освітлення чи кут зйомки НЕ є ознакою. Якщо єдине, що ти бачиш, це "виглядає інакше через світло", знахідку не створюй або став confidence low.
 
 ЩО ШУКАТИ ВСЕРЕДИНІ: помітний знос керма (полірована шкіра, протертості), знос/тріщини/розриви сидінь, пошкодження пластику, дверних карт і накладок, помітні плями, пошкодження стелі, зламані чи відсутні елементи, інші очевидні візуальні проблеми. Дуже виражений знос фіксуй як факт (kind wear, severity за видимим ступенем), але НЕ роби висновків про реальний пробіг.
 
 КОМПЛЕКТАЦІЯ (equipment_visual): опції, які можна ПІДТВЕРДИТИ фото: читабельний бренд акустики (Harman Kardon, Burmester, Bang & Olufsen, Bose, Bowers & Wilkins), панорамний дах, HUD (проектор на торпедо або проекція на склі), кнопки вентиляції/підігріву/масажу/памʼяті сидінь, електроприводи сидінь, апаратура чи кнопки адаптивного круїзу, індикатори контролю сліпих зон у дзеркалах, камери кругового огляду (обʼєктиви у дзеркалах, решітці, кришці багажника), задній клімат, цифрова приладова панель, спортивні сидіння, карбонові вставки, алькантара (лише за читабельним маркуванням чи однозначною фактурою), брендовані елементи інтерʼєру, інші явно видимі важливі опції. Для кожної: normalized_name, що саме видно, кадр, ознака, confidence. Бренд називай ЛИШЕ за читабельним логотипом; інакше клас ("преміум-акустика з окремими твітерами"). Ти НЕ вирішуєш, чи опція базова, платна, пакетна, рідкісна чи дорога: лише "видно ось це".
 
-ПОМІТНІ ОСОБЛИВОСТІ І МОДИФІКАЦІЇ: спойлери, обвіси, сплітери, дифузори, нестандартний випуск, диски незаводського вигляду (бренд лише якщо читабельний: "напис BBS на диску"), плівка, помітно занижена посадка, карбонові зовнішні деталі, нестандартні елементи в салоні. Якщо неможливо відрізнити від заводського виконання, пиши в notable_visual_features ("великий задній спойлер"), а не в modification_candidates. У modification_candidates лише з basis і видимою ознакою; вартість чи "тюнінг за $" не пиши.
+МОДИФІКАЦІЇ (modification_candidates): спойлери, обвіси, сплітери, дифузори, нестандартний випуск, диски незаводського вигляду (бренд лише якщо читабельний: "напис BBS на диску"), плівка, помітно занижена посадка, карбонові деталі, нештатні елементи у моторному відсіку чи салоні (впуск, кермо, екран, педалі; бренд лише читабельний). Для кожної basis: brand_readable (читабельний бренд нештатної деталі), visible_alteration (видно сліди переробки, нештатне кріплення, кустарну проводку), non_standard_fitment, aftermarket_look (лише вигляд), unclear. Заводське спортивне аеро (M, AMG, S line, GTS тощо) саме по собі НЕ модифікація: якщо не можна відрізнити від заводського виконання, basis unclear і confidence low. Вартість не пиши.
 
 ПРИЛАДОВА ПАНЕЛЬ: якщо є кадр із увімкненою панеллю, прочитай одометр (число, одиниця, кадр, ознака: "цифри 30 688 km на екрані під спідометром"), індикатори попереджень (лише читабельні чи однозначно впізнавані піктограми, причину НЕ діагностуй) і інші читабельні важливі повідомлення. Нечитабельно: не вигадуй, odometer_reading null.
+
+ОДОМЕТР НЕЗАЛЕЖНИЙ: читай цифри з кадру як є; жодних даних оголошення про пробіг у тебе немає і підганяти показання ні під що не треба. Сумнівні цифри: confidence low, а не вигадане число.
 
 ДОКАЗОВІСТЬ: будь-яка знахідка, опція, модифікація чи показання панелі БЕЗ конкретного кадру і конкретної видимої ознаки не існує. sign описує те, що видно ("глибока подряпина до ґрунту на задньому лівому бампері"), а не висновок ("бампер ремонтували"). Краще пропустити сумнівне, ніж впевнено вигадати. Мова значень: українська, коротко.`;
 
@@ -160,10 +155,7 @@ export function frameContent(frames, detail = 'high') {
    файл у 8-9 варіантах розміру (?w=150, ?resize=300,200 ...). Для Vision
    береться найкращий варіант: без query, інакше з найбільшою шириною;
    gallery_index лишається від ПЕРШОЇ появи кадру в галереї */
-export function variantWidth(url) {
-  const m = /[?&](?:w|width)=(\d+)|[?&]resize=(\d+)/.exec(String(url));
-  return m ? parseInt(m[1] || m[2], 10) : Infinity;
-}
+export const variantWidth = photoVariantWidth;
 export function normalizeFrames(list) {
   const byId = new Map();
   for (const x of Array.isArray(list) ? list : []) {
@@ -190,7 +182,7 @@ export function frameSetFingerprint(frames) {
    модель не повернула, доповнюються not_visible. */
 export function gateCurrentVisual(raw, frames) {
   const byIndex = new Map((frames || []).map(f => [f.gallery_index, f]));
-  const stats = { dropped_bad_ref: 0, dropped_weak_sign: 0, downgraded_soft_paint: 0, zones_filled: 0, findings: 0, material_findings: 0, equipment: 0, modifications: 0, notable: 0, warning_lights: 0 };
+  const stats = { dropped_bad_ref: 0, dropped_weak_sign: 0, downgraded_soft_paint: 0, zones_filled: 0, findings: 0, material_findings: 0, equipment: 0, modifications: 0, modifications_confirmed: 0, warning_lights: 0 };
   const r = raw && typeof raw === 'object' ? raw : {};
   const str = v => typeof v === 'string' ? v.trim() : '';
   const ref = gi => { const f = byIndex.get(gi); return f ? { gallery_index: gi, photo_identity: f.identity } : null; };
@@ -211,7 +203,6 @@ export function gateCurrentVisual(raw, frames) {
     },
     zones: {},
     equipment_visual: [],
-    notable_visual_features: [],
     modification_candidates: [],
     dashboard: { visible: false, ignition_on: null, odometer_reading: null, warning_lights: [], readable_messages: [] },
     summary: str(r.summary).slice(0, 600),
@@ -240,20 +231,16 @@ export function gateCurrentVisual(raw, frames) {
   for (const e of Array.isArray(r.equipment_visual) ? r.equipment_visual : []) {
     if (!e || !str(e.normalized_name)) continue;
     const rf = withRef(e); if (!rf) continue;
-    out.equipment_visual.push({ normalized_name: str(e.normalized_name).slice(0, 80), visible_label_or_feature: str(e.visible_label_or_feature).slice(0, 160), category: EQUIPMENT_CATEGORIES.includes(e.category) ? e.category : 'other', ...rf, sign: str(e.sign).slice(0, 240), confidence: conf(e.confidence) });
+    out.equipment_visual.push({ normalized_name: str(e.normalized_name).slice(0, 80), concept: equipmentConcept(e.normalized_name), visible_label_or_feature: str(e.visible_label_or_feature).slice(0, 160), category: EQUIPMENT_CATEGORIES.includes(e.category) ? e.category : 'other', ...rf, sign: str(e.sign).slice(0, 240), confidence: conf(e.confidence) });
     stats.equipment++;
-  }
-  for (const n of Array.isArray(r.notable_visual_features) ? r.notable_visual_features : []) {
-    if (!n || !str(n.feature)) continue;
-    const rf = withRef(n); if (!rf) continue;
-    out.notable_visual_features.push({ feature: str(n.feature).slice(0, 120), ...rf, sign: str(n.sign).slice(0, 240), confidence: conf(n.confidence) });
-    stats.notable++;
   }
   for (const m of Array.isArray(r.modification_candidates) ? r.modification_candidates : []) {
     if (!m || !str(m.feature)) continue;
     const rf = withRef(m); if (!rf) continue;
-    out.modification_candidates.push({ feature: str(m.feature).slice(0, 120), basis: MOD_BASIS.includes(m.basis) ? m.basis : 'unclear', ...rf, sign: str(m.sign).slice(0, 240), confidence: conf(m.confidence) });
-    stats.modifications++;
+    const mod = { feature: str(m.feature).slice(0, 120), basis: MOD_BASIS.includes(m.basis) ? m.basis : 'unclear', ...rf, sign: str(m.sign).slice(0, 240), confidence: conf(m.confidence) };
+    mod.confirmed = modificationConfirmed(mod);
+    out.modification_candidates.push(mod);
+    stats.modifications++; if (mod.confirmed) stats.modifications_confirmed++;
   }
   const d = r.dashboard && typeof r.dashboard === 'object' ? r.dashboard : {};
   out.dashboard.visible = d.visible === true;
@@ -391,7 +378,7 @@ export function specialistResponseFormat(kind) {
    свої частини; решта порожня */
 export function gateSpecialist(kind, raw, frames) {
   const r = raw && typeof raw === 'object' ? raw : {};
-  const shaped = { coverage: r.coverage || { frames_usable: r.frames_usable }, zones: r.zones || {}, equipment_visual: kind === 'interior' ? r.equipment_visual : [], notable_visual_features: [], modification_candidates: kind === 'dashboard' ? [] : r.modification_candidates, dashboard: kind === 'dashboard' ? r.dashboard : {}, summary: r.summary || '' };
+  const shaped = { coverage: r.coverage || { frames_usable: r.frames_usable }, zones: r.zones || {}, equipment_visual: kind === 'interior' ? r.equipment_visual : [], modification_candidates: kind === 'dashboard' ? [] : r.modification_candidates, dashboard: kind === 'dashboard' ? r.dashboard : {}, summary: r.summary || '' };
   const out = gateCurrentVisual(shaped, frames);
   out.current_visual.specialist = kind;
   return out;
@@ -446,4 +433,68 @@ export function equipmentConcept(name) {
 /* модифікація "підтверджена" лише з читабельним брендом або видимою переробкою */
 export function modificationConfirmed(m) {
   return !!m && (m.basis === 'brand_readable' || m.basis === 'visible_alteration') && m.confidence !== 'low';
+}
+
+
+/* ======================================================================
+   v1 (Phase 1, shadow): план деталізації кадрів, незалежне порівняння
+   одометра з пробігом оголошення, компактна телеметрія.
+   ====================================================================== */
+/* mixed detail: high для кадрів, де важливі текст і дрібні елементи
+   (прилади, екрани, деталі/брендування, диски, моторний відсік) і для
+   high-слотів production-селектора; решта low. Без типів кадрів (галерея
+   <=24, селектор не запускався) всі кадри high: дешевше, ніж ризикувати
+   нечитабельним одометром */
+export const HIGH_DETAIL_TYPES = new Set(['dashboard', 'steering', 'center_console', 'detail', 'wheels', 'engine_bay']);
+export function frameDetailPlan(frames, types = null, highSet = null) {
+  const hasTypes = types && typeof types === 'object' && Object.keys(types).length > 0;
+  const out = frames.map(f => {
+    const t = hasTypes ? types[f.gallery_index] : null;
+    const high = !hasTypes || HIGH_DETAIL_TYPES.has(t) || (highSet ? highSet.has(f.gallery_index) : false) || f.high === true;
+    return { ...f, high, type: t || null };
+  });
+  return {
+    frames: out,
+    source: hasTypes ? 'selector_types' : 'all_high_no_types',
+    high: out.filter(f => f.high).map(f => f.gallery_index),
+    low: out.filter(f => !f.high).map(f => f.gallery_index),
+  };
+}
+
+/* Візуальний одометр НЕЗАЛЕЖНИЙ від оголошення: модель пробігу оголошення
+   не бачить. Порівняння детерміноване і живе лише в телеметрії
+   (Score v3 не змінюється). candidate: розбіжність >= 3% і >= 500 км */
+export const ODOMETER_DISCREPANCY_MIN_PCT = 3;
+export const ODOMETER_DISCREPANCY_MIN_KM = 500;
+export function odometerDiscrepancy(cv, listingOdometerKm) {
+  const o = cv && cv.dashboard && cv.dashboard.odometer_reading;
+  const listing = Number.isFinite(Number(listingOdometerKm)) && Number(listingOdometerKm) > 0 ? Math.round(Number(listingOdometerKm)) : null;
+  if (!o) return { status: 'no_visual_reading', listing_km: listing };
+  const visualKm = o.unit === 'mi' ? Math.round(o.value * 1.609344) : o.unit === 'km' ? o.value : null;
+  if (visualKm === null) return { status: 'unit_unknown', visual_value: o.value, gallery_index: o.gallery_index, listing_km: listing, confidence: o.confidence };
+  if (listing === null) return { status: 'no_listing_mileage', visual_km: visualKm, gallery_index: o.gallery_index, confidence: o.confidence };
+  const delta = visualKm - listing;
+  const pct = Math.round(Math.abs(delta) / listing * 1000) / 10;
+  const candidate = Math.abs(delta) >= ODOMETER_DISCREPANCY_MIN_KM && pct >= ODOMETER_DISCREPANCY_MIN_PCT;
+  return { status: candidate ? 'discrepancy_candidate' : 'consistent', visual_km: visualKm, listing_km: listing, delta_km: delta, delta_pct: pct, gallery_index: o.gallery_index, photo_identity: o.photo_identity, confidence: o.confidence, candidate };
+}
+
+export function summarizeCurrentVisual(cv, stats) {
+  if (!cv) return null;
+  const vis = { sufficient: 0, partial: 0, not_visible: 0 };
+  let findings = 0, material = 0;
+  for (const z of Object.values(cv.zones || {})) { vis[z.visibility] = (vis[z.visibility] || 0) + 1; findings += z.findings.length; material += z.findings.filter(f => f.material).length; }
+  const o = cv.dashboard && cv.dashboard.odometer_reading;
+  return {
+    version: cv.version,
+    coverage: cv.coverage,
+    zones: vis,
+    findings: { total: findings, material },
+    equipment: { total: cv.equipment_visual.length, concepts: [...new Set(cv.equipment_visual.map(e => e.concept))] },
+    odometer: o ? { value: o.value, unit: o.unit, gallery_index: o.gallery_index, confidence: o.confidence } : null,
+    warning_lights: cv.dashboard ? cv.dashboard.warning_lights.map(w => w.light) : [],
+    messages: cv.dashboard ? cv.dashboard.readable_messages.length : 0,
+    modifications: { total: cv.modification_candidates.length, confirmed: cv.modification_candidates.filter(m => m.confirmed).length },
+    gate: stats || null,
+  };
 }

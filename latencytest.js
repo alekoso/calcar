@@ -21,7 +21,7 @@ for (const st of STAGES) {
   if (!re.test(src)) errs.push('стадія без таймінгу: ' + st);
 }
 if (!/timings\.total_ms = Date\.now\(\) - tRun;/.test(src)) errs.push('нема total_ms');
-if (!/\n      timings,\n    \};/.test(src)) errs.push('timings не потрапляють у _meta');
+if (!/\n      timings,\n      \/\* Current Vision v1 у shadow[^\n]*\*\/\n      current_visual_shadow: cvShadowResult,\n    \};/.test(src)) errs.push('timings не потрапляють у _meta');
 /* статуси чесні: decoder cached|executed|skipped, history cached|executed|skipped, hv cached|skipped|executed */
 if (!/mark\('decoder', [^;]*'cached' : listing\.vin \? 'executed' : 'skipped'/.test(src)) errs.push('decoder без статусу cached/executed/skipped');
 if (!/mark\('history_lookup', [^;]*\(auctionSearch\.cache === 'hit' \? 'cached' : 'executed'\) : 'skipped'/.test(src)) errs.push('history_lookup без статусу');

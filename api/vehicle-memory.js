@@ -60,6 +60,33 @@ export function photoIdentity(u) {
     return host + x.pathname.toLowerCase();
   } catch (e) { return u; }
 }
+/* Варіанти розміру одного фізичного кадру (BaT/WordPress: ?w=150, ?resize=300,200,
+   ?w=940 ...) мають ОДИН photoIdentity. Для аналізу лишається найкращий
+   варіант: без query (оригінал), інакше з найбільшою шириною; мініатюра
+   150 px ніколи не виграє в оригіналу. Порядок = перша поява кадру в
+   галереї, тому gallery_index стабільний. Це не BaT-хак: правило
+   загальне для будь-якого URL з розмірним query */
+export function photoVariantWidth(url) {
+  const u = String(url || '');
+  if (!/\?/.test(u)) return Infinity;
+  const m = /[?&](?:w|width)=(\d+)|[?&]resize=(\d+)/i.exec(u);
+  return m ? parseInt(m[1] || m[2], 10) : 0;
+}
+export function dedupePhotoVariants(urls) {
+  const byId = new Map();
+  let removed = 0;
+  for (const raw of Array.isArray(urls) ? urls : []) {
+    if (typeof raw !== 'string') continue;
+    const url = raw.trim().replace(/&amp;/g, '&');
+    const id = photoIdentity(url);
+    if (!id) continue;
+    const cur = byId.get(id);
+    if (!cur) { byId.set(id, url); continue; }
+    removed++;
+    if (photoVariantWidth(url) > photoVariantWidth(cur)) byId.set(id, url);
+  }
+  return { photos: [...byId.values()], removed };
+}
 export function photoSetFingerprint(urls, version = HISTORICAL_VISUAL_VERSION) {
   const norm = [...new Set((urls || []).filter(u => typeof u === 'string').map(photoIdentity).filter(Boolean))].sort().join('|') + '::' + version;
   let h = 5381;

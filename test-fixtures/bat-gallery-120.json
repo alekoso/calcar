@@ -1,0 +1,20 @@
+{
+ "_note": "Real BaT listing gallery as extracted by production extractListing (2004 Subaru WRX wagon, 2026-09-10): 120 URLs = 16 physical images in size/query variants (10 car photos, 1 window sticker, 6 site graphics, 1 screenshot). Used by visiontest.js for photo-variant deduplication.",
+ "expected_physical": 16,
+ "expected_best": {
+  "IMG_2682-scaled-copy-2026-08-25-vqd-91087.jpg": "https://bringatrailer.com/wp-content/uploads/2026/08/IMG_2682-scaled-copy-2026-08-25-vqd-91087.jpg",
+  "IMG_2693-scaled-38133.jpg": "https://bringatrailer.com/wp-content/uploads/2026/08/IMG_2693-scaled-38133.jpg",
+  "QoTW20Winner20Template20282829-81607.png": "https://bringatrailer.com/wp-content/uploads/2026/11/QoTW20Winner20Template20282829-81607.png?resize=470,318"
+ },
+ "generator": {
+  "car": ["IMG_2682-scaled-copy-2026-08-25-vqd-91087.jpg", "IMG_2667-scaled-copy-2026-08-25-vsn-91621.jpg", "IMG_2686-scaled-copy-2026-08-25-ijw-91644.jpg", "IMG_2698-scaled-copy-2026-08-25-ict-91660.jpg", "IMG_2699-scaled-copy-2026-08-25-bsx-91676.jpg", "IMG_2693-scaled-38133.jpg", "IMG_7802-scaled-copy-2026-08-25-f0d-91699.jpg", "IMG_7785-scaled-copy-2026-08-25-o99-91712.jpg", "WRX_window_sticker-scaled-91730.jpg"],
+  "car_variants_first": ["?w=150&amp;h=150&amp;crop=1", "", "?w=940", "?resize=300,200", "?resize=768,512", "?resize=620,413", "?resize=1536,1024", "?resize=460,307", "?resize=144,96", "?resize=940,627"],
+  "car_variants": ["?w=620", "", "?resize=300,200", "?resize=768,512", "?resize=620,413", "?resize=1536,1024", "?resize=460,307", "?resize=144,96", "?resize=940,627"],
+  "car_variants_2693": ["?w=620", "", "?resize=300,225", "?resize=768,576", "?resize=620,465", "?resize=1536,1152", "?resize=460,345", "?resize=144,108", "?resize=940,705"],
+  "car_variants_sticker": ["?w=620", "", "?resize=300,228", "?resize=768,584", "?resize=620,471", "?resize=1536,1168", "?resize=460,350", "?resize=144,109", "?resize=940,715"],
+  "extra_after_car": ["https://bringatrailer.com/wp-content/uploads/2026/08/IMG_2682-scaled-copy-2026-08-25-vqd-91087.jpg?w=144"],
+  "site_graphics": ["2026/11/QoTW20Winner20Template20282829-81607.png", "2026/09/QoTW20Winner20Template20282729-99205.png", "2026/10/unnamed28929-10041-scaled-e1788210053191.jpg", "2026/08/BaT20and20Ti-43365.jpg", "2026/09/weekly-weird-wonderful93262-68083.png", "2026/08/mile-marker-225-75120.png"],
+  "site_variants": ["?w=235&amp;h=159&amp;crop=1", "?resize=144,96", "?resize=310,210", "?resize=155,105", "?resize=470,318", "?resize=235,159"],
+  "tail": ["https://bringatrailer.com/wp-content/uploads/2026/04/Screenshot-2025-01-28-at-17-05-13-2024-Going-To-The-Sun-Rally-12811-87852.webp"]
+ }
+}
