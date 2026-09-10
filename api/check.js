@@ -2661,6 +2661,12 @@ async function runCheck(req, res, job) {
     const cvMode = process.env.CV_MODE === 'off' ? null
       : (benchAllowed && req.body && req.body.cv_mode === 'off') ? null : 'shadow';
     const CV_SHADOW_MAX_WAIT_MS = 8000;
+    /* Одометр у Feed основному виклику НЕ передається, тому цільова
+       перевірка показань обслуговувала б сигнал, якого більше немає, і
+       при цьому стояла б на критичному шляху очікування розбору.
+       У звичайному Check вона вимкнена; лишається для benchmark-режиму,
+       коли одометром займаємось окремо */
+    const cvOdoVerify = !!(benchAllowed && req.body && req.body.cv_odo_verify === true);
     /* скільки основний виклик готовий чекати канонічний розбір */
     const CV_FEED_MAX_WAIT_MS = 45000;
     let cvShadow = null;
@@ -2693,7 +2699,9 @@ async function runCheck(req, res, job) {
            (high) стартує одразу, поки основний виклик ще працює, і
            пробігу оголошення НЕ бачить: код лише звіряє два незалежні
            читання. Незгода знімає сигнал, а не "виправляє" число */
-        if (odo && odo.needs_verification) {
+        if (odo && odo.needs_verification && !cvOdoVerify) {
+          odo = { ...odo, candidate: false, status: 'not_verified_feed', verified: false, verifier_status: 'skipped_feed' };
+        } else if (odo && odo.needs_verification) {
           const vFrames = odometerVerifyFrames(current_visual, plan.frames, typesByIndex);
           const tV = Date.now();
           try {

@@ -292,7 +292,11 @@ const errs = [];
   if (rec1.status !== 'confirmed' || rec2.status !== 'value_mismatch' || rec3.status !== 'unit_mismatch' || rec2.agreed || rec3.agreed) errs.push('звірка читань: ' + JSON.stringify([rec1.status, rec2.status, rec3.status]));
   if (CV.reconcileOdometer({ value: 100000, unit: 'km' }, null).status !== 'verifier_no_reading') errs.push('звірка без другого читання');
   /* у production верифікатор лише за кандидатом і всередині shadow-гілки */
-  if (!/if \(odo && odo\.needs_verification\) \{/.test(check)) errs.push('верифікатор запускається не лише за кандидатом');
+  if (!/if \(odo && odo\.needs_verification && !cvOdoVerify\) \{/.test(check)) errs.push('верифікатор запускається не лише за кандидатом');
+  /* у звичайному Feed цільова перевірка одометра не витрачає час і гроші:
+     сигналу пробігу від Vision більше немає, тому й перевіряти нічого */
+  if (!/const cvOdoVerify = !!\(benchAllowed && req\.body && req\.body\.cv_odo_verify === true\);/.test(check)) errs.push('перевірка одометра не вимкнена у звичайному Check');
+  if (!/status: 'not_verified_feed'/.test(check)) errs.push('пропущена перевірка одометра не позначена в телеметрії');
   const vIdx = check.indexOf('odometerVerifierResponseFormat()');
   if (!(vIdx > iStart && vIdx < iWait)) errs.push('верифікатор має жити всередині shadow-гілки, паралельно з основним викликом');
   if (!/odometer_verifier: verify/.test(check)) errs.push('результат верифікатора не зберігається');
