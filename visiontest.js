@@ -196,9 +196,41 @@ const errs = [];
     if (!/const content = cvFeed \? \[/.test(chk)) errs.push('контент основного виклику не залежить від Feed');
     if (!/eqVerifier = \{ status: 'skipped', reason: 'current_visual_canonical' \}/.test(chk)) errs.push('верифікатор комплектації дублює канонічний розбір');
     if (!/applyCurrentVisualEquipmentGate\(parsed\.equipment_v2, cvConcepts\)/.test(chk)) errs.push('нема канонічного гейта візуальних опцій');
+    /* канонічний розбір обмежує лише ВІЗУАЛЬНІ докази: решта джерел
+       комплектації і підтверджені модифікації зі звіту зникати не мають */
+    {
+      const rules = src2Rules();
+      if (!/опції з vehicle_data, listing_data, seller_claim і historical збирай У ПОВНОМУ ОБСЯЗІ/.test(rules)) errs.push('Feed не захищає невізуальні джерела комплектації');
+      if (!/КОЖНА позиція звідти ЗОБОВ.{1,3}ЯЗАНА опинитися у списку/.test(rules)) errs.push('канонічні поняття комплектації можна мовчки пропустити');
+      if (!/внось в equipment_v2 з retrofit true і retrofit_basis/.test(rules)) errs.push('підтвердженим модифікаціям нема місця у звіті');
+    }
     if (!/localizePhotoRefs\(parsed, cvFeed \? listing\.photos\.map\(\(_, i\) => i\) : photoIdx/.test(chk)) errs.push('нумерація кадрів у текстах не узгоджена з Feed');
-    /* fallback: без Feed усе як раніше */
+    /* fallback: без Feed усе як раніше. Виконуємо СПРАВЖНІЙ вираз збирання
+       кадрів із api/check.js у двох станах: канонічний розбір є і його
+       немає (збій, таймаут, вимкнено). Без цього гілка збою лишалась би
+       перевіреною лише на око */
     if (!/\] : \[\n      \{ type: 'text', text: mainMsg\.user \},/.test(chk)) errs.push('нема legacy-гілки контенту');
+    {
+      const iC = chk.indexOf('    const content = cvFeed ? ['), jC = chk.indexOf('\n    ];', iC) + '\n    ];'.length;
+      const photoUrls = Array.from({ length: 24 }, (_, k) => 'https://cdn.example/' + k + '.webp');
+      const photoIdx = Array.from({ length: 24 }, (_, k) => k * 2);
+      const build = (cvFeed, ctx) => {
+        const pos = ctx || photoUrls.map((_, k) => k);
+        const nums = pos.map(x => photoIdx[x] + 1);
+        return new Function('cvFeed', 'mainPhotoPositions', 'mainPhotoNumbers', 'photoUrls', 'photoIdx', 'auctionPhotos', 'img', 'highSet', 'hvFrames', 'galleryCoverageComplete', 'listing', 'mainMsg', chk.slice(iC, jC) + '\nreturn content;')(
+          cvFeed, pos, nums, photoUrls, photoIdx, [], (u, d) => ({ type: 'image_url', url: u, detail: d }), new Set([0, 1, 2, 3, 4, 5, 6, 7]), null, false,
+          { photos: Array.from({ length: 60 }, (_, k) => 'u' + k) }, { user: 'USER_DATA' });
+      };
+      const pics = c => c.filter(x => x.type === 'image_url');
+      const text = c => c.filter(x => x.type === 'text').map(x => x.text).join('\n');
+      const withFeed = build({ current_visual: {} }, [0, 3, 6, 9, 12, 15, 18, 21]);
+      const noFeed = build(null, null);
+      if (pics(withFeed).length !== 8 || pics(withFeed).filter(x => x.detail === 'high').length !== 4) errs.push('Feed: контекстних кадрів має бути 8, перші 4 у високій деталізації: ' + pics(withFeed).length);
+      if (!text(withFeed).includes('КОНТЕКСТНІ КАДРИ ОГОЛОШЕННЯ') || text(withFeed).includes('ФОТО З ОГОЛОШЕННЯ (стан зараз)')) errs.push('Feed: підпис кадрів не змінився на контекстний');
+      if (pics(noFeed).length !== 24) errs.push('fallback: без канонічного розбору main має отримати повний набір кадрів, отримав ' + pics(noFeed).length);
+      if (pics(noFeed).filter(x => x.detail === 'high').length !== 8) errs.push('fallback: деталізація кадрів не як у старій логіці');
+      if (!text(noFeed).includes('ФОТО З ОГОЛОШЕННЯ (стан зараз)') || text(noFeed).includes('КОНТЕКСТНІ КАДРИ')) errs.push('fallback: підпис кадрів не повернувся до старого');
+    }
     /* одометр у Feed не йде */
     const compact = CV.compactCurrentVisual({ zones: {}, equipment_visual: [], modification_candidates: [], coverage: { frames_received: 1, frames_usable: 1, quality_flags: [], note: null }, dashboard: { engine_state: 'running', odometer_reading: { value: 123456, unit: 'km', gallery_index: 1 }, warning_lights: [], readable_messages: [] } });
     if (JSON.stringify(compact).includes('123456') || JSON.stringify(compact).includes('odometer')) errs.push('одометр потрапив у Feed');
