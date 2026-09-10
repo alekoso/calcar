@@ -106,7 +106,7 @@ const errs = [];
   const mismatch = front.findings.find(f => f.kind === 'paint_mismatch');
   if (!mismatch || mismatch.confidence !== 'medium' || mismatch.material !== true) errs.push('gate: paint-знахідка з конкретною ознакою постраждала');
   if (stats.dropped_bad_ref < 3 || stats.dropped_weak_sign !== 1 || stats.downgraded_soft_paint !== 1) errs.push('gate stats: ' + JSON.stringify(stats));
-  if (Object.keys(cv.zones).length !== 18 || cv.zones.left_side.visibility !== 'not_visible' || stats.zones_filled !== 15) errs.push('gate не доповнює 18 зон');
+  if (Object.keys(cv.zones).length !== 20 || cv.zones.left_side.visibility !== 'not_visible' || stats.zones_filled !== 17) errs.push('gate не доповнює 20 зон (18 + engine_bay, underbody)');
   if (cv.zones.rear.visibility !== 'not_visible') errs.push('sufficient без кадрів і знахідок має стати not_visible');
   if (cv.equipment_visual.length !== 1 || cv.equipment_visual[0].photo_identity !== VM.photoIdentity(d)) errs.push('gate комплектації: ' + JSON.stringify(cv.equipment_visual));
   if (!cv.dashboard.odometer_reading || cv.dashboard.odometer_reading.value !== 30688 || cv.dashboard.odometer_reading.unit !== 'km' || cv.dashboard.odometer_reading.photo_identity !== VM.photoIdentity(d)) errs.push('gate одометра: ' + JSON.stringify(cv.dashboard.odometer_reading));
@@ -116,10 +116,11 @@ const errs = [];
   if (cv.version !== CV.CURRENT_VISUAL_VERSION) errs.push('результат без версії');
   /* порожня/зламана відповідь не падає */
   const empty = CV.gateCurrentVisual(null, sent).current_visual;
-  if (Object.keys(empty.zones).length !== 18 || empty.dashboard.odometer_reading !== null) errs.push('gate не переживає порожню відповідь');
+  if (Object.keys(empty.zones).length !== 20 || empty.dashboard.odometer_reading !== null) errs.push('gate не переживає порожню відповідь');
 
   /* 6. ендпоінт: лише за токеном done-job, лише low, кадри з _meta/снапшота, той самий gallery_index, що бачив main */
   const src = fs.readFileSync('api/vision-bench.js', 'utf8');
+  const src2 = () => src;
   if (!/reasoning_effort: 'low'/.test(src) || /req\.body\.(effort|reasoning_effort|model)/.test(src)) errs.push('ендпоінт дозволяє змінювати effort/модель');
   if (!/TOKEN_RE\.test\(token\)/.test(src) || /body\.photos|body\.urls/.test(src)) errs.push('ендпоінт приймає довільні кадри замість токена job');
   if (!/status=eq\.done/.test(src)) errs.push('ендпоінт читає не лише done-job');
@@ -128,6 +129,37 @@ const errs = [];
   if (fm.length !== 2 || fm[1].gallery_index !== 2 || fm[1].high !== true || fm[0].high !== false) errs.push('framesFromMeta: ' + JSON.stringify(fm));
   const fs2 = VB.framesFromSnapshot([{ i: 4, url: 'https://x/y.jpg' }, { i: '7', url: 'https://x/z.jpg' }, { url: 'https://x/q.jpg' }]);
   if (fs2.length !== 3 || fs2[1].gallery_index !== 7) errs.push('framesFromSnapshot: ' + JSON.stringify(fs2));
+
+  /* 6б. Phase 0B: спеціалісти, маршрутизація, злиття, нормалізація понять */
+  for (const k of ['exterior', 'interior', 'dashboard']) {
+    const sc = CV.buildSpecialistSchema(k);
+    walk(sc, 'spec.' + k); if (sc.$defs) { walk(sc.$defs.zone, k + '.$defs.zone'); walk(sc.$defs.finding, k + '.$defs.finding'); }
+    if (JSON.stringify(sc).length > 6000) errs.push('схема спеціаліста ' + k + ' розрослась');
+    if (!/gallery_index/.test(CV.SPECIALIST_RULES[k]) || /аукціон|auction|historical|історичн|до ремонту/i.test(CV.SPECIALIST_RULES[k])) errs.push('правила спеціаліста ' + k + ' без gallery_index або з історичними даними');
+  }
+  const exZones = Object.keys(CV.buildSpecialistSchema('exterior').properties.zones.properties);
+  if (exZones.length !== 12 || !exZones.includes('engine_bay') || !exZones.includes('underbody')) errs.push('exterior без engine_bay/underbody');
+  if (Object.keys(CV.buildSpecialistSchema('interior').properties.zones.properties).length !== 8) errs.push('interior не 8 зон');
+  if (CV.buildSpecialistSchema('dashboard').properties.zones) errs.push('dashboard-спеціаліст має зони');
+  if (CV.SELECTOR_PROMPT !== fs.readFileSync('api/check.js', 'utf8').match(/text: '(Класифікуй кадри оголошення авто за типом[^']*)'/)[1]) errs.push('промпт класифікації відрізняється від production селектора');
+  const rf6 = CV.normalizeFrames([0, 1, 2, 3, 4, 5, 6].map(i => ({ gallery_index: i, url: 'https://cdn1.riastatic.com/p/' + i + '.webp', high: i % 2 === 0 })));
+  const routed = CV.routeFrames(rf6, { 0: 'front', 1: 'dashboard', 2: 'steering', 3: 'dashboard', 4: 'detail', 5: 'wheels', 6: 'dashboard' });
+  const gi = arr => arr.map(f => f.gallery_index).join(',');
+  if (gi(routed.exterior) !== '0,4,5') errs.push('exterior маршрут: ' + gi(routed.exterior));
+  if (gi(routed.interior) !== '1,2,3,4,6') errs.push('interior маршрут: ' + gi(routed.interior));
+  if (gi(routed.dashboard) !== '6,1,3' || routed.dashboard.length !== 3) errs.push('dashboard маршрут (1-3 найкращі, high спершу): ' + gi(routed.dashboard));
+  if (CV.routeFrames(rf6, {}).interior.length !== 7 || CV.routeFrames(rf6, {}).dashboard.length !== 0) errs.push('кадри без типу мають іти обом condition-спеціалістам як detail');
+  /* злиття: зони від свого спеціаліста, опції від interior, панель від dashboard */
+  const ex = CV.gateSpecialist('exterior', { coverage: { frames_received: 1, frames_usable: 1, quality_flags: [], note: null }, zones: { underbody: { visibility: 'sufficient', frames: [4], findings: [{ kind: 'corrosion', severity: 'moderate', sign: 'поверхнева корозія на глушнику і кріпленнях', gallery_index: 4, confidence: 'high' }] } }, modification_candidates: [{ feature: 'впуск Perrin', basis: 'brand_readable', gallery_index: 4, sign: 'напис PERRIN на патрубку впуску', confidence: 'high' }], summary: 'ext' }, rf6).current_visual;
+  const inr = CV.gateSpecialist('interior', { coverage: { frames_received: 1, frames_usable: 1, quality_flags: [], note: null }, zones: { front_seats: { visibility: 'sufficient', frames: [2], findings: [] } }, equipment_visual: [{ normalized_name: 'задня камера', visible_label_or_feature: 'обʼєктив', category: 'camera_parking', gallery_index: 2, sign: 'обʼєктив над номерним знаком', confidence: 'high' }], modification_candidates: [], summary: 'int' }, rf6).current_visual;
+  const dsh = CV.gateSpecialist('dashboard', { frames_usable: 1, dashboard: { visible: true, ignition_on: true, odometer_reading: { value: 151975, unit: 'km', gallery_index: 1, sign: 'цифри 151975 km у нижньому рядку', confidence: 'high' }, warning_lights: [], readable_messages: [] } }, rf6).current_visual;
+  const merged = CV.mergeSpecialists({ exterior: ex, interior: inr, dashboard: dsh }, rf6);
+  if (Object.keys(merged.zones).length !== 20 || merged.zones.underbody.findings.length !== 1 || merged.zones.front_seats.visibility !== 'sufficient' || merged.zones.doors.visibility !== 'not_visible') errs.push('злиття зон: ' + JSON.stringify(Object.keys(merged.zones).length));
+  if (merged.equipment_visual.length !== 1 || merged.dashboard.odometer_reading.value !== 151975 || merged.modification_candidates.length !== 1 || merged.modification_candidates[0].source !== 'exterior') errs.push('злиття опцій/панелі/модифікацій');
+  if (!CV.mergeSpecialists({ exterior: ex }, rf6).dashboard || CV.mergeSpecialists({ exterior: ex }, rf6).dashboard.odometer_reading !== null) errs.push('злиття без dashboard-спеціаліста');
+  if (CV.equipmentConcept('Камера заднього виду') !== CV.equipmentConcept('задня камера') || CV.equipmentConcept('Harman Kardon') !== 'harman_kardon' || CV.equipmentConcept('підігрів керма') !== 'heated_wheel' || !/^other:/.test(CV.equipmentConcept('щось незвичне'))) errs.push('нормалізація понять');
+  if (CV.modificationConfirmed({ basis: 'aftermarket_look', confidence: 'high' }) || !CV.modificationConfirmed({ basis: 'brand_readable', confidence: 'medium' }) || CV.modificationConfirmed({ basis: 'visible_alteration', confidence: 'low' })) errs.push('modificationConfirmed');
+  if (!/MODES = \['general', 'exterior', 'interior', 'dashboard', 'classify'\]/.test(src2()) || !/UUID_RE\.test\(reportId\)/.test(src2()) || !/kind=eq\.check/.test(src2())) errs.push('ендпоінт: режими/report_id');
 
   /* 7. production Check модуль не імпортує і не викликає */
   const check = fs.readFileSync('api/check.js', 'utf8');

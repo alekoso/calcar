@@ -19,7 +19,16 @@
 export const config = { maxDuration: 150 };
 
 import { TOKEN_RE } from './share.js';
-import { CURRENT_VISUAL_RULES, currentVisualResponseFormat, frameContent, normalizeFrames, frameSetFingerprint, gateCurrentVisual, CURRENT_VISUAL_VERSION } from './current-visual.js';
+import { CURRENT_VISUAL_RULES, currentVisualResponseFormat, frameContent, normalizeFrames, frameSetFingerprint, gateCurrentVisual, CURRENT_VISUAL_VERSION,
+  SPECIALIST_RULES, specialistResponseFormat, gateSpecialist, SELECTOR_PROMPT, SELECTOR_TYPES } from './current-visual.js';
+
+/* Phase 0B: режими. general (baseline Phase 0), три спеціалісти,
+   classify (типи кадрів тим самим промптом, що production селектор, без
+   reasoning, low detail). gallery_indexes звужує фіксований набір job до
+   підмножини (маршрутизація спеціалістів робиться клієнтом benchmark за
+   збереженими типами, тут лише фільтр) */
+export const MODES = ['general', 'exterior', 'interior', 'dashboard', 'classify'];
+export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function rest(root, hdr, path) {
   const r = await fetch(root + '/rest/v1/' + path, { headers: hdr });
@@ -49,10 +58,19 @@ export default async function handler(req, res) {
   const hdr = { apikey: key, authorization: 'Bearer ' + key };
   const root = base.replace(/\/$/, '');
   const body = req.body || {};
+  const mode = MODES.includes(body.mode) ? body.mode : 'general';
   const token = String(body.job_token || '').trim();
-  if (!TOKEN_RE.test(token)) return res.status(404).json({ error: 'not found' });
-  const rows = await rest(root, hdr, 'check_jobs?token=eq.' + encodeURIComponent(token) + '&status=eq.done&select=vin,report&limit=1');
-  const row = Array.isArray(rows) && rows[0] ? rows[0] : null;
+  const reportId = String(body.report_id || '').trim();
+  let row = null;
+  if (TOKEN_RE.test(token)) {
+    const rows = await rest(root, hdr, 'check_jobs?token=eq.' + encodeURIComponent(token) + '&status=eq.done&select=vin,report&limit=1');
+    row = Array.isArray(rows) && rows[0] ? rows[0] : null;
+  } else if (UUID_RE.test(reportId)) {
+    /* збережений звіт кабінету (таблиця reports): лише для defect-positive набору benchmark */
+    const rows = await rest(root, hdr, 'reports?id=eq.' + encodeURIComponent(reportId) + '&kind=eq.check&select=data&limit=1');
+    const r0 = Array.isArray(rows) && rows[0] ? rows[0] : null;
+    row = r0 && r0.data ? { vin: r0.data._meta && r0.data._meta.vin, report: r0.data } : null;
+  } else return res.status(404).json({ error: 'not found' });
   if (!row || !row.report || !row.report._meta) return res.status(404).json({ error: 'not found' });
   const meta = row.report._meta;
   let source = body.source === 'snapshot' ? 'snapshot' : 'meta';
@@ -66,19 +84,28 @@ export default async function handler(req, res) {
   } else {
     list = framesFromMeta(meta);
   }
-  const frames = normalizeFrames(list);
-  if (!frames.length) return res.status(400).json({ error: 'no frames for this job', source });
+  const all = normalizeFrames(list);
+  const wanted = Array.isArray(body.gallery_indexes) ? new Set(body.gallery_indexes.map(x => parseInt(x, 10))) : null;
+  const frames = wanted ? all.filter(f => wanted.has(f.gallery_index)) : all;
+  if (!frames.length) return res.status(400).json({ error: 'no frames for this job', source, duplicates_removed: list.length - all.length });
   const detail = ['high', 'mixed', 'low'].includes(body.detail) ? body.detail : 'high';
-  const reqBody = {
-    model: process.env.OPENAI_MODEL || 'gpt-5.6-terra',
-    max_completion_tokens: 12000,
-    reasoning_effort: 'low',
-    response_format: currentVisualResponseFormat(),
-    messages: [
-      { role: 'system', content: CURRENT_VISUAL_RULES },
-      { role: 'user', content: frameContent(frames, detail) },
-    ],
-  };
+  const model = process.env.OPENAI_MODEL || 'gpt-5.6-terra';
+  let reqBody;
+  if (mode === 'classify') {
+    reqBody = {
+      model, max_completion_tokens: 4000, response_format: { type: 'json_object' },
+      messages: [{ role: 'user', content: [{ type: 'text', text: SELECTOR_PROMPT }, ...frames.flatMap(f => [{ type: 'text', text: 'i=' + f.gallery_index + ':' }, { type: 'image_url', image_url: { url: f.url, detail: 'low' } }])] }],
+    };
+  } else {
+    reqBody = {
+      model, max_completion_tokens: 12000, reasoning_effort: 'low',
+      response_format: mode === 'general' ? currentVisualResponseFormat() : specialistResponseFormat(mode),
+      messages: [
+        { role: 'system', content: mode === 'general' ? CURRENT_VISUAL_RULES : SPECIALIST_RULES[mode] },
+        { role: 'user', content: frameContent(frames, detail) },
+      ],
+    };
+  }
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 120000);
   const t0 = Date.now();
@@ -98,12 +125,22 @@ export default async function handler(req, res) {
   const ms = Date.now() - t0;
   if (data && data.error) return res.status(502).json({ ok: false, error: data.error.message || 'AI error', ms });
   let raw = null;
-  try { raw = JSON.parse(String(data?.choices?.[0]?.message?.content || '')); } catch (e) { raw = null; }
-  const gated = raw ? gateCurrentVisual(raw, frames) : null;
+  try { raw = JSON.parse(String(data?.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim()); } catch (e) { raw = null; }
+  let gated = null, types = null;
+  if (raw && mode === 'classify') {
+    types = {};
+    for (const fr of Array.isArray(raw.frames) ? raw.frames : []) {
+      const gi = parseInt(fr && fr.i, 10);
+      if (frames.some(f => f.gallery_index === gi) && SELECTOR_TYPES.includes(fr.type)) types[gi] = fr.type;
+    }
+  } else if (raw) {
+    gated = mode === 'general' ? gateCurrentVisual(raw, frames) : gateSpecialist(mode, raw, frames);
+  }
   const u = data && data.usage ? data.usage : {};
   return res.status(200).json({
-    ok: !!raw, ms, label: typeof body.label === 'string' ? body.label.slice(0, 40) : null, source,
-    model: (data && data.model) || reqBody.model, version: CURRENT_VISUAL_VERSION, detail, reasoning_effort: 'low',
+    ok: !!raw, ms, label: typeof body.label === 'string' ? body.label.slice(0, 40) : null, source, mode, types,
+    duplicates_removed: list.length - all.length, photo_count: frames.length,
+    model: (data && data.model) || reqBody.model, version: CURRENT_VISUAL_VERSION, detail, reasoning_effort: mode === 'classify' ? null : 'low',
     usage: {
       input_tokens: u.prompt_tokens ?? null, cached_tokens: u.prompt_tokens_details?.cached_tokens ?? null,
       output_tokens: u.completion_tokens ?? null, reasoning_tokens: u.completion_tokens_details?.reasoning_tokens ?? null,

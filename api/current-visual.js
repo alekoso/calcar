@@ -25,6 +25,11 @@ export const MAX_FRAMES = 24;
 export const EXTERIOR_ZONES = ['front', 'rear', 'left_front', 'left_side', 'left_rear', 'right_front', 'right_side', 'right_rear', 'roof', 'wheels'];
 export const INTERIOR_ZONES = ['driver_area', 'front_passenger', 'front_seats', 'rear_seats', 'dashboard', 'center_console', 'doors', 'trunk'];
 export const ZONES = [...EXTERIOR_ZONES, ...INTERIOR_ZONES];
+/* Phase 0B: зони моторного відсіку і днища для exterior-спеціаліста; gate
+   і злиття працюють з повним переліком, загальна схема лишається 18-зонною
+   (baseline Phase 0 без змін) */
+export const EXTRA_EXTERIOR_ZONES = ['engine_bay', 'underbody'];
+export const ALL_ZONES = [...ZONES, ...EXTRA_EXTERIOR_ZONES];
 export const VISIBILITY = ['sufficient', 'partial', 'not_visible'];
 export const FINDING_KINDS = ['scratch_scuff', 'chip', 'dent', 'crack', 'broken_component', 'missing_component', 'panel_gap_alignment', 'paint_mismatch', 'repaint_sign',
   'wheel_damage', 'tire_issue', 'corrosion', 'wear', 'tear', 'plastic_damage', 'trim_damage', 'stain', 'headliner_damage', 'other_visible_damage'];
@@ -212,7 +217,7 @@ export function gateCurrentVisual(raw, frames) {
     summary: str(r.summary).slice(0, 600),
   };
   const zonesIn = r.zones && typeof r.zones === 'object' ? r.zones : {};
-  for (const z of ZONES) {
+  for (const z of ALL_ZONES) {
     const zi = zonesIn[z];
     if (!zi || typeof zi !== 'object') { stats.zones_filled++; out.zones[z] = { visibility: 'not_visible', frames: [], findings: [] }; continue; }
     const frs = (Array.isArray(zi.frames) ? zi.frames : []).filter(gi => byIndex.has(gi));
@@ -273,4 +278,170 @@ export function gateCurrentVisual(raw, frames) {
     out.dashboard.readable_messages.push({ text: str(m.text).slice(0, 160), ...rf, confidence: conf(m.confidence) });
   }
   return { current_visual: out, stats };
+}
+
+
+/* ======================================================================
+   Phase 0B: три паралельні спеціалісти (exterior / interior+equipment /
+   dashboard) на тих самих кадрах. Маршрутизація за типами кадрів
+   селектора (ті самі 15 категорій, що в production photo selector); у
+   benchmark типи для галерей без селектора дає та сама класифікація.
+   ====================================================================== */
+export const SELECTOR_TYPES = ['front', 'rear', 'side', 'dashboard', 'steering', 'center_console', 'doors', 'front_seats', 'rear_seats', 'roof', 'trunk', 'engine_bay', 'wheels', 'detail', 'other'];
+/* той самий текст, що в production селекторі (api/check.js), лише підпис
+   кадру i=<gallery_index> замість порядкового номера */
+export const SELECTOR_PROMPT = 'Класифікуй кадри оголошення авто за типом. Відповідай ЛИШЕ валідним JSON {"frames":[{"i":1,"type":"front"}]} з записом для КОЖНОГО кадру. type СТРОГО з переліку: front | rear | side | dashboard | steering | center_console | doors | front_seats | rear_seats | roof | trunk | engine_bay | wheels | detail | other. i це число з підпису i=N перед кадром.';
+export const ROUTE = {
+  exterior: new Set(['front', 'rear', 'side', 'wheels', 'roof', 'engine_bay', 'detail', 'other']),
+  interior: new Set(['dashboard', 'steering', 'center_console', 'doors', 'front_seats', 'rear_seats', 'trunk', 'roof', 'detail']),
+  dashboard: ['dashboard', 'steering'],
+};
+export const DASHBOARD_MAX_FRAMES = 3;
+/* frames: [{gallery_index, url, identity, high}], types: {gallery_index: type}.
+   Кадр без типу трактується як detail (іде обом condition-спеціалістам).
+   Dashboard: 1-3 найкращі кадри приладів: спершу type dashboard (high
+   раніше low), потім steering. */
+export function routeFrames(frames, types = {}) {
+  const t = f => SELECTOR_TYPES.includes(types[f.gallery_index]) ? types[f.gallery_index] : 'detail';
+  const exterior = frames.filter(f => ROUTE.exterior.has(t(f)));
+  const interior = frames.filter(f => ROUTE.interior.has(t(f)));
+  const rank = f => (ROUTE.dashboard.indexOf(t(f)) * 2) + (f.high ? 0 : 1);
+  const dashboard = frames.filter(f => ROUTE.dashboard.includes(t(f))).sort((a, b) => rank(a) - rank(b) || a.gallery_index - b.gallery_index).slice(0, DASHBOARD_MAX_FRAMES);
+  return { exterior, interior, dashboard, types: Object.fromEntries(frames.map(f => [f.gallery_index, t(f)])) };
+}
+
+const COMMON_HEAD = `КАДРИ: кожен кадр підписаний [gallery_index=N]. У будь-якому посиланні на кадр використовуй САМЕ це число. Кадр без підпису не існує. Кадр очевидно іншого авто (інша модель, колір, кузов) або сторонню графіку ігноруй.
+
+СТОРОНИ: left/right це сторони САМОГО АВТО з місця водія, а не сторони кадру. Авто зняте спереду: права сторона авто візуально зліва кадру.
+
+ДОКАЗОВІСТЬ: будь-яка знахідка без конкретного кадру і конкретної видимої ознаки не існує. sign описує те, що видно, а не висновок. Краще пропустити сумнівне, ніж впевнено вигадати. Мова значень: українська, коротко.`;
+const ZONE_SEMANTICS = `Для КОЖНОЇ зі своїх зон постав visibility: sufficient (видно достатньо, щоб помітити помітну проблему), partial (видно частково), not_visible (на кадрах зони немає); frames: gallery_index кадрів, де зона видна. Зона sufficient з порожнім findings означає лише "на доступному зображенні помітної проблеми не знайдено", і НІКОЛИ: "заводська фарба", "ремонту не було", "прихованих пошкоджень немає".`;
+
+export const SPECIALIST_RULES = {
+  exterior: `Ти оглядач зовнішнього стану авто CalCar. Перед тобою ЛИШЕ поточні зовнішні кадри оголошення (кузов, колеса, дах, моторний відсік, днище, деталі). Єдина задача: зафіксувати ФАКТИЧНИЙ поточний стан. Жодних висновків про історію, минулі ДТП, якість ремонту, механіку чи рішення.
+
+${COMMON_HEAD}
+
+ЗОНИ (12): front, rear, left_front, left_side, left_rear, right_front, right_side, right_rear, roof, wheels, engine_bay, underbody. ${ZONE_SEMANTICS}
+
+ЩО ШУКАТИ (лише те, що справді видно): подряпини і потертості, сколи, вмʼятини, тріщини, зламані чи відсутні деталі, явно нерівний зазор чи посадка панелі, явний різнотон фарби, ознаки перефарбування чи дефекти покриття ЛИШЕ коли зображення реально це показує (шагрень, напил, маскувальні межі, сліди полірування), пошкодження дисків (бордюрні потертості, згини), очевидні проблеми шин (знос до індикатора, тріщини, грижа), корозія (кузов, днище, вихлоп, кріплення, підрамники), видимі проблеми днища (течі, пошкоджені захисти, зірвані кріплення), видимі проблеми моторного відсіку (течі, пошкодження, відсутні деталі, кустарні переробки), інші очевидні пошкодження. Різнотон і перефарбування: відблиск, різне освітлення чи кут зйомки НЕ є ознакою; якщо єдине, що ти бачиш, це "виглядає інакше через світло", знахідку не створюй або став confidence low. Механічні діагнози по фото заборонені.
+
+ЗОВНІШНІ МОДИФІКАЦІЇ (modification_candidates): спойлери, обвіси, сплітери, дифузори, нестандартний випуск, диски незаводського вигляду (бренд лише якщо читабельний), плівка, помітно занижена посадка, карбонові деталі, нештатні елементи у моторному відсіку (впуск, блоу-офф тощо, бренд лише читабельний). basis: brand_readable (читабельний бренд), visible_alteration (видно сліди переробки чи нештатне кріплення), non_standard_fitment, aftermarket_look (лише вигляд), unclear. Якщо неможливо відрізнити від заводського виконання, basis unclear і confidence low. Вартість не пиши.`,
+
+  interior: `Ти оглядач салону і комплектації авто CalCar. Перед тобою ЛИШЕ поточні кадри салону, дверей, багажника і деталей оголошення. Дві задачі: (1) фактичний стан салону; (2) комплектація, яку МОЖНА ПІДТВЕРДИТИ фото. Жодних висновків про історію, реальний пробіг, вартість опцій чи рішення.
+
+${COMMON_HEAD}
+
+ЗОНИ (8): driver_area, front_passenger, front_seats, rear_seats, dashboard, center_console, doors, trunk. ${ZONE_SEMANTICS}
+
+СТАН: помітний знос керма (полірована шкіра, протертості), знос/тріщини/розриви сидінь, пошкодження пластику, дверних карт і накладок, помітні плями, пошкодження стелі, зламані чи відсутні елементи, інші очевидні візуальні проблеми. Дуже виражений знос фіксуй як факт (kind wear), але НЕ роби висновків про реальний пробіг.
+
+КОМПЛЕКТАЦІЯ (equipment_visual): опції, які підтверджує кадр: читабельний бренд акустики (Harman Kardon, Burmester, Bang & Olufsen, Bose, Bowers & Wilkins), панорамний дах або люк, HUD (проектор на торпедо чи проекція на склі), кнопки вентиляції / підігріву / масажу / памʼяті сидінь, електроприводи сидінь, кнопки чи важелі адаптивного круїзу і асистентів, індикатори контролю сліпих зон у дзеркалах, обʼєктиви камер (дзеркала, решітка, кришка багажника), задній клімат, цифрова приладова панель, спортивні сидіння, карбонові чи преміальні вставки, алькантара (лише за читабельним маркуванням чи однозначною фактурою), брендовані елементи інтерʼєру, інші явно видимі важливі опції. Для кожної: normalized_name (коротко і однаково для однакових речей: "камера заднього виду", "електрорегулювання передніх сидінь", "підігрів передніх сидінь"), що саме видно, категорія, кадр, ознака, confidence. Бренд ЛИШЕ за читабельним логотипом. Ти НЕ вирішуєш, чи опція базова, платна, пакетна, рідкісна чи дорога.
+
+ВНУТРІШНІ МОДИФІКАЦІЇ (modification_candidates): нештатні керма, накладки, екрани, мультимедіа, спортивні педалі тощо, лише з basis і видимою ознакою; заводське від нештатного не відрізнити: basis unclear, confidence low.`,
+
+  dashboard: `Ти зчитувач приладової панелі CalCar. Перед тобою 1-3 поточні кадри приладів / екранів авто. Єдина задача: ВИТЯГТИ читабельні факти. Причини попереджень не пояснюй, стан авто не оцінюй.
+
+${COMMON_HEAD}
+
+ОДОМЕТР: якщо число пробігу читабельне, поверни value (ціле), unit (km | mi | unknown), кадр, ознаку ("цифри 151975 km у нижньому рядку між шкалами"), confidence. Нечитабельно або нема: odometer_reading null, не вигадуй.
+ІНДИКАТОРИ: лише читабельні написи чи однозначно впізнавані піктограми (check engine, ABS, подушка/SRS, тиск у шинах, рівень пального, акумулятор, температура, service). Кожен з кадром і ознакою.
+ПОВІДОМЛЕННЯ: інші читабельні важливі повідомлення на приладах або центральному екрані (сервіс, помилки, пакети функцій, оновлення). Дрібне меню без значення не перелічуй.`,
+};
+
+const S2 = (type, description, extra = {}) => ({ type, ...(description ? { description } : {}), ...extra });
+export function buildSpecialistSchema(kind) {
+  const zoneRef = { $ref: '#/$defs/zone' };
+  const zoneDef = { ...ZONE, properties: { ...ZONE.properties, findings: ARR({ $ref: '#/$defs/finding' }) } };
+  const mods = ARR(OBJ({ feature: S2('string'), basis: E(MOD_BASIS), gallery_index: GI, sign: S2('string'), confidence: E(CONFIDENCE) }));
+  const coverage = OBJ({ frames_received: S2('integer'), frames_usable: S2('integer'), quality_flags: ARR(E(QUALITY_FLAGS)), note: NS('1 речення про обмеження або null') });
+  let schema;
+  if (kind === 'exterior') {
+    const zones = {}; for (const z of [...EXTERIOR_ZONES, ...EXTRA_EXTERIOR_ZONES]) zones[z] = zoneRef;
+    schema = OBJ({ coverage, zones: OBJ(zones), modification_candidates: mods, summary: S2('string') });
+    schema.$defs = { finding: FINDING, zone: zoneDef };
+  } else if (kind === 'interior') {
+    const zones = {}; for (const z of INTERIOR_ZONES) zones[z] = zoneRef;
+    schema = OBJ({
+      coverage, zones: OBJ(zones),
+      equipment_visual: ARR(OBJ({ normalized_name: S2('string'), visible_label_or_feature: S2('string'), category: E(EQUIPMENT_CATEGORIES), gallery_index: GI, sign: S2('string'), confidence: E(CONFIDENCE) })),
+      modification_candidates: mods, summary: S2('string'),
+    });
+    schema.$defs = { finding: FINDING, zone: zoneDef };
+  } else if (kind === 'dashboard') {
+    schema = OBJ({
+      frames_usable: S2('integer'),
+      dashboard: OBJ({
+        visible: S2('boolean'), ignition_on: S2(['boolean', 'null']),
+        odometer_reading: { anyOf: [OBJ({ value: S2('integer'), unit: E(['km', 'mi', 'unknown']), gallery_index: GI, sign: S2('string'), confidence: E(CONFIDENCE) }), S2('null')] },
+        warning_lights: ARR(OBJ({ light: S2('string'), gallery_index: GI, sign: S2('string'), confidence: E(CONFIDENCE) })),
+        readable_messages: ARR(OBJ({ text: S2('string'), gallery_index: GI, confidence: E(CONFIDENCE) })),
+      }),
+    });
+  } else throw new Error('unknown specialist ' + kind);
+  return schema;
+}
+export function specialistResponseFormat(kind) {
+  return { type: 'json_schema', json_schema: { name: 'calcar_current_visual_' + kind, strict: true, schema: buildSpecialistSchema(kind) } };
+}
+
+/* результат спеціаліста -> та сама форма, що в general (через gate), лише
+   свої частини; решта порожня */
+export function gateSpecialist(kind, raw, frames) {
+  const r = raw && typeof raw === 'object' ? raw : {};
+  const shaped = { coverage: r.coverage || { frames_usable: r.frames_usable }, zones: r.zones || {}, equipment_visual: kind === 'interior' ? r.equipment_visual : [], notable_visual_features: [], modification_candidates: kind === 'dashboard' ? [] : r.modification_candidates, dashboard: kind === 'dashboard' ? r.dashboard : {}, summary: r.summary || '' };
+  const out = gateCurrentVisual(shaped, frames);
+  out.current_visual.specialist = kind;
+  return out;
+}
+
+/* злиття трьох спеціалістів у один current_visual: зони від свого
+   спеціаліста (exterior: 10 + engine_bay/underbody; interior: 8), опції
+   від interior, модифікації обʼєднані з позначкою джерела, приладова
+   панель від dashboard-спеціаліста (або порожня, якщо кадрів приладів не
+   було) */
+export function mergeSpecialists({ exterior = null, interior = null, dashboard = null } = {}, frames = []) {
+  const empty = gateCurrentVisual(null, frames).current_visual;
+  const out = { ...empty, version: CURRENT_VISUAL_VERSION + '-parallel', zones: {}, specialists: {} };
+  for (const z of ALL_ZONES) {
+    const src = INTERIOR_ZONES.includes(z) ? interior : exterior;
+    out.zones[z] = src && src.zones && src.zones[z] ? src.zones[z] : { visibility: 'not_visible', frames: [], findings: [] };
+  }
+  out.equipment_visual = interior ? interior.equipment_visual : [];
+  out.modification_candidates = [
+    ...(exterior ? exterior.modification_candidates.map(m => ({ ...m, source: 'exterior' })) : []),
+    ...(interior ? interior.modification_candidates.map(m => ({ ...m, source: 'interior' })) : []),
+  ];
+  out.dashboard = dashboard ? dashboard.dashboard : empty.dashboard;
+  out.coverage = {
+    frames_received: frames.length,
+    frames_usable: [exterior, interior].filter(Boolean).reduce((n, x) => n + (x.coverage.frames_usable || 0), 0) || null,
+    quality_flags: [...new Set([...(exterior ? exterior.coverage.quality_flags : []), ...(interior ? interior.coverage.quality_flags : [])])],
+    note: [exterior && exterior.coverage.note, interior && interior.coverage.note].filter(Boolean).join(' ') || null,
+  };
+  out.summary = [exterior && exterior.summary, interior && interior.summary].filter(Boolean).join(' ');
+  out.specialists = { exterior: !!exterior, interior: !!interior, dashboard: !!dashboard };
+  return out;
+}
+
+/* легка нормалізація понять комплектації для порівняння між прогонами:
+   синоніми одного поняття ("камера заднього виду" / "задня камера") дають
+   один ключ. Це НЕ база опцій і не показується користувачу */
+export const EQUIPMENT_CONCEPTS = [
+  ['harman_kardon', /harman/i], ['bose', /\bbose\b/i], ['burmester', /burmester/i], ['bang_olufsen', /bang|olufsen|b&o/i], ['bowers_wilkins', /bowers|b&w/i], ['premium_audio', /акустик|аудіо|audio|динамік|сабвуфер/i],
+  ['panoramic_roof', /панорам|люк|sunroof/i], ['hud', /\bhud\b|проекц/i], ['digital_cluster', /цифров.*(панел|прилад)|virtual cockpit/i], ['central_display', /центральн.*(дисплей|екран)|мультимед.*екран|екран мультимед|сенсорн.*(дисплей|екран)|мультимедійн.*систем/i],
+  ['heated_wheel', /підігрів.*керм|керм.*підігрів/i],
+  ['seat_power', /електрорегул|електропривод|електричн.*(сидін|крісл)/i], ['seat_memory', /пам.?ят/i], ['seat_heating', /підігрів/i], ['seat_ventilation', /вентиляц/i], ['seat_massage', /масаж/i], ['sport_seats', /спортивн.*(сид|крісл)|бічн.*підтрим|комфортн.*сид/i], ['leather', /шкір/i],
+  ['rear_climate', /задн.*(клімат|дефлектор|обдув)|дефлектор.*задн/i], ['dual_zone_climate', /двозонн|роздільн.*клімат|клімат-контрол/i], ['ambient_lighting', /підсвіч|підсвіт|ambient/i], ['wood_trim', /дерев/i], ['carbon_trim', /карбон|вуглепласт/i], ['alcantara', /алькантар|замш/i], ['aluminium_trim', /алюмін/i],
+  ['parking_sensors', /паркув|парктрон|датчик/i], ['rear_camera', /камера заднього|задня камера|камера.*задн/i], ['surround_camera', /кругов|360|камера в корпусі|камер.*дзеркал/i], ['adaptive_cruise', /круїз|cruise|дистрон/i], ['lane_assist', /смуг/i], ['blind_spot', /сліп/i], ['gesture_control', /жест/i], ['navigation', /навігац/i], ['driver_assist_other', /асистент|автопілот|попереджен|гальмуван/i],
+  ['carplay', /carplay|android auto/i], ['m_steering_wheel', /кермо|кермов/i], ['sport_chrono_clock', /chrono|годинник|хронометр/i], ['paddles', /пелюст/i], ['colored_calipers', /супорт/i], ['badge', /edrive|напис|шильд/i], ['roof_rails', /рейлінг/i], ['fog_lights', /протитуман/i], ['manual_gearbox', /механічн.*коробк/i], ['cargo_cover', /шторк|сітк/i], ['keyless', /безключов|keyless/i], ['led_lights', /led|світлодіод|лазерн|адаптивн.*(фар|оптик)/i], ['wireless_charging', /бездрот.*заряд/i], ['heated_wheel', /підігрів.*керм/i],
+];
+export function equipmentConcept(name) {
+  const n = String(name || '').toLowerCase();
+  for (const [key, rx] of EQUIPMENT_CONCEPTS) if (rx.test(n)) return key;
+  return 'other:' + n.replace(/\s+/g, ' ').trim().slice(0, 60);
+}
+/* модифікація "підтверджена" лише з читабельним брендом або видимою переробкою */
+export function modificationConfirmed(m) {
+  return !!m && (m.basis === 'brand_readable' || m.basis === 'visible_alteration') && m.confidence !== 'low';
 }
