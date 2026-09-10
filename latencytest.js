@@ -73,7 +73,7 @@ if (/_meta\.timings|\.timings\b/.test(ui)) errs.push('сторінка звіт�
   /* окремий effort для описового читання, основний виклик не чіпається */
   if (!/const HV_EFFORT = process\.env\.HV_REASONING_EFFORT \|\| 'low';/.test(src)) errs.push('нема окремого reasoning effort для hv');
   if (!/let mainBody = modelBody\(content, true, mainSystem, mainFormat\);/.test(src)) errs.push('основний виклик не з системним префіксом правил і структурною схемою');
-  if (!/const EFFORT = BENCH_EFFORT \|\| process\.env\.REASONING_EFFORT \|\| 'high';/.test(src) || !/if \(withEffort && EFFORT !== 'off'\) b\.reasoning_effort = EFFORT;/.test(src)) errs.push('reasoning effort основного виклику змінено');
+  if (!/const EFFORT = BENCH_EFFORT \|\| process\.env\.REASONING_EFFORT \|\| 'medium';/.test(src) || !/if \(withEffort && EFFORT !== 'off'\) b\.reasoning_effort = EFFORT;/.test(src)) errs.push('reasoning effort основного виклику змінено (типово medium з 2026-09-10)');
   /* мітка reuse чесно каже single_read */
   if (!/hvCache\.consensus\.mode === 'single' \? 'single_read'/.test(src)) errs.push('reuse.historical_visual не відрізняє одиничне читання');
 }
@@ -135,9 +135,9 @@ if (!/severe: 2\.4/.test(v3)) errs.push('Score v3 змінено');
   if (mk('S', 'U', 'https://cdn7.riastatic.com/photos/a/1.jpg', 'high', '{"a":1}').input !== f0.input) errs.push('відбиток залежить від CDN-піддомену кадру');
   for (const [n, f] of [['system', mk('S2', 'U', 'https://cdn2.riastatic.com/photos/a/1.jpg', 'high', '{"a":1}')], ['user', mk('S', 'U2', 'https://cdn2.riastatic.com/photos/a/1.jpg', 'high', '{"a":1}')], ['detail', mk('S', 'U', 'https://cdn2.riastatic.com/photos/a/1.jpg', 'low', '{"a":1}')], ['schema', mk('S', 'U', 'https://cdn2.riastatic.com/photos/a/1.jpg', 'high', '{"a":2}')]]) if (f.input === f0.input) errs.push('відбиток input не реагує на зміну ' + n);
   if (!/mainPayloadBreakdown\(mainSystem, content, \{[\s\S]*?\}, JSON\.stringify\(mainFormat\)\)/.test(src)) errs.push('відбиток схеми не передається у payload основного виклику');
-  /* benchmark effort: лише high|medium з тіла запиту, типова поведінка REASONING_EFFORT || high; інші виклики без effort */
+  /* benchmark effort: лише high|medium з тіла запиту, типова поведінка REASONING_EFFORT || medium; інші виклики без effort */
   if (!/const BENCH_EFFORT = \(req\.body && \(req\.body\.bench_effort === 'high' \|\| req\.body\.bench_effort === 'medium'\)\) \? req\.body\.bench_effort : null;/.test(src)) errs.push('bench_effort не обмежений high|medium');
-  if (!/const EFFORT = BENCH_EFFORT \|\| process\.env\.REASONING_EFFORT \|\| 'high';/.test(src)) errs.push('типовий effort основного виклику змінився');
+  if (!/const EFFORT = BENCH_EFFORT \|\| process\.env\.REASONING_EFFORT \|\| 'medium';/.test(src)) errs.push('типовий effort основного виклику змінився');
   const withEffortLines = src.split('\n').filter(l => /modelBody\(/.test(l) && !/const modelBody/.test(l) && !/, false[,)]/.test(l));
   if (withEffortLines.some(l => !/mainSystem, mainFormat\)/.test(l))) errs.push('effort отримує не лише основний виклик: ' + withEffortLines.map(l => l.trim()).join(' | '));
   if (errs.length) { console.log('LATENCY TEST FAILED:'); errs.forEach(e => console.log('  - ' + e)); process.exit(1); }

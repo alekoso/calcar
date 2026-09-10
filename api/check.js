@@ -2522,11 +2522,13 @@ async function runCheck(req, res, job) {
     /* BENCHMARK-режим (bench_effort у тілі запиту, лише 'high' | 'medium'):
        reasoning_effort ОСНОВНОГО виклику для контрольованого порівняння
        high/medium на тому самому input. Без цього поля поведінка типова
-       (REASONING_EFFORT || high). withEffort=true має лише основний
+       (REASONING_EFFORT || medium: з 2026-09-10 продакшн іде на medium за
+       результатом benchmark, high лишається для benchmark/debug через
+       bench_effort або env). withEffort=true має лише основний
        виклик; селектор кадрів і верифікатор ідуть без effort, історичний
        Vision має свій HV_REASONING_EFFORT: їх benchmark не чіпає */
     const BENCH_EFFORT = (req.body && (req.body.bench_effort === 'high' || req.body.bench_effort === 'medium')) ? req.body.bench_effort : null;
-    const EFFORT = BENCH_EFFORT || process.env.REASONING_EFFORT || 'high';
+    const EFFORT = BENCH_EFFORT || process.env.REASONING_EFFORT || 'medium';
     const modelBody = (c, withEffort = true, system = null, responseFormat = null) => {
       const b = {
         model: process.env.OPENAI_MODEL || 'gpt-5.6-terra',
