@@ -255,10 +255,13 @@ const errs = [];
       const gaps = MERGE.canonicalGaps(m.items, cvEq);
       if (gaps.confirmed_modifications !== 1 || gaps.unreported !== 1) errs.push('пропущені модифікації не рахуються: ' + JSON.stringify(gaps));
       const cond = [{ zone: 'front', kind: 'dent', severity: 'moderate', photo: 3, sign: 'вмʼятина' }, { zone: 'rear_seats', kind: 'tear', severity: 'severe', photo: 9, sign: 'розрив' }];
-      const mc = MERGE.mergeCanonicalConditions([{ status: 'warn', text: 'Спереди вмятина.' }], cond, 'ru');
+      const mc = MERGE.mergeCanonicalConditions([{ status: 'warn', text: 'Спереди вмятина, photo_3.' }], cond, 'ru');
       if (mc.stats.filled_by_code !== 1 || mc.items.length !== 2) errs.push('загублена знахідка не дописана: ' + JSON.stringify(mc.stats));
       if (mc.items[1].status !== 'bad' || !/photo_9/.test(mc.items[1].text)) errs.push('дописаний пункт без кадру або зі втраченою серйозністю: ' + JSON.stringify(mc.items[1]));
       if (MERGE.mergeCanonicalConditions([{ status: 'warn', text: 'a' }, { status: 'warn', text: 'b' }], cond, 'ru').stats.filled_by_code !== 0) errs.push('код дописує вже переказані знахідки');
+      /* модель переказала ДРУГУ знахідку: дописати треба першу, а не дубль */
+      const mc2 = MERGE.mergeCanonicalConditions([{ status: 'bad', text: 'Разрыв обивки, photo_9.' }], cond, 'ru');
+      if (mc2.stats.filled_by_code !== 1 || !/photo_3/.test(mc2.items[1].text) || /photo_9/.test(mc2.items[1].text)) errs.push('дописана не та знахідка: ' + JSON.stringify(mc2.items));
       const blk = MERGE.decisionEvidenceBlock({ zones: {}, equipment_visual: cvEq.equipment_visual, modification_candidates: [], coverage: { frames_received: 20, quality_flags: [] }, dashboard: { engine_state: 'running', odometer_reading: { value: 123456, unit: 'km' }, warning_lights: [], readable_messages: [] } }, 20, 'ru');
       if (/123456|odometer/.test(blk)) errs.push('одометр потрапив у компактний доказ');
       if (/кнопки підігріву на консолі/.test(blk)) errs.push('ознаки підтверджених опцій досі їдуть у main');

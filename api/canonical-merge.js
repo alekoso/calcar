@@ -193,7 +193,13 @@ export function mergeCanonicalConditions(findings, compactFindings, lang) {
   const spoken = list.filter(f => f && (f.status === 'warn' || f.status === 'bad')).length;
   const stats = { canonical: canonical.length, from_main: spoken, filled_by_code: 0 };
   if (canonical.length > spoken) {
-    for (const f of canonical.slice(spoken)) {
+    /* модель могла переказати не перші за порядком знахідки: пункт, чий
+       кадр уже згаданий у тексті, повторно не дописуємо */
+    const said = list.map(f => String((f && f.text) || '')).join(' ');
+    for (const f of canonical) {
+      const ref = photoRef(Number(f.photo) - 1);
+      if (new RegExp('\\b' + ref + '\\b').test(said)) continue;
+      if (stats.filled_by_code >= canonical.length - spoken) break;
       const text = conditionSentence(f, lang);
       if (!text) continue;
       list.push({ status: f.severity === 'severe' ? 'bad' : 'warn', text });
