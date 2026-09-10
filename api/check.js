@@ -2634,6 +2634,7 @@ async function runCheck(req, res, job) {
        оголошенням робить код. Збій, невалідна відповідь чи таймаут
        фіксуються в телеметрії і не впливають на Check */
     const cvMode = process.env.CV_MODE === 'shadow' || (req.body && req.body.cv_mode === 'shadow') ? 'shadow' : null;
+    const CV_SHADOW_MAX_WAIT_MS = 8000;
     let cvShadow = null;
     const tCv = Date.now();
     if (cvMode === 'shadow') {
@@ -3334,11 +3335,14 @@ async function runCheck(req, res, job) {
     mark('equipment_verifier', eqVerifier.ms || 0, eqVerifier.status === 'done' ? 'executed' : 'skipped',
       { reason: eqVerifier.reason || null, ai: eqVerifier.status === 'done' ? aiUsage({ usage: eqVerifier.tokens, model: eqVerifier.model }, { model: process.env.OPENAI_MODEL || 'gpt-5.6-terra' }) : null });
 
-    /* shadow Vision: чекаємо лише залишок бюджету; результат лише в _meta */
+    /* shadow Vision: готовий звіт не тримаємо: чекаємо щонайбільше
+       CV_SHADOW_MAX_WAIT_MS (Vision стартував паралельно з основним
+       викликом і зазвичай уже завершився); інакше статус timeout,
+       результат лише в _meta */
     let cvShadowResult = null, cvWaited = 0;
     if (cvShadow) {
       const tWait = Date.now();
-      cvShadowResult = await Promise.race([cvShadow, new Promise(r => setTimeout(() => r({ status: 'timeout', ms: Date.now() - tCv }), Math.max(1000, Math.min(60000, 280000 - (Date.now() - tRun)))))]);
+      cvShadowResult = await Promise.race([cvShadow, new Promise(r => setTimeout(() => r({ status: 'timeout', ms: Date.now() - tCv }), Math.max(1000, Math.min(CV_SHADOW_MAX_WAIT_MS, 280000 - (Date.now() - tRun)))))]);
       cvWaited = Date.now() - tWait;
       cvShadowResult.waited_ms = cvWaited;
       mark('current_vision_shadow', cvShadowResult.ms || 0, cvShadowResult.status, { waited_ms: cvWaited, ai: cvShadowResult.ai || null, photos: cvShadowResult.photos || null, error: cvShadowResult.error || null });

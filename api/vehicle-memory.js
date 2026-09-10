@@ -72,13 +72,23 @@ export function photoVariantWidth(url) {
   const m = /[?&](?:w|width)=(\d+)|[?&]resize=(\d+)/i.exec(u);
   return m ? parseInt(m[1] || m[2], 10) : 0;
 }
+/* query вважається розмірним варіантом лише коли складається з параметрів
+   розміру/якості (w, h, width, height, resize, crop, fit, quality, format);
+   інший query (?id=123, ?photo=abc) відрізняє РІЗНІ кадри і лишається у ключі */
+export const SIZE_QUERY_RE = /^(?:(?:w|h|width|height|resize|crop|fit|quality|q|format|auto|ssl)=[^&]*)(?:&(?:w|h|width|height|resize|crop|fit|quality|q|format|auto|ssl)=[^&]*)*$/i;
+export function photoVariantKey(url) {
+  const id = photoIdentity(url);
+  const q = (String(url).split('?')[1] || '').split('#')[0];
+  if (!q || SIZE_QUERY_RE.test(q)) return id;
+  return id + '?' + q.toLowerCase();
+}
 export function dedupePhotoVariants(urls) {
   const byId = new Map();
   let removed = 0;
   for (const raw of Array.isArray(urls) ? urls : []) {
     if (typeof raw !== 'string') continue;
     const url = raw.trim().replace(/&amp;/g, '&');
-    const id = photoIdentity(url);
+    const id = photoVariantKey(url);
     if (!id) continue;
     const cur = byId.get(id);
     if (!cur) { byId.set(id, url); continue; }

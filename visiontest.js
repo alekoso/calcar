@@ -212,6 +212,13 @@ const errs = [];
   if (dd.photos.some(u => /w=150|w=144|resize=144,/.test(u))) errs.push('BaT: мініатюра виграла');
   if (dd.photos[0] !== base + g.car[0] || dd.photos[1] !== base + g.car[1]) errs.push('BaT: порядок першої появи порушено');
   if (VM.dedupePhotoVariants(['https://cdn1.riastatic.com/a.webp', 'https://cdn2.riastatic.com/b.webp']).removed !== 0) errs.push('RIA-галерея без варіантів не має втрачати кадри');
+  /* різні кадри, які площадка відрізняє лише query (?id=), НЕ склеюються; розмірні query склеюються */
+  const q = VM.dedupePhotoVariants(['https://img.site.com/photo.php?id=1', 'https://img.site.com/photo.php?id=2', 'https://img.site.com/photo.php?id=1&w=300', 'https://img.site.com/p/1.jpg?w=200&h=150', 'https://img.site.com/p/1.jpg?resize=1024,768&quality=80']);
+  if (q.photos.length !== 4 || q.removed !== 1 || !q.photos.some(u => u.endsWith('resize=1024,768&quality=80'))) errs.push('дедуплікація за query: ' + JSON.stringify(q));
+  if (VM.photoVariantKey('https://a/x.jpg?id=5') === VM.photoVariantKey('https://a/x.jpg?id=6') || VM.photoVariantKey('https://a/x.jpg?w=1') !== VM.photoVariantKey('https://a/x.jpg')) errs.push('photoVariantKey');
+  /* shadow не тримає готовий звіт довше за коротку паузу */
+  const capM = /const CV_SHADOW_MAX_WAIT_MS = (\d+);/.exec(check);
+  if (!capM || Number(capM[1]) > 10000 || !/Math\.min\(CV_SHADOW_MAX_WAIT_MS, 280000/.test(check)) errs.push('shadow може тримати звіт довше 10 с');
   if (!/const dedup = dedupePhotoVariants\(photos\);/.test(check) || !/photo_variants_removed: dedup\.removed/.test(check)) errs.push('extractListing не дедуплікує варіанти кадрів');
 
   for (const f of ['api/current-visual.js', 'api/vision-bench.js', 'visiontest.js']) if (/\u2014/.test(fs.readFileSync(f, 'utf8'))) errs.push('довге тире у ' + f);
