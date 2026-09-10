@@ -206,7 +206,40 @@ const errs = [];
   if (CV.frameDetailPlan(fr2, { 0: 'front', 5: 'rear' }, new Set([0])).high.join() !== '0') errs.push('high-слот селектора має лишатись high');
   if (CV.frameDetailPlan(fr2, null, null).source !== 'all_high_no_types' || CV.frameDetailPlan(fr2, null, null).low.length) errs.push('без типів усі кадри мають бути high');
   const odo = CV.odometerDiscrepancy({ dashboard: { odometer_reading: { value: 30688, unit: 'km', gallery_index: 10, photo_identity: 'p', confidence: 'high' } } }, 36000);
-  if (odo.status !== 'discrepancy_candidate' || odo.delta_km !== -5312 || odo.candidate !== true) errs.push('одометр: розбіжність не зафіксована: ' + JSON.stringify(odo));
+  if (odo.status !== 'discrepancy_candidate' || odo.delta_km !== -5312 || odo.candidate !== true || odo.needs_verification !== true) errs.push('одометр: розбіжність не зафіксована: ' + JSON.stringify(odo));
+  /* кандидат лише з high confidence і підтвердженою одиницею */
+  const odoMed = CV.odometerDiscrepancy({ dashboard: { odometer_reading: { value: 161828, unit: 'km', gallery_index: 40, photo_identity: 'p', confidence: 'medium' } } }, 168000);
+  if (odoMed.status !== 'unconfirmed_reading' || odoMed.candidate !== false) errs.push('одометр: medium не має ставати кандидатом: ' + JSON.stringify(odoMed));
+  const odoUnk = CV.odometerDiscrepancy({ dashboard: { odometer_reading: { value: 43524, unit: 'unknown', gallery_index: 19, photo_identity: 'p', confidence: 'high' } } }, 44000);
+  if (odoUnk.status !== 'unit_unknown' || odoUnk.candidate !== false) errs.push('одометр: невідома одиниця не має давати сигнал: ' + JSON.stringify(odoUnk));
+  /* одиниця лише з кадру: unit у відповіді без одиниці в ознаці -> unknown */
+  const unitGate = CV.gateCurrentVisual({ dashboard: { visible: true, engine_state: 'ignition_on_engine_off', odometer_reading: { value: 43524, unit: 'mi', gallery_index: 3, sign: 'цифри 43524 у нижній частині панелі', confidence: 'high' }, warning_lights: [], readable_messages: [] } }, sent);
+  if (unitGate.current_visual.dashboard.odometer_reading.unit !== 'unknown' || unitGate.stats.odometer_unit_unverified !== 1) errs.push('одиниця без згадки на кадрі має ставати unknown');
+  const unitOk = CV.gateCurrentVisual({ dashboard: { visible: true, engine_state: 'running', odometer_reading: { value: 43524, unit: 'mi', gallery_index: 3, sign: 'напис «43524 mi» під спідометром', confidence: 'high' }, warning_lights: [], readable_messages: [] } }, sent);
+  if (unitOk.current_visual.dashboard.odometer_reading.unit !== 'mi' || unitOk.current_visual.dashboard.engine_state !== 'running') errs.push('підтверджена одиниця або engine_state загубились');
+  if (CV.gateCurrentVisual({ dashboard: { engine_state: 'bogus' } }, sent).current_visual.dashboard.engine_state !== 'unknown') errs.push('engine_state без валідації');
+  /* правила: одиниця з кадру, engine_state, лампа це спостереження */
+  for (const need of ['ОДИНИЦЯ (km чи mi) зараховується ЛИШЕ коли вона написана на самому кадрі', 'СТАН ДВИГУНА (engine_state)', 'несправністю ти його не називаєш']) if (!CV.CURRENT_VISUAL_RULES.includes(need)) errs.push('правила без блоку: ' + need.slice(0, 30));
+  /* умовний верифікатор одометра */
+  const vSchema = CV.buildOdometerVerifierSchema(); walk(vSchema, 'verifier');
+  if (vSchema.properties.zones || vSchema.properties.equipment_visual) errs.push('верифікатор одометра розрісся до dashboard-спеціаліста');
+  if (/пробіг оголошення|listing|оголошенн/i.test(CV.ODOMETER_VERIFIER_RULES)) errs.push('верифікатору передається контекст оголошення');
+  const vFrames = CV.odometerVerifyFrames({ dashboard: { odometer_reading: { gallery_index: 5 } } }, CV.normalizeFrames([{ gallery_index: 0, url: a }, { gallery_index: 5, url: d }, { gallery_index: 8, url: 'https://cdn1.riastatic.com/x/9.webp' }]), { 0: 'front', 5: 'dashboard', 8: 'steering' });
+  if (vFrames.map(f => f.gallery_index).join() !== '5,8' || vFrames.some(f => !f.high)) errs.push('кадри для перевірки одометра: ' + JSON.stringify(vFrames.map(f => f.gallery_index)));
+  const vGate = CV.gateOdometerVerifier({ odometer_reading: { value: 168128, unit: 'km', gallery_index: 5, sign: 'напис «168128 km» у нижньому рядку', confidence: 'high' }, engine_state: 'ignition_on_engine_off' }, vFrames);
+  if (!vGate.odometer_reading || vGate.odometer_reading.value !== 168128 || vGate.engine_state !== 'ignition_on_engine_off') errs.push('gate верифікатора: ' + JSON.stringify(vGate));
+  if (CV.gateOdometerVerifier({ odometer_reading: { value: 1, unit: 'km', gallery_index: 99, sign: 'напис «1 km»', confidence: 'high' } }, vFrames).odometer_reading) errs.push('верифікатор приймає чужий кадр');
+  const rec1 = CV.reconcileOdometer({ value: 5273, unit: 'km' }, { odometer_reading: { value: 5273, unit: 'km' } });
+  const rec2 = CV.reconcileOdometer({ value: 161828, unit: 'km' }, { odometer_reading: { value: 168128, unit: 'km' } });
+  const rec3 = CV.reconcileOdometer({ value: 43524, unit: 'mi' }, { odometer_reading: { value: 43524, unit: 'km' } });
+  if (rec1.status !== 'confirmed' || rec2.status !== 'value_mismatch' || rec3.status !== 'unit_mismatch' || rec2.agreed || rec3.agreed) errs.push('звірка читань: ' + JSON.stringify([rec1.status, rec2.status, rec3.status]));
+  if (CV.reconcileOdometer({ value: 100000, unit: 'km' }, null).status !== 'verifier_no_reading') errs.push('звірка без другого читання');
+  /* у production верифікатор лише за кандидатом і всередині shadow-гілки */
+  if (!/if \(odo && odo\.needs_verification\) \{/.test(check)) errs.push('верифікатор запускається не лише за кандидатом');
+  const vIdx = check.indexOf('odometerVerifierResponseFormat()');
+  if (!(vIdx > iStart && vIdx < iWait)) errs.push('верифікатор має жити всередині shadow-гілки, паралельно з основним викликом');
+  if (!/odometer_verifier: verify/.test(check)) errs.push('результат верифікатора не зберігається');
+  if (!/status: 'uncertain_visual_reading', candidate: false/.test(check)) errs.push('незгода читань не знімає сигнал розбіжності');
   if (CV.odometerDiscrepancy({ dashboard: { odometer_reading: { value: 151975, unit: 'km', gallery_index: 17, photo_identity: 'p', confidence: 'high' } } }, 151000).status !== 'consistent') errs.push('одометр: 975 км / 0.6% (округлення продавця) не має бути кандидатом');
   if (CV.odometerDiscrepancy({ dashboard: { odometer_reading: { value: 167612, unit: 'km', gallery_index: 24, photo_identity: 'p', confidence: 'high' } } }, 163000).candidate !== true) errs.push('одометр: 4 612 км / 2.8% має бути кандидатом');
   if (CV.odometerDiscrepancy({ dashboard: { odometer_reading: { value: 20000, unit: 'mi', gallery_index: 1, photo_identity: 'p', confidence: 'medium' } } }, 32000).visual_km !== 32187) errs.push('одометр: милі не переводяться в км');

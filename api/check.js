@@ -19,7 +19,8 @@ import {
 /* Current Vehicle Vision v1: у production лише SHADOW (CV_MODE=shadow):
    результат зберігається в _meta для аудиту, основний виклик, Score, UI
    і Vehicle Memory його не отримують */
-import { CURRENT_VISUAL_RULES, currentVisualResponseFormat, frameContent, normalizeFrames, frameDetailPlan, gateCurrentVisual, frameSetFingerprint, summarizeCurrentVisual, odometerDiscrepancy, CURRENT_VISUAL_VERSION } from './current-visual.js';
+import { CURRENT_VISUAL_RULES, currentVisualResponseFormat, frameContent, normalizeFrames, frameDetailPlan, gateCurrentVisual, frameSetFingerprint, summarizeCurrentVisual, odometerDiscrepancy, CURRENT_VISUAL_VERSION,
+  ODOMETER_VERIFIER_RULES, odometerVerifierResponseFormat, odometerVerifyFrames, gateOdometerVerifier, reconcileOdometer } from './current-visual.js';
 /* спільні ідентичності і версії: тести і сусідні модулі беруть їх звідси */
 export { HISTORICAL_VISUAL_VERSION, photoIdentity, photoSetFingerprint, listingFingerprint, snapshotRow, listingKey, NHTSA_DECODER_VERSION, LISTING_FINGERPRINT_VERSION };
 
@@ -2673,7 +2674,38 @@ async function runCheck(req, res, job) {
         let raw = null;
         try { raw = JSON.parse(String(d.choices?.[0]?.message?.content || '')); } catch (e) { return { status: 'failed', error: 'invalid_json', ...base }; }
         const { current_visual, stats } = gateCurrentVisual(raw, plan.frames);
-        return { status: 'ok', ...base, summary: summarizeCurrentVisual(current_visual, stats), odometer_vs_listing: odometerDiscrepancy(current_visual, listing.odometer_km), current_visual };
+        let odo = odometerDiscrepancy(current_visual, listing.odometer_km);
+        let verify = null;
+        /* УМОВНА перевірка одометра: лише коли з'явився кандидат на
+           розбіжність. Другий короткий виклик по 1-3 кадрах приладів
+           (high) стартує одразу, поки основний виклик ще працює, і
+           пробігу оголошення НЕ бачить: код лише звіряє два незалежні
+           читання. Незгода знімає сигнал, а не "виправляє" число */
+        if (odo && odo.needs_verification) {
+          const vFrames = odometerVerifyFrames(current_visual, plan.frames, typesByIndex);
+          const tV = Date.now();
+          try {
+            const vBody = {
+              model: process.env.OPENAI_MODEL || 'gpt-5.6-terra', max_completion_tokens: 3000, reasoning_effort: 'low',
+              response_format: odometerVerifierResponseFormat(),
+              messages: [{ role: 'system', content: ODOMETER_VERIFIER_RULES }, { role: 'user', content: frameContent(vFrames, 'high') }],
+            };
+            const vd = await callModel(vBody, 45000);
+            let vRaw = null;
+            try { vRaw = JSON.parse(String(vd.choices?.[0]?.message?.content || '')); } catch (e) { vRaw = null; }
+            const gated = vRaw ? gateOdometerVerifier(vRaw, vFrames) : null;
+            const rec = reconcileOdometer(current_visual.dashboard.odometer_reading, gated);
+            verify = { status: gated ? 'ok' : (vd && vd.error ? 'failed' : 'invalid_json'), ms: Date.now() - tV, ai: aiUsage(vd, vBody),
+              frames: vFrames.map(f => f.gallery_index), reading: gated ? gated.odometer_reading : null, engine_state: gated ? gated.engine_state : null, reconcile: rec };
+            odo = rec.agreed
+              ? { ...odo, status: 'discrepancy_candidate', verified: true, verifier_value: rec.verifier.value }
+              : { ...odo, status: 'uncertain_visual_reading', candidate: false, verified: false, verifier_status: rec.status };
+          } catch (e) {
+            verify = { status: 'failed', ms: Date.now() - tV, error: String((e && e.message) || e).slice(0, 120) };
+            odo = { ...odo, status: 'uncertain_visual_reading', candidate: false, verified: false, verifier_status: 'failed' };
+          }
+        }
+        return { status: 'ok', ...base, summary: summarizeCurrentVisual(current_visual, stats), odometer_vs_listing: odo, odometer_verifier: verify, current_visual };
       })().catch(e => ({ status: 'failed', ms: Date.now() - tCv, error: String((e && e.message) || e).slice(0, 160) }));
     }
     /* image-level provenance: у Vision ЛИШЕ кадри, чия належність exact lot

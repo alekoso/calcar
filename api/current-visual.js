@@ -36,6 +36,11 @@ export const SEVERITY = ['minor', 'moderate', 'severe'];
 export const CONFIDENCE = ['high', 'medium', 'low'];
 export const EQUIPMENT_CATEGORIES = ['audio', 'roof', 'display', 'seats', 'climate', 'driver_assist', 'camera_parking', 'interior_trim', 'lighting', 'wheels', 'other'];
 export const MOD_BASIS = ['brand_readable', 'aftermarket_look', 'non_standard_fitment', 'visible_alteration', 'unclear'];
+export const ENGINE_STATES = ['running', 'ignition_on_engine_off', 'unknown'];
+/* одиниця пробігу зараховується лише коли вона написана поруч із числом на
+   кадрі (модель мусить процитувати її в sign). Ніякого вибору одиниці за
+   збігом із пробігом оголошення: Vision оголошення не бачить */
+export const UNIT_IN_SIGN_RE = { km: /\bkm\b|\bкм\b/i, mi: /\bmi\b|\bmiles\b|\bмиль\b|\bміль\b|\bmph\b/i };
 export const QUALITY_FLAGS = ['studio', 'low_light', 'wet_surface', 'heavy_reflections', 'filters_or_editing', 'small_or_blurry', 'wrap_or_film_visible', 'dirt_or_snow'];
 /* види знахідок, які без сильного видимого доказу дають лише low */
 export const PAINT_KINDS = new Set(['paint_mismatch', 'repaint_sign']);
@@ -110,8 +115,9 @@ export function buildCurrentVisualSchema() {
     dashboard: OBJ({
       visible: S('boolean'),
       ignition_on: S(['boolean', 'null']),
+      engine_state: E(ENGINE_STATES, 'running | ignition_on_engine_off | unknown'),
       odometer_reading: { anyOf: [OBJ({
-        value: S('integer'), unit: E(['km', 'mi', 'unknown']), gallery_index: GI, sign: S('string'), confidence: E(CONFIDENCE),
+        value: S('integer'), unit: E(['km', 'mi', 'unknown'], 'лише коли одиниця написана на кадрі; інакше unknown'), gallery_index: GI, sign: S('string', 'цифри і одиниця так, як вони написані на кадрі'), confidence: E(CONFIDENCE),
       }), S('null')] },
       warning_lights: ARR(OBJ({ light: S('string'), gallery_index: GI, sign: S('string'), confidence: E(CONFIDENCE) })),
       readable_messages: ARR(OBJ({ text: S('string'), sign: S('string', 'де саме на кадрі це написано'), gallery_index: GI, confidence: E(CONFIDENCE) })),
@@ -151,7 +157,9 @@ frames: gallery_index кадрів, де зона видна. Зона sufficien
 ПРИЛАДОВА ПАНЕЛЬ: якщо є кадр із увімкненою панеллю, прочитай одометр (число, одиниця, кадр, ознака: "цифри 30 688 km на екрані під спідометром") та індикатори попереджень (лише читабельні чи однозначно впізнавані піктограми, причину НЕ діагностуй). Нечитабельно: не вигадуй, odometer_reading null.
 ПОВІДОМЛЕННЯ (readable_messages): ЛИШЕ важливі повідомлення про САМ АВТОМОБІЛЬ, які ти РЕАЛЬНО ЧИТАЄШ на кадрі: сервісні нагадування ("Service in 5000 km", "Oil level low"), помилки і несправності, стан батареї чи запасу ходу, увімкнені пакети функцій, нагадування про ключ, оновлення ПЗ. sign мусить містити сам читабельний текст у лапках і місце на кадрі. ЗАБОРОНЕНО: дата, час, температура, радіостанція і частота, назви меню і вкладок, підписи кнопок, гучність, назва треку, звичайні UI-написи інтерфейсу. Якщо текст дрібний, розмитий чи ти лише здогадуєшся, повідомлення НЕ створюй.
 
-ОДОМЕТР НЕЗАЛЕЖНИЙ: читай цифри з кадру як є; жодних даних оголошення про пробіг у тебе немає і підганяти показання ні під що не треба. Сумнівні цифри: confidence low, а не вигадане число.
+ОДОМЕТР НЕЗАЛЕЖНИЙ: читай цифри з кадру як є; жодних даних оголошення про пробіг у тебе немає і підганяти показання ні під що не треба. Сумнівні цифри: confidence low, а не вигадане число. ОДИНИЦЯ (km чи mi) зараховується ЛИШЕ коли вона написана на самому кадрі поруч із числом, і ти цитуєш її в sign («TOTAL 151975 km»). Якщо одиниці не видно, став unit: "unknown": вгадувати за ринком, країною чи виглядом шкали ЗАБОРОНЕНО.
+
+СТАН ДВИГУНА (engine_state): running лише за прямою ознакою роботи (стрілка тахометра вище нуля, обертів > 0, напис READY/ON у гібрида чи електромобіля); ignition_on_engine_off, коли панель світиться, а тахометр на нулі і горить типовий набір ламп самоперевірки; інакше unknown. Індикатор на панелі це ЛИШЕ спостереження «лампа горить»: несправністю ти його не називаєш і причину не пояснюєш.
 
 ДОКАЗОВІСТЬ: будь-яка знахідка, опція, модифікація чи показання панелі БЕЗ конкретного кадру і конкретної видимої ознаки не існує. sign описує те, що видно ("глибока подряпина до ґрунту на задньому лівому бампері"), а не висновок ("бампер ремонтували"). Краще пропустити сумнівне, ніж впевнено вигадати. Мова значень: українська, коротко.`;
 
@@ -196,7 +204,7 @@ export function frameSetFingerprint(frames) {
    модель не повернула, доповнюються not_visible. */
 export function gateCurrentVisual(raw, frames) {
   const byIndex = new Map((frames || []).map(f => [f.gallery_index, f]));
-  const stats = { dropped_bad_ref: 0, dropped_weak_sign: 0, downgraded_soft_paint: 0, zones_filled: 0, findings: 0, material_findings: 0, equipment: 0, modifications: 0, modifications_confirmed: 0, warning_lights: 0, messages: 0, dropped_message_weak: 0, dropped_message_noise: 0 };
+  const stats = { dropped_bad_ref: 0, dropped_weak_sign: 0, downgraded_soft_paint: 0, zones_filled: 0, findings: 0, material_findings: 0, equipment: 0, modifications: 0, modifications_confirmed: 0, warning_lights: 0, messages: 0, dropped_message_weak: 0, dropped_message_noise: 0, odometer_unit_unverified: 0 };
   const r = raw && typeof raw === 'object' ? raw : {};
   const str = v => typeof v === 'string' ? v.trim() : '';
   const ref = gi => { const f = byIndex.get(gi); return f ? { gallery_index: gi, photo_identity: f.identity } : null; };
@@ -218,7 +226,7 @@ export function gateCurrentVisual(raw, frames) {
     zones: {},
     equipment_visual: [],
     modification_candidates: [],
-    dashboard: { visible: false, ignition_on: null, odometer_reading: null, warning_lights: [], readable_messages: [] },
+    dashboard: { visible: false, ignition_on: null, engine_state: 'unknown', odometer_reading: null, warning_lights: [], readable_messages: [] },
     summary: str(r.summary).slice(0, 600),
   };
   const zonesIn = r.zones && typeof r.zones === 'object' ? r.zones : {};
@@ -259,12 +267,17 @@ export function gateCurrentVisual(raw, frames) {
   const d = r.dashboard && typeof r.dashboard === 'object' ? r.dashboard : {};
   out.dashboard.visible = d.visible === true;
   out.dashboard.ignition_on = typeof d.ignition_on === 'boolean' ? d.ignition_on : null;
+  out.dashboard.engine_state = ENGINE_STATES.includes(d.engine_state) ? d.engine_state : 'unknown';
   if (d.odometer_reading && typeof d.odometer_reading === 'object') {
     const o = d.odometer_reading;
     const rf = withRef(o);
     const value = Number.isInteger(o.value) ? o.value : parseInt(o.value, 10);
     if (rf && Number.isFinite(value) && value > 0 && value < 2000000) {
-      out.dashboard.odometer_reading = { value, unit: ['km', 'mi'].includes(o.unit) ? o.unit : 'unknown', ...rf, sign: str(o.sign).slice(0, 240), confidence: conf(o.confidence) };
+      /* одиниця лише з кадру: вона мусить бути в самій ознаці */
+      const sign = str(o.sign);
+      let unit = ['km', 'mi'].includes(o.unit) ? o.unit : 'unknown';
+      if (unit !== 'unknown' && !UNIT_IN_SIGN_RE[unit].test(sign)) { unit = 'unknown'; stats.odometer_unit_unverified++; }
+      out.dashboard.odometer_reading = { value, unit, ...rf, sign: sign.slice(0, 240), confidence: conf(o.confidence) };
     }
   }
   for (const w of Array.isArray(d.warning_lights) ? d.warning_lights : []) {
@@ -496,12 +509,18 @@ export function odometerDiscrepancy(cv, listingOdometerKm) {
   const listing = Number.isFinite(Number(listingOdometerKm)) && Number(listingOdometerKm) > 0 ? Math.round(Number(listingOdometerKm)) : null;
   if (!o) return { status: 'no_visual_reading', listing_km: listing };
   const visualKm = o.unit === 'mi' ? Math.round(o.value * 1.609344) : o.unit === 'km' ? o.value : null;
-  if (visualKm === null) return { status: 'unit_unknown', visual_value: o.value, gallery_index: o.gallery_index, listing_km: listing, confidence: o.confidence };
+  if (visualKm === null) return { status: 'unit_unknown', visual_value: o.value, gallery_index: o.gallery_index, listing_km: listing, confidence: o.confidence, candidate: false };
   if (listing === null) return { status: 'no_listing_mileage', visual_km: visualKm, gallery_index: o.gallery_index, confidence: o.confidence };
   const delta = visualKm - listing;
   const pct = Math.round(Math.abs(delta) / listing * 1000) / 10;
-  const candidate = Math.abs(delta) >= ODOMETER_DISCREPANCY_MIN_KM && pct >= ODOMETER_DISCREPANCY_MIN_PCT;
-  return { status: candidate ? 'discrepancy_candidate' : 'consistent', visual_km: visualKm, listing_km: listing, delta_km: delta, delta_pct: pct, gallery_index: o.gallery_index, photo_identity: o.photo_identity, confidence: o.confidence, candidate };
+  const overThreshold = Math.abs(delta) >= ODOMETER_DISCREPANCY_MIN_KM && pct >= ODOMETER_DISCREPANCY_MIN_PCT;
+  /* кандидатом стає лише впевнене читання з підтвердженою одиницею:
+     medium/low і невідома одиниця дають "unconfirmed_reading" без сигналу */
+  const trusted = o.confidence === 'high';
+  const base = { visual_km: visualKm, listing_km: listing, delta_km: delta, delta_pct: pct, gallery_index: o.gallery_index, photo_identity: o.photo_identity, confidence: o.confidence, unit: o.unit };
+  if (!overThreshold) return { status: 'consistent', ...base, candidate: false };
+  if (!trusted) return { status: 'unconfirmed_reading', ...base, candidate: false };
+  return { status: 'discrepancy_candidate', ...base, candidate: true, needs_verification: true };
 }
 
 export function summarizeCurrentVisual(cv, stats) {
@@ -517,9 +536,85 @@ export function summarizeCurrentVisual(cv, stats) {
     findings: { total: findings, material },
     equipment: { total: cv.equipment_visual.length, concepts: [...new Set(cv.equipment_visual.map(e => e.concept))] },
     odometer: o ? { value: o.value, unit: o.unit, gallery_index: o.gallery_index, confidence: o.confidence } : null,
+    engine_state: cv.dashboard ? cv.dashboard.engine_state : 'unknown',
     warning_lights: cv.dashboard ? cv.dashboard.warning_lights.map(w => w.light) : [],
     messages: cv.dashboard ? cv.dashboard.readable_messages.length : 0,
     modifications: { total: cv.modification_candidates.length, confirmed: cv.modification_candidates.filter(m => m.confirmed).length },
     gate: stats || null,
   };
+}
+
+
+/* ======================================================================
+   Умовна перевірка одометра (Phase 1). Запускається ЛИШЕ коли загальний
+   Current Vision дав кандидата на розбіжність: окремий короткий виклик по
+   1-3 найкращих кадрах приладової панелі у високій деталізації. Це НЕ
+   постійний dashboard-спеціаліст. Пробіг оголошення верифікатору не
+   передається: він читає незалежно, а код лише порівнює два читання.
+   ====================================================================== */
+export const ODOMETER_VERIFIER_MAX_FRAMES = 3;
+export const ODOMETER_AGREE_MAX_KM = 50;
+export const ODOMETER_AGREE_MAX_PCT = 0.5;
+export const ODOMETER_VERIFIER_RULES = `Ти зчитувач одометра CalCar. Перед тобою 1-3 кадри приладової панелі або центрального екрана авто. Єдина задача: прочитати ЗАГАЛЬНИЙ пробіг (odometer / TOTAL / ODO), якщо він читабельний.
+
+КАДРИ: кожен кадр підписаний [gallery_index=N]; посилайся лише на це число.
+ЧИСЛО: перепиши цифри рівно так, як вони на екрані, без округлення. Не плутай загальний пробіг із добовим (trip), запасом ходу (range), температурою, часом чи витратою.
+ОДИНИЦЯ: km чи mi ЛИШЕ коли одиниця написана поруч із числом і ти цитуєш її в sign. Не видно одиниці: unit "unknown". Вгадувати за ринком чи шкалою спідометра ЗАБОРОНЕНО.
+СУМНІВ: якщо цифри дрібні, розмиті, перекриті кермом чи ти не впевнений хоча б в одній цифрі, став confidence low або поверни odometer_reading: null. Вигадувати не можна.
+СТАН ДВИГУНА: engine_state running лише за прямою ознакою (тахометр вище нуля, READY); ignition_on_engine_off, коли панель світиться при нульових обертах; інакше unknown.
+Мова значень: українська, коротко.`;
+
+export function buildOdometerVerifierSchema() {
+  return OBJ({
+    odometer_reading: { anyOf: [OBJ({
+      value: S('integer'), unit: E(['km', 'mi', 'unknown']), gallery_index: GI,
+      sign: S('string', 'цифри і одиниця так, як написані на кадрі'), confidence: E(CONFIDENCE),
+    }), S('null')] },
+    engine_state: E(ENGINE_STATES),
+  });
+}
+export function odometerVerifierResponseFormat() {
+  return { type: 'json_schema', json_schema: { name: 'calcar_odometer_verify', strict: true, schema: buildOdometerVerifierSchema() } };
+}
+
+/* кадри для перевірки: спершу той, з якого прочитано пробіг, далі інші
+   кадри приладів/екранів (dashboard, steering, center_console) */
+export function odometerVerifyFrames(cv, frames, types = null) {
+  const o = cv && cv.dashboard && cv.dashboard.odometer_reading;
+  const t = f => (types && types[f.gallery_index]) || null;
+  const rank = f => ROUTE.dashboard.indexOf(t(f));
+  const primary = o ? frames.filter(f => f.gallery_index === o.gallery_index) : [];
+  const rest = frames
+    .filter(f => (!o || f.gallery_index !== o.gallery_index) && rank(f) >= 0)
+    .sort((a, b) => rank(a) - rank(b) || a.gallery_index - b.gallery_index);
+  return [...primary, ...rest].slice(0, ODOMETER_VERIFIER_MAX_FRAMES).map(f => ({ ...f, high: true }));
+}
+
+export function gateOdometerVerifier(raw, frames) {
+  const r = raw && typeof raw === 'object' ? raw : {};
+  const byIndex = new Map((frames || []).map(f => [f.gallery_index, f]));
+  const o = r.odometer_reading && typeof r.odometer_reading === 'object' ? r.odometer_reading : null;
+  const out = { odometer_reading: null, engine_state: ENGINE_STATES.includes(r.engine_state) ? r.engine_state : 'unknown' };
+  if (!o) return out;
+  const f = byIndex.get(o.gallery_index);
+  const value = Number.isInteger(o.value) ? o.value : parseInt(o.value, 10);
+  const sign = typeof o.sign === 'string' ? o.sign.trim() : '';
+  if (!f || !Number.isFinite(value) || value <= 0 || value >= 2000000 || sign.length < MIN_SIGN_CHARS) return out;
+  let unit = ['km', 'mi'].includes(o.unit) ? o.unit : 'unknown';
+  if (unit !== 'unknown' && !UNIT_IN_SIGN_RE[unit].test(sign)) unit = 'unknown';
+  out.odometer_reading = { value, unit, gallery_index: o.gallery_index, photo_identity: f.identity, sign: sign.slice(0, 240), confidence: CONFIDENCE.includes(o.confidence) ? o.confidence : 'low' };
+  return out;
+}
+
+/* згода двох незалежних читань: та сама одиниця і різниця в межах
+   max(50 км, 0.5%). Розбіжність або відсутнє друге читання = uncertain */
+export function reconcileOdometer(cvReading, verifierReading) {
+  if (!cvReading) return { status: 'no_visual_reading', agreed: false };
+  if (!verifierReading || !verifierReading.odometer_reading) return { status: 'verifier_no_reading', agreed: false };
+  const v = verifierReading.odometer_reading;
+  if (v.unit !== cvReading.unit) return { status: 'unit_mismatch', agreed: false, verifier: v };
+  const delta = Math.abs(v.value - cvReading.value);
+  const pct = Math.round(delta / Math.max(1, cvReading.value) * 1000) / 10;
+  const agreed = delta <= ODOMETER_AGREE_MAX_KM || pct <= ODOMETER_AGREE_MAX_PCT;
+  return { status: agreed ? 'confirmed' : 'value_mismatch', agreed, delta, delta_pct: pct, verifier: v };
 }
