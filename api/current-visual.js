@@ -560,7 +560,7 @@ export const ODOMETER_VERIFIER_RULES = `Ти зчитувач одометра C
 КАДРИ: кожен кадр підписаний [gallery_index=N]; посилайся лише на це число.
 ЧИСЛО: перепиши цифри рівно так, як вони на екрані, без округлення. Не плутай загальний пробіг із добовим (trip), запасом ходу (range), температурою, часом чи витратою.
 ОДИНИЦЯ: km чи mi ЛИШЕ коли одиниця написана поруч із числом і ти цитуєш її в sign. Не видно одиниці: unit "unknown". Вгадувати за ринком чи шкалою спідометра ЗАБОРОНЕНО.
-СУМНІВ: якщо цифри дрібні, розмиті, перекриті кермом чи ти не впевнений хоча б в одній цифрі, став confidence low або поверни odometer_reading: null. Вигадувати не можна.
+ЯК ВІДПОВІДАТИ: якщо число загального пробігу видно, ПОВЕРНИ його завжди, а невпевненість передавай через confidence: high (усі цифри чіткі), medium (читається, але дрібно чи під кутом), low (частина цифр під сумнівом). odometer_reading: null став ЛИШЕ коли загального пробігу на кадрах немає взагалі або він повністю нечитабельний. Вигадувати цифри не можна, але й мовчати про видиме число не треба.
 СТАН ДВИГУНА: engine_state running лише за прямою ознакою (тахометр вище нуля, READY); ignition_on_engine_off, коли панель світиться при нульових обертах; інакше unknown.
 Мова значень: українська, коротко.`;
 
@@ -584,9 +584,11 @@ export function odometerVerifyFrames(cv, frames, types = null) {
   const t = f => (types && types[f.gallery_index]) || null;
   const rank = f => ROUTE.dashboard.indexOf(t(f));
   const primary = o ? frames.filter(f => f.gallery_index === o.gallery_index) : [];
+  /* доповнюємо ЛИШЕ кадрами самої приладової панелі: кермо і центральна
+     консоль частіше відволікають, ніж допомагають прочитати одометр */
   const rest = frames
-    .filter(f => (!o || f.gallery_index !== o.gallery_index) && rank(f) >= 0)
-    .sort((a, b) => rank(a) - rank(b) || a.gallery_index - b.gallery_index);
+    .filter(f => (!o || f.gallery_index !== o.gallery_index) && t(f) === 'dashboard')
+    .sort((a, b) => a.gallery_index - b.gallery_index);
   return [...primary, ...rest].slice(0, ODOMETER_VERIFIER_MAX_FRAMES).map(f => ({ ...f, high: true }));
 }
 
