@@ -10,6 +10,7 @@ const errs = [];
 
 (async () => {
   const CV = await import('./api/current-visual.js');
+  const MERGE = await import('./api/canonical-merge.js');
   const VB = await import('./api/vision-bench.js');
   const VM = await import('./api/vehicle-memory.js');
 
@@ -200,9 +201,68 @@ const errs = [];
        комплектації і підтверджені модифікації зі звіту зникати не мають */
     {
       const rules = src2Rules();
-      if (!/опції з vehicle_data, listing_data, seller_claim і historical збирай У ПОВНОМУ ОБСЯЗІ/.test(rules)) errs.push('Feed не захищає невізуальні джерела комплектації');
-      if (!/КОЖНА позиція звідти ЗОБОВ.{1,3}ЯЗАНА опинитися у списку/.test(rules)) errs.push('канонічні поняття комплектації можна мовчки пропустити');
+      if (!/їх збирай У ПОВНОМУ ОБСЯЗІ/.test(rules)) errs.push('Feed не захищає невізуальні джерела комплектації');
+      /* v1.1: канонічні поняття вносить код, модель їх не переписує */
+      if (!/ВІЗУАЛЬНЕ ПІДТВЕРДЖЕННЯ ти НЕ виписуєш/.test(rules)) errs.push('модель досі має переписувати канонічну комплектацію');
+      if (!/РІВНО ПО ОДНОМУ пункту на кожен елемент, У ТОМУ САМОМУ ПОРЯДКУ/.test(rules)) errs.push('нема контракту один пункт на канонічну знахідку');
       if (!/внось в equipment_v2 з retrofit true і retrofit_basis/.test(rules)) errs.push('підтвердженим модифікаціям нема місця у звіті');
+    }
+    /* v1.1: канонічні факти переносить КОД, не переказ моделі */
+    if (!/mergeCanonicalEquipment\(gated\.items, cvFeed\.current_visual, lang\)/.test(chk)) errs.push('канонічна комплектація не переноситься кодом');
+    if (!/mergeCanonicalConditions\(parsed\.photo_findings, cvFeedCompact\.condition_findings, lang\)/.test(chk)) errs.push('канонічні знахідки стану не добираються кодом');
+    if (!/condition_canonical: condCanonical/.test(chk) || !/canonical_gaps: cvFeed/.test(chk)) errs.push('нема телеметрії детермінованого перенесення');
+    const iCond = chk.indexOf('mergeCanonicalConditions('), iLoc = chk.indexOf('localizePhotoRefs(parsed');
+    if (!(iCond > 0 && iCond < iLoc)) errs.push('добір знахідок має йти ДО локалізації посилань на кадри');
+    if (!/cvEvidence = decisionEvidenceBlock\(/.test(chk)) errs.push('main отримує повний доказ замість компактного для рішення');
+    /* стадії, що не є залежністю розбору, не мають стояти перед ним */
+    {
+      const iSel = chk.indexOf("mark('photo_selector'"), iCv = chk.indexOf('const tCv = Date.now();');
+      const iDec = chk.indexOf("mark('decoder'"), iVm = chk.indexOf("mark('vehicle_memory'"), iHist = chk.indexOf("mark('history_lookup'");
+      if (!(iSel > 0 && iCv > iSel)) errs.push('розбір стартує не після вибору кадрів');
+      for (const [name, i] of [['декодер', iDec], ['Vehicle Memory', iVm], ['пошук архіву', iHist]]) {
+        if (!(i > iCv)) errs.push('стадія стоїть перед канонічним розбором, хоча не є його залежністю: ' + name);
+      }
+      if (!/at: Math\.max\(0, Date\.now\(\) - tRun - Math\.round\(ms\)\)/.test(chk)) errs.push('нема зсуву старту стадій у таймінгах');
+      if (!/at: tCv - tRun/.test(chk)) errs.push('паралельна стадія не повідомляє власний старт');
+    }
+    /* поняття комплектації мають впізнаватись мовою звіту, інакше гейт
+       зрізає законні візуальні докази (вимірювання Feed v1: 3-5 на звіт) */
+    {
+      const want = [['підігрів сидінь', 'seat_heating'], ['Подогрев передних сидений', 'seat_heating'], ['Heated front seats', 'seat_heating'],
+        ['парктроніки', 'parking_sensors'], ['Парковочные датчики', 'parking_sensors'], ['вентиляція сидінь', 'seat_ventilation'],
+        ['Вентиляция сидений', 'seat_ventilation'], ['Подрулевые лепестки', 'paddles'], ['подогрев руля', 'heated_wheel'],
+        ['Панорамная крыша', 'panoramic_roof'], ['Адаптивный круиз-контроль', 'adaptive_cruise'], ['Камера заднего вида', 'rear_camera'],
+        ['Кожаная отделка салона', 'leather'], ['Рейлинги на крыше', 'roof_rails'], ['Проекционный дисплей', 'hud']];
+      for (const [name, key] of want) if (CV.equipmentConcept(name) !== key) errs.push('поняття не впізнане мовою звіту: ' + name + ' -> ' + CV.equipmentConcept(name));
+    }
+    /* детермінований перенос: поведінка, а не лише наявність виклику */
+    {
+      const cvEq = { equipment_visual: [
+        { normalized_name: 'підігрів сидінь', concept: 'seat_heating', gallery_index: 4, sign: 'кнопки підігріву на консолі', confidence: 'high' },
+        { normalized_name: 'парктроніки', concept: 'parking_sensors', gallery_index: 6, sign: 'датчики у бампері', confidence: 'high' },
+        { normalized_name: 'дуги на даху', concept: 'other:дуги на даху', gallery_index: 8, sign: 'дуги', confidence: 'high' }],
+        modification_candidates: [{ feature: 'диски Vossen', confirmed: true }], zones: {}, dashboard: {} };
+      const before = [{ name: 'Подогрев сидений', category: 'comfort', confidence_level: 'seller', highlight: false, retrofit: false, retrofit_basis: null, historical_claim: false, value_tier: 'standard', evidence: [{ source: 'seller_claim', ref: null, sign: 'опис' }, { source: 'current_photos', ref: 'photo_99', sign: 'вигадка' }] }];
+      const m = MERGE.mergeCanonicalEquipment(before, cvEq, 'ru');
+      if (m.stats.matched !== 1 || m.stats.inserted !== 1 || m.stats.unlabelled !== 1) errs.push('перенос комплектації: ' + JSON.stringify(m.stats));
+      const seat = m.items.find(i => i.name === 'Подогрев сидений');
+      const vis = seat.evidence.filter(e => e.source === 'current_photos');
+      if (vis.length !== 1 || vis[0].ref !== 'photo_5' || seat.confidence_level !== 'seller_and_visual') errs.push('канонічний доказ не замінив вигаданий: ' + JSON.stringify(seat.evidence));
+      const added = m.items.find(i => i.evidence.some(e => e.ref === 'photo_7'));
+      if (!added || added.name !== 'Парковочные датчики' || added.confidence_level !== 'visual') errs.push('поняття не внесене назвою мови звіту: ' + JSON.stringify(added && added.name));
+      if (MERGE.mergeCanonicalEquipment(m.items, cvEq, 'ru').stats.inserted !== 0) errs.push('повторний перенос дублює опції');
+      if (MERGE.mergeCanonicalEquipment(before, cvEq, 'en').items.some(i => i.name === 'Парковочные датчики')) errs.push('мова назви не залежить від локалі звіту');
+      const gaps = MERGE.canonicalGaps(m.items, cvEq);
+      if (gaps.confirmed_modifications !== 1 || gaps.unreported !== 1) errs.push('пропущені модифікації не рахуються: ' + JSON.stringify(gaps));
+      const cond = [{ zone: 'front', kind: 'dent', severity: 'moderate', photo: 3, sign: 'вмʼятина' }, { zone: 'rear_seats', kind: 'tear', severity: 'severe', photo: 9, sign: 'розрив' }];
+      const mc = MERGE.mergeCanonicalConditions([{ status: 'warn', text: 'Спереди вмятина.' }], cond, 'ru');
+      if (mc.stats.filled_by_code !== 1 || mc.items.length !== 2) errs.push('загублена знахідка не дописана: ' + JSON.stringify(mc.stats));
+      if (mc.items[1].status !== 'bad' || !/photo_9/.test(mc.items[1].text)) errs.push('дописаний пункт без кадру або зі втраченою серйозністю: ' + JSON.stringify(mc.items[1]));
+      if (MERGE.mergeCanonicalConditions([{ status: 'warn', text: 'a' }, { status: 'warn', text: 'b' }], cond, 'ru').stats.filled_by_code !== 0) errs.push('код дописує вже переказані знахідки');
+      const blk = MERGE.decisionEvidenceBlock({ zones: {}, equipment_visual: cvEq.equipment_visual, modification_candidates: [], coverage: { frames_received: 20, quality_flags: [] }, dashboard: { engine_state: 'running', odometer_reading: { value: 123456, unit: 'km' }, warning_lights: [], readable_messages: [] } }, 20, 'ru');
+      if (/123456|odometer/.test(blk)) errs.push('одометр потрапив у компактний доказ');
+      if (/кнопки підігріву на консолі/.test(blk)) errs.push('ознаки підтверджених опцій досі їдуть у main');
+      if (!/Подогрев сидений/.test(blk)) errs.push('main не бачить переліку підтвердженого оснащення');
     }
     if (!/localizePhotoRefs\(parsed, cvFeed \? listing\.photos\.map\(\(_, i\) => i\) : photoIdx/.test(chk)) errs.push('нумерація кадрів у текстах не узгоджена з Feed');
     /* fallback: без Feed усе як раніше. Виконуємо СПРАВЖНІЙ вираз збирання

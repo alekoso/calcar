@@ -22,6 +22,7 @@ import {
 import { CURRENT_VISUAL_RULES, currentVisualResponseFormat, frameContent, normalizeFrames, frameDetailPlan, gateCurrentVisual, frameSetFingerprint, summarizeCurrentVisual, odometerDiscrepancy, CURRENT_VISUAL_VERSION,
   ODOMETER_VERIFIER_RULES, odometerVerifierResponseFormat, odometerVerifyFrames, gateOdometerVerifier, reconcileOdometer,
   currentVisualEvidenceBlock, currentVisualConcepts, applyCurrentVisualEquipmentGate, compactCurrentVisual, contextualPhotoPositions, CONTEXT_PHOTOS_DEFAULT } from './current-visual.js';
+import { decisionEvidenceBlock, mergeCanonicalEquipment, mergeCanonicalConditions, canonicalGaps } from './canonical-merge.js';
 /* спільні ідентичності і версії: тести і сусідні модулі беруть їх звідси */
 export { HISTORICAL_VISUAL_VERSION, photoIdentity, photoSetFingerprint, listingFingerprint, snapshotRow, listingKey, NHTSA_DECODER_VERSION, LISTING_FINGERPRINT_VERSION };
 
@@ -2013,7 +2014,7 @@ const MAIN_RULES = (auction, decisionStyle, auctionMeta, { proseSchema = false, 
 - "engine": "4.4 л бензин V8, 462 к.с." або "електро, 77 кВт·год". НІКОЛИ не пиши "довідково", "в декодуванні не вказано", "ймовірно". Невідоме = null, а не речення про невідомість.
 - "mileage_note": ЛИШЕ заявлене число одним коротким рядком: "129 000 км". Уся аналітика пробігу (хронологія, розбіжності) живе в discrepancies та history, НЕ в шапці.
 
-${cvProvided ? `"photo_findings": бери ГОТОВИМИ з CURRENT_VISUAL_EVIDENCE. condition_findings звідти це канонічні спостереження про нинішній стан: перекажи кожне людською мовою одним пунктом (status warn чи bad за severity), не додаючи нових дефектів від себе і не спростовуючи канонічні. Якщо condition_findings порожній, а покриття достатнє: ОДИН пункт "ok" ("на доступних фото явних слідів ремонту не видно") плюс МАКСИМУМ один "unknown" про найважливішу невидиму зону з zones.not_visible. Самостійно переглядати кадри у пошуках дефектів НЕ треба: контекстні кадри дані лише для загального розуміння авто.` : `"photo_findings": ЛИШЕ про НИНІШНІ фото з оголошення (не аукціонні: для них є auction.findings). СПОЧАТКУ те, що РЕАЛЬНО ПОМІЧЕНО: різниця відтінку фарби, шагрень, нерівні зазори, свіжий герметик, нештатні деталі, знос салону проти пробігу. Кожна знахідка = окремий пункт зі status warn або bad. Якщо підозрілого нічого немає: ОДИН пункт "ok" ("на доступних фото явних слідів ремонту не видно") плюс МАКСИМУМ один пункт "unknown" із найважливішим обмеженням (наприклад, немає фото салону). ЗАБОРОНЕНО три пункти поспіль про те, чого не видно.`}
+${cvProvided ? `"photo_findings": бери ГОТОВИМИ з CURRENT_VISUAL_EVIDENCE. condition_findings звідти це канонічні спостереження про нинішній стан: дай РІВНО ПО ОДНОМУ пункту на кожен елемент, У ТОМУ САМОМУ ПОРЯДКУ (status warn, а для severe bad), переказавши ознаку людською мовою і назвавши кадр. Не додавай нових дефектів від себе, не обʼєднуй кілька знахідок в один пункт і не спростовуй канонічні. Якщо condition_findings порожній, а покриття достатнє: ОДИН пункт "ok" ("на доступних фото явних слідів ремонту не видно") плюс МАКСИМУМ один "unknown" про найважливішу невидиму зону з zones.not_visible. Самостійно переглядати кадри у пошуках дефектів НЕ треба: контекстні кадри дані лише для загального розуміння авто.` : `"photo_findings": ЛИШЕ про НИНІШНІ фото з оголошення (не аукціонні: для них є auction.findings). СПОЧАТКУ те, що РЕАЛЬНО ПОМІЧЕНО: різниця відтінку фарби, шагрень, нерівні зазори, свіжий герметик, нештатні деталі, знос салону проти пробігу. Кожна знахідка = окремий пункт зі status warn або bad. Якщо підозрілого нічого немає: ОДИН пункт "ok" ("на доступних фото явних слідів ремонту не видно") плюс МАКСИМУМ один пункт "unknown" із найважливішим обмеженням (наприклад, немає фото салону). ЗАБОРОНЕНО три пункти поспіль про те, чого не видно.`}
 
 "risks": 2-5 КЛЮЧОВИХ РИЗИКІВ САМЕ ЦЬОГО ЕКЗЕМПЛЯРА, кожен спирається на КОНКРЕТНИЙ факт цієї машини: симптом, помилку системи, суперечність, результат діагностики, видимий дефект, зафіксовану подію (ДТП, аукціон, скрутка) з непідтвердженими наслідками. Вік, пробіг і відома болячка моделі САМІ ПО СОБІ недостатні для risks: типові задири, пневмопідвіска, роздавальна коробка, батарея гібрида тощо живуть у model_notes.issues, де можна позначити підвищену актуальність через вік чи пробіг цієї машини; у risks вони переходять ЛИШЕ за конкретного сигналу по цій машині. Пояснення "чому преміальне авто дешеве" (дорогий сервіс, витрати володіння) клади у purchase_decision.value_context, не в risks. Для авто після зафіксованого ДТП один із ризиків майже завжди якість відновлення: це конкретна подія цієї машини.
 ВИНЯТОК, ЯКИЙ МУСИТЬ БУТИ: HIGH_COST_LATENT_RISK. Це ризик, який (а) НЕ є доведеною несправністю, (б) НЕ знижує Оцінку CalCar сам по собі, але (в) може суттєво змінити рішення про покупку, бо ймовірність × ціна помилки × релевантність САМЕ ЦЬОМУ авто (вік, пробіг, версія, відсутність незалежного підтвердження) висока. Такий ризик ВХОДИТЬ у risks з полем "kind": "latent" і формулюванням "не підтверджено", а не "несправно". Приклади: у 10-11-річного електромобіля з оригінальною високовольтною батареєю і без незалежної перевірки її стану: "Стан оригінальної високовольтної батареї не підтверджено" (реальна usable capacity/SOH, історія помилок HV-батареї, cell imbalance, реальне споживання і запас ходу, поведінка на DC-швидкій зарядці важать більше за заявлений продавцем запас ходу; НЕ стверджуй, що батарея обовʼязково сильно деградована); у ранньої Tesla Model S без підтвердженого апгрейду медіаблока: "Перевірити, чи лишився MCU1 чи встановлено MCU2" (MCU1 на NVIDIA Tegra 3: помітно повільніший інтерфейс, відома проблема зносу 8 ГБ eMMC, звірити recall/сервісну історію; НЕ стверджуй MCU1 як факт, якщо авто могло отримати апгрейд); дорога коробка чи пневмопідвіска без сервісної історії при великому пробігу тощо. Власницькі спостереження (жовта рамка чи розшарування ранніх дисплеїв Model S) додавай лише як "перевірити візуально обидва екрани", з провенансом owner-reported, без твердження про дефект.
@@ -2026,7 +2027,7 @@ ${cvProvided ? `"photo_findings": бери ГОТОВИМИ з CURRENT_VISUAL_EV
 КОМПЛЕКТАЦІЯ ("equipment_v2"): максимально повне визначення ПІДТВЕРДЖУВАНОЇ комплектації. Філософія: краще пропустити одну опцію, ніж впевнено додати неіснуючу. Пайплайн усередині ЦЬОГО Ж аналізу, без окремих проходів:
 1) ATTENTION MAP: спершу сформуй подумки коротку карту характерних для цієї марки, моделі, покоління, року і версії опцій та місць, де зазвичай видно їх ознаки (логотип на решітці динаміка, кнопки вентиляції на консолі, проектор HUD на торпедо, камери в дзеркалах і решітці радіатора, шторки, память сидінь). Карта каже, КУДИ дивитись; наявність опції в карті НЕ доказ її присутності; впевнені знахідки поза картою теж фіксуй.
 2) ТЕКСТ ПРОДАВЦЯ: розбери, що заявлено, з нормалізацією народних назв (дистронік це адаптивний круїз, бурмістер це Burmester, панорама це панорамний дах, вебасто це автономний підігрів). Заява продавця це окреме джерело і НІЧОГО не підтверджує автоматично.
-${cvProvided ? `3) ВІЗУАЛЬНЕ ПІДТВЕРДЖЕННЯ: єдине джерело це CURRENT_VISUAL_EVIDENCE.equipment_visual. КОЖНА позиція звідти ЗОБОВʼЯЗАНА опинитися у списку: або окремою опцією з evidence source current_photos, ref photo_<frame> і тією самою ознакою, або доказом current_photos, доданим до вже наявної опції з іншого джерела. Мовчки пропускати позиції канонічного переліку НЕ можна. Самостійно шукати опції на кадрах і додавати НОВІ візуально підтверджені опції ЗАБОРОНЕНО: кадрів для цього тобі не дано. Це обмеження стосується ЛИШЕ візуальних доказів: опції з vehicle_data, listing_data, seller_claim і historical збирай У ПОВНОМУ ОБСЯЗІ, рівно так само, як без канонічного розбору. Канонічний розбір ЗВУЖУВАТИ список опцій не повинен.` : `3) ВІЗУАЛЬНИЙ ПРОХІД по фото оголошення: кожне візуальне підтвердження ЗОБОВʼЯЗАНЕ мати evidence з конкретним кадром (ref photo_N) і конкретною ознакою (sign: "логотип Harman Kardon на решітці динаміка передніх дверей", "кнопки вентиляції на центральній консолі"). Без ознаки на кадрі опція візуально НЕ підтверджена.`}
+${cvProvided ? `3) ВІЗУАЛЬНЕ ПІДТВЕРДЖЕННЯ ти НЕ виписуєш. Перелік CURRENT_VISUAL_EVIDENCE.equipment_confirmed внесе у звіт код: переписувати ці позиції в equipment_v2 не треба і НЕ витрачай на них відповідь. Твоя частина списку це опції з vehicle_data, listing_data, seller_claim і historical: їх збирай У ПОВНОМУ ОБСЯЗІ, рівно так само, як без канонічного розбору. Самостійно шукати опції на кадрах ЗАБОРОНЕНО: кадрів для цього тобі не дано. Підтверджене кадрами оснащення враховуй у міркуванні, оцінці і вердикті: воно вже є фактом, навіть якщо ти його не переписуєш.` : `3) ВІЗУАЛЬНИЙ ПРОХІД по фото оголошення: кожне візуальне підтвердження ЗОБОВʼЯЗАНЕ мати evidence з конкретним кадром (ref photo_N) і конкретною ознакою (sign: "логотип Harman Kardon на решітці динаміка передніх дверей", "кнопки вентиляції на центральній консолі"). Без ознаки на кадрі опція візуально НЕ підтверджена.`}
 - ДЖЕРЕЛА ОПЦІЙ (evidence source): vehicle_data (заводські/VIN-дані), current_photos (видно на фото), seller_claim (слова продавця), listing_data (структуровані поля оголошення площадки), historical. ОДНА опція з кількох джерел це ОДИН item з КІЛЬКОМА evidence, не дублікати. Рівень достовірності обчислює код із джерел; рівня "ймовірно" НЕ існує. Візуальне твердження без достатнього візуального evidence (кадр + ознака) візуальним не є; явно заявлена продавцем чи площадкою опція при цьому лишається зі своїм джерелом.
 - listing_data це дані ПЛОЩАДКИ, НЕ заводське підтвердження: ніколи не перетворюй їх на "підтверджено по VIN". Опція одночасно в listing_data і на фото: обидва evidence в одному item.
 - "value_tier": standard | notable | high_value для КОЖНОЇ опції, з урахуванням марки, моделі, покоління, року і версії. high_value це помітна upper-tier чи дорога опція саме для цієї моделі (Bowers & Wilkins на відповідній BMW може бути high_value). Це якісна класифікація, НЕ ціна: вартість і вплив на ціну авто не пиши. value_tier НЕ впливає на достовірність і джерела.
@@ -2107,8 +2108,9 @@ ${proseSchema
 
 ${cvProvided ? `===== КАНОНІЧНИЙ РОЗБІР НИНІШНІХ КАДРІВ =====
 У даних є CURRENT_VISUAL_EVIDENCE: окреме спеціалізоване читання ВСІХ відібраних кадрів оголошення, яке вже пройшло доказовий гейт. Це ДЖЕРЕЛО ПРАВДИ про поточний візуальний стан, візуально підтверджені опції, підтверджені модифікації і те, що видно на приладовій панелі. Не переоцінюй його і не заперечуй: кадрів у тебе менше, ніж бачив розбір.
-- condition_findings, equipment_visual, confirmed_modifications і dashboard беруться звідти як факти; посилання frame це номер кадру галереї, використовуй його у ref як photo_<frame>.
-- МОДИФІКАЦІЇ: aftermarket-переробкою вважай ЛИШЕ те, що є в confirmed_modifications. Кожну таку позицію внось в equipment_v2 з retrofit true і retrofit_basis з її ознаки, щоб вона не зникла зі звіту. Заводське спортивне оснащення (M, AMG, S line, GTS, R-Line тощо) модифікацією НЕ називай.
+- condition_findings, equipment_confirmed, confirmed_modifications і dashboard це ФАКТИ; посилання photo це номер кадру галереї, у тексті згадуй його як photo_<номер>.
+- ПОДІЛ ПРАЦІ: підтверджені кадрами опції вносить код, тобі їх переписувати не треба. Твоє: формулювання знахідок стану, модифікації, вердикт, ризики, чеклист і те, як візуальні факти сходяться з оголошенням та історією.
+- МОДИФІКАЦІЇ: aftermarket-переробкою вважай ЛИШЕ те, що є в confirmed_modifications. КОЖНУ таку позицію внось в equipment_v2 з retrofit true і retrofit_basis з її ознаки: цього код за тебе не зробить, бо формулювання твоє. Заводське спортивне оснащення (M, AMG, S line, GTS, R-Line тощо) модифікацією НЕ називай.
 - ПРИЛАДОВА ПАНЕЛЬ: warning_lights це СПОСТЕРЕЖЕННЯ "індикатор горить на кадрі", а не доведена несправність. Якщо engine_state = ignition_on_engine_off, лампи тиску оливи, акумулятора, check engine, ABS, SRS і подібні при увімкненому запалюванні є нормальною самоперевіркою: САМІ ПО СОБІ вони не дають CRITICAL_WARNING_LIGHTS, SRS_FAULT чи SERIOUS_POWERTRAIN_FAULT і не стають ризиком. Створюй такий score_fact лише коли engine_state = running або є інший незалежний доказ несправності (слова продавця, історія, діагностика). При engine_state = unknown лампу згадуй як спостереження і став перевірку в checklist, без діагнозу.
 - ПРОБІГ: показань одометра в CURRENT_VISUAL_EVIDENCE немає навмисно. Мілеаж і його суперечності визнач як раніше: за даними оголошення, історії і словами продавця.
 - КОНТЕКСТНІ КАДРИ: до тебе доданий невеликий набір кадрів лише для загального розуміння авто. Нових дефектів, опцій чи модифікацій із них НЕ виводь.
@@ -2302,7 +2304,12 @@ async function runCheck(req, res, job) {
      показує). Нічого не вигадуємо: статус skipped | cached | executed,
      usage лише коли API його реально повернув */
   const timings = {};
-  const mark = (name, ms, status, extra) => { timings[name] = Object.assign({ ms: Math.round(ms), status }, extra || {}); };
+  /* at: зсув старту стадії від початку прогону. Стадії позначаються у
+     момент завершення, тому старт рахуємо назад від тривалості; стадія,
+     що йде паралельно (Current Vision), передає свій at явно */
+  const mark = (name, ms, status, extra) => {
+    timings[name] = Object.assign({ ms: Math.round(ms), status, at: Math.max(0, Date.now() - tRun - Math.round(ms)) }, extra || {});
+  };
   const aiUsage = (data, body) => {
     const u = data && data.usage && typeof data.usage === 'object' ? data.usage : null;
     const out = { model: (data && data.model) || (body && body.model) || null, reasoning_effort: (body && body.reasoning_effort) || null };
@@ -2346,6 +2353,201 @@ async function runCheck(req, res, job) {
     if (!listing.photos.length && !listing.vin && !listing.text) {
       return res.status(422).json({ error: errText(lang, 'listing_extract_failed') });
     }
+
+    /* ПОРЯДОК СТАДІЙ (Feed v1.1): вибір кадрів і канонічний розбір нинішніх
+       кадрів стартують ОДРАЗУ після розбору сторінки, бо залежать лише від
+       listing.photos. Декодер VIN, Vehicle Memory і пошук аукціонного архіву
+       НЕ є їхньою залежністю: раніше вони йшли першими і Current Vision
+       починався вже після них, через що основний виклик чекав розбір майже
+       повністю. Тепер ці стадії виконуються, поки розбір уже рахується */
+    /* --- AI --- */
+    const langDirective = languageDirective(lang);
+
+    /* BENCHMARK-режим (bench_effort у тілі запиту, лише 'high' | 'medium'):
+       reasoning_effort ОСНОВНОГО виклику для контрольованого порівняння
+       high/medium на тому самому input. Без цього поля поведінка типова
+       (REASONING_EFFORT || medium: з 2026-09-10 продакшн іде на medium за
+       результатом benchmark, high лишається для benchmark/debug через
+       bench_effort або env). withEffort=true має лише основний
+       виклик; селектор кадрів і верифікатор ідуть без effort, історичний
+       Vision має свій HV_REASONING_EFFORT: їх benchmark не чіпає */
+    /* benchmark/debug-перемикачі з тіла запиту (bench_effort, photo_pick,
+       cv_mode) діють ЛИШЕ із заголовком x-calcar-bench, що збігається з env
+       BENCH_KEY. Без ключа в env вони ігноруються: сторонній запит не може
+       підняти вартість Check чи запустити додатковий AI-виклик */
+    const benchAllowed = !!(process.env.BENCH_KEY && req.headers && req.headers['x-calcar-bench'] === process.env.BENCH_KEY);
+    const BENCH_EFFORT = (benchAllowed && req.body && (req.body.bench_effort === 'high' || req.body.bench_effort === 'medium')) ? req.body.bench_effort : null;
+    const EFFORT = BENCH_EFFORT || process.env.REASONING_EFFORT || 'medium';
+    const modelBody = (c, withEffort = true, system = null, responseFormat = null) => {
+      const b = {
+        model: process.env.OPENAI_MODEL || 'gpt-5.6-terra',
+        max_completion_tokens: 16000,
+        /* основний виклик: strict json_schema (контракт полів у api/check-schema.js);
+           інші виклики і fallback: json_object */
+        response_format: responseFormat || { type: 'json_object' },
+        /* статичні правила першим повідомленням: однаковий префікс кешується провайдером */
+        messages: system ? [{ role: 'system', content: system }, { role: 'user', content: c }] : [{ role: 'user', content: c }],
+      };
+      if (withEffort && EFFORT !== 'off') b.reasoning_effort = EFFORT;
+      return b;
+    };
+    const callModel = async (body, ms) => {
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), ms);
+      try {
+        const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+          signal: ctl.signal,
+          method: 'POST',
+          headers: { 'content-type': 'application/json', authorization: 'Bearer ' + process.env.OPENAI_API_KEY },
+          body: JSON.stringify(body),
+        });
+        return await resp.json();
+      } finally { clearTimeout(t); }
+    };
+
+    const img = (u, detail) => ({ type: 'image_url', image_url: { url: u, detail } });
+    /* ---- вибірка кадрів ----
+       <=24 кадрів: усі, галерея переглянута повністю, без викликів.
+       >24: ОДИН дешевий content-aware прохід low-detail по ВСІЙ галереї
+       класифікує типи кадрів, детермінований pickDiverseFrames обирає до
+       24 максимально різноманітних (задній ряд, багажник, торпедо,
+       консоль і двері обовʼязково, без купи однакових екстерʼєрів) і
+       роздає high-слоти найінформативнішим. Фейл чи таймаут: рівномірний
+       fallback і чесний gallery_coverage_complete=false */
+    let photoIdx, highSet, galleryCoverageComplete, photoSelectorMeta;
+    /* BENCHMARK-режим (photo_pick: 'even' у тілі запиту): детермінований
+       рівномірний вибір тих самих кадрів для кожного прогону одного
+       оголошення, без AI-селектора. Потрібен лише для чесного порівняння
+       варіантів промпту: модель мусить бачити ті самі фото. Продакшн-шлях
+       (селектор при > 24 кадрів) не змінюється */
+    const photoPickEven = benchAllowed && (req.body && req.body.photo_pick === 'even') && listing.photos.length > 24;
+    if (photoPickEven) {
+      photoIdx = pickEvenIndexes(listing.photos.length, 24);
+      highSet = new Set(pickEvenIndexes(photoIdx.length, 12));
+      galleryCoverageComplete = false;
+      photoSelectorMeta = { mode: 'even_benchmark' };
+      mark('photo_selector', 0, 'skipped', { reason: 'benchmark_even', photos: listing.photos.length });
+    } else if (listing.photos.length <= 24) {
+      photoIdx = listing.photos.map((_, i) => i);
+      highSet = new Set(pickEvenIndexes(photoIdx.length, 12));
+      galleryCoverageComplete = true;
+      photoSelectorMeta = { mode: 'all' };
+      mark('photo_selector', 0, 'skipped', { reason: 'gallery_le_24', photos: listing.photos.length });
+    } else {
+      try {
+        const tSel = Date.now();
+        const selContent = [{ type: 'text', text: 'Класифікуй кадри оголошення авто за типом. Відповідай ЛИШЕ валідним JSON {"frames":[{"i":1,"type":"front"}]} з записом для КОЖНОГО кадру. type СТРОГО з переліку: front | rear | side | dashboard | steering | center_console | doors | front_seats | rear_seats | roof | trunk | engine_bay | wheels | detail | other. i це число з підпису i=N перед кадром.' }];
+        listing.photos.forEach((u, i) => { selContent.push({ type: 'text', text: 'i=' + (i + 1) + ':' }); selContent.push(img(u, 'low')); });
+        const selBody = modelBody(selContent, false);
+        const sr = await callModel(selBody, 45000);
+        mark('photo_selector', Date.now() - tSel, 'executed', { photos: listing.photos.length, ai: aiUsage(sr, selBody) });
+        const frames = JSON.parse((sr.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim()).frames;
+        if (!Array.isArray(frames) || !frames.length) throw new Error('selector: порожня класифікація');
+        const types = new Array(listing.photos.length).fill('other');
+        for (const fr of frames) {
+          const i = parseInt(fr && fr.i, 10) - 1;
+          if (i >= 0 && i < types.length && typeof fr.type === 'string') types[i] = fr.type;
+        }
+        const dv = pickDiverseFrames(types, 24, 12);
+        photoIdx = dv.picked;
+        highSet = new Set(photoIdx.map((gi, pos) => dv.high.has(gi) ? pos : -1).filter(p => p >= 0));
+        galleryCoverageComplete = true;
+        photoSelectorMeta = { mode: 'selector', ms: Date.now() - tSel, tokens: sr.usage || null, types: photoIdx.map(i => types[i]) };
+        console.log('[photos] селектор:', listing.photos.length, '->', photoIdx.length, 'за', Date.now() - tSel, 'мс');
+      } catch (e) {
+        photoIdx = pickEvenIndexes(listing.photos.length, 24);
+        highSet = new Set(pickEvenIndexes(photoIdx.length, 12));
+        galleryCoverageComplete = false;
+        photoSelectorMeta = { mode: 'even_fallback', error: String(e.message || e).slice(0, 80) };
+        if (!timings.photo_selector || timings.photo_selector.status !== 'executed') mark('photo_selector', Date.now() - tSel, 'fallback', { error: String(e.message || e).slice(0, 80) });
+        console.log('[photos] селектор впав, рівномірний fallback:', e.message);
+      }
+    }
+    const photoUrls = photoIdx.map(i => listing.photos[i]);
+
+    /* ---- Current Vehicle Vision v1, SHADOW (Phase 1) ----
+       Стартує одразу після вибору кадрів і йде ПАРАЛЕЛЬНО з історичним
+       Vision і основним викликом; чекається лише перед збереженням, у
+       межах залишку бюджету. Модель отримує ЛИШЕ кадри (без пробігу і
+       тексту оголошення): одометр читається незалежно, порівняння з
+       оголошенням робить код. Збій, невалідна відповідь чи таймаут
+       фіксуються в телеметрії і не впливають на Check */
+    /* Shadow-режим Current Vision увімкнений типово (Phase 1 validation):
+       вимикається лише env CV_MODE=off. Виклик іде паралельно, готовий звіт
+       не затримує (максимум CV_SHADOW_MAX_WAIT_MS), результат живе тільки
+       в _meta; збій чи таймаут на Check не впливають. Тіло запиту може
+       вимкнути/увімкнути режим лише з benchmark-ключем */
+    const cvMode = process.env.CV_MODE === 'off' ? null
+      : (benchAllowed && req.body && req.body.cv_mode === 'off') ? null : 'shadow';
+    const CV_SHADOW_MAX_WAIT_MS = 8000;
+    /* Одометр у Feed основному виклику НЕ передається, тому цільова
+       перевірка показань обслуговувала б сигнал, якого більше немає, і
+       при цьому стояла б на критичному шляху очікування розбору.
+       У звичайному Check вона вимкнена; лишається для benchmark-режиму,
+       коли одометром займаємось окремо */
+    const cvOdoVerify = !!(benchAllowed && req.body && req.body.cv_odo_verify === true);
+    /* скільки основний виклик готовий чекати канонічний розбір */
+    const CV_FEED_MAX_WAIT_MS = 45000;
+    let cvShadow = null;
+    const tCv = Date.now();
+    if (cvMode === 'shadow') {
+      cvShadow = (async () => {
+        const typesByIndex = (photoSelectorMeta && Array.isArray(photoSelectorMeta.types))
+          ? Object.fromEntries(photoIdx.map((gi, pos) => [gi, photoSelectorMeta.types[pos]])) : null;
+        const highGallery = new Set(photoIdx.filter((gi, pos) => highSet.has(pos)));
+        const frames0 = normalizeFrames(photoIdx.map(gi => ({ gallery_index: gi, url: listing.photos[gi] })));
+        const plan = frameDetailPlan(frames0, typesByIndex, highGallery);
+        const body = {
+          model: process.env.OPENAI_MODEL || 'gpt-5.6-terra', max_completion_tokens: 12000, reasoning_effort: 'low',
+          response_format: currentVisualResponseFormat(),
+          messages: [{ role: 'system', content: CURRENT_VISUAL_RULES }, { role: 'user', content: frameContent(plan.frames, 'mixed') }],
+        };
+        const d = await callModel(body, 95000);
+        const ms = Date.now() - tCv;
+        const base = { ms, ai: aiUsage(d, body), version: CURRENT_VISUAL_VERSION, fingerprint: frameSetFingerprint(plan.frames),
+          detail_plan: { source: plan.source, high: plan.high, low: plan.low }, photos: { total: plan.frames.length, high: plan.high.length, low: plan.low.length },
+          frames: plan.frames.map(f => ({ gallery_index: f.gallery_index, photo_identity: f.identity, high: f.high, type: f.type })) };
+        if (!d || d.error) return { status: 'failed', error: String((d && d.error && d.error.message) || 'no response').slice(0, 160), ...base };
+        let raw = null;
+        try { raw = JSON.parse(String(d.choices?.[0]?.message?.content || '')); } catch (e) { return { status: 'failed', error: 'invalid_json', ...base }; }
+        const { current_visual, stats } = gateCurrentVisual(raw, plan.frames);
+        let odo = odometerDiscrepancy(current_visual, listing.odometer_km);
+        let verify = null;
+        /* УМОВНА перевірка одометра: лише коли з'явився кандидат на
+           розбіжність. Другий короткий виклик по 1-3 кадрах приладів
+           (high) стартує одразу, поки основний виклик ще працює, і
+           пробігу оголошення НЕ бачить: код лише звіряє два незалежні
+           читання. Незгода знімає сигнал, а не "виправляє" число */
+        if (odo && odo.needs_verification && !cvOdoVerify) {
+          odo = { ...odo, candidate: false, status: 'not_verified_feed', verified: false, verifier_status: 'skipped_feed' };
+        } else if (odo && odo.needs_verification) {
+          const vFrames = odometerVerifyFrames(current_visual, plan.frames, typesByIndex);
+          const tV = Date.now();
+          try {
+            const vBody = {
+              model: process.env.OPENAI_MODEL || 'gpt-5.6-terra', max_completion_tokens: 3000, reasoning_effort: 'low',
+              response_format: odometerVerifierResponseFormat(),
+              messages: [{ role: 'system', content: ODOMETER_VERIFIER_RULES }, { role: 'user', content: frameContent(vFrames, 'high') }],
+            };
+            const vd = await callModel(vBody, 45000);
+            let vRaw = null;
+            try { vRaw = JSON.parse(String(vd.choices?.[0]?.message?.content || '')); } catch (e) { vRaw = null; }
+            const gated = vRaw ? gateOdometerVerifier(vRaw, vFrames) : null;
+            const rec = reconcileOdometer(current_visual.dashboard.odometer_reading, gated);
+            verify = { status: gated ? 'ok' : (vd && vd.error ? 'failed' : 'invalid_json'), ms: Date.now() - tV, ai: aiUsage(vd, vBody),
+              frames: vFrames.map(f => f.gallery_index), reading: gated ? gated.odometer_reading : null, engine_state: gated ? gated.engine_state : null, reconcile: rec };
+            odo = rec.agreed
+              ? { ...odo, status: 'discrepancy_candidate', verified: true, verifier_value: rec.verifier.value }
+              : { ...odo, status: 'uncertain_visual_reading', candidate: false, verified: false, verifier_status: rec.status };
+          } catch (e) {
+            verify = { status: 'failed', ms: Date.now() - tV, error: String((e && e.message) || e).slice(0, 120) };
+            odo = { ...odo, status: 'uncertain_visual_reading', candidate: false, verified: false, verifier_status: 'failed' };
+          }
+        }
+        return { status: 'ok', ...base, summary: summarizeCurrentVisual(current_visual, stats), odometer_vs_listing: odo, odometer_verifier: verify, current_visual };
+      })().catch(e => ({ status: 'failed', ms: Date.now() - tCv, error: String((e && e.message) || e).slice(0, 160) }));
+    }
+
 
     /* --- NHTSA decode: той самий безкоштовний шлях, що в Import --- */
     let nhtsa = null;
@@ -2541,193 +2743,6 @@ async function runCheck(req, res, job) {
     let cachedHv = (auctionSearch && auctionSearch.cached_historical_visual) || null;
     let hvCache = { fingerprint: null, hit: false, source: null };
 
-    /* --- AI --- */
-    const langDirective = languageDirective(lang);
-
-    /* BENCHMARK-режим (bench_effort у тілі запиту, лише 'high' | 'medium'):
-       reasoning_effort ОСНОВНОГО виклику для контрольованого порівняння
-       high/medium на тому самому input. Без цього поля поведінка типова
-       (REASONING_EFFORT || medium: з 2026-09-10 продакшн іде на medium за
-       результатом benchmark, high лишається для benchmark/debug через
-       bench_effort або env). withEffort=true має лише основний
-       виклик; селектор кадрів і верифікатор ідуть без effort, історичний
-       Vision має свій HV_REASONING_EFFORT: їх benchmark не чіпає */
-    /* benchmark/debug-перемикачі з тіла запиту (bench_effort, photo_pick,
-       cv_mode) діють ЛИШЕ із заголовком x-calcar-bench, що збігається з env
-       BENCH_KEY. Без ключа в env вони ігноруються: сторонній запит не може
-       підняти вартість Check чи запустити додатковий AI-виклик */
-    const benchAllowed = !!(process.env.BENCH_KEY && req.headers && req.headers['x-calcar-bench'] === process.env.BENCH_KEY);
-    const BENCH_EFFORT = (benchAllowed && req.body && (req.body.bench_effort === 'high' || req.body.bench_effort === 'medium')) ? req.body.bench_effort : null;
-    const EFFORT = BENCH_EFFORT || process.env.REASONING_EFFORT || 'medium';
-    const modelBody = (c, withEffort = true, system = null, responseFormat = null) => {
-      const b = {
-        model: process.env.OPENAI_MODEL || 'gpt-5.6-terra',
-        max_completion_tokens: 16000,
-        /* основний виклик: strict json_schema (контракт полів у api/check-schema.js);
-           інші виклики і fallback: json_object */
-        response_format: responseFormat || { type: 'json_object' },
-        /* статичні правила першим повідомленням: однаковий префікс кешується провайдером */
-        messages: system ? [{ role: 'system', content: system }, { role: 'user', content: c }] : [{ role: 'user', content: c }],
-      };
-      if (withEffort && EFFORT !== 'off') b.reasoning_effort = EFFORT;
-      return b;
-    };
-    const callModel = async (body, ms) => {
-      const ctl = new AbortController();
-      const t = setTimeout(() => ctl.abort(), ms);
-      try {
-        const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-          signal: ctl.signal,
-          method: 'POST',
-          headers: { 'content-type': 'application/json', authorization: 'Bearer ' + process.env.OPENAI_API_KEY },
-          body: JSON.stringify(body),
-        });
-        return await resp.json();
-      } finally { clearTimeout(t); }
-    };
-
-    const img = (u, detail) => ({ type: 'image_url', image_url: { url: u, detail } });
-    /* ---- вибірка кадрів ----
-       <=24 кадрів: усі, галерея переглянута повністю, без викликів.
-       >24: ОДИН дешевий content-aware прохід low-detail по ВСІЙ галереї
-       класифікує типи кадрів, детермінований pickDiverseFrames обирає до
-       24 максимально різноманітних (задній ряд, багажник, торпедо,
-       консоль і двері обовʼязково, без купи однакових екстерʼєрів) і
-       роздає high-слоти найінформативнішим. Фейл чи таймаут: рівномірний
-       fallback і чесний gallery_coverage_complete=false */
-    let photoIdx, highSet, galleryCoverageComplete, photoSelectorMeta;
-    /* BENCHMARK-режим (photo_pick: 'even' у тілі запиту): детермінований
-       рівномірний вибір тих самих кадрів для кожного прогону одного
-       оголошення, без AI-селектора. Потрібен лише для чесного порівняння
-       варіантів промпту: модель мусить бачити ті самі фото. Продакшн-шлях
-       (селектор при > 24 кадрів) не змінюється */
-    const photoPickEven = benchAllowed && (req.body && req.body.photo_pick === 'even') && listing.photos.length > 24;
-    if (photoPickEven) {
-      photoIdx = pickEvenIndexes(listing.photos.length, 24);
-      highSet = new Set(pickEvenIndexes(photoIdx.length, 12));
-      galleryCoverageComplete = false;
-      photoSelectorMeta = { mode: 'even_benchmark' };
-      mark('photo_selector', 0, 'skipped', { reason: 'benchmark_even', photos: listing.photos.length });
-    } else if (listing.photos.length <= 24) {
-      photoIdx = listing.photos.map((_, i) => i);
-      highSet = new Set(pickEvenIndexes(photoIdx.length, 12));
-      galleryCoverageComplete = true;
-      photoSelectorMeta = { mode: 'all' };
-      mark('photo_selector', 0, 'skipped', { reason: 'gallery_le_24', photos: listing.photos.length });
-    } else {
-      try {
-        const tSel = Date.now();
-        const selContent = [{ type: 'text', text: 'Класифікуй кадри оголошення авто за типом. Відповідай ЛИШЕ валідним JSON {"frames":[{"i":1,"type":"front"}]} з записом для КОЖНОГО кадру. type СТРОГО з переліку: front | rear | side | dashboard | steering | center_console | doors | front_seats | rear_seats | roof | trunk | engine_bay | wheels | detail | other. i це число з підпису i=N перед кадром.' }];
-        listing.photos.forEach((u, i) => { selContent.push({ type: 'text', text: 'i=' + (i + 1) + ':' }); selContent.push(img(u, 'low')); });
-        const selBody = modelBody(selContent, false);
-        const sr = await callModel(selBody, 45000);
-        mark('photo_selector', Date.now() - tSel, 'executed', { photos: listing.photos.length, ai: aiUsage(sr, selBody) });
-        const frames = JSON.parse((sr.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim()).frames;
-        if (!Array.isArray(frames) || !frames.length) throw new Error('selector: порожня класифікація');
-        const types = new Array(listing.photos.length).fill('other');
-        for (const fr of frames) {
-          const i = parseInt(fr && fr.i, 10) - 1;
-          if (i >= 0 && i < types.length && typeof fr.type === 'string') types[i] = fr.type;
-        }
-        const dv = pickDiverseFrames(types, 24, 12);
-        photoIdx = dv.picked;
-        highSet = new Set(photoIdx.map((gi, pos) => dv.high.has(gi) ? pos : -1).filter(p => p >= 0));
-        galleryCoverageComplete = true;
-        photoSelectorMeta = { mode: 'selector', ms: Date.now() - tSel, tokens: sr.usage || null, types: photoIdx.map(i => types[i]) };
-        console.log('[photos] селектор:', listing.photos.length, '->', photoIdx.length, 'за', Date.now() - tSel, 'мс');
-      } catch (e) {
-        photoIdx = pickEvenIndexes(listing.photos.length, 24);
-        highSet = new Set(pickEvenIndexes(photoIdx.length, 12));
-        galleryCoverageComplete = false;
-        photoSelectorMeta = { mode: 'even_fallback', error: String(e.message || e).slice(0, 80) };
-        if (!timings.photo_selector || timings.photo_selector.status !== 'executed') mark('photo_selector', Date.now() - tSel, 'fallback', { error: String(e.message || e).slice(0, 80) });
-        console.log('[photos] селектор впав, рівномірний fallback:', e.message);
-      }
-    }
-    const photoUrls = photoIdx.map(i => listing.photos[i]);
-
-    /* ---- Current Vehicle Vision v1, SHADOW (Phase 1) ----
-       Стартує одразу після вибору кадрів і йде ПАРАЛЕЛЬНО з історичним
-       Vision і основним викликом; чекається лише перед збереженням, у
-       межах залишку бюджету. Модель отримує ЛИШЕ кадри (без пробігу і
-       тексту оголошення): одометр читається незалежно, порівняння з
-       оголошенням робить код. Збій, невалідна відповідь чи таймаут
-       фіксуються в телеметрії і не впливають на Check */
-    /* Shadow-режим Current Vision увімкнений типово (Phase 1 validation):
-       вимикається лише env CV_MODE=off. Виклик іде паралельно, готовий звіт
-       не затримує (максимум CV_SHADOW_MAX_WAIT_MS), результат живе тільки
-       в _meta; збій чи таймаут на Check не впливають. Тіло запиту може
-       вимкнути/увімкнути режим лише з benchmark-ключем */
-    const cvMode = process.env.CV_MODE === 'off' ? null
-      : (benchAllowed && req.body && req.body.cv_mode === 'off') ? null : 'shadow';
-    const CV_SHADOW_MAX_WAIT_MS = 8000;
-    /* Одометр у Feed основному виклику НЕ передається, тому цільова
-       перевірка показань обслуговувала б сигнал, якого більше немає, і
-       при цьому стояла б на критичному шляху очікування розбору.
-       У звичайному Check вона вимкнена; лишається для benchmark-режиму,
-       коли одометром займаємось окремо */
-    const cvOdoVerify = !!(benchAllowed && req.body && req.body.cv_odo_verify === true);
-    /* скільки основний виклик готовий чекати канонічний розбір */
-    const CV_FEED_MAX_WAIT_MS = 45000;
-    let cvShadow = null;
-    const tCv = Date.now();
-    if (cvMode === 'shadow') {
-      cvShadow = (async () => {
-        const typesByIndex = (photoSelectorMeta && Array.isArray(photoSelectorMeta.types))
-          ? Object.fromEntries(photoIdx.map((gi, pos) => [gi, photoSelectorMeta.types[pos]])) : null;
-        const highGallery = new Set(photoIdx.filter((gi, pos) => highSet.has(pos)));
-        const frames0 = normalizeFrames(photoIdx.map(gi => ({ gallery_index: gi, url: listing.photos[gi] })));
-        const plan = frameDetailPlan(frames0, typesByIndex, highGallery);
-        const body = {
-          model: process.env.OPENAI_MODEL || 'gpt-5.6-terra', max_completion_tokens: 12000, reasoning_effort: 'low',
-          response_format: currentVisualResponseFormat(),
-          messages: [{ role: 'system', content: CURRENT_VISUAL_RULES }, { role: 'user', content: frameContent(plan.frames, 'mixed') }],
-        };
-        const d = await callModel(body, 95000);
-        const ms = Date.now() - tCv;
-        const base = { ms, ai: aiUsage(d, body), version: CURRENT_VISUAL_VERSION, fingerprint: frameSetFingerprint(plan.frames),
-          detail_plan: { source: plan.source, high: plan.high, low: plan.low }, photos: { total: plan.frames.length, high: plan.high.length, low: plan.low.length },
-          frames: plan.frames.map(f => ({ gallery_index: f.gallery_index, photo_identity: f.identity, high: f.high, type: f.type })) };
-        if (!d || d.error) return { status: 'failed', error: String((d && d.error && d.error.message) || 'no response').slice(0, 160), ...base };
-        let raw = null;
-        try { raw = JSON.parse(String(d.choices?.[0]?.message?.content || '')); } catch (e) { return { status: 'failed', error: 'invalid_json', ...base }; }
-        const { current_visual, stats } = gateCurrentVisual(raw, plan.frames);
-        let odo = odometerDiscrepancy(current_visual, listing.odometer_km);
-        let verify = null;
-        /* УМОВНА перевірка одометра: лише коли з'явився кандидат на
-           розбіжність. Другий короткий виклик по 1-3 кадрах приладів
-           (high) стартує одразу, поки основний виклик ще працює, і
-           пробігу оголошення НЕ бачить: код лише звіряє два незалежні
-           читання. Незгода знімає сигнал, а не "виправляє" число */
-        if (odo && odo.needs_verification && !cvOdoVerify) {
-          odo = { ...odo, candidate: false, status: 'not_verified_feed', verified: false, verifier_status: 'skipped_feed' };
-        } else if (odo && odo.needs_verification) {
-          const vFrames = odometerVerifyFrames(current_visual, plan.frames, typesByIndex);
-          const tV = Date.now();
-          try {
-            const vBody = {
-              model: process.env.OPENAI_MODEL || 'gpt-5.6-terra', max_completion_tokens: 3000, reasoning_effort: 'low',
-              response_format: odometerVerifierResponseFormat(),
-              messages: [{ role: 'system', content: ODOMETER_VERIFIER_RULES }, { role: 'user', content: frameContent(vFrames, 'high') }],
-            };
-            const vd = await callModel(vBody, 45000);
-            let vRaw = null;
-            try { vRaw = JSON.parse(String(vd.choices?.[0]?.message?.content || '')); } catch (e) { vRaw = null; }
-            const gated = vRaw ? gateOdometerVerifier(vRaw, vFrames) : null;
-            const rec = reconcileOdometer(current_visual.dashboard.odometer_reading, gated);
-            verify = { status: gated ? 'ok' : (vd && vd.error ? 'failed' : 'invalid_json'), ms: Date.now() - tV, ai: aiUsage(vd, vBody),
-              frames: vFrames.map(f => f.gallery_index), reading: gated ? gated.odometer_reading : null, engine_state: gated ? gated.engine_state : null, reconcile: rec };
-            odo = rec.agreed
-              ? { ...odo, status: 'discrepancy_candidate', verified: true, verifier_value: rec.verifier.value }
-              : { ...odo, status: 'uncertain_visual_reading', candidate: false, verified: false, verifier_status: rec.status };
-          } catch (e) {
-            verify = { status: 'failed', ms: Date.now() - tV, error: String((e && e.message) || e).slice(0, 120) };
-            odo = { ...odo, status: 'uncertain_visual_reading', candidate: false, verified: false, verifier_status: 'failed' };
-          }
-        }
-        return { status: 'ok', ...base, summary: summarizeCurrentVisual(current_visual, stats), odometer_vs_listing: odo, odometer_verifier: verify, current_visual };
-      })().catch(e => ({ status: 'failed', ms: Date.now() - tCv, error: String((e && e.message) || e).slice(0, 160) }));
-    }
     /* image-level provenance: у Vision ЛИШЕ кадри, чия належність exact lot
        доведена URL (VIN або lot_id). Generic-галерея (americamotors cs.copart
        без VIN) виключається: вона змішує різні авто. AmericaMotors лишається
@@ -2981,10 +2996,11 @@ async function runCheck(req, res, job) {
       cvFeedStatus = (r && r.status) || 'unknown';
       if (r && r.status === 'ok' && r.current_visual) cvFeed = r;
     }
-    let cvEvidence = null, cvContextPositions = null, cvConcepts = null;
+    let cvEvidence = null, cvContextPositions = null, cvConcepts = null, cvFeedCompact = null;
     if (cvFeed) {
-      cvEvidence = currentVisualEvidenceBlock(cvFeed.current_visual, cvFeed.photos ? cvFeed.photos.total : null);
+      cvEvidence = decisionEvidenceBlock(cvFeed.current_visual, cvFeed.photos ? cvFeed.photos.total : null, lang);
       cvConcepts = currentVisualConcepts(cvFeed.current_visual);
+      cvFeedCompact = compactCurrentVisual(cvFeed.current_visual);
       const typesForContext = (photoSelectorMeta && Array.isArray(photoSelectorMeta.types)) ? photoSelectorMeta.types : null;
       cvContextPositions = contextualPhotoPositions(typesForContext, CONTEXT_PHOTOS_DEFAULT, photoUrls.length);
     }
@@ -3389,6 +3405,16 @@ async function runCheck(req, res, job) {
     /* з канонічним розбором модель посилається одразу на номери кадрів
        галереї, тому карта тотожна; без нього нумерація як раніше (позиції
        у вибірці) */
+    /* стан: канонічні знахідки не мають зникати через переказ. Модель дає
+       формулювання, код добирає ті, які вона проковтнула (словниковим
+       реченням мовою звіту). Робиться ДО локалізації посилань, щоб номери
+       кадрів у дописаних пунктах виглядали так само, як у решті тексту */
+    let condCanonical = { applied: false };
+    if (cvFeed && cvFeedCompact) {
+      const merged = mergeCanonicalConditions(parsed.photo_findings, cvFeedCompact.condition_findings, lang);
+      parsed.photo_findings = merged.items;
+      condCanonical = { applied: true, ...merged.stats };
+    }
     localizePhotoRefs(parsed, cvFeed ? listing.photos.map((_, i) => i) : photoIdx, auctionOrigIdx, PHOTO_LABELS[lang] || PHOTO_LABELS.en);
 
     /* ---- комплектація: детермінована валідація + скептична перевірка ----
@@ -3404,8 +3430,12 @@ async function runCheck(req, res, job) {
          реально бачив; інші джерела не чіпаються */
       if (cvFeed && Array.isArray(cvConcepts)) {
         const gated = applyCurrentVisualEquipmentGate(parsed.equipment_v2, cvConcepts);
-        parsed.equipment_v2 = gated.items;
-        eqCanonical = { applied: true, concepts: cvConcepts.length, dropped_visual_evidence: gated.dropped };
+        /* Feed v1.1: канонічні поняття вносить КОД. Модель більше не
+           зобовʼязана переказувати кожен підтверджений кадрами факт:
+           раніше з восьми понять у звіт доходило три */
+        const merged = mergeCanonicalEquipment(gated.items, cvFeed.current_visual, lang);
+        parsed.equipment_v2 = merged.items;
+        eqCanonical = { applied: true, concepts: cvConcepts.length, dropped_visual_evidence: gated.dropped, merge: merged.stats };
       }
       parsed.equipment_v2 = sanitizeEquipment(parsed.equipment_v2, /(^|\.)auto\.ria\.com$/.test(listing.domain || '') ? 'autoria' : (listing.domain || null));
       const claims = selectEquipmentClaims(parsed.equipment_v2);
@@ -3466,7 +3496,7 @@ async function runCheck(req, res, job) {
       cvShadowResult = await Promise.race([cvShadow, new Promise(r => setTimeout(() => r({ status: 'timeout', ms: Date.now() - tCv }), Math.max(1000, Math.min(CV_SHADOW_MAX_WAIT_MS, 280000 - (Date.now() - tRun)))))]);
       cvWaited = Date.now() - tWait;
       cvShadowResult.waited_ms = cvWaited;
-      mark('current_vision_shadow', cvShadowResult.ms || 0, cvShadowResult.status, { waited_ms: cvWaited, feed_wait_ms: cvFeedWait, feed: !!cvFeed, feed_status: cvFeedStatus,
+      mark('current_vision_shadow', cvShadowResult.ms || 0, cvShadowResult.status, { at: tCv - tRun, waited_ms: cvWaited, feed_wait_ms: cvFeedWait, feed: !!cvFeed, feed_status: cvFeedStatus,
         context_photos: cvFeed ? (cvContextPositions || []).length : null, ai: cvShadowResult.ai || null, photos: cvShadowResult.photos || null, error: cvShadowResult.error || null });
     }
 
@@ -3527,6 +3557,8 @@ async function runCheck(req, res, job) {
       photo_preservation: photoPreservation,
       equipment_verifier: eqVerifier,
       equipment_canonical: eqCanonical,
+      condition_canonical: condCanonical,
+      canonical_gaps: cvFeed ? canonicalGaps(parsed.equipment_v2, cvFeed.current_visual) : null,
       /* що переиспользовано з Vehicle Memory, а що виконано заново */
       reuse: {
         ...reuse,
