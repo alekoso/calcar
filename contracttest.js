@@ -74,6 +74,18 @@ const ui = fs.readFileSync('result-check.html', 'utf8');
     if (SCH.SCORE_FACT_TYPES.length !== listed.length) errs.push('кількість типів у схемі ' + SCH.SCORE_FACT_TYPES.length + ' проти ' + listed.length + ' у правилах');
   }
   /* prose-схема для fallback існує і описує той самий контракт */
+  /* схема коштує вхідних токенів на кожному виклику: description лишаються
+     лише там, де промпт формат поля не задає; правила промпту в схемі не
+     дублюються (сторож проти повторного розростання) */
+  const schemaHv = JSON.stringify(SCH.buildMainSchema({ hvProvided: true })), schemaCold = JSON.stringify(SCH.buildMainSchema({ hvProvided: false }));
+  if (schemaHv.length > 8200) errs.push('схема (hv готовий) знову розрослась: ' + schemaHv.length + ' байт');
+  if (schemaCold.length > 11000) errs.push('схема (холодний варіант) знову розрослась: ' + schemaCold.length + ' байт');
+  const descs = (schemaCold.match(/"description":"([^"]*)"/g) || []).map(x => x.slice(15, -1));
+  if (descs.length > 30) errs.push('забагато description у схемі: ' + descs.length);
+  for (const d of descs) if (d.length > 120) errs.push('довгий description у схемі: ' + d.slice(0, 60));
+  for (const dup of ['ЛИШЕ заявлене число', 'true у 5-8', 'ЯВНІЙ заяві продавця', '3-4 речення', 'без вигаданих ринкових чисел', 'ЛИШЕ коли реально знайдена подія']) {
+    if (descs.some(d => d.includes(dup))) errs.push('description дублює правило промпту: ' + dup);
+  }
   const prose = SCH.schemaProse({ hvProvided: true });
   for (const k of ['"purchase_decision"', '"score_facts"', '"verdict"', '"checklist"']) if (!prose.includes(k)) errs.push('prose-схема без ' + k);
   if (/why_consider|must_check|info_notes/.test(prose)) errs.push('prose-схема з мертвими полями');

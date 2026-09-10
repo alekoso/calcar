@@ -240,8 +240,107 @@ for (const x of fs.readdirSync('api').filter(f => f.endsWith('.js'))) {
   if (!/ПРІОРИТИЗАЦІЯ: top risks це 3-5 пунктів/.test(src)) errs.push('промпт без пріоритизації top risks');
   if (!/НЕ стверджуй, що батарея обовʼязково сильно деградована/.test(src)) errs.push('промпт дозволяє стверджувати деградацію батареї');
 
+  /* 7. застряглий job: функція /api/check живе щонайбільше maxDuration, тому
+     running старший за ліміт + запас гарантовано мертвий: check-job чинить
+     стан у БД атомарно (PATCH з умовою status і created_at) і відповідає
+     retryable error; свіжий running, done і звичайний error не чіпаються */
+  const limitM = src.match(/^export const config = \{ maxDuration: (\d+) \};/m);
+  if (!limitM || Number(limitM[1]) * 1000 !== J.CHECK_FUNCTION_LIMIT_MS) errs.push('CHECK_FUNCTION_LIMIT_MS не дорівнює maxDuration /api/check');
+  if (!(J.STALE_JOB_AFTER_MS > J.CHECK_FUNCTION_LIMIT_MS + 10000 && J.STALE_JOB_AFTER_MS <= J.CHECK_FUNCTION_LIMIT_MS + 90000)) errs.push('запас stale-таймауту поза розумними межами: ' + J.STALE_JOB_AFTER_MS);
+  const T0 = Date.parse('2026-09-10T10:00:00.000Z');
+  const rowAt = (ageS, extra = {}) => ({ status: 'running', stage: 'ai', created_at: new Date(T0 - ageS * 1000).toISOString(), updated_at: new Date(T0 - ageS * 1000 + 5000).toISOString(), url: 'https://auto.ria.com/uk/auto_x_1.html', lang: 'ru', report: null, error: null, finished_at: null, ...extra });
+  if (J.isStaleJob(rowAt(100), T0)) errs.push('running 100 с вважається stale');
+  if (J.isStaleJob(rowAt(329), T0)) errs.push('running 329 с вважається stale (ліміт 300 + запас 30)');
+  if (!J.isStaleJob(rowAt(331), T0)) errs.push('running 331 с не stale');
+  if (!J.isStaleJob(rowAt(400, { status: 'queued' }), T0)) errs.push('queued 400 с не stale');
+  if (J.isStaleJob(rowAt(4000, { status: 'done' }), T0) || J.isStaleJob(rowAt(4000, { status: 'error' }), T0)) errs.push('done/error вважається stale');
+  if (J.isStaleJob(rowAt(4000, { created_at: null }), T0)) errs.push('рядок без created_at позначається stale наосліп');
+  /* обробник з підмінним Supabase REST */
+  const envBak = { u: process.env.SUPABASE_URL, k: process.env.SUPABASE_SERVICE_ROLE_KEY };
+  process.env.SUPABASE_URL = 'https://db.test'; process.env.SUPABASE_SERVICE_ROLE_KEY = 'srv';
+  const fetchBak = globalThis.fetch;
+  const calls = [];
+  let dbRow = null;
+  globalThis.fetch = async (url, opts = {}) => {
+    calls.push({ url: String(url), method: opts.method || 'GET', body: opts.body ? JSON.parse(opts.body) : null });
+    /* GET віддає КОПІЮ рядка, як справжній REST: мутації відповіді обробником стан БД не міняють */
+    if ((opts.method || 'GET') === 'GET') return { ok: true, json: async () => (dbRow ? [JSON.parse(JSON.stringify(dbRow))] : []) };
+    if (opts.method === 'PATCH') {
+      /* імітація умов PostgREST: status=in.(queued,running) і created_at=lt.<threshold> */
+      const thr = decodeURIComponent(String(url).match(/created_at=lt\.([^&]+)/)[1]);
+      const hit = dbRow && ['queued', 'running'].includes(dbRow.status) && Date.parse(dbRow.created_at) < Date.parse(thr) && /status=in\.\(queued,running\)/.test(String(url));
+      if (hit) Object.assign(dbRow, JSON.parse(opts.body));
+      return { ok: true, json: async () => (hit ? [dbRow] : []) };
+    }
+    return { ok: false, json: async () => ({}) };
+  };
+  const call = async (query) => { const out = {}; const res = { setHeader() {}, status(n) { out.s = n; return this; }, json(o) { out.o = o; return this; } }; await J.default({ method: 'GET', query }, res); return out; };
+  const TOK = 'AAAAAAAAAAAAAAAAAAAAAA';
+  const realNow = Date.now; Date.now = () => T0;
+  try {
+    /* свіжий running: без PATCH, статус як є, retryable false */
+    dbRow = rowAt(120); calls.length = 0;
+    let r = await call({ token: TOK, lang: 'ru' });
+    if (r.s !== 200 || r.o.status !== 'running' || r.o.retryable !== false || r.o.error !== null || calls.some(c => c.method === 'PATCH')) errs.push('свіжий running позначений stale або відповідь зламана: ' + JSON.stringify(r.o));
+    /* running на межі: 329 с ще живий */
+    dbRow = rowAt(329); calls.length = 0;
+    r = await call({ token: TOK });
+    if (r.o.status !== 'running' || calls.some(c => c.method === 'PATCH')) errs.push('running 329 с позначений stale');
+    /* stale running: атомарний PATCH з умовами, стан у БД error/timeout, відповідь retryable мовою запиту, помилка в БД мовою job */
+    dbRow = rowAt(400); calls.length = 0;
+    r = await call({ token: TOK, lang: 'ua' });
+    const patch = calls.find(c => c.method === 'PATCH');
+    if (!patch) errs.push('stale running не переведений у БД');
+    else {
+      if (!/status=in\.\(queued,running\)/.test(patch.url) || !/created_at=lt\./.test(patch.url) || !new RegExp('token=eq\\.' + TOK).test(patch.url)) errs.push('PATCH без атомарних умов: ' + patch.url);
+      if (patch.body.status !== 'error' || patch.body.stage !== J.STALE_STAGE || !patch.body.finished_at || !patch.body.updated_at) errs.push('PATCH тіло неправильне: ' + JSON.stringify(patch.body));
+      if (!/Анализ не успел завершиться/.test(patch.body.error)) errs.push('помилка в БД не мовою job (ru): ' + patch.body.error);
+    }
+    if (dbRow.status !== 'error' || dbRow.stage !== 'timeout') errs.push('рядок у БД не став error/timeout');
+    if (r.s !== 200 || r.o.status !== 'error' || r.o.retryable !== true || !/Аналіз не встиг завершитись/.test(r.o.error) || r.o.report !== null || r.o.url !== dbRow.url) errs.push('відповідь для stale не retryable error мовою запиту: ' + JSON.stringify(r.o));
+    /* повторне опитування вже полагодженого рядка: без нового PATCH, все ще retryable */
+    calls.length = 0;
+    r = await call({ token: TOK, lang: 'en' });
+    if (calls.some(c => c.method === 'PATCH') || r.o.status !== 'error' || r.o.retryable !== true || !/did not finish/.test(r.o.error)) errs.push('полагоджений timeout-рядок обробляється неправильно: ' + JSON.stringify(r.o));
+    /* summary-режим (картки) теж чинить БД */
+    dbRow = rowAt(500, { status: 'queued', stage: 'queued' }); calls.length = 0;
+    r = await call({ token: TOK, summary: '1' });
+    if (!calls.some(c => c.method === 'PATCH') || dbRow.status !== 'error' || r.o.status !== 'error' || r.o.retryable !== true || r.o.summary !== null) errs.push('summary-режим не лагодить stale queued: ' + JSON.stringify(r.o));
+    /* done старший за ліміт: не чіпається, звіт віддається */
+    dbRow = rowAt(4000, { status: 'done', stage: 'done', report: { vehicle: { title: 'X' }, verdict: { score: 8 }, _meta: { vin: 'V' } }, finished_at: new Date(T0 - 3800 * 1000).toISOString() }); calls.length = 0;
+    r = await call({ token: TOK });
+    if (calls.some(c => c.method === 'PATCH') || r.o.status !== 'done' || r.o.retryable !== false || !r.o.report || r.o.report.vehicle.title !== 'X' || !r.o.slug) errs.push('done job зачеплений stale-логікою: ' + JSON.stringify(r.o).slice(0, 200));
+    r = await call({ token: TOK, summary: '1' });
+    if (r.o.status !== 'done' || !r.o.summary || r.o.retryable !== false) errs.push('summary для done зламаний');
+    /* звичайний error (не timeout): не retryable, текст із БД */
+    dbRow = rowAt(4000, { status: 'error', stage: 'error', error: 'Listing not found' }); calls.length = 0;
+    r = await call({ token: TOK });
+    if (calls.some(c => c.method === 'PATCH') || r.o.status !== 'error' || r.o.retryable !== false || r.o.error !== 'Listing not found') errs.push('звичайний error став retryable або зачеплений: ' + JSON.stringify(r.o));
+    /* невдалий PATCH (БД недоступна): відповідь усе одно error/retryable, наступне опитування спробує ще */
+    dbRow = rowAt(400); calls.length = 0;
+    const fetchOk = globalThis.fetch;
+    globalThis.fetch = async (url, opts = {}) => (opts.method === 'PATCH' ? { ok: false, json: async () => ({}) } : fetchOk(url, opts));
+    r = await call({ token: TOK });
+    globalThis.fetch = fetchOk;
+    if (r.o.status !== 'error' || r.o.retryable !== true || dbRow.status !== 'running') errs.push('невдалий PATCH ламає відповідь: ' + JSON.stringify(r.o));
+    /* невідомий токен: 404 без деталей і без PATCH */
+    dbRow = null; calls.length = 0;
+    r = await call({ token: TOK });
+    if (r.s !== 404 || calls.some(c => c.method === 'PATCH')) errs.push('невідомий токен не 404');
+  } finally {
+    Date.now = realNow; globalThis.fetch = fetchBak;
+    if (envBak.u === undefined) delete process.env.SUPABASE_URL; else process.env.SUPABASE_URL = envBak.u;
+    if (envBak.k === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY; else process.env.SUPABASE_SERVICE_ROLE_KEY = envBak.k;
+  }
+  /* UI: сторінка Check читає ?url= (повернення зі звіту), read-only звіт при retryable дає кнопку повтору з тією ж адресою; опитування Check зупиняється на status error */
+  const chkHtml = fs.readFileSync('check.html', 'utf8'), rcHtml = fs.readFileSync('result-check.html', 'utf8');
+  if (!/new URLSearchParams\(location\.search\)\.get\('url'\)/.test(chkHtml)) errs.push('check.html не читає ?url= для повтору');
+  if (!/if \(j\.status === 'error'\) throw new Error\(j\.error/.test(chkHtml)) errs.push('pollJob не зупиняється на error');
+  if (!/j\.retryable \? ' <a class="job-retry" href="\/' \+ \(j\.url \? '\?url=' \+ encodeURIComponent\(j\.url\)/.test(rcHtml)) errs.push('read-only звіт без кнопки повтору для retryable');
+  if (!/\.job-retry\{/.test(rcHtml)) errs.push('кнопка повтору без стилю');
+
   fs.rmSync(dir, { recursive: true, force: true });
   if (errs.length) { console.log('DURABLE TEST FAILED:'); errs.forEach(e => console.log('  - ' + e)); process.exit(1); }
-  console.log('токен · fakeRes · waitUntil · синхронний фолбек · hv-кеш примусовий · 10 повторів ідентичні · 1.4 = substantial/indeterminate · публічний звіт без приватного · проксі allowlist · маршрут і сторінки');
+  console.log('токен · fakeRes · waitUntil · синхронний фолбек · stale job -> error/timeout атомарно · hv-кеш примусовий · 10 повторів ідентичні · 1.4 = substantial/indeterminate · публічний звіт без приватного · проксі allowlist · маршрут і сторінки');
   console.log('DURABLE TEST PASSED');
 })().catch(e => { console.log('DURABLE TEST CRASHED:', e.stack || e.message); process.exit(1); });

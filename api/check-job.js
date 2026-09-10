@@ -1,6 +1,8 @@
 /* CalCar Check: стан durable-аналізу і публічний read-only звіт за токеном.
-   GET /api/check-job?token=<token>            -> { status, stage, slug, report?, error? }
-   GET /api/check-job?token=<token>&summary=1  -> { status, slug, summary } (картка для списків)
+   GET /api/check-job?token=<token>            -> { status, stage, slug, retryable, report?, error? }
+   GET /api/check-job?token=<token>&summary=1  -> { status, slug, retryable, summary } (картка для списків)
+   retryable: true лише для job, що не встиг завершитись у ліміт функції
+   (нижче): повторний запуск дає новий job, старий рядок не чіпається.
    Читає лише сервер через service role. Публічна відповідь будується
    ЯВНИМ allowlist-серіалізатором (api/share.js): переписка чату, входи
    рішення, службова діагностика і будь-яке нове поле схеми публічними
@@ -12,6 +14,38 @@ export const config = { maxDuration: 15 };
 
 import { resolveLocale, errText } from './locale.js';
 import { TOKEN_RE, publicReport, reportSummary, reportSlug } from './share.js';
+
+/* Застряглий job. Функція /api/check живе щонайбільше maxDuration (300 с)
+   від початку виклику, а created_at рядка ставиться ВЖЕ всередині цього
+   виклику: отже через 300 с після created_at функція гарантовано мертва
+   і running/queued може бути лише слідом її смерті (timeout без запису).
+   Запас 30 с покриває розсинхрон годинників Vercel і Supabase. Такий job
+   переводиться в error АТОМАРНО у БД (PATCH з умовою status і created_at:
+   done/error рядок цей запит не зачепить), а відповідь стає retryable. */
+export const CHECK_FUNCTION_LIMIT_MS = 300 * 1000;
+export const STALE_JOB_AFTER_MS = CHECK_FUNCTION_LIMIT_MS + 30 * 1000;
+export const STALE_STAGE = 'timeout';
+export function isStaleJob(row, nowMs = Date.now()) {
+  if (!row || (row.status !== 'queued' && row.status !== 'running')) return false;
+  const started = Date.parse(row.created_at || '');
+  if (!Number.isFinite(started)) return false;
+  return nowMs - started > STALE_JOB_AFTER_MS;
+}
+export async function failStaleJob(root, hdr, token, errorText, nowMs = Date.now()) {
+  const now = new Date(nowMs).toISOString();
+  const threshold = new Date(nowMs - STALE_JOB_AFTER_MS).toISOString();
+  try {
+    const r = await fetch(root + '/rest/v1/check_jobs?token=eq.' + encodeURIComponent(token)
+      + '&status=in.(queued,running)&created_at=lt.' + encodeURIComponent(threshold), {
+      method: 'PATCH',
+      headers: { ...hdr, 'content-type': 'application/json', prefer: 'return=representation' },
+      body: JSON.stringify({ status: 'error', stage: STALE_STAGE, error: errorText, finished_at: now, updated_at: now }),
+    });
+    if (!r.ok) return false;
+    const rows = await r.json().catch(() => null);
+    return Array.isArray(rows) && rows.length > 0;
+  } catch (e) { return false; }
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
@@ -31,22 +65,29 @@ export default async function handler(req, res) {
     const rows = await r.json();
     const row = Array.isArray(rows) && rows[0] ? rows[0] : null;
     if (!row) return res.status(404).json({ error: 'not found' });
-    /* job, що застряг у running довше за ліміт функції, чесно вважається зламаним */
-    const ageMs = Date.now() - Date.parse(row.updated_at || row.created_at || 0);
-    const stale = (row.status === 'queued' || row.status === 'running') && ageMs > 6 * 60 * 1000;
+    /* застряглий job: спершу лагодимо стан у БД (текст помилки мовою
+       самого job), і лише тоді відповідаємо; невдалий PATCH відповідь не
+       змінює, наступне опитування спробує ще раз */
+    const stale = isStaleJob(row);
+    if (stale) {
+      await failStaleJob(root, hdr, token, errText(resolveLocale(row.lang), 'check_timeout'));
+      row.status = 'error'; row.stage = STALE_STAGE; row.error = errText(lang, 'check_timeout');
+    }
+    const retryable = row.status === 'error' && row.stage === STALE_STAGE;
     const done = row.status === 'done' && row.report && row.report.vehicle;
     const slug = done ? reportSlug(row.report) : null;
     if (summaryOnly) {
       return res.status(200).json({
-        status: stale ? 'error' : row.status, slug,
+        status: row.status, slug, retryable,
         summary: done ? { ...reportSummary(row.report), created_at: row.finished_at || row.created_at } : null,
       });
     }
     return res.status(200).json({
-      status: stale ? 'error' : row.status,
+      status: row.status,
       stage: row.stage || null,
       slug,
-      error: stale ? errText(lang, 'check_timeout') : (row.error || null),
+      retryable,
+      error: retryable ? errText(lang, 'check_timeout') : (row.error || null),
       report: done ? publicReport(row.report) : null,
       url: row.url || null, vin: row.vin || null, lang: row.lang || null,
       created_at: row.created_at, updated_at: row.updated_at, finished_at: row.finished_at || null,

@@ -491,6 +491,8 @@
   .card-head{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .card-head h2{font-size:16px;font-weight:700}
   .card-body{padding:20px}
+  /* повтор аналізу зі сторінки read-only звіту, коли job не встиг завершитись */
+  .job-retry{display:inline-block;margin-left:8px;padding:6px 12px;border-radius:8px;background:var(--brand);color:var(--ink);font-weight:600;text-decoration:none}
   .hint{font-size:12.5px;color:var(--muted)}
   /* вторинні підписи шапок секцій: єдиний компонент, спокійна pill */
   .sec-meta{margin-left:auto;display:inline-flex;align-items:center;padding:3px 10px;border:1px solid var(--line);border-radius:12px;background:var(--card);font-size:12.5px;font-weight:600;color:var(--text);white-space:nowrap}
@@ -1221,7 +1223,12 @@ let AWAIT_TITLE = null;
         if (r.status === 404) { document.body.innerHTML = '<div class="wrap"><div class="card"><div class="card-body">' + esc(t('Report not found')) + '</div></div></div>'; document.body.classList.add('report-ready'); return; }
       } catch (e) { j = null; }
       if (j && j.status === 'done' && j.report && j.report.vehicle) break;
-      if (j && j.status === 'error') { document.body.innerHTML = '<div class="wrap"><div class="card"><div class="card-body">' + esc(j.error || t('Server error')) + '</div></div></div>'; document.body.classList.add('report-ready'); return; }
+      if (j && j.status === 'error') {
+        /* аналіз не встиг завершитись (retryable): замість вічного очікування
+           повідомлення і повторний запуск зі сторінки Check з тією ж адресою */
+        const retry = j.retryable ? ' <a class="job-retry" href="/' + (j.url ? '?url=' + encodeURIComponent(j.url) : '') + '">' + esc(t('Try again')) + '</a>' : '';
+        document.body.innerHTML = '<div class="wrap"><div class="card"><div class="card-body">' + esc(j.error || t('Server error')) + retry + '</div></div></div>'; document.body.classList.add('report-ready'); return;
+      }
       /* автор повернувся до ще не готового аналізу: показуємо той самий
          багатоетапний індикатор, що й на сторінці запуску, і рухаємо його
          реальною стадією з сервера */

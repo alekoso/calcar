@@ -840,6 +840,9 @@ if (SB) SB.auth.getSession().then(({ data }) => { window.CALCAR_USER_ID = data?.
 
 const input = document.getElementById('urlInput');
 const btn = document.getElementById('goBtn');
+/* повернення зі сторінки звіту після аналізу, що не встиг завершитись:
+   адреса оголошення вже в полі, запуск лишається за людиною */
+try { const qu = new URLSearchParams(location.search).get('url'); if (qu && /^https?:\/\/.+\..+/.test(qu) && !input.value) input.value = qu.trim(); } catch (e) {}
 const statusEl = document.getElementById('status');
 
 /* перевірка триває до 2 хвилин: показуємо, що саме відбувається, інакше
