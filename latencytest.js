@@ -73,7 +73,7 @@ if (/_meta\.timings|\.timings\b/.test(ui)) errs.push('сторінка звіт�
   /* окремий effort для описового читання, основний виклик не чіпається */
   if (!/const HV_EFFORT = process\.env\.HV_REASONING_EFFORT \|\| 'low';/.test(src)) errs.push('нема окремого reasoning effort для hv');
   if (!/let mainBody = modelBody\(content, true, mainSystem, mainFormat\);/.test(src)) errs.push('основний виклик не з системним префіксом правил і структурною схемою');
-  if (!/const EFFORT = process\.env\.REASONING_EFFORT \|\| 'high';/.test(src)) errs.push('reasoning effort основного виклику змінено');
+  if (!/const EFFORT = BENCH_EFFORT \|\| process\.env\.REASONING_EFFORT \|\| 'high';/.test(src) || !/if \(withEffort && EFFORT !== 'off'\) b\.reasoning_effort = EFFORT;/.test(src)) errs.push('reasoning effort основного виклику змінено');
   /* мітка reuse чесно каже single_read */
   if (!/hvCache\.consensus\.mode === 'single' \? 'single_read'/.test(src)) errs.push('reuse.historical_visual не відрізняє одиничне читання');
 }
@@ -128,6 +128,18 @@ if (!/severe: 2\.4/.test(v3)) errs.push('Score v3 змінено');
   if (!(fr.has(2) && fr.has(5) && fr.size === 2)) errs.push('кадри з розбору читаються неправильно: ' + [...fr]);
   const pb = C.mainPayloadBreakdown('правила'.repeat(100), [{ type: 'text', text: 'дані' }, { type: 'image_url', image_url: { url: 'u', detail: 'high' } }, { type: 'image_url', image_url: { url: 'v', detail: 'low' } }], { current: 2 });
   if (pb.images.total !== 2 || pb.images.high !== 1 || pb.images.low !== 1 || pb.images.current !== 2 || !pb.system_rules.chars || !pb.user_text.chars || !pb.text_approx_tokens_total) errs.push('розкладка payload рахує неправильно: ' + JSON.stringify(pb));
+  /* відбитки input для benchmark: стабільні, чутливі до тексту/кадрів/деталізації/схеми, нечутливі до CDN-піддомену кадру */
+  const mk = (sys, txt, url, det, schema) => C.mainPayloadBreakdown(sys, [{ type: 'text', text: txt }, { type: 'image_url', image_url: { url, detail: det } }], {}, schema).fingerprint;
+  const f0 = mk('S', 'U', 'https://cdn2.riastatic.com/photos/a/1.jpg', 'high', '{"a":1}');
+  if (!/^[0-9a-f]{16}$/.test(f0.input) || f0.schema === null) errs.push('відбиток input не sha256/16: ' + JSON.stringify(f0));
+  if (mk('S', 'U', 'https://cdn7.riastatic.com/photos/a/1.jpg', 'high', '{"a":1}').input !== f0.input) errs.push('відбиток залежить від CDN-піддомену кадру');
+  for (const [n, f] of [['system', mk('S2', 'U', 'https://cdn2.riastatic.com/photos/a/1.jpg', 'high', '{"a":1}')], ['user', mk('S', 'U2', 'https://cdn2.riastatic.com/photos/a/1.jpg', 'high', '{"a":1}')], ['detail', mk('S', 'U', 'https://cdn2.riastatic.com/photos/a/1.jpg', 'low', '{"a":1}')], ['schema', mk('S', 'U', 'https://cdn2.riastatic.com/photos/a/1.jpg', 'high', '{"a":2}')]]) if (f.input === f0.input) errs.push('відбиток input не реагує на зміну ' + n);
+  if (!/mainPayloadBreakdown\(mainSystem, content, \{[\s\S]*?\}, JSON\.stringify\(mainFormat\)\)/.test(src)) errs.push('відбиток схеми не передається у payload основного виклику');
+  /* benchmark effort: лише high|medium з тіла запиту, типова поведінка REASONING_EFFORT || high; інші виклики без effort */
+  if (!/const BENCH_EFFORT = \(req\.body && \(req\.body\.bench_effort === 'high' \|\| req\.body\.bench_effort === 'medium'\)\) \? req\.body\.bench_effort : null;/.test(src)) errs.push('bench_effort не обмежений high|medium');
+  if (!/const EFFORT = BENCH_EFFORT \|\| process\.env\.REASONING_EFFORT \|\| 'high';/.test(src)) errs.push('типовий effort основного виклику змінився');
+  const withEffortLines = src.split('\n').filter(l => /modelBody\(/.test(l) && !/const modelBody/.test(l) && !/, false[,)]/.test(l));
+  if (withEffortLines.some(l => !/mainSystem, mainFormat\)/.test(l))) errs.push('effort отримує не лише основний виклик: ' + withEffortLines.map(l => l.trim()).join(' | '));
   if (errs.length) { console.log('LATENCY TEST FAILED:'); errs.forEach(e => console.log('  - ' + e)); process.exit(1); }
   console.log('latency: 13 стадій + total у _meta.timings зі статусами · usage без вигадок · hv: одне читання штатно, A/B/C лише за HV_CONSENSUS=1, нуль без кадрів · гейт і Score v3 на місці · timings не публічні · payload: system-префікс без даних, компактні блоки, hv-правила не дублюються, архівні кадри за посиланнями');
 console.log('LATENCY TEST PASSED');

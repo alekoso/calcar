@@ -2154,18 +2154,27 @@ const PROMPT = (l, nhtsa, auction, langDirective, decisionStyle, auctionMeta, de
 /* розкладка payload основного виклику: що і скільки реально йде моделі.
    Токени текстів приблизні (кирилиця ~3.3 символа на токен), кадри
    рахуються штуками за режимом деталізації; точні числа дає usage */
-export function mainPayloadBreakdown(system, content, extra = {}) {
+export function mainPayloadBreakdown(system, content, extra = {}, schemaJson = null) {
   const tx = str => { const chars = String(str || '').length; return { chars, bytes: Buffer.byteLength(String(str || ''), 'utf8'), approx_tokens: Math.round(chars / 3.3) }; };
+  /* відбитки input (sha256, 16 hex): доказ, що два прогони отримали той
+     самий системний промпт, ті самі дані, ті самі кадри (за photoIdentity,
+     без CDN-піддомену) з тією самою деталізацією і ту саму схему */
+  const sha = s => crypto.createHash('sha256').update(String(s || ''), 'utf8').digest('hex').slice(0, 16);
   const texts = content.filter(x => x && x.type === 'text');
   const imgs = content.filter(x => x && x.type === 'image_url');
   const detail = d => imgs.filter(x => x.image_url && x.image_url.detail === d);
   const userText = texts.map(x => x.text).join('\n');
+  const imagesKey = imgs.map(x => photoIdentity(x.image_url && x.image_url.url) + '#' + (x.image_url && x.image_url.detail)).join('\n');
   const out = {
     system_rules: tx(system),
     user_text: tx(userText),
-    user_blocks: texts.map(x => ({ head: String(x.text || '').slice(0, 40), ...tx(x.text) })),
+    user_blocks: texts.map(x => ({ head: String(x.text || '').slice(0, 40), ...tx(x.text), sha: sha(x.text) })),
     text_approx_tokens_total: tx(system).approx_tokens + tx(userText).approx_tokens,
     images: { total: imgs.length, high: detail('high').length, low: detail('low').length, ...extra },
+    fingerprint: {
+      system: sha(system), user_text: sha(userText), images: sha(imagesKey), schema: schemaJson ? sha(schemaJson) : null,
+      input: sha(system + '\n' + userText + '\n' + imagesKey + '\n' + (schemaJson || '')),
+    },
   };
   return out;
 }
@@ -2510,7 +2519,14 @@ async function runCheck(req, res, job) {
     /* --- AI --- */
     const langDirective = languageDirective(lang);
 
-    const EFFORT = process.env.REASONING_EFFORT || 'high';
+    /* BENCHMARK-режим (bench_effort у тілі запиту, лише 'high' | 'medium'):
+       reasoning_effort ОСНОВНОГО виклику для контрольованого порівняння
+       high/medium на тому самому input. Без цього поля поведінка типова
+       (REASONING_EFFORT || high). withEffort=true має лише основний
+       виклик; селектор кадрів і верифікатор ідуть без effort, історичний
+       Vision має свій HV_REASONING_EFFORT: їх benchmark не чіпає */
+    const BENCH_EFFORT = (req.body && (req.body.bench_effort === 'high' || req.body.bench_effort === 'medium')) ? req.body.bench_effort : null;
+    const EFFORT = BENCH_EFFORT || process.env.REASONING_EFFORT || 'high';
     const modelBody = (c, withEffort = true, system = null, responseFormat = null) => {
       const b = {
         model: process.env.OPENAI_MODEL || 'gpt-5.6-terra',
@@ -2858,7 +2874,7 @@ async function runCheck(req, res, job) {
     const mainPayload = mainPayloadBreakdown(mainSystem, content, {
       current: photoUrls.length, current_high: photoUrls.filter((_, i) => highSet.has(i)).length, gallery_total: listing.photos.length,
       historical: auctionPhotos.length, historical_high: auctionPhotos.filter((_, i) => !hvFrames || hvFrames.has(i + 1)).length,
-    });
+    }, JSON.stringify(mainFormat));
 
     progress('ai');
     const t0 = Date.now();
