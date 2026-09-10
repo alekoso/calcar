@@ -59,7 +59,9 @@ export default async function handler(req, res) {
   let list = [];
   if (source === 'snapshot') {
     const vin = row.vin || meta.vin;
-    const snaps = vin ? await rest(root, hdr, 'vehicle_snapshots?select=photo_items,first_seen_at,vehicles!inner(vin)&vehicles.vin=eq.' + encodeURIComponent(vin) + '&order=first_seen_at.desc&limit=1') : null;
+    const veh = vin ? await rest(root, hdr, 'vehicles?vin=eq.' + encodeURIComponent(vin) + '&select=id&limit=1') : null;
+    const vehicleId = veh && veh[0] && veh[0].id ? veh[0].id : null;
+    const snaps = vehicleId ? await rest(root, hdr, 'vehicle_snapshots?vehicle_id=eq.' + encodeURIComponent(vehicleId) + '&select=photo_items,first_seen_at&order=first_seen_at.desc&limit=1') : null;
     list = framesFromSnapshot(snaps && snaps[0] ? snaps[0].photo_items : null);
   } else {
     list = framesFromMeta(meta);
