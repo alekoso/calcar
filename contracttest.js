@@ -119,7 +119,11 @@ const ui = fs.readFileSync('result-check.html', 'utf8');
   const schemaAt = rulesTpl.indexOf('${proseSchema');
   if (variantAt < 0 || metaAt < 0) errs.push('варіантні блоки не знайдені');
   else if (variantAt < decAt || variantAt < schemaAt || metaAt < variantAt) errs.push('варіантні блоки стоять раніше за спільні правила: спільний префікс зруйнований');
-  if (!/proseSchema\s*\?/.test(rulesTpl) || (rulesTpl.match(/\$\{/g) || []).filter(x => true).length > 6) errs.push('у статичних правилах більше динамічних вставок, ніж очікувалось');
+  const inserts = (rulesTpl.match(/\$\{/g) || []).length;
+  if (!/proseSchema\s*\?/.test(rulesTpl) || inserts > 12) errs.push('у статичних правилах більше динамічних вставок, ніж очікувалось: ' + inserts);
+  /* Feed: канонічний розбір лише як умовна гілка cvProvided, дані авто в префікс не потрапляють */
+  if (!/cvProvided \? `/.test(rulesTpl)) errs.push('нема умовної гілки cvProvided у правилах');
+  if (/CURRENT_VISUAL_EVIDENCE \(канонічний розбір НИНІШНІХ/.test(rulesTpl)) errs.push('дані канонічного розбору потрапили у статичні правила');
 
   /* ---------- 7. інваріанти продукту (правила на місці) ---------- */
   const R = rulesArea;

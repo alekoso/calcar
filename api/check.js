@@ -20,7 +20,8 @@ import {
    результат зберігається в _meta для аудиту, основний виклик, Score, UI
    і Vehicle Memory його не отримують */
 import { CURRENT_VISUAL_RULES, currentVisualResponseFormat, frameContent, normalizeFrames, frameDetailPlan, gateCurrentVisual, frameSetFingerprint, summarizeCurrentVisual, odometerDiscrepancy, CURRENT_VISUAL_VERSION,
-  ODOMETER_VERIFIER_RULES, odometerVerifierResponseFormat, odometerVerifyFrames, gateOdometerVerifier, reconcileOdometer } from './current-visual.js';
+  ODOMETER_VERIFIER_RULES, odometerVerifierResponseFormat, odometerVerifyFrames, gateOdometerVerifier, reconcileOdometer,
+  currentVisualEvidenceBlock, currentVisualConcepts, applyCurrentVisualEquipmentGate, compactCurrentVisual, contextualPhotoPositions, CONTEXT_PHOTOS_DEFAULT } from './current-visual.js';
 /* спільні ідентичності і версії: тести і сусідні модулі беруть їх звідси */
 export { HISTORICAL_VISUAL_VERSION, photoIdentity, photoSetFingerprint, listingFingerprint, snapshotRow, listingKey, NHTSA_DECODER_VERSION, LISTING_FINGERPRINT_VERSION };
 
@@ -1980,7 +1981,7 @@ METADATA EXACT-LOT (надійний historical, передано у блоці 
 - Damage-зони з metadata (primary/secondary) бери як факт зони удару, навіть якщо кадр цієї зони у Vision відсутній.
 `;
 
-const MAIN_RULES = (auction, decisionStyle, auctionMeta, { proseSchema = false } = {}) => `Ти експертна система CalCar Check: незалежний розбір оголошення про продаж вживаного авто. Твоя робота: звірити те, що СТВЕРДЖУЄ продавець, із тим, що КАЖУТЬ дані і фото, і чесно відповісти, чи варто брати саме це авто.
+const MAIN_RULES = (auction, decisionStyle, auctionMeta, { proseSchema = false, cvProvided = false } = {}) => `Ти експертна система CalCar Check: незалежний розбір оголошення про продаж вживаного авто. Твоя робота: звірити те, що СТВЕРДЖУЄ продавець, із тим, що КАЖУТЬ дані і фото, і чесно відповісти, чи варто брати саме це авто.
 Дані для розбору передані ОКРЕМИМ повідомленням у блоках: мова відповіді, VEHICLE (декодування VIN), LISTING (факти зі сторінки, структуровані опції, повний текст сторінки з описом продавця і офіційними блоками площадки, price_context), VEHICLE_HISTORY (архів і metadata лота, якщо знайдені), HISTORICAL_VISUAL_EVIDENCE (канонічний розбір архівних кадрів, якщо є), DECISION_CONTEXT (детермінований контекст рішення), а також кадри CURRENT_VISUAL_EVIDENCE (photo_N) і, якщо є, архівні кадри (auction_photo_N). Правила нижче стосуються саме цих блоків. Варіантні правила для історичних кадрів і metadata лота стоять у самому кінці, після спільних правил і схеми.
 
 БЛОК ІСТОРІЇ ПОШКОДЖЕНЬ ("auction"): у звіті це розділ "Історія пошкоджень і фото з минулого", і він ГЛОБАЛЬНИЙ, не лише про США. "found": true СТАВ ЛИШЕ коли для авто реально знайдена подія, повʼязана з пошкодженням, ДТП чи відновленням (аукціон пошкоджених авто, запис про ДТП, історичні фото пошкодженого стану). Звичайна реєстраційна історія, зміна власників, минулі оголошення без пошкоджень та інші нейтральні історичні записи самі по собі цей блок НЕ створюють: тоді "found": false, "summary": null, "findings": порожній масив, і жодних текстів на кшталт "записів не знайдено" у summary. Американський контекст (США, IAAI, Copart) згадуй усередині блоку ЛИШЕ коли подія справді американська; для подій з інших країн називай їхнє джерело.
@@ -2012,7 +2013,7 @@ const MAIN_RULES = (auction, decisionStyle, auctionMeta, { proseSchema = false }
 - "engine": "4.4 л бензин V8, 462 к.с." або "електро, 77 кВт·год". НІКОЛИ не пиши "довідково", "в декодуванні не вказано", "ймовірно". Невідоме = null, а не речення про невідомість.
 - "mileage_note": ЛИШЕ заявлене число одним коротким рядком: "129 000 км". Уся аналітика пробігу (хронологія, розбіжності) живе в discrepancies та history, НЕ в шапці.
 
-"photo_findings": ЛИШЕ про НИНІШНІ фото з оголошення (не аукціонні: для них є auction.findings). СПОЧАТКУ те, що РЕАЛЬНО ПОМІЧЕНО: різниця відтінку фарби, шагрень, нерівні зазори, свіжий герметик, нештатні деталі, знос салону проти пробігу. Кожна знахідка = окремий пункт зі status warn або bad. Якщо підозрілого нічого немає: ОДИН пункт "ok" ("на доступних фото явних слідів ремонту не видно") плюс МАКСИМУМ один пункт "unknown" із найважливішим обмеженням (наприклад, немає фото салону). ЗАБОРОНЕНО три пункти поспіль про те, чого не видно.
+${cvProvided ? `"photo_findings": бери ГОТОВИМИ з CURRENT_VISUAL_EVIDENCE. condition_findings звідти це канонічні спостереження про нинішній стан: перекажи кожне людською мовою одним пунктом (status warn чи bad за severity), не додаючи нових дефектів від себе і не спростовуючи канонічні. Якщо condition_findings порожній, а покриття достатнє: ОДИН пункт "ok" ("на доступних фото явних слідів ремонту не видно") плюс МАКСИМУМ один "unknown" про найважливішу невидиму зону з zones.not_visible. Самостійно переглядати кадри у пошуках дефектів НЕ треба: контекстні кадри дані лише для загального розуміння авто.` : `"photo_findings": ЛИШЕ про НИНІШНІ фото з оголошення (не аукціонні: для них є auction.findings). СПОЧАТКУ те, що РЕАЛЬНО ПОМІЧЕНО: різниця відтінку фарби, шагрень, нерівні зазори, свіжий герметик, нештатні деталі, знос салону проти пробігу. Кожна знахідка = окремий пункт зі status warn або bad. Якщо підозрілого нічого немає: ОДИН пункт "ok" ("на доступних фото явних слідів ремонту не видно") плюс МАКСИМУМ один пункт "unknown" із найважливішим обмеженням (наприклад, немає фото салону). ЗАБОРОНЕНО три пункти поспіль про те, чого не видно.`}
 
 "risks": 2-5 КЛЮЧОВИХ РИЗИКІВ САМЕ ЦЬОГО ЕКЗЕМПЛЯРА, кожен спирається на КОНКРЕТНИЙ факт цієї машини: симптом, помилку системи, суперечність, результат діагностики, видимий дефект, зафіксовану подію (ДТП, аукціон, скрутка) з непідтвердженими наслідками. Вік, пробіг і відома болячка моделі САМІ ПО СОБІ недостатні для risks: типові задири, пневмопідвіска, роздавальна коробка, батарея гібрида тощо живуть у model_notes.issues, де можна позначити підвищену актуальність через вік чи пробіг цієї машини; у risks вони переходять ЛИШЕ за конкретного сигналу по цій машині. Пояснення "чому преміальне авто дешеве" (дорогий сервіс, витрати володіння) клади у purchase_decision.value_context, не в risks. Для авто після зафіксованого ДТП один із ризиків майже завжди якість відновлення: це конкретна подія цієї машини.
 ВИНЯТОК, ЯКИЙ МУСИТЬ БУТИ: HIGH_COST_LATENT_RISK. Це ризик, який (а) НЕ є доведеною несправністю, (б) НЕ знижує Оцінку CalCar сам по собі, але (в) може суттєво змінити рішення про покупку, бо ймовірність × ціна помилки × релевантність САМЕ ЦЬОМУ авто (вік, пробіг, версія, відсутність незалежного підтвердження) висока. Такий ризик ВХОДИТЬ у risks з полем "kind": "latent" і формулюванням "не підтверджено", а не "несправно". Приклади: у 10-11-річного електромобіля з оригінальною високовольтною батареєю і без незалежної перевірки її стану: "Стан оригінальної високовольтної батареї не підтверджено" (реальна usable capacity/SOH, історія помилок HV-батареї, cell imbalance, реальне споживання і запас ходу, поведінка на DC-швидкій зарядці важать більше за заявлений продавцем запас ходу; НЕ стверджуй, що батарея обовʼязково сильно деградована); у ранньої Tesla Model S без підтвердженого апгрейду медіаблока: "Перевірити, чи лишився MCU1 чи встановлено MCU2" (MCU1 на NVIDIA Tegra 3: помітно повільніший інтерфейс, відома проблема зносу 8 ГБ eMMC, звірити recall/сервісну історію; НЕ стверджуй MCU1 як факт, якщо авто могло отримати апгрейд); дорога коробка чи пневмопідвіска без сервісної історії при великому пробігу тощо. Власницькі спостереження (жовта рамка чи розшарування ранніх дисплеїв Model S) додавай лише як "перевірити візуально обидва екрани", з провенансом owner-reported, без твердження про дефект.
@@ -2025,7 +2026,7 @@ const MAIN_RULES = (auction, decisionStyle, auctionMeta, { proseSchema = false }
 КОМПЛЕКТАЦІЯ ("equipment_v2"): максимально повне визначення ПІДТВЕРДЖУВАНОЇ комплектації. Філософія: краще пропустити одну опцію, ніж впевнено додати неіснуючу. Пайплайн усередині ЦЬОГО Ж аналізу, без окремих проходів:
 1) ATTENTION MAP: спершу сформуй подумки коротку карту характерних для цієї марки, моделі, покоління, року і версії опцій та місць, де зазвичай видно їх ознаки (логотип на решітці динаміка, кнопки вентиляції на консолі, проектор HUD на торпедо, камери в дзеркалах і решітці радіатора, шторки, память сидінь). Карта каже, КУДИ дивитись; наявність опції в карті НЕ доказ її присутності; впевнені знахідки поза картою теж фіксуй.
 2) ТЕКСТ ПРОДАВЦЯ: розбери, що заявлено, з нормалізацією народних назв (дистронік це адаптивний круїз, бурмістер це Burmester, панорама це панорамний дах, вебасто це автономний підігрів). Заява продавця це окреме джерело і НІЧОГО не підтверджує автоматично.
-3) ВІЗУАЛЬНИЙ ПРОХІД по фото оголошення: кожне візуальне підтвердження ЗОБОВʼЯЗАНЕ мати evidence з конкретним кадром (ref photo_N) і конкретною ознакою (sign: "логотип Harman Kardon на решітці динаміка передніх дверей", "кнопки вентиляції на центральній консолі"). Без ознаки на кадрі опція візуально НЕ підтверджена.
+${cvProvided ? `3) ВІЗУАЛЬНЕ ПІДТВЕРДЖЕННЯ: єдине джерело це CURRENT_VISUAL_EVIDENCE.equipment_visual. Кожну позицію звідти можеш внести як опцію з evidence source current_photos, ref photo_<frame> і тією самою ознакою. Самостійно шукати опції на кадрах і додавати НОВІ візуально підтверджені опції ЗАБОРОНЕНО: кадрів для цього тобі не дано.` : `3) ВІЗУАЛЬНИЙ ПРОХІД по фото оголошення: кожне візуальне підтвердження ЗОБОВʼЯЗАНЕ мати evidence з конкретним кадром (ref photo_N) і конкретною ознакою (sign: "логотип Harman Kardon на решітці динаміка передніх дверей", "кнопки вентиляції на центральній консолі"). Без ознаки на кадрі опція візуально НЕ підтверджена.`}
 - ДЖЕРЕЛА ОПЦІЙ (evidence source): vehicle_data (заводські/VIN-дані), current_photos (видно на фото), seller_claim (слова продавця), listing_data (структуровані поля оголошення площадки), historical. ОДНА опція з кількох джерел це ОДИН item з КІЛЬКОМА evidence, не дублікати. Рівень достовірності обчислює код із джерел; рівня "ймовірно" НЕ існує. Візуальне твердження без достатнього візуального evidence (кадр + ознака) візуальним не є; явно заявлена продавцем чи площадкою опція при цьому лишається зі своїм джерелом.
 - listing_data це дані ПЛОЩАДКИ, НЕ заводське підтвердження: ніколи не перетворюй їх на "підтверджено по VIN". Опція одночасно в listing_data і на фото: обидва evidence в одному item.
 - "value_tier": standard | notable | high_value для КОЖНОЇ опції, з урахуванням марки, моделі, покоління, року і версії. high_value це помітна upper-tier чи дорога опція саме для цієї моделі (Bowers & Wilkins на відповідній BMW може бути high_value). Це якісна класифікація, НЕ ціна: вартість і вплив на ціну авто не пиши. value_tier НЕ впливає на достовірність і джерела.
@@ -2055,7 +2056,7 @@ const MAIN_RULES = (auction, decisionStyle, auctionMeta, { proseSchema = false }
 - Різниця пробігів САМА ПО СОБІ це НЕ ODOMETER_ROLLBACK, а MILEAGE_CONFLICT_UNEXPLAINED. Тюнінг сам по собі НЕ MODIFICATION_TECHNICAL_CONCERN: потрібен конкретний технічний привід. Минуле ДТП саме по собі НЕ POOR_REPAIR_VISIBLE: потрібні видимі сліди поганого ремонту.
 - ВІДСУТНІСТЬ ДАНИХ НІКОЛИ НЕ Є ЗНАХІДКОЮ. Unknown не добре і не погано.
 - ПОЗИТИВНИЙ ДОКАЗ ГОЛОВНІШИЙ ЗА ВІДСУТНІСТЬ У ДЖЕРЕЛІ: позначка будь-якої площадки "ДТП не зареєстровано" означає лише відсутність запису В ЦЬОМУ джерелі. Якщо незалежне історичне джерело (аукціонний запис, архівні фото, реєстр іншої країни) підтверджує ДТП, позитивний доказ ПЕРЕМАГАЄ: подія існує. Це загальне правило для всіх площадок і джерел.
-- signals.current_visual_flawless: true СТАВ ЛИШЕ коли на ДОСТАТНІХ і якісних поточних кадрах кузов і салон виглядають практично бездоганно, showroom-like: без видимих дефектів, слідів ремонту, різнотону, потертостей чи помітного зносу на видимих ділянках. "Нічого поганого не видно" на кількох звичайних кадрах це НЕ flawless: тоді false. Вік авто сам по собі значення не має.
+${cvProvided ? `- signals.current_visual_flawless: рахуй ЛИШЕ за CURRENT_VISUAL_EVIDENCE: true допустимий, коли condition_findings порожній, більшість зон у zones.sufficient і немає quality_flags, що ховають дефекти; будь-яка material-знахідка чи слабке покриття = false.` : `- signals.current_visual_flawless: true СТАВ ЛИШЕ коли на ДОСТАТНІХ і якісних поточних кадрах кузов і салон виглядають практично бездоганно, showroom-like: без видимих дефектів, слідів ремонту, різнотону, потертостей чи помітного зносу на видимих ділянках. "Нічого поганого не видно" на кількох звичайних кадрах це НЕ flawless: тоді false. Вік авто сам по собі значення не має.`}
 - event_id ОБОВʼЯЗКОВИЙ для КОЖНОЇ знахідки, без нього код її відкине. Для подій це імʼя події (accident_2020, flood_2021), для поточних станів і несправностей стабільний ідентифікатор (current_srs_fault, mileage_conflict_1, modification_suspension). Знахідки ОДНОЇ події (одного ДТП) несуть СПІЛЬНИЙ event_id: подія з кількома підтвердженнями це ОДНА знахідка з кількома evidence, не кілька знахідок.
 - repair_status де застосовно, МЕЖІ ЖОРСТКІ:
   * visually_consistent: пошкоджені на аукціоні зони на НИНІШНІХ фото без видимих слідів неякісного відновлення, І лише коли нинішні фото достатньо показують САМЕ ті зони і ракурси, що були пошкоджені. Потрібна зона не видна або порівняння ненадійне: лишається unknown, НЕ visually_consistent.
@@ -2104,7 +2105,15 @@ ${proseSchema
 - Кожен пункт мусить випливати з КОНКРЕТНОЇ знахідки цього звіту (розбіжність, запис історії, знахідка на фото, слабке місце цієї версії при цьому пробігу) і називати, ЩО саме шукати і ДЕ. Приклад правильного: "задній лівий кут: звір відтінок ліхтаря і зазор кришки багажника, у 2020 був страховий випадок ззаду". Приклад забороненого: "зробити карту ЛКП товщиноміром по всіх елементах".
 - Загальні ритуали ("діагностика на СТО", "прочитати помилки", "перевірити рівні рідин") дозволені лише якщо привʼязані до конкретного вузла з конкретної причини з цього звіту.
 
-===== ВАРІАНТНІ ПРАВИЛА (залежать від наявних історичних матеріалів; змісту спільних правил вище не змінюють) =====
+${cvProvided ? `===== КАНОНІЧНИЙ РОЗБІР НИНІШНІХ КАДРІВ =====
+У даних є CURRENT_VISUAL_EVIDENCE: окреме спеціалізоване читання ВСІХ відібраних кадрів оголошення, яке вже пройшло доказовий гейт. Це ДЖЕРЕЛО ПРАВДИ про поточний візуальний стан, візуально підтверджені опції, підтверджені модифікації і те, що видно на приладовій панелі. Не переоцінюй його і не заперечуй: кадрів у тебе менше, ніж бачив розбір.
+- condition_findings, equipment_visual, confirmed_modifications і dashboard беруться звідти як факти; посилання frame це номер кадру галереї, використовуй його у ref як photo_<frame>.
+- МОДИФІКАЦІЇ: aftermarket-переробкою вважай ЛИШЕ те, що є в confirmed_modifications. Заводське спортивне оснащення (M, AMG, S line, GTS, R-Line тощо) модифікацією НЕ називай.
+- ПРИЛАДОВА ПАНЕЛЬ: warning_lights це СПОСТЕРЕЖЕННЯ "індикатор горить на кадрі", а не доведена несправність. Якщо engine_state = ignition_on_engine_off, лампи тиску оливи, акумулятора, check engine, ABS, SRS і подібні при увімкненому запалюванні є нормальною самоперевіркою: САМІ ПО СОБІ вони не дають CRITICAL_WARNING_LIGHTS, SRS_FAULT чи SERIOUS_POWERTRAIN_FAULT і не стають ризиком. Створюй такий score_fact лише коли engine_state = running або є інший незалежний доказ несправності (слова продавця, історія, діагностика). При engine_state = unknown лампу згадуй як спостереження і став перевірку в checklist, без діагнозу.
+- ПРОБІГ: показань одометра в CURRENT_VISUAL_EVIDENCE немає навмисно. Мілеаж і його суперечності визнач як раніше: за даними оголошення, історії і словами продавця.
+- КОНТЕКСТНІ КАДРИ: до тебе доданий невеликий набір кадрів лише для загального розуміння авто. Нових дефектів, опцій чи модифікацій із них НЕ виводь.
+
+` : ''}===== ВАРІАНТНІ ПРАВИЛА (залежать від наявних історичних матеріалів; змісту спільних правил вище не змінюють) =====
 ${MAIN_HISTORICAL_RULES(auction)}
 ${auctionMeta && auctionMeta.status === 'found' ? METADATA_RULES : ''}`;
 
@@ -2139,12 +2148,13 @@ export function hvReferencedFrames(hv) {
    Факти сторінки один раз (JSON), повний текст сторінки один раз (у ньому
    живе опис продавця, окремо він не повторюється), price_context один раз,
    metadata лота один раз, історичний візуал один раз у компактному вигляді */
-const MAIN_DATA = (l, nhtsa, auction, langDirective, auctionMeta, decisionContext) => {
+const MAIN_DATA = (l, nhtsa, auction, langDirective, auctionMeta, decisionContext, cvEvidence = null) => {
   const blocks = [langDirective];
   blocks.push('VEHICLE (декодування VIN від NHTSA): ' + (nhtsa ? JSON.stringify(nhtsa) : 'недоступне'));
   blocks.push('LISTING, ФАКТИ ЗІ СТОРІНКИ ОГОЛОШЕННЯ (детермінований парс): ' + JSON.stringify({ title: l.title, vin: l.vin, plate: l.plate, price: l.price, currency: l.currency, odometer_km: l.odometer_km, year: l.year, history_facts: l.history_facts, price_context: l.price_context || null }));
   if (Array.isArray(l.listing_equipment) && l.listing_equipment.length) blocks.push('LISTING, СТРУКТУРОВАНІ ОПЦІЇ З ДАНИХ ОГОЛОШЕННЯ (source listing_data: структуровані поля площадки; це НЕ заводські дані і НЕ слова продавця): ' + JSON.stringify(l.listing_equipment));
   blocks.push('LISTING, ТЕКСТ СТОРІНКИ ОГОЛОШЕННЯ (опис продавця + офіційні блоки перевірки площадки, якщо є):\n' + (l.text || ''));
+  if (cvEvidence) blocks.push(cvEvidence);
   const hist = [];
   if (auction && auction.text) hist.push('Текст архіву аукціону:\n' + auction.text.slice(0, 2500));
   if (auctionMeta && auctionMeta.status === 'found') {
@@ -2161,9 +2171,9 @@ const MAIN_DATA = (l, nhtsa, auction, langDirective, auctionMeta, decisionContex
   if (dc) blocks.push('DECISION_CONTEXT:\n' + dc);
   return blocks.join('\n\n');
 };
-const PROMPT = (l, nhtsa, auction, langDirective, decisionStyle, auctionMeta, decisionContext) => ({
-  system: MAIN_RULES(auction, decisionStyle, auctionMeta),
-  user: MAIN_DATA(l, nhtsa, auction, langDirective, auctionMeta, decisionContext),
+const PROMPT = (l, nhtsa, auction, langDirective, decisionStyle, auctionMeta, decisionContext, cvEvidence = null) => ({
+  system: MAIN_RULES(auction, decisionStyle, auctionMeta, { cvProvided: !!cvEvidence }),
+  user: MAIN_DATA(l, nhtsa, auction, langDirective, auctionMeta, decisionContext, cvEvidence),
 });
 
 /* розкладка payload основного виклику: що і скільки реально йде моделі.
@@ -2651,6 +2661,8 @@ async function runCheck(req, res, job) {
     const cvMode = process.env.CV_MODE === 'off' ? null
       : (benchAllowed && req.body && req.body.cv_mode === 'off') ? null : 'shadow';
     const CV_SHADOW_MAX_WAIT_MS = 8000;
+    /* скільки основний виклик готовий чекати канонічний розбір */
+    const CV_FEED_MAX_WAIT_MS = 45000;
     let cvShadow = null;
     const tCv = Date.now();
     if (cvMode === 'shadow') {
@@ -2949,10 +2961,26 @@ async function runCheck(req, res, job) {
        низькій. Без канонічного розбору (читання не вдалося) все як раніше */
     if (auction) { auction.hv_provided = !!cachedHv; auction.hv = cachedHv || null; }
     const hvFrames = cachedHv ? hvReferencedFrames(cachedHv) : null;
-    let mainMsg = PROMPT(listing, nhtsa, auction, langDirective, decisionStyle, auctionSearch, decisionContext);
+    let mainMsg = PROMPT(listing, nhtsa, auction, langDirective, decisionStyle, auctionSearch, decisionContext, cvEvidence);
     let mainFormat = mainResponseFormat({ hvProvided: !!(auction && auction.hv_provided) });
     let mainStructured = 'json_schema';
-    const content = [
+    /* кадри для основного виклику: при канонічному розборі лише контекстні
+       (номери = позиції в галереї, ті самі, що в CURRENT_VISUAL_EVIDENCE),
+       інакше повний набір як раніше */
+    const mainPhotoPositions = cvContextPositions || photoUrls.map((_, i) => i);
+    const mainPhotoNumbers = mainPhotoPositions.map(pos => photoIdx[pos] + 1);
+    const content = cvFeed ? [
+      { type: 'text', text: mainMsg.user },
+      { type: 'text', text: 'КОНТЕКСТНІ КАДРИ ОГОЛОШЕННЯ (' + mainPhotoPositions.length + ' з ' + photoUrls.length + ', які бачив канонічний розбір): лише для загального розуміння авто. Кожен підписаний номером кадру галереї, той самий номер стоїть у полі photo в CURRENT_VISUAL_EVIDENCE. Нові дефекти, опції чи модифікації з них НЕ виводь: канонічні спостереження вже в даних.' },
+      ...mainPhotoPositions.flatMap((pos, i) => ([
+        { type: 'text', text: 'photo_' + mainPhotoNumbers[i] + ':' },
+        img(photoUrls[pos], i < 4 ? 'high' : 'low'),
+      ])),
+      ...(auctionPhotos.length
+        ? [{ type: 'text', text: 'HISTORICAL_VISUAL_EVIDENCE, КАДРИ: ФОТО З АУКЦІОНУ США (до ремонту, архів). Нумерація: auction_photo_1..auction_photo_' + auctionPhotos.length + ' у порядку подачі' + (hvFrames ? '; кадри з канонічного розбору передані у високій деталізації, решта в низькій' : '') + ':' },
+           ...auctionPhotos.map((u, i) => img(u, !hvFrames || hvFrames.has(i + 1) ? 'high' : 'low'))]
+        : []),
+    ] : [
       { type: 'text', text: mainMsg.user },
 { type: 'text', text: 'CURRENT_VISUAL_EVIDENCE: ФОТО З ОГОЛОШЕННЯ (стан зараз). Нумерація: photo_1..photo_' + photoUrls.length + ' у порядку подачі, на неї посилаються evidence ref. '
         + (galleryCoverageComplete
@@ -2967,9 +2995,32 @@ async function runCheck(req, res, job) {
     ];
     let mainSystem = mainMsg.system;
     const mainPayload = mainPayloadBreakdown(mainSystem, content, {
-      current: photoUrls.length, current_high: photoUrls.filter((_, i) => highSet.has(i)).length, gallery_total: listing.photos.length,
+      current: mainPhotoPositions.length, current_high: cvFeed ? Math.min(4, mainPhotoPositions.length) : photoUrls.filter((_, i) => highSet.has(i)).length, gallery_total: listing.photos.length,
+      current_visual_feed: !!cvFeed, context_photo_numbers: cvFeed ? mainPhotoNumbers : null,
       historical: auctionPhotos.length, historical_high: auctionPhotos.filter((_, i) => !hvFrames || hvFrames.has(i + 1)).length,
     }, JSON.stringify(mainFormat));
+
+    /* ---- FEED: канонічний розбір нинішніх кадрів у основний виклик ----
+       Current Vision стартував разом із вибором кадрів і йде паралельно з
+       історичним Vision. Перед основним викликом чекаємо його не довше
+       CV_FEED_MAX_WAIT_MS: встиг (status ok) -> main отримує
+       CURRENT_VISUAL_EVIDENCE і лише контекстні кадри; не встиг, впав чи
+       вимкнений -> стара візуальна логіка без змін (безпечний fallback) */
+    let cvFeed = null, cvFeedWait = 0, cvFeedStatus = cvShadow ? 'pending' : 'disabled';
+    if (cvShadow) {
+      const tFeedWait = Date.now();
+      const r = await Promise.race([cvShadow, new Promise(res => setTimeout(() => res({ status: 'feed_wait_timeout' }), Math.max(1000, Math.min(CV_FEED_MAX_WAIT_MS, 240000 - (Date.now() - tRun)))))]);
+      cvFeedWait = Date.now() - tFeedWait;
+      cvFeedStatus = (r && r.status) || 'unknown';
+      if (r && r.status === 'ok' && r.current_visual) cvFeed = r;
+    }
+    let cvEvidence = null, cvContextPositions = null, cvConcepts = null;
+    if (cvFeed) {
+      cvEvidence = currentVisualEvidenceBlock(cvFeed.current_visual, cvFeed.photos ? cvFeed.photos.total : null);
+      cvConcepts = currentVisualConcepts(cvFeed.current_visual);
+      const typesForContext = (photoSelectorMeta && Array.isArray(photoSelectorMeta.types)) ? photoSelectorMeta.types : null;
+      cvContextPositions = contextualPhotoPositions(typesForContext, CONTEXT_PHOTOS_DEFAULT, photoUrls.length);
+    }
 
     progress('ai');
     const t0 = Date.now();
@@ -3327,7 +3378,10 @@ async function runCheck(req, res, job) {
 
     /* людські номери кадрів у текстах: N = позиція у вихідній галереї */
     const auctionOrigIdx = auctionPhotos.map(u => { const real = photoOriginByData.get(u) || u; return (auction && Array.isArray(auction.photos)) ? auction.photos.indexOf(real) : -1; });
-    localizePhotoRefs(parsed, photoIdx, auctionOrigIdx, PHOTO_LABELS[lang] || PHOTO_LABELS.en);
+    /* з канонічним розбором модель посилається одразу на номери кадрів
+       галереї, тому карта тотожна; без нього нумерація як раніше (позиції
+       у вибірці) */
+    localizePhotoRefs(parsed, cvFeed ? listing.photos.map((_, i) => i) : photoIdx, auctionOrigIdx, PHOTO_LABELS[lang] || PHOTO_LABELS.en);
 
     /* ---- комплектація: детермінована валідація + скептична перевірка ----
        Максимум ОДИН додатковий виклик, максимум 6 claims, лише важливі і
@@ -3335,11 +3389,23 @@ async function runCheck(req, res, job) {
        застосовує код за жорсткими правилами. Бюджет часу жорсткий:
        комплектація ніколи не стає причиною таймауту Check */
     let eqVerifier = { status: 'skipped', reason: 'no_claims' };
+    let eqCanonical = { applied: false };
     try {
+      /* єдине джерело візуально підтверджених опцій: канонічний розбір.
+         Доказ current_photos лишається тільки для понять, які Vision
+         реально бачив; інші джерела не чіпаються */
+      if (cvFeed && Array.isArray(cvConcepts)) {
+        const gated = applyCurrentVisualEquipmentGate(parsed.equipment_v2, cvConcepts);
+        parsed.equipment_v2 = gated.items;
+        eqCanonical = { applied: true, concepts: cvConcepts.length, dropped_visual_evidence: gated.dropped };
+      }
       parsed.equipment_v2 = sanitizeEquipment(parsed.equipment_v2, /(^|\.)auto\.ria\.com$/.test(listing.domain || '') ? 'autoria' : (listing.domain || null));
       const claims = selectEquipmentClaims(parsed.equipment_v2);
       const elapsedEq = Date.now() - t0;
-      if (!claims.length) {
+      if (cvFeed) {
+        /* перевіряльник дублював би роботу канонічного розбору */
+        eqVerifier = { status: 'skipped', reason: 'current_visual_canonical' };
+      } else if (!claims.length) {
         eqVerifier = { status: 'skipped', reason: 'no_claims' };
       } else if (elapsedEq > 190000 || Date.now() - tRun > 235000) {
         eqVerifier = { status: 'skipped', reason: 'time_budget', elapsed_ms: elapsedEq };
@@ -3392,7 +3458,8 @@ async function runCheck(req, res, job) {
       cvShadowResult = await Promise.race([cvShadow, new Promise(r => setTimeout(() => r({ status: 'timeout', ms: Date.now() - tCv }), Math.max(1000, Math.min(CV_SHADOW_MAX_WAIT_MS, 280000 - (Date.now() - tRun)))))]);
       cvWaited = Date.now() - tWait;
       cvShadowResult.waited_ms = cvWaited;
-      mark('current_vision_shadow', cvShadowResult.ms || 0, cvShadowResult.status, { waited_ms: cvWaited, ai: cvShadowResult.ai || null, photos: cvShadowResult.photos || null, error: cvShadowResult.error || null });
+      mark('current_vision_shadow', cvShadowResult.ms || 0, cvShadowResult.status, { waited_ms: cvWaited, feed_wait_ms: cvFeedWait, feed: !!cvFeed, feed_status: cvFeedStatus,
+        context_photos: cvFeed ? (cvContextPositions || []).length : null, ai: cvShadowResult.ai || null, photos: cvShadowResult.photos || null, error: cvShadowResult.error || null });
     }
 
     /* збереження кадрів іде паралельно з аналізом: чекаємо лише решту бюджету */
@@ -3451,6 +3518,7 @@ async function runCheck(req, res, job) {
       listing_id: observation.listing_id || null,
       photo_preservation: photoPreservation,
       equipment_verifier: eqVerifier,
+      equipment_canonical: eqCanonical,
       /* що переиспользовано з Vehicle Memory, а що виконано заново */
       reuse: {
         ...reuse,

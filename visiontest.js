@@ -135,6 +135,7 @@ const errs = [];
   /* 6. ендпоінт: лише за токеном done-job, лише low, кадри з _meta/снапшота, той самий gallery_index, що бачив main */
   const src = fs.readFileSync('api/vision-bench.js', 'utf8');
   const src2 = () => src;
+  const src2Rules = () => { const c = fs.readFileSync('api/check.js', 'utf8'); return c.slice(c.indexOf('const MAIN_RULES = ('), c.indexOf('const MAIN_DATA = (')); };
   if (!/reasoning_effort: 'low'/.test(src) || /req\.body\.(effort|reasoning_effort|model)/.test(src)) errs.push('ендпоінт дозволяє змінювати effort/модель');
   if (!/TOKEN_RE\.test\(token\)/.test(src) || /body\.photos|body\.urls/.test(src)) errs.push('ендпоінт приймає довільні кадри замість токена job');
   if (!/status=eq\.done/.test(src)) errs.push('ендпоінт читає не лише done-job');
@@ -179,6 +180,57 @@ const errs = [];
   if (CV.modificationConfirmed({ basis: 'aftermarket_look', confidence: 'high' }) || !CV.modificationConfirmed({ basis: 'brand_readable', confidence: 'medium' }) || CV.modificationConfirmed({ basis: 'visible_alteration', confidence: 'low' })) errs.push('modificationConfirmed');
   if (!/MODES = \['general', 'exterior', 'interior', 'dashboard', 'classify'\]/.test(src2()) || !/UUID_RE\.test\(reportId\)/.test(src2()) || !/kind=eq\.check/.test(src2())) errs.push('ендпоінт: режими/report_id');
 
+  /* 7б. FEED v1: канонічний доказ у main, контекстні кадри, gate опцій,
+     верифікатор комплектації вимкнений, безпечний fallback */
+  {
+    const chk = fs.readFileSync('api/check.js', 'utf8');
+    if (!/const CV_FEED_MAX_WAIT_MS = (\d+);/.test(chk)) errs.push('нема ліміту очікування канонічного розбору перед main');
+    const cap = Number(/const CV_FEED_MAX_WAIT_MS = (\d+);/.exec(chk)[1]);
+    if (cap < 10000 || cap > 60000) errs.push('ліміт очікування Feed поза розумними межами: ' + cap);
+    if (!/if \(r && r\.status === 'ok' && r\.current_visual\) cvFeed = r;/.test(chk)) errs.push('Feed приймає не лише успішний розбір');
+    const iFeedWait = chk.indexOf('const r = await Promise.race([cvShadow'), iAi = chk.indexOf("progress('ai');");
+    if (!(iFeedWait > 0 && iFeedWait < iAi)) errs.push('очікування Feed має бути перед основним викликом');
+    if (!/mainMsg = PROMPT\(listing, nhtsa, auction, langDirective, decisionStyle, auctionSearch, decisionContext, cvEvidence\)/.test(chk)) errs.push('канонічний доказ не їде в основний виклик');
+    if (!/const content = cvFeed \? \[/.test(chk)) errs.push('контент основного виклику не залежить від Feed');
+    if (!/eqVerifier = \{ status: 'skipped', reason: 'current_visual_canonical' \}/.test(chk)) errs.push('верифікатор комплектації дублює канонічний розбір');
+    if (!/applyCurrentVisualEquipmentGate\(parsed\.equipment_v2, cvConcepts\)/.test(chk)) errs.push('нема канонічного гейта візуальних опцій');
+    if (!/localizePhotoRefs\(parsed, cvFeed \? listing\.photos\.map\(\(_, i\) => i\) : photoIdx/.test(chk)) errs.push('нумерація кадрів у текстах не узгоджена з Feed');
+    /* fallback: без Feed усе як раніше */
+    if (!/\] : \[\n      \{ type: 'text', text: mainMsg\.user \},/.test(chk)) errs.push('нема legacy-гілки контенту');
+    /* одометр у Feed не йде */
+    const compact = CV.compactCurrentVisual({ zones: {}, equipment_visual: [], modification_candidates: [], coverage: { frames_received: 1, frames_usable: 1, quality_flags: [], note: null }, dashboard: { engine_state: 'running', odometer_reading: { value: 123456, unit: 'km', gallery_index: 1 }, warning_lights: [], readable_messages: [] } });
+    if (JSON.stringify(compact).includes('123456') || JSON.stringify(compact).includes('odometer')) errs.push('одометр потрапив у Feed');
+    if (compact.dashboard.engine_state !== 'running') errs.push('engine_state не потрапив у Feed');
+    /* нумерація кадрів у доказі: номер галереї (1-based) */
+    const cvSample = { version: 'v1', coverage: { frames_received: 3, frames_usable: 3, quality_flags: [], note: null },
+      zones: { front: { visibility: 'sufficient', frames: [7], findings: [{ kind: 'dent', severity: 'moderate', sign: 'вмʼятина на крилі, видно тінь', gallery_index: 7, photo_identity: 'p', confidence: 'high', material: true }, { kind: 'chip', severity: 'minor', sign: 'дрібний скол на капоті', gallery_index: 7, photo_identity: 'p', confidence: 'high', material: false }] } },
+      equipment_visual: [{ normalized_name: 'Harman Kardon', concept: 'harman_kardon', gallery_index: 3, sign: 'напис на решітці', confidence: 'high' }],
+      modification_candidates: [{ feature: 'диски Vossen', basis: 'brand_readable', gallery_index: 5, sign: 'напис на ковпачку', confidence: 'high', confirmed: true }, { feature: 'спойлер', basis: 'unclear', gallery_index: 6, sign: 'виступ на кришці', confidence: 'low', confirmed: false }],
+      dashboard: { engine_state: 'ignition_on_engine_off', odometer_reading: null, warning_lights: [{ light: 'check engine', gallery_index: 9, sign: 'жовта піктограма', confidence: 'high' }], readable_messages: [] } };
+    const c2 = CV.compactCurrentVisual(cvSample);
+    if (c2.condition_findings.length !== 1 || c2.condition_findings[0].photo !== 8) errs.push('у Feed йдуть лише material-знахідки з номером кадру галереї: ' + JSON.stringify(c2.condition_findings));
+    if (c2.equipment_visual[0].photo !== 4 || c2.confirmed_modifications.length !== 1 || c2.confirmed_modifications[0].photo !== 6) errs.push('нумерація опцій/модифікацій у Feed');
+    if (c2.dashboard.warning_lights[0].photo !== 10) errs.push('нумерація ламп у Feed');
+    const block = CV.currentVisualEvidenceBlock(cvSample, 24);
+    if (!/photo_<номер>/.test(block) || !/CURRENT_VISUAL_EVIDENCE/.test(block)) errs.push('блок доказу без пояснення нумерації');
+    /* контекстні кадри */
+    const ctx = CV.contextualPhotoPositions(['front', 'front', 'rear', 'dashboard', 'front_seats', 'side', 'wheels', 'engine_bay', 'doors', 'other'], 8);
+    if (ctx.length !== 8 || !ctx.includes(3) || ctx.some((v, i) => i && v <= ctx[i - 1])) errs.push('контекстні кадри: ' + JSON.stringify(ctx));
+    const ctxNo = CV.contextualPhotoPositions(null, 8, 24);
+    if (ctxNo.length !== 8 || ctxNo[0] !== 0 || ctxNo[ctxNo.length - 1] !== 23) errs.push('контекстні кадри без типів: ' + JSON.stringify(ctxNo));
+    if (CV.CONTEXT_PHOTOS_DEFAULT !== 8) errs.push('кількість контекстних кадрів змінилась без перевірки');
+    /* gate опцій: візуальний доказ лише для понять канонічного розбору */
+    const g = CV.applyCurrentVisualEquipmentGate([
+      { name: 'Harman Kardon', evidence: [{ source: 'current_photos', ref: 'photo_4' }] },
+      { name: 'Панорамний дах', evidence: [{ source: 'current_photos' }, { source: 'seller_claim' }] },
+      { name: 'Шкіряний салон', evidence: [{ source: 'vehicle_data' }] },
+    ], ['harman_kardon']);
+    if (g.dropped !== 1 || g.items[0].evidence.length !== 1 || g.items[1].evidence.length !== 1 || g.items[1].evidence[0].source !== 'seller_claim' || g.items[2].evidence.length !== 1) errs.push('канонічний гейт опцій: ' + JSON.stringify(g));
+    /* правила main: канонічна гілка і семантика ламп */
+    const rules = src2Rules();
+    for (const need of ['КАНОНІЧНИЙ РОЗБІР НИНІШНІХ КАДРІВ', 'confirmed_modifications', 'ignition_on_engine_off', 'показань одометра в CURRENT_VISUAL_EVIDENCE немає навмисно', 'КОНТЕКСТНІ КАДРИ']) if (!rules.includes(need)) errs.push('правила Feed без блоку: ' + need.slice(0, 30));
+  }
+
   /* 7. Phase 1 SHADOW: Vision у production лише за CV_MODE=shadow (або cv_mode у тілі
      запиту для валідації), стартує після вибору кадрів паралельно з рештою,
      НЕ чекається перед основним викликом, результат лише в _meta, основний
@@ -191,9 +243,9 @@ const errs = [];
   if (!/cvShadow = \(async \(\) => \{/.test(check) || !/\}\)\(\)\.catch\(e => \(\{ status: 'failed'/.test(check)) errs.push('shadow без catch: збій Vision може впустити Check');
   if (!/status: 'timeout'/.test(check) || !/mark\('current_vision_shadow'/.test(check)) errs.push('shadow без таймауту або без таймінгу');
   const mainContent = check.slice(check.indexOf('const content = ['), check.indexOf("let mainSystem = mainMsg.system;"));
-  if (/cvShadow|current_visual_shadow|CURRENT_VISUAL_RULES|currentVisualResponseFormat|frameContent\(/.test(mainContent)) errs.push('контент основного виклику містить Current Vision');
+  if (/current_visual_shadow|CURRENT_VISUAL_RULES|currentVisualResponseFormat/.test(mainContent)) errs.push('контент основного виклику містить сирий Current Vision');
   const rulesArea = check.slice(check.indexOf('const DECISION_RULES = `'), check.indexOf('export function compactHistoricalVisual'));
-  if (/current_visual_shadow|CURRENT_VISUAL_EVIDENCE:|cvShadow/.test(rulesArea)) errs.push('правила основного виклику посилаються на shadow Vision');
+  if (/current_visual_shadow|cvShadow\b/.test(rulesArea)) errs.push('правила основного виклику посилаються на сиру shadow-структуру');
   if (!/current_visual_shadow: cvShadowResult/.test(check)) errs.push('результат shadow не зберігається в _meta');
   if (/current_visual_shadow/.test(fs.readFileSync('api/share.js', 'utf8'))) errs.push('shadow Vision потрапив у публічний allowlist');
   if (/current_visual_shadow|cvShadow/.test(fs.readFileSync('api/score-v3.js', 'utf8')) || /current_visual_shadow/.test(fs.readFileSync('result-check.html', 'utf8')) || /current_visual_shadow/.test(fs.readFileSync('api/vehicle-memory.js', 'utf8'))) errs.push('shadow Vision використовується Score/UI/Vehicle Memory');

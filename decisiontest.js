@@ -239,7 +239,7 @@ const VALID = {
     if (/desirability_score|value_score|buyer_fit_score/i.test(src)) errs.push('зʼявився новий числовий бал');
 
     /* ---- проводка: контекст збирається ДО виклику і їде в промпт ---- */
-    if (!/PROMPT\(listing, nhtsa, auction, langDirective, decisionStyle, auctionSearch, decisionContext\)/.test(src)) errs.push('decisionContext не переданий у промпт');
+    if (!/PROMPT\(listing, nhtsa, auction, langDirective, decisionStyle, auctionSearch, decisionContext, cvEvidence\)/.test(src)) errs.push('decisionContext не переданий у промпт');
     if (!/const decisionContext = buildDecision|let decisionContext = null/.test(src)) errs.push('decisionContext не збирається в хендлері');
     if (!/decision_inputs: decisionContext/.test(src)) errs.push('_meta не зберігає входи рішення');
     if (!/applyDecisionLanguage\(parsed\.purchase_decision/.test(src)) errs.push('мова висновку не нормалізується після моделі');

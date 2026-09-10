@@ -620,3 +620,101 @@ export function reconcileOdometer(cvReading, verifierReading) {
   const agreed = delta <= ODOMETER_AGREE_MAX_KM || pct <= ODOMETER_AGREE_MAX_PCT;
   return { status: agreed ? 'confirmed' : 'value_mismatch', agreed, delta, delta_pct: pct, verifier: v };
 }
+
+
+/* ======================================================================
+   FEED v1: канонічний компактний доказ для основного виклику.
+   Передаються ЛИШЕ пройдені гейтом дані: покриття, material-знахідки
+   стану, підтверджені візуально опції (поняття + кадр і ознака),
+   підтверджені модифікації, спостереження приладової панелі і
+   engine_state. Одометр у Feed НЕ йде: сигнал пробігу лишається за
+   старою логікою main (рішення власника після Phase 1).
+   ====================================================================== */
+export const CV_FEED_EXCLUDES_ODOMETER = true;
+export function currentVisualConcepts(cv) {
+  return [...new Set(((cv && cv.equipment_visual) || []).map(e => e.concept).filter(Boolean))];
+}
+export function compactCurrentVisual(cv) {
+  if (!cv) return null;
+  const zones = Object.entries(cv.zones || {});
+  const seen = zones.filter(([, z]) => z.visibility === 'sufficient').map(([k]) => k);
+  const partial = zones.filter(([, z]) => z.visibility === 'partial').map(([k]) => k);
+  const notSeen = zones.filter(([, z]) => z.visibility === 'not_visible').map(([k]) => k);
+  const findings = [];
+  for (const [zone, z] of zones) {
+    for (const f of z.findings || []) {
+      if (!f.material) continue;
+      findings.push({ zone, kind: f.kind, severity: f.severity, photo: f.gallery_index + 1, sign: f.sign, confidence: f.confidence });
+    }
+  }
+  const equipment = (cv.equipment_visual || []).map(e => ({ concept: e.concept, name: e.normalized_name, photo: e.gallery_index + 1, sign: e.sign, confidence: e.confidence }));
+  const mods = (cv.modification_candidates || []).filter(m => m.confirmed).map(m => ({ feature: m.feature, basis: m.basis, photo: m.gallery_index + 1, sign: m.sign }));
+  const d = cv.dashboard || {};
+  const out = {
+    version: cv.version,
+    coverage: { frames_analyzed: cv.coverage ? cv.coverage.frames_received : null, usable: cv.coverage ? cv.coverage.frames_usable : null, quality_flags: cv.coverage ? cv.coverage.quality_flags : [], note: cv.coverage ? cv.coverage.note : null },
+    zones: { sufficient: seen, partial, not_visible: notSeen },
+    condition_findings: findings,
+    equipment_visual: equipment,
+    confirmed_modifications: mods,
+    dashboard: {
+      engine_state: d.engine_state || 'unknown',
+      warning_lights: (d.warning_lights || []).map(w => ({ light: w.light, photo: w.gallery_index + 1, sign: w.sign, confidence: w.confidence })),
+      readable_messages: (d.readable_messages || []).map(m => ({ text: m.text, photo: m.gallery_index + 1 })),
+    },
+  };
+  return out;
+}
+/* текстовий блок для main: компактний JSON + пояснення нумерації кадрів.
+   frame це gallery_index (номер кадру в галереї оголошення), тому в
+   текстах звіту він локалізується тим самим механізмом, що photo_N */
+export function currentVisualEvidenceBlock(cv, framesSeen) {
+  const compact = compactCurrentVisual(cv);
+  if (!compact) return null;
+  return 'CURRENT_VISUAL_EVIDENCE (канонічний розбір НИНІШНІХ кадрів оголошення окремим спеціалізованим читанням). Поле "photo" це НОМЕР КАДРУ В ГАЛЕРЕЇ оголошення: у ref пиши photo_<номер>: '
+    + JSON.stringify(compact)
+    + (framesSeen ? '\nРОЗБІР БАЧИВ КАДРІВ: ' + framesSeen : '');
+}
+
+/* контекстні кадри для основного виклику: невеликий набір різних ракурсів
+   для загального розуміння авто. Пріоритет типів від селектора; без типів
+   рівномірний зріз. Повертає ПОЗИЦІЇ у переданому масиві */
+export const CONTEXT_PHOTO_PRIORITY = ['front', 'rear', 'side', 'dashboard', 'front_seats', 'center_console', 'engine_bay', 'wheels', 'doors', 'rear_seats', 'trunk', 'steering', 'roof', 'detail', 'other'];
+export const CONTEXT_PHOTOS_DEFAULT = 8;
+export function contextualPhotoPositions(types, k = CONTEXT_PHOTOS_DEFAULT, total = null) {
+  const n = Array.isArray(types) && types.length ? types.length : (total || 0);
+  if (!n) return [];
+  if (!Array.isArray(types) || !types.length) {
+    const out = [];
+    for (let i = 0; i < Math.min(k, n); i++) out.push(Math.round(i * (n - 1) / Math.max(1, Math.min(k, n) - 1)));
+    return [...new Set(out)];
+  }
+  const picked = [];
+  const used = new Set();
+  for (const t of CONTEXT_PHOTO_PRIORITY) {
+    const i = types.findIndex((x, idx) => x === t && !used.has(idx));
+    if (i >= 0) { used.add(i); picked.push(i); }
+    if (picked.length >= k) break;
+  }
+  for (let i = 0; i < n && picked.length < k; i++) if (!used.has(i)) { used.add(i); picked.push(i); }
+  return picked.sort((a, b) => a - b);
+}
+
+/* Джерело правди для візуально підтверджених опцій: доказ source
+   current_photos лишається лише тоді, коли те саме поняття є в
+   канонічному переліку Vision. Інші джерела (vehicle_data, listing_data,
+   seller_claim, historical) не чіпаються */
+export function applyCurrentVisualEquipmentGate(items, cvConcepts) {
+  if (!Array.isArray(items) || !Array.isArray(cvConcepts)) return { items: Array.isArray(items) ? items : [], dropped: 0 };
+  const allowed = new Set(cvConcepts);
+  let dropped = 0;
+  const out = items.map(it => {
+    if (!it || typeof it !== 'object' || !Array.isArray(it.evidence)) return it;
+    const hasVisual = it.evidence.some(e => e && e.source === 'current_photos');
+    if (!hasVisual) return it;
+    if (allowed.has(equipmentConcept(it.name))) return it;
+    dropped++;
+    return { ...it, evidence: it.evidence.filter(e => !(e && e.source === 'current_photos')) };
+  });
+  return { items: out, dropped };
+}
