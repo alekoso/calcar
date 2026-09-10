@@ -93,7 +93,13 @@ const errs = [];
     modification_candidates: [{ feature: 'диски BBS', basis: 'brand_readable', gallery_index: 8, sign: 'напис BBS на центральній кришці диска', confidence: 'medium' }],
     dashboard: { visible: true, ignition_on: true, odometer_reading: { value: 30688, unit: 'km', gallery_index: 8, sign: 'цифри 30688 km на екрані під спідометром', confidence: 'high' },
       warning_lights: [{ light: 'check engine', gallery_index: 8, sign: 'жовта піктограма двигуна ліворуч від тахометра', confidence: 'high' }, { light: 'abs', gallery_index: 5, sign: 'напис ABS', confidence: 'high' }],
-      readable_messages: [{ text: 'Service due', gallery_index: 8, confidence: 'medium' }] },
+      readable_messages: [
+        { text: 'Service due in 1200 km', sign: 'напис «Service due in 1200 km» у нижньому рядку дисплея', gallery_index: 8, confidence: 'high' },
+        { text: '27 Август 2026', sign: 'дата у верхньому рядку центрального екрана', gallery_index: 8, confidence: 'high' },
+        { text: 'Медиа/Радио 531 kHz', sign: 'вкладка «Медиа/Радио» і частота на екрані', gallery_index: 8, confidence: 'high' },
+        { text: 'Oil level low', sign: 'напис на дисплеї', gallery_index: 8, confidence: 'low' },
+        { text: 'Check engine', sign: 'коротко', gallery_index: 8, confidence: 'high' },
+      ] },
     summary: 'ok',
   };
   const { current_visual: cv, stats } = CV.gateCurrentVisual(raw, sent);
@@ -111,7 +117,13 @@ const errs = [];
   if (cv.zones.rear.visibility !== 'not_visible') errs.push('sufficient без кадрів і знахідок має стати not_visible');
   if (cv.equipment_visual.length !== 1 || cv.equipment_visual[0].photo_identity !== VM.photoIdentity(d)) errs.push('gate комплектації: ' + JSON.stringify(cv.equipment_visual));
   if (!cv.dashboard.odometer_reading || cv.dashboard.odometer_reading.value !== 30688 || cv.dashboard.odometer_reading.unit !== 'km' || cv.dashboard.odometer_reading.photo_identity !== VM.photoIdentity(d)) errs.push('gate одометра: ' + JSON.stringify(cv.dashboard.odometer_reading));
-  if (cv.dashboard.warning_lights.length !== 1 || cv.dashboard.readable_messages.length !== 1) errs.push('gate індикаторів/повідомлень');
+  if (cv.dashboard.warning_lights.length !== 1) errs.push('gate індикаторів');
+  /* повідомлення: лишається лише читабельне важливе повідомлення про авто */
+  if (cv.dashboard.readable_messages.length !== 1 || !/Service due/.test(cv.dashboard.readable_messages[0].text) || !cv.dashboard.readable_messages[0].sign) errs.push('gate повідомлень: ' + JSON.stringify(cv.dashboard.readable_messages));
+  if (stats.dropped_message_noise !== 2 || stats.dropped_message_weak !== 2 || stats.messages !== 1) errs.push('лічильники повідомлень: ' + JSON.stringify({ n: stats.dropped_message_noise, w: stats.dropped_message_weak, m: stats.messages }));
+  for (const noise of ['27 Август 2026', '531 kHz', 'Медиа/Радио', '19:51', 'Навигация', 'ConnectedDrive', 'Мой автомобиль', 'Громкость 12', '107.9 FM']) if (!CV.UI_NOISE_RE.test(noise)) errs.push('UI-шум не відсіюється: ' + noise);
+  for (const real of ['Service due in 1200 km', 'Oil level low', 'Автопілот на шосе, Пакет включен', 'Обновление доступно', 'Ключ. Возьмите с собой!', 'Запас ходу 194 km']) if (CV.UI_NOISE_RE.test(real)) errs.push('справжнє повідомлення відсіяне як шум: ' + real);
+  if (!/ПОВІДОМЛЕННЯ \(readable_messages\)/.test(CV.CURRENT_VISUAL_RULES) || !/ЗАБОРОНЕНО: дата, час/.test(CV.CURRENT_VISUAL_RULES)) errs.push('правила без гейта повідомлень');
   if (cv.coverage.quality_flags.join() !== 'studio' || cv.coverage.note !== null) errs.push('gate coverage');
   if (cv.modification_candidates.length !== 1 || cv.modification_candidates[0].confirmed !== true || cv.notable_visual_features !== undefined) errs.push('gate модифікацій (confirmed) / notable прибрано');
   if (cv.equipment_visual[0].concept !== 'harman_kardon') errs.push('gate не додає concept до опції');
@@ -200,7 +212,7 @@ const errs = [];
   if (CV.odometerDiscrepancy({ dashboard: { odometer_reading: { value: 20000, unit: 'mi', gallery_index: 1, photo_identity: 'p', confidence: 'medium' } } }, 32000).visual_km !== 32187) errs.push('одометр: милі не переводяться в км');
   if (CV.odometerDiscrepancy({ dashboard: { odometer_reading: null } }, 1000).status !== 'no_visual_reading' || CV.odometerDiscrepancy(null, 1000).status !== 'no_visual_reading') errs.push('одометр: порожній стан');
   const summ = CV.summarizeCurrentVisual(cv, stats);
-  if (!summ || summ.zones.not_visible !== 18 || summ.equipment.concepts[0] !== 'harman_kardon' || summ.odometer.value !== 30688 || summ.modifications.confirmed !== 1) errs.push('телеметрія shadow: ' + JSON.stringify(summ));
+  if (!summ || summ.zones.not_visible !== 18 || summ.equipment.concepts[0] !== 'harman_kardon' || summ.odometer.value !== 30688 || summ.modifications.confirmed !== 1 || summ.messages !== 1) errs.push('телеметрія shadow: ' + JSON.stringify(summ));
   /* BaT: один фізичний кадр = один елемент галереї, найкращий варіант, мініатюра не виграє */
   const fx = JSON.parse(fs.readFileSync('test-fixtures/bat-gallery-120.json', 'utf8'));
   const g = fx.generator; const base = 'https://bringatrailer.com/wp-content/uploads/2026/08/';

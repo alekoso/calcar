@@ -41,6 +41,19 @@ export const QUALITY_FLAGS = ['studio', 'low_light', 'wet_surface', 'heavy_refle
 export const PAINT_KINDS = new Set(['paint_mismatch', 'repaint_sign']);
 export const MIN_SIGN_CHARS = 12;
 /* ознака "мʼяка": відблиск, освітлення, здогад. Для paint-видів це не доказ */
+/* звичайні написи інтерфейсу, які повідомленням про авто НЕ є: дата, час,
+   радіостанція і частота, назви меню і вкладок, гучність. Один вираз:
+   ланцюжок /a/ || /b/ у JS завжди дорівнює першому регулярному виразу */
+export const UI_NOISE_RE = new RegExp([
+  '^\\s*\\d{1,2}[:.]\\d{2}\\s*$',
+  '\\d{1,2}\\s*(?:січ|лют|бер|квіт|трав|черв|лип|серп|вер|жовт|листоп|груд|янв|фев|мар|апр|ма[йя]|июн|июл|авг|сен|окт|ноя|дек|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)',
+  '\\d+(?:[.,]\\d+)?\\s*(?:khz|mhz|кгц|мгц)',
+  '\\d+(?:[.,]\\d+)?\\s*fm\\b',
+  '(?:^|[\\s|/,])(?:радіо|радио|radio)\\b',
+  '^\\s*(?:навігація|навигация|navigation|меню|menu|телефон|phone|connecteddrive|мій автомобіль|мой автомобиль|медіа|медиа|media)\\s*$',
+  '(?:медіа|медиа|media)\\s*[/|]',
+  '(?:гучність|громкость|volume)',
+].join('|'), 'i');
 export const SOFT_SIGN_RE = /відблиск|відбит|блік|reflection|glare|освітлен|lighting|light angle|здається|можливо|ніби|схоже|мабуть|ймовірно|seems|appears|might|could be/i;
 
 /* ---------- strict json_schema ---------- */
@@ -101,7 +114,7 @@ export function buildCurrentVisualSchema() {
         value: S('integer'), unit: E(['km', 'mi', 'unknown']), gallery_index: GI, sign: S('string'), confidence: E(CONFIDENCE),
       }), S('null')] },
       warning_lights: ARR(OBJ({ light: S('string'), gallery_index: GI, sign: S('string'), confidence: E(CONFIDENCE) })),
-      readable_messages: ARR(OBJ({ text: S('string'), gallery_index: GI, confidence: E(CONFIDENCE) })),
+      readable_messages: ARR(OBJ({ text: S('string'), sign: S('string', 'де саме на кадрі це написано'), gallery_index: GI, confidence: E(CONFIDENCE) })),
     }),
     summary: S('string', '2-3 речення лише про побачене'),
   });
@@ -135,7 +148,8 @@ frames: gallery_index кадрів, де зона видна. Зона sufficien
 
 МОДИФІКАЦІЇ (modification_candidates): спойлери, обвіси, сплітери, дифузори, нестандартний випуск, диски незаводського вигляду (бренд лише якщо читабельний: "напис BBS на диску"), плівка, помітно занижена посадка, карбонові деталі, нештатні елементи у моторному відсіку чи салоні (впуск, кермо, екран, педалі; бренд лише читабельний). Для кожної basis: brand_readable (читабельний бренд нештатної деталі), visible_alteration (видно сліди переробки, нештатне кріплення, кустарну проводку), non_standard_fitment, aftermarket_look (лише вигляд), unclear. Заводське спортивне аеро (M, AMG, S line, GTS тощо) саме по собі НЕ модифікація: якщо не можна відрізнити від заводського виконання, basis unclear і confidence low. Вартість не пиши.
 
-ПРИЛАДОВА ПАНЕЛЬ: якщо є кадр із увімкненою панеллю, прочитай одометр (число, одиниця, кадр, ознака: "цифри 30 688 km на екрані під спідометром"), індикатори попереджень (лише читабельні чи однозначно впізнавані піктограми, причину НЕ діагностуй) і інші читабельні важливі повідомлення. Нечитабельно: не вигадуй, odometer_reading null.
+ПРИЛАДОВА ПАНЕЛЬ: якщо є кадр із увімкненою панеллю, прочитай одометр (число, одиниця, кадр, ознака: "цифри 30 688 km на екрані під спідометром") та індикатори попереджень (лише читабельні чи однозначно впізнавані піктограми, причину НЕ діагностуй). Нечитабельно: не вигадуй, odometer_reading null.
+ПОВІДОМЛЕННЯ (readable_messages): ЛИШЕ важливі повідомлення про САМ АВТОМОБІЛЬ, які ти РЕАЛЬНО ЧИТАЄШ на кадрі: сервісні нагадування ("Service in 5000 km", "Oil level low"), помилки і несправності, стан батареї чи запасу ходу, увімкнені пакети функцій, нагадування про ключ, оновлення ПЗ. sign мусить містити сам читабельний текст у лапках і місце на кадрі. ЗАБОРОНЕНО: дата, час, температура, радіостанція і частота, назви меню і вкладок, підписи кнопок, гучність, назва треку, звичайні UI-написи інтерфейсу. Якщо текст дрібний, розмитий чи ти лише здогадуєшся, повідомлення НЕ створюй.
 
 ОДОМЕТР НЕЗАЛЕЖНИЙ: читай цифри з кадру як є; жодних даних оголошення про пробіг у тебе немає і підганяти показання ні під що не треба. Сумнівні цифри: confidence low, а не вигадане число.
 
@@ -182,7 +196,7 @@ export function frameSetFingerprint(frames) {
    модель не повернула, доповнюються not_visible. */
 export function gateCurrentVisual(raw, frames) {
   const byIndex = new Map((frames || []).map(f => [f.gallery_index, f]));
-  const stats = { dropped_bad_ref: 0, dropped_weak_sign: 0, downgraded_soft_paint: 0, zones_filled: 0, findings: 0, material_findings: 0, equipment: 0, modifications: 0, modifications_confirmed: 0, warning_lights: 0 };
+  const stats = { dropped_bad_ref: 0, dropped_weak_sign: 0, downgraded_soft_paint: 0, zones_filled: 0, findings: 0, material_findings: 0, equipment: 0, modifications: 0, modifications_confirmed: 0, warning_lights: 0, messages: 0, dropped_message_weak: 0, dropped_message_noise: 0 };
   const r = raw && typeof raw === 'object' ? raw : {};
   const str = v => typeof v === 'string' ? v.trim() : '';
   const ref = gi => { const f = byIndex.get(gi); return f ? { gallery_index: gi, photo_identity: f.identity } : null; };
@@ -262,7 +276,15 @@ export function gateCurrentVisual(raw, frames) {
   for (const m of Array.isArray(d.readable_messages) ? d.readable_messages : []) {
     if (!m || !str(m.text)) continue;
     const rf = ref(m.gallery_index); if (!rf) { stats.dropped_bad_ref++; continue; }
-    out.dashboard.readable_messages.push({ text: str(m.text).slice(0, 160), ...rf, confidence: conf(m.confidence) });
+    const text = str(m.text).slice(0, 160);
+    /* повідомлення usable лише коли воно (а) читається на конкретному кадрі,
+       (б) має власну ознаку з самим текстом, (в) confidence не low,
+       (г) не є звичайним UI-написом (дата, час, радіо, меню, кнопки) */
+    if (conf(m.confidence) === 'low') { stats.dropped_message_weak++; continue; }
+    if (str(m.sign).length < MIN_SIGN_CHARS) { stats.dropped_message_weak++; continue; }
+    if (UI_NOISE_RE.test(text)) { stats.dropped_message_noise++; continue; }
+    out.dashboard.readable_messages.push({ text, sign: str(m.sign).slice(0, 240), ...rf, confidence: conf(m.confidence) });
+    stats.messages++;
   }
   return { current_visual: out, stats };
 }
