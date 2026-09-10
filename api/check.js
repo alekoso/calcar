@@ -2959,6 +2959,28 @@ async function runCheck(req, res, job) {
        компактно текстом, а архівні кадри лише для порівняння "до/після":
        кадри, на які посилається розбір, у високій деталізації, решта в
        низькій. Без канонічного розбору (читання не вдалося) все як раніше */
+    /* ---- FEED: канонічний розбір нинішніх кадрів у основний виклик ----
+       Current Vision стартував разом із вибором кадрів і йде паралельно з
+       історичним Vision. Перед основним викликом чекаємо його не довше
+       CV_FEED_MAX_WAIT_MS: встиг (status ok) -> main отримує
+       CURRENT_VISUAL_EVIDENCE і лише контекстні кадри; не встиг, впав чи
+       вимкнений -> стара візуальна логіка без змін (безпечний fallback) */
+    let cvFeed = null, cvFeedWait = 0, cvFeedStatus = cvShadow ? 'pending' : 'disabled';
+    if (cvShadow) {
+      const tFeedWait = Date.now();
+      const r = await Promise.race([cvShadow, new Promise(res => setTimeout(() => res({ status: 'feed_wait_timeout' }), Math.max(1000, Math.min(CV_FEED_MAX_WAIT_MS, 240000 - (Date.now() - tRun)))))]);
+      cvFeedWait = Date.now() - tFeedWait;
+      cvFeedStatus = (r && r.status) || 'unknown';
+      if (r && r.status === 'ok' && r.current_visual) cvFeed = r;
+    }
+    let cvEvidence = null, cvContextPositions = null, cvConcepts = null;
+    if (cvFeed) {
+      cvEvidence = currentVisualEvidenceBlock(cvFeed.current_visual, cvFeed.photos ? cvFeed.photos.total : null);
+      cvConcepts = currentVisualConcepts(cvFeed.current_visual);
+      const typesForContext = (photoSelectorMeta && Array.isArray(photoSelectorMeta.types)) ? photoSelectorMeta.types : null;
+      cvContextPositions = contextualPhotoPositions(typesForContext, CONTEXT_PHOTOS_DEFAULT, photoUrls.length);
+    }
+
     if (auction) { auction.hv_provided = !!cachedHv; auction.hv = cachedHv || null; }
     const hvFrames = cachedHv ? hvReferencedFrames(cachedHv) : null;
     let mainMsg = PROMPT(listing, nhtsa, auction, langDirective, decisionStyle, auctionSearch, decisionContext, cvEvidence);
@@ -2999,28 +3021,6 @@ async function runCheck(req, res, job) {
       current_visual_feed: !!cvFeed, context_photo_numbers: cvFeed ? mainPhotoNumbers : null,
       historical: auctionPhotos.length, historical_high: auctionPhotos.filter((_, i) => !hvFrames || hvFrames.has(i + 1)).length,
     }, JSON.stringify(mainFormat));
-
-    /* ---- FEED: канонічний розбір нинішніх кадрів у основний виклик ----
-       Current Vision стартував разом із вибором кадрів і йде паралельно з
-       історичним Vision. Перед основним викликом чекаємо його не довше
-       CV_FEED_MAX_WAIT_MS: встиг (status ok) -> main отримує
-       CURRENT_VISUAL_EVIDENCE і лише контекстні кадри; не встиг, впав чи
-       вимкнений -> стара візуальна логіка без змін (безпечний fallback) */
-    let cvFeed = null, cvFeedWait = 0, cvFeedStatus = cvShadow ? 'pending' : 'disabled';
-    if (cvShadow) {
-      const tFeedWait = Date.now();
-      const r = await Promise.race([cvShadow, new Promise(res => setTimeout(() => res({ status: 'feed_wait_timeout' }), Math.max(1000, Math.min(CV_FEED_MAX_WAIT_MS, 240000 - (Date.now() - tRun)))))]);
-      cvFeedWait = Date.now() - tFeedWait;
-      cvFeedStatus = (r && r.status) || 'unknown';
-      if (r && r.status === 'ok' && r.current_visual) cvFeed = r;
-    }
-    let cvEvidence = null, cvContextPositions = null, cvConcepts = null;
-    if (cvFeed) {
-      cvEvidence = currentVisualEvidenceBlock(cvFeed.current_visual, cvFeed.photos ? cvFeed.photos.total : null);
-      cvConcepts = currentVisualConcepts(cvFeed.current_visual);
-      const typesForContext = (photoSelectorMeta && Array.isArray(photoSelectorMeta.types)) ? photoSelectorMeta.types : null;
-      cvContextPositions = contextualPhotoPositions(typesForContext, CONTEXT_PHOTOS_DEFAULT, photoUrls.length);
-    }
 
     progress('ai');
     const t0 = Date.now();
