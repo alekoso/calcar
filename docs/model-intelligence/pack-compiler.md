@@ -152,6 +152,12 @@ engine      :: Independent owner or specialist coverage of this area is
 
 ## 7. Гаряча дорога
 
+ПОПРАВКА (міграція 19): до неї `mi.request_pack` читала прапорець
+успіху не там, де його кладе `mi.compile_pack`, і тому не віддавала
+пакет НІКОЛИ. Опис нижче описує задуману поведінку, яка стала дійсною
+лише з міграції 19. Подробиці:
+`docs/model-intelligence/check-bridge-and-shadow.md`.
+
 `mi.request_pack` при промаху або невалідному фрагменті НЕ компілює
 синхронно: він ставить `build_request` з правильною причиною
 (`fragment_missing`, `knowledge_missing`, `invalidated`) і повертає

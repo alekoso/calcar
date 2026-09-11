@@ -26,6 +26,8 @@ Phase 1 створює лише структури. Model Intelligence до Chec
 | `015_identity_resolver` | детермінований резолвер ідентичності, накладка по VIN і збереження пакета |
 | `016_vm_adapter` | запис у памʼять і адаптер памʼяті для резолвера: історія спостережень, час події проти часу знання |
 | `017_pack_purpose_key` | призначення, локаль і профіль бюджету входять у ключ скомпільованого пакета |
+| `018_ingest_bridge` | міст із Check у памʼять: зіставлення версії без здогадок, перенесення відомого, тіньова компіляція і єдина публічна точка входу |
+| `019_request_pack_hit` | гаряча дорога віддає скомпільований пакет: прапорець успіху читався не там, де він лежить |
 
 Відкат виконується у зворотному порядку файлами `*.down.sql`. Відкат
 11 повертає обидві функції життєвого циклу до версії міграції 10 і лише
@@ -38,7 +40,7 @@ Phase 1 створює лише структури. Model Intelligence до Chec
 
 ## Як застосовувати
 
-До Supabase застосовує ВЛАСНИК вручну, у порядку 001..017. Усі файли
+До Supabase застосовує ВЛАСНИК вручну, у порядку 001..019. Усі файли
 аддитивні і ідемпотентні: повторний запуск нічого не ламає і не чистить
 дані. Нічого існуючого не видаляється і не перейменовується.
 
@@ -69,6 +71,7 @@ MI_TEST_DB_URL=postgres://localhost/calcar_mi_test node mibackloadtest.js
 MI_TEST_DB_URL=postgres://localhost/calcar_mi_test node migoldentest.js
 MI_TEST_DB_URL=postgres://localhost/calcar_mi_test node miresolvertest.js
 MI_TEST_DB_URL=postgres://localhost/calcar_mi_test node mivmtest.js
+MI_TEST_DB_URL=postgres://localhost/calcar_mi_test node mishadowtest.js
 ```
 
 `mitest.js` перевіряє схему: застосування, повторне застосування, smoke
@@ -104,6 +107,10 @@ MI_TEST_DB_URL=postgres://localhost/calcar_mi_test node mibackloadtest.js
 `docs/model-intelligence/identity-resolver.md`.
 Аудит Vehicle Memory: `docs/model-intelligence/vehicle-memory-audit.md`,
 закриття блокерів: `docs/model-intelligence/vehicle-memory-v2.md`.
+Міст із Check і тіньовий пакет:
+`docs/model-intelligence/check-bridge-and-shadow.md`.
+Аудит production bootstrap і живий shadow:
+`docs/model-intelligence/production-bootstrap.md`.
 
 ## Що свідомо лишилось поза Phase 4
 
