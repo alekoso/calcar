@@ -34,7 +34,7 @@ const UPS = ['001_schemas_enums_lookups', '002_subjects_hierarchy_source',
   '003_components_equipment_state', '004_issue_maintenance_check',
   '005_claims_applicability_evidence', '006_staging', '007_mi_vm_interface',
   '008_fragments_packs_operations', '009_validation_permissions',
-  '010_knowledge_lifecycle', '011_staging_buyer_metadata', '012_pack_compiler', '013_check_retrieval'];
+  '010_knowledge_lifecycle', '011_staging_buyer_metadata', '012_pack_compiler', '013_check_retrieval', '014_check_dedup'];
 
 function run(args, sql) {
   return execFileSync(PSQL, ['-X', '-q', '-v', 'ON_ERROR_STOP=1', '-d', DB, ...args],
@@ -124,10 +124,15 @@ gold(3, 'шари обслуговування живуть одночасно',
   'Шарів три (official, specialist, owner), а не чотири: синтез CalCar про історію обслуговування має subject варіанта мотора, а не позиції обслуговування, тому layer у нього не проставляється схемою.');
 
 gold(4, 'ендоскопія MUST присутня', `
-  declare p jsonb;
+  declare p jsonb; bore bigint;
   begin
+  select ci.subject_id into bore from mi.check_item ci
+    join mi.knowledge_subject k on k.id = ci.subject_id
+   where k.label = 'Borescope all eight N63 cylinders';
   p := mi_test.pack(${BMW});
-  ${ASSERT("mi_test.in_pack(p, mi_test.claim('C-140#a'))", 'borescope check missing from the pack')}
+  ${ASSERT(`exists (select 1 from jsonb_array_elements(p->'systems') s,
+                lateral jsonb_array_elements(coalesce(s->'check_items','[]'::jsonb)) c
+               where (c->>'check_subject_id')::bigint = bore)`, 'borescope check missing from the pack')}
   ${ASSERT(`exists (select 1 from jsonb_array_elements(mi_test.area_of(p,'engine')->'check_items') c
                      where c->'check'->>'priority' = 'must')`, 'no MUST check in the engine area')}
   end;`);
@@ -768,7 +773,7 @@ gold(55, 'перевірка не потребує вигаданого клей
   p := mi_test.pack(${TESLA}, 'report');
   select count(*) into n_cat from jsonb_array_elements(p->'systems') s,
        lateral jsonb_array_elements(coalesce(s->'check_items','[]'::jsonb)) c
-   where c->>'entry_source' = 'catalogue';
+   where c->>'entry_source' = 'canonical_entity';
   ${ASSERT('n_cat >= 7', 'canonical checks did not enter the pack as catalogue entities')}
   select count(*) into n_claimed from mi.claim c
     join mi.knowledge_subject k on k.id = c.subject_id
@@ -811,7 +816,7 @@ gold(58, 'обовʼязкова перевірка не стає проблем
   p := mi_test.pack(${TESLA}, 'report');
   ${ASSERT(`not exists (select 1 from jsonb_array_elements(p->'systems') s,
                 lateral jsonb_array_elements(coalesce(s->'issues','[]'::jsonb)) c
-               where c->>'entry_source' = 'catalogue' and jsonb_typeof(c->'check') = 'object')`,
+               where c->>'entry_source' = 'canonical_entity' and jsonb_typeof(c->'check') = 'object')`,
            'a check was rendered as an issue')}
   ${ASSERT(`exists (select 1 from jsonb_array_elements(p->'systems') s,
                 lateral jsonb_array_elements(coalesce(s->'check_items','[]'::jsonb)) c
@@ -872,6 +877,128 @@ gold(62, 'знання про покоління чесно позначене �
      and (exists (select 1 from mi.check_covers cc where cc.target_subject_id = i.subject_id)
           or exists (select 1 from mi.claim_link cl where cl.target_subject_id = i.subject_id));
   ${ASSERT('n = 0', 'some generation anchored issues DO carry a derivable system: classification must be improved instead of amending the schema')}
+  end;`);
+
+/* ========== PHASE 4.2: ОДНА ПЕРЕВІРКА ЦЕ ОДИН ЗАПИС ========== */
+
+/* Спільна перевірка унікальності для будь-якої машини. */
+const UNIQ = (ident, car) => `
+  declare p jsonb; total int; distinct_ids int;
+  begin
+  p := mi_test.pack(${ident}, 'report');
+  select count(*), count(distinct c->>'check_subject_id')
+    into total, distinct_ids
+    from jsonb_array_elements(p->'systems') s,
+         lateral jsonb_array_elements(coalesce(s->'check_items','[]'::jsonb)) c;
+  ${ASSERT('total = distinct_ids', car + ' pack contains the same check more than once')}
+  ${ASSERT(`not exists (select 1 from jsonb_array_elements(p->'systems') s,
+                lateral jsonb_array_elements(coalesce(s->'check_items','[]'::jsonb)) c
+               where c->>'check_subject_id' is null)`,
+           car + ' pack has a check entry without a canonical identity')}
+  ${ASSERT(`not exists (select 1 from jsonb_array_elements(p->'systems') s,
+                lateral jsonb_array_elements(coalesce(s->'check_items','[]'::jsonb)) c
+               where c ? 'claim_id')`,
+           car + ' check entry still carries a fabricated claim reference')}
+  end;`;
+
+gold(63, 'BMW: кожна перевірка рівно один раз', UNIQ(BMW, 'BMW'));
+gold(64, 'Tesla: кожна перевірка рівно один раз', UNIQ(TESLA, 'Tesla'));
+gold(65, 'Porsche: кожна перевірка рівно один раз', UNIQ(POR, 'Porsche'));
+
+gold(66, 'перевірок у пакеті не більше, ніж релевантних канонічних', `
+  declare c record; n_pack int; n_rel int;
+  begin
+  for c in select * from (values ('BMW', ${BMW}), ('Tesla', ${TESLA}), ('Porsche', ${POR}))
+             as v(car, ident) loop
+    select count(*) into n_rel from mi.check_item ci
+     where ci.subject_id in (select subject_id from mi.vmy_scope((c.ident->>'vmy')::bigint))
+       and mi.eval_check(ci.subject_id, c.ident)->>'status'
+           in ('APPLICABLE','APPLICABLE_ASSUMED','CONDITIONAL');
+    select count(*) into n_pack from jsonb_array_elements(mi_test.pack(c.ident,'report')->'systems') s,
+         lateral jsonb_array_elements(coalesce(s->'check_items','[]'::jsonb)) x;
+    if n_pack > n_rel then
+      raise exception '% pack has % checks but only % canonical checks are relevant',
+        c.car, n_pack, n_rel;
+    end if;
+  end loop;
+  end;`);
+
+gold(67, 'клейм доповнює канонічну перевірку, а не подвоює її', `
+  declare p jsonb; bore bigint; entry jsonb; n int;
+  begin
+  select ci.subject_id into bore from mi.check_item ci
+    join mi.knowledge_subject k on k.id = ci.subject_id
+   where k.label = 'Borescope all eight N63 cylinders';
+  -- Клеймів про цю перевірку у корпусі саме два.
+  select count(*) into n from mi.claim cl
+   where cl.subject_id = bore and cl.status = 'published';
+  ${ASSERT('n = 2', 'the fixture no longer has two published claims about this check')}
+  p := mi_test.pack(${BMW}, 'report');
+  select c into entry from jsonb_array_elements(p->'systems') s,
+       lateral jsonb_array_elements(coalesce(s->'check_items','[]'::jsonb)) c
+   where (c->>'check_subject_id')::bigint = bore;
+  ${ASSERT('entry is not null', 'the enriched check disappeared from the pack')}
+  ${ASSERT("entry->>'entry_source' = 'canonical_entity'", 'the check entry is not the canonical one')}
+  ${ASSERT("jsonb_array_length(entry->'enriched_by_claims') = 2", 'the two claims did not enrich the canonical check')}
+  ${ASSERT(`(select count(*) from jsonb_array_elements(p->'systems') s2,
+                lateral jsonb_array_elements(coalesce(s2->'check_items','[]'::jsonb)) c2
+               where (c2->>'check_subject_id')::bigint = bore) = 1`,
+           'the enriched check still appears more than once')}
+  -- Клейми не зникли з бази і не зникли з пакета як знання: їхній текст
+  -- лежить усередині запису перевірки.
+  ${ASSERT(`exists (select 1 from jsonb_array_elements(entry->'enriched_by_claims') e
+                     where e->>'text' is not null and e->>'knowledge_type' is not null)`,
+           'the enriching claims lost their text or type')}
+  end;`);
+
+gold(68, 'канонічна перевірка без жодного клейма все одно є у пакеті', `
+  declare p jsonb; n int;
+  begin
+  p := mi_test.pack(${TESLA}, 'report');
+  select count(*) into n from jsonb_array_elements(p->'systems') s,
+       lateral jsonb_array_elements(coalesce(s->'check_items','[]'::jsonb)) c
+   where c->>'entry_source' = 'canonical_entity'
+     and coalesce(jsonb_array_length(c->'enriched_by_claims'), 0) = 0;
+  ${ASSERT('n >= 5', 'canonical checks without a prose claim stopped appearing')}
+  ${ASSERT(`(select count(*) from mi.claim cl join mi.knowledge_subject k on k.id = cl.subject_id
+              where k.kind = 'check_item' and cl.status = 'published'
+                and mi.claim_in_scope(cl.id, (${TESLA}->>'vmy')::bigint)) = 0`,
+           'a prose claim about a check appeared for this car')}
+  end;`);
+
+gold(69, 'перевірка чужого компонента лишається виключеною', `
+  declare tu3 jsonb; bore bigint; hc bigint; p jsonb;
+  begin
+  select ci.subject_id into bore from mi.check_item ci
+    join mi.knowledge_subject k on k.id = ci.subject_id
+   where k.label = 'Borescope all eight N63 cylinders';
+  select ci.subject_id into hc from mi.check_item ci
+    join mi.knowledge_subject k on k.id = ci.subject_id
+   where k.label = 'Read pack health over the vehicle bus';
+  tu3 := mi_test.identity_of('M550I_XDRIVE', 2020, 'US');
+  perform mi.build_fragment((tu3->>'vmy')::bigint, 'report');
+  p := mi_test.pack(tu3, 'report');
+  ${ASSERT(`not exists (select 1 from jsonb_array_elements(p->'systems') s,
+                lateral jsonb_array_elements(coalesce(s->'check_items','[]'::jsonb)) c
+               where (c->>'check_subject_id')::bigint = bore)`,
+           'the Alusil borescope check reached the coated bore revision')}
+  ${ASSERT(`not exists (select 1 from jsonb_array_elements(mi_test.pack(${BMW},'report')->'systems') s,
+                lateral jsonb_array_elements(coalesce(s->'check_items','[]'::jsonb)) c
+               where (c->>'check_subject_id')::bigint = hc)`,
+           'a battery pack check reached a combustion car')}
+  end;`);
+
+gold(70, 'облік записів сходиться після дедуплікації', `
+  declare m jsonb;
+  begin
+  m := mi_test.pack(${BMW}, 'report')->'pack_meta';
+  if m is null then m := mi.compile_pack(${BMW}, 'report')->'pack'->'pack_meta'; end if;
+  ${ASSERT("(m->>'merged_into_checks')::int >= 2", 'the claims merged into checks are not counted')}
+  ${ASSERT(`(m->>'evaluated_count')::int =
+              (m->>'included_count')::int + (m->>'excluded_by_status')::int
+            + (m->>'merged_into_checks')::int + (m->>'filtered_by_policy')::int
+            + (m->>'truncated_count')::int`,
+           'the pack counters no longer add up to the evaluated total')}
   end;`);
 
 /* ---- Підсумок (проміжний, доповнюється нижче) ---- */
