@@ -28,7 +28,7 @@ const UPS = ['001_schemas_enums_lookups', '002_subjects_hierarchy_source',
   '003_components_equipment_state', '004_issue_maintenance_check',
   '005_claims_applicability_evidence', '006_staging', '007_mi_vm_interface',
   '008_fragments_packs_operations', '009_validation_permissions',
-  '010_knowledge_lifecycle', '011_staging_buyer_metadata', '012_pack_compiler', '013_check_retrieval', '014_check_dedup', '015_identity_resolver'];
+  '010_knowledge_lifecycle', '011_staging_buyer_metadata', '012_pack_compiler', '013_check_retrieval', '014_check_dedup', '015_identity_resolver', '016_vm_adapter'];
 
 function run(args, sql) {
   return execFileSync(PSQL, ['-X', '-q', '-v', 'ON_ERROR_STOP=1', '-d', DB, ...args],
@@ -74,6 +74,11 @@ try { execFileSync(PSQL, ['--version'], { stdio: 'pipe' }); } catch {
 
 try {
   run(['-f', path.join(FIX, '000_test_prelude.sql')], '');
+  for (const vf of ['supabase-jobs.sql', 'supabase-vehicle-memory-baseline.sql',
+                    'supabase-vehicle-intelligence.sql', 'supabase-vehicle-memory-v1.sql',
+                    'supabase-vehicle-memory-v2.sql']) {
+    run(['-f', path.join(__dirname, vf)], '');
+  }
   for (const m of UPS) run(['-f', path.join(DIR, m + '.up.sql')], '');
   run(['-f', path.join(FIX, '010_lifecycle_fixture.sql')], '');
 } catch (e) {

@@ -24,6 +24,7 @@ Phase 1 створює лише структури. Model Intelligence до Chec
 | `013_check_retrieval` | канонічні перевірки потрапляють у пакет як сутності каталогу, без клейма про себе; обладнання успадковує систему свого варіанта |
 | `014_check_dedup` | одна перевірка це один запис у пакеті: ключ дедуплікації `check_item.id`, клейм про перевірку доповнює її, а не подвоює |
 | `015_identity_resolver` | детермінований резолвер ідентичності, накладка по VIN і збереження пакета |
+| `016_vm_adapter` | запис у памʼять і адаптер памʼяті для резолвера: історія спостережень, час події проти часу знання |
 
 Відкат виконується у зворотному порядку файлами `*.down.sql`. Відкат
 11 повертає обидві функції життєвого циклу до версії міграції 10 і лише
@@ -36,7 +37,7 @@ Phase 1 створює лише структури. Model Intelligence до Chec
 
 ## Як застосовувати
 
-До Supabase застосовує ВЛАСНИК вручну, у порядку 001..015. Усі файли
+До Supabase застосовує ВЛАСНИК вручну, у порядку 001..016. Усі файли
 аддитивні і ідемпотентні: повторний запуск нічого не ламає і не чистить
 дані. Нічого існуючого не видаляється і не перейменовується.
 
@@ -66,6 +67,7 @@ MI_TEST_DB_URL=postgres://localhost/calcar_mi_test node milifecycletest.js
 MI_TEST_DB_URL=postgres://localhost/calcar_mi_test node mibackloadtest.js
 MI_TEST_DB_URL=postgres://localhost/calcar_mi_test node migoldentest.js
 MI_TEST_DB_URL=postgres://localhost/calcar_mi_test node miresolvertest.js
+MI_TEST_DB_URL=postgres://localhost/calcar_mi_test node mivmtest.js
 ```
 
 `mitest.js` перевіряє схему: застосування, повторне застосування, smoke
@@ -99,6 +101,8 @@ MI_TEST_DB_URL=postgres://localhost/calcar_mi_test node mibackloadtest.js
 `docs/model-intelligence/check-dedup.md`.
 Резолвер ідентичності і накладка по VIN:
 `docs/model-intelligence/identity-resolver.md`.
+Аудит Vehicle Memory: `docs/model-intelligence/vehicle-memory-audit.md`,
+закриття блокерів: `docs/model-intelligence/vehicle-memory-v2.md`.
 
 ## Що свідомо лишилось поза Phase 4
 
