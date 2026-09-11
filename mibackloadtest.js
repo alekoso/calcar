@@ -37,7 +37,7 @@ const UPS = ['001_schemas_enums_lookups', '002_subjects_hierarchy_source',
   '003_components_equipment_state', '004_issue_maintenance_check',
   '005_claims_applicability_evidence', '006_staging', '007_mi_vm_interface',
   '008_fragments_packs_operations', '009_validation_permissions',
-  '010_knowledge_lifecycle'];
+  '010_knowledge_lifecycle', '011_staging_buyer_metadata'];
 
 /* Кількість матеріальних атомів кожної картки рахується з самого
    замороженого документа, а не задається константою: якщо картку колись
@@ -299,6 +299,65 @@ eq('перекласифікація не змінює атом',
      join mi.candidate_claim o on o.task_ref = regexp_replace(n.task_ref, '(#|-)r1$', '')
     where n.task_ref ~ 'r1$'
       and split_part(n.task_ref,'#',1) <> split_part(o.task_ref,'#',1);`, 0);
+
+/* ---- 4c. Phase 3.2: buyer-метадані еталонного корпусу ---- */
+
+eq('жоден опублікований клейм не лишився без важливості',
+  "select count(*) from mi.claim where status = 'published' and buyer_importance is null;", 0);
+
+ok('корпус несе більше одного значення важливості', () => {
+  const n = Number(scalar("select count(distinct buyer_importance) from mi.claim where status='published';"));
+  if (n < 2) throw new Error('різних значень важливості лише ' + n);
+});
+
+ok('у корпусі є і найвища, і найнижча важливість', () => {
+  const hi = Number(scalar("select count(*) from mi.claim where status='published' and buyer_importance = 5;"));
+  const lo = Number(scalar("select count(*) from mi.claim where status='published' and buyer_importance = 1;"));
+  if (hi < 1) throw new Error('немає жодного клейма важливості 5');
+  if (lo < 1) throw new Error('немає жодного клейма важливості 1');
+});
+
+/* Головна перевірка проти повернення старої поведінки: якщо константа
+   повернеться, одне значення накриє весь корпус. */
+ok('важливість не однакова штучно', () => {
+  const top = Number(scalar(`select max(n) from (select count(*) n from mi.claim
+                              where status='published' group by buyer_importance) t;`));
+  const all = Number(scalar("select count(*) from mi.claim where status='published';"));
+  if (all === 0) throw new Error('корпус порожній');
+  if (top === all) throw new Error('уся важливість корпусу дорівнює одному значенню');
+  if (top / all > 0.6) throw new Error('одне значення важливості накриває ' +
+    Math.round(100 * top / all) + ' відсотків корпусу');
+});
+
+eq('важливість кандидата доходить до клейма без змін',
+  `select count(*) from mi.candidate_claim k join mi.claim c on c.id = k.published_claim_id
+    where k.proposed_buyer_importance is distinct from c.buyer_importance;`, 0);
+
+eq('buyer-текст кандидата доходить до клейма дослівно',
+  `select count(*) from mi.candidate_claim k join mi.claim c on c.id = k.published_claim_id
+    where k.proposed_buyer_implication_en is distinct from c.buyer_implication_en;`, 0);
+
+ok('buyer-текст карток справді завантажений', () => {
+  const n = Number(scalar(`select count(*) from mi.claim
+                            where status='published' and buyer_implication_en is not null;`));
+  if (n < 40) throw new Error('клеймів із buyer-текстом лише ' + n);
+});
+
+eq('суперечливий клейм завжди пояснює, у чому суперечка',
+  `select count(*) from mi.claim where status='published' and contested
+     and coalesce(btrim(contested_note_en), '') = '';`, 0);
+
+ok('суперечливе знання у корпусі збережене', () => {
+  const n = Number(scalar("select count(*) from mi.claim where status='published' and contested;"));
+  if (n < 1) throw new Error('жодного суперечливого клейма');
+});
+
+/* Нові правила не мають блокувати знання: вони про повноту метаданих,
+   а не про докази. Заблокований кандидат має падати лише на доказах. */
+eq('нове правило важливості нікого не заблокувало',
+  `select count(*) from mi.candidate_claim c, jsonb_array_elements(c.gate_result->'rules') r
+    where c.review_status = 'gate_pending' and (r->>'ok')::boolean is false
+      and r->>'code' in ('buyer_importance_set', 'contested_note');`, 0);
 
 /* ---- 5. Повторюваність заливки ---- */
 

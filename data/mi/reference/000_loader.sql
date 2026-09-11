@@ -89,7 +89,10 @@ end $$;
 -- ---------- Кандидат ----------
 
 -- opts: subject_text, layer, value_kind, value, causal, propagation, note,
---       applic (масив предикатів), links, ev (масив доказів).
+--       applic (масив предикатів), links, ev (масив доказів),
+--       importance (1..5), implication, contested, contested_note.
+-- importance і implication несуть те, що картка каже покупцю: перше це
+-- здатність змінити рішення, друге це дослівний buyer-текст атома.
 -- Доказ: {"src": ключ, "stance": supports|contradicts|context,
 --         "group": ідентифікатор незалежної групи, "ctx": {...},
 --         "excerpt": текст, "lang": "en"}.
@@ -110,7 +113,9 @@ begin
     task_ref, proposed_subject_text, resolved_subject_id, proposed_knowledge_type,
     text_en, value_kind, structured_value, proposed_confidence, proposed_layer,
     proposed_causal_status, proposed_propagation, proposed_applicability,
-    proposed_links, extractor, review_status, review_note)
+    proposed_links, proposed_buyer_importance, proposed_buyer_implication_en,
+    proposed_contested, proposed_contested_note_en,
+    extractor, review_status, review_note)
   values (
     p_task_ref,
     coalesce(p_opts->>'subject_text', p_subject_key),
@@ -124,6 +129,10 @@ begin
     coalesce((p_opts->>'propagation')::mi.propagation, 'exact'),
     p_opts->'applic',
     p_opts->'links',
+    (p_opts->>'importance')::smallint,
+    p_opts->>'implication',
+    coalesce((p_opts->>'contested')::boolean, false),
+    p_opts->>'contested_note',
     'phase3-reference-backload',
     'normalized',
     p_opts->>'note')

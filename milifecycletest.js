@@ -28,7 +28,7 @@ const UPS = ['001_schemas_enums_lookups', '002_subjects_hierarchy_source',
   '003_components_equipment_state', '004_issue_maintenance_check',
   '005_claims_applicability_evidence', '006_staging', '007_mi_vm_interface',
   '008_fragments_packs_operations', '009_validation_permissions',
-  '010_knowledge_lifecycle'];
+  '010_knowledge_lifecycle', '011_staging_buyer_metadata'];
 
 function run(args, sql) {
   return execFileSync(PSQL, ['-X', '-q', '-v', 'ON_ERROR_STOP=1', '-d', DB, ...args],
@@ -87,9 +87,9 @@ const SUBJ = "select subject_id into v_subj from mi.component_variant where vari
 const OWNER_PATTERN_SETUP = `
   ${SUBJ}
   insert into mi.candidate_claim (proposed_subject_text, resolved_subject_id,
-      proposed_knowledge_type, text_en, proposed_confidence, proposed_causal_status, review_status)
+      proposed_knowledge_type, text_en, proposed_confidence, proposed_causal_status, review_status, proposed_buyer_importance)
   values ('LC_VAR', v_subj, 'owner_pattern',
-      'Owners report the same behaviour after long ownership.', 'low', 'observed_association', 'new')
+      'Owners report the same behaviour after long ownership.', 'low', 'observed_association', 'new', 3)
   returning id into v_cid;
   insert into mi.candidate_evidence (candidate_id, source_id, stance, excerpt, independence_group, context)
   select v_cid, id, 'supports', 'owner a', 'thread:a1', '{"mileage_km":120000}'::jsonb
@@ -108,10 +108,10 @@ begin
   ${SUBJ}
   insert into mi.candidate_claim (proposed_subject_text, resolved_subject_id,
       proposed_knowledge_type, text_en, value_kind, structured_value,
-      proposed_confidence, review_status)
+      proposed_confidence, review_status, proposed_buyer_importance)
   values ('LC_VAR', v_subj, 'official_fact',
       'Bulletin LC-1 documents the coolant routing.', 'document_ref',
-      '{"doc_id":"LC-1"}'::jsonb, 'high', 'new')
+      '{"doc_id":"LC-1"}'::jsonb, 'high', 'new', 3)
   returning id into v_cid;
 
   insert into mi.candidate_evidence (candidate_id, source_id, stance, excerpt, independence_group)
@@ -150,8 +150,8 @@ begin
   ${SUBJ}
   select count(*) into v_before from mi.claim;
   insert into mi.candidate_claim (proposed_subject_text, resolved_subject_id,
-      proposed_knowledge_type, text_en, proposed_confidence, review_status)
-  values ('LC_VAR', v_subj, 'known_issue', 'A parts shop page claims frequent failures.', 'low', 'new')
+      proposed_knowledge_type, text_en, proposed_confidence, review_status, proposed_buyer_importance)
+  values ('LC_VAR', v_subj, 'known_issue', 'A parts shop page claims frequent failures.', 'low', 'new', 3)
   returning id into v_cid;
   insert into mi.candidate_evidence (candidate_id, source_id, stance, excerpt, independence_group)
   select v_cid, id, 'supports', 'shop page', 'shop:1' from mi.source where title = 'LC parts shop';
@@ -186,10 +186,10 @@ begin
 
   insert into mi.candidate_claim (proposed_subject_text, resolved_subject_id,
       proposed_knowledge_type, text_en, value_kind, structured_value,
-      proposed_confidence, proposed_links, review_status)
+      proposed_confidence, proposed_links, review_status, proposed_buyer_importance)
   values ('LC_VAR', v_subj, 'official_fact', 'Bulletin LC-9 replaces an earlier note.',
       'document_ref', '{"doc_id":"LC-9"}'::jsonb, 'high',
-      '{"supersedes": 999999999}'::jsonb, 'new')
+      '{"supersedes": 999999999}'::jsonb, 'new', 3)
   returning id into v_cid;
   insert into mi.candidate_evidence (candidate_id, source_id, stance, excerpt, independence_group)
   select v_cid, id, 'supports', 'bulletin', 'doc:LC-9' from mi.source where title = 'LC official bulletin';
@@ -240,9 +240,9 @@ begin
   ${SUBJ}
   select subject_id into v_gen from mi.generation where platform_code = 'LCG';
   insert into mi.candidate_claim (proposed_subject_text, resolved_subject_id,
-      proposed_knowledge_type, text_en, value_kind, structured_value, proposed_confidence, review_status)
+      proposed_knowledge_type, text_en, value_kind, structured_value, proposed_confidence, review_status, proposed_buyer_importance)
   values ('LC_VAR', v_subj, 'official_fact', 'Bulletin LC-2 lists the affected build window.',
-      'document_ref', '{"doc_id":"LC-2"}'::jsonb, 'high', 'new')
+      'document_ref', '{"doc_id":"LC-2"}'::jsonb, 'high', 'new', 3)
   returning id into v_cid;
   insert into mi.candidate_evidence (candidate_id, source_id, stance, excerpt, independence_group)
   select v_cid, id, 'supports', 'bulletin', 'doc:LC-2' from mi.source where title = 'LC official bulletin';
@@ -280,18 +280,18 @@ declare v_c1 bigint; v_c2 bigint; v_claim1 bigint; v_claim2 bigint; v_subj bigin
 begin
   ${SUBJ}
   insert into mi.candidate_claim (proposed_subject_text, resolved_subject_id,
-      proposed_knowledge_type, text_en, value_kind, structured_value, proposed_confidence, review_status)
+      proposed_knowledge_type, text_en, value_kind, structured_value, proposed_confidence, review_status, proposed_buyer_importance)
   values ('LC_VAR', v_subj, 'official_fact', 'Bulletin LC-3 documents the same fact.',
-      'document_ref', '{"doc_id":"LC-3"}'::jsonb, 'high', 'new')
+      'document_ref', '{"doc_id":"LC-3"}'::jsonb, 'high', 'new', 3)
   returning id into v_c1;
   insert into mi.candidate_evidence (candidate_id, source_id, stance, excerpt, independence_group)
   select v_c1, id, 'supports', 'first', 'doc:LC-3' from mi.source where title = 'LC official bulletin';
   v_claim1 := mi.publish_candidate(v_c1, 'tester');
 
   insert into mi.candidate_claim (proposed_subject_text, resolved_subject_id,
-      proposed_knowledge_type, text_en, value_kind, structured_value, proposed_confidence, review_status)
+      proposed_knowledge_type, text_en, value_kind, structured_value, proposed_confidence, review_status, proposed_buyer_importance)
   values ('LC_VAR', v_subj, 'official_fact', 'Bulletin LC-3 documents the same fact.',
-      'document_ref', '{"doc_id":"LC-3"}'::jsonb, 'high', 'new')
+      'document_ref', '{"doc_id":"LC-3"}'::jsonb, 'high', 'new', 3)
   returning id into v_c2;
   insert into mi.candidate_evidence (candidate_id, source_id, stance, excerpt, independence_group)
   select v_c2, id, 'supports', 'second independent document', 'doc:LC-3-second'
@@ -391,9 +391,9 @@ begin
   ${SUBJ}
   select knowledge_rev into v_rev from mi.knowledge_subject where id = v_subj;
   insert into mi.candidate_claim (proposed_subject_text, resolved_subject_id,
-      proposed_knowledge_type, text_en, value_kind, structured_value, proposed_confidence, review_status)
+      proposed_knowledge_type, text_en, value_kind, structured_value, proposed_confidence, review_status, proposed_buyer_importance)
   values ('LC_VAR', v_subj, 'official_fact', 'Bulletin LC-4 confirms the part number.',
-      'document_ref', '{"doc_id":"LC-4"}'::jsonb, 'high', 'new')
+      'document_ref', '{"doc_id":"LC-4"}'::jsonb, 'high', 'new', 3)
   returning id into v_cid;
   insert into mi.candidate_evidence (candidate_id, source_id, stance, excerpt, independence_group)
   select v_cid, id, 'supports', 'bulletin', 'doc:LC-4' from mi.source where title = 'LC official bulletin';
@@ -410,9 +410,9 @@ declare v_c1 bigint; v_c2 bigint; v_old bigint; v_new bigint; v_subj bigint; v_t
 begin
   ${SUBJ}
   insert into mi.candidate_claim (proposed_subject_text, resolved_subject_id,
-      proposed_knowledge_type, text_en, value_kind, structured_value, proposed_confidence, review_status)
+      proposed_knowledge_type, text_en, value_kind, structured_value, proposed_confidence, review_status, proposed_buyer_importance)
   values ('LC_VAR', v_subj, 'official_fact', 'Coolant service interval is four years.',
-      'interval', '{"km":0,"months":48}'::jsonb, 'high', 'new')
+      'interval', '{"km":0,"months":48}'::jsonb, 'high', 'new', 3)
   returning id into v_c1;
   insert into mi.candidate_evidence (candidate_id, source_id, stance, excerpt, independence_group)
   select v_c1, id, 'supports', 'manual', 'doc:LC-5' from mi.source where title = 'LC official bulletin';
@@ -421,10 +421,10 @@ begin
 
   insert into mi.candidate_claim (proposed_subject_text, resolved_subject_id,
       proposed_knowledge_type, text_en, value_kind, structured_value, proposed_confidence,
-      proposed_links, review_status)
+      proposed_links, review_status, proposed_buyer_importance)
   values ('LC_VAR', v_subj, 'official_fact', 'Coolant is now declared a lifetime fill.',
       'interval', '{"km":0,"months":0}'::jsonb, 'high',
-      jsonb_build_object('supersedes', v_old), 'new')
+      jsonb_build_object('supersedes', v_old), 'new', 3)
   returning id into v_c2;
   insert into mi.candidate_evidence (candidate_id, source_id, stance, excerpt, independence_group)
   select v_c2, id, 'supports', 'updated manual', 'doc:LC-6' from mi.source where title = 'LC official bulletin';
@@ -479,9 +479,9 @@ declare v_cid bigint; v_subj bigint; v_gate jsonb; v_ok boolean;
 begin
   ${SUBJ}
   insert into mi.candidate_claim (proposed_subject_text, resolved_subject_id,
-      proposed_knowledge_type, text_en, proposed_confidence, reviewer, review_status)
+      proposed_knowledge_type, text_en, proposed_confidence, reviewer, review_status, proposed_buyer_importance)
   values ('LC_VAR', v_subj, 'calcar_synthesis',
-      'The base is sound, the risk sits around it.', 'medium', 'tester', 'new')
+      'The base is sound, the risk sits around it.', 'medium', 'tester', 'new', 3)
   returning id into v_cid;
   v_gate := mi.run_gate(v_cid);
   if (v_gate->>'passed')::boolean then raise exception 'synthesis without support must fail'; end if;
@@ -498,9 +498,9 @@ declare v_cid bigint; v_subj bigint; v_gate jsonb; v_ok boolean;
 begin
   ${SUBJ}
   insert into mi.candidate_claim (proposed_subject_text, resolved_subject_id,
-      proposed_knowledge_type, text_en, value_kind, structured_value, proposed_confidence, review_status)
+      proposed_knowledge_type, text_en, value_kind, structured_value, proposed_confidence, review_status, proposed_buyer_importance)
   values ('LC Dup Alias', v_subj, 'official_fact', 'Bulletin LC-7 mentions the ambiguous name.',
-      'document_ref', '{"doc_id":"LC-7"}'::jsonb, 'high', 'new')
+      'document_ref', '{"doc_id":"LC-7"}'::jsonb, 'high', 'new', 3)
   returning id into v_cid;
   insert into mi.candidate_evidence (candidate_id, source_id, stance, excerpt, independence_group)
   select v_cid, id, 'supports', 'bulletin', 'doc:LC-7' from mi.source where title = 'LC official bulletin';
@@ -524,8 +524,8 @@ declare v_cid bigint; v_subj bigint; v_gate jsonb; v_vendor boolean; v_issue boo
 begin
   ${SUBJ}
   insert into mi.candidate_claim (proposed_subject_text, resolved_subject_id,
-      proposed_knowledge_type, text_en, proposed_confidence, review_status)
-  values ('LC_VAR', v_subj, 'known_issue', 'The shop calls this a primary failure point.', 'low', 'new')
+      proposed_knowledge_type, text_en, proposed_confidence, review_status, proposed_buyer_importance)
+  values ('LC_VAR', v_subj, 'known_issue', 'The shop calls this a primary failure point.', 'low', 'new', 3)
   returning id into v_cid;
   insert into mi.candidate_evidence (candidate_id, source_id, stance, excerpt, independence_group)
   select v_cid, id, 'supports', 'shop page', 'shop:2' from mi.source where title = 'LC parts shop';
@@ -553,9 +553,9 @@ begin
   select v_frag, id, knowledge_rev from mi.knowledge_subject where id = v_subj;
 
   insert into mi.candidate_claim (proposed_subject_text, resolved_subject_id,
-      proposed_knowledge_type, text_en, value_kind, structured_value, proposed_confidence, review_status)
+      proposed_knowledge_type, text_en, value_kind, structured_value, proposed_confidence, review_status, proposed_buyer_importance)
   values ('LC_VAR', v_subj, 'official_fact', 'Bulletin LC-8 changes the described behaviour.',
-      'document_ref', '{"doc_id":"LC-8"}'::jsonb, 'high', 'new')
+      'document_ref', '{"doc_id":"LC-8"}'::jsonb, 'high', 'new', 3)
   returning id into v_cid;
   insert into mi.candidate_evidence (candidate_id, source_id, stance, excerpt, independence_group)
   select v_cid, id, 'supports', 'bulletin', 'doc:LC-8' from mi.source where title = 'LC official bulletin';
@@ -579,9 +579,9 @@ begin
   select v_frag, id, knowledge_rev from mi.knowledge_subject where id = v_subj;
 
   insert into mi.candidate_claim (proposed_subject_text, resolved_subject_id,
-      proposed_knowledge_type, text_en, value_kind, structured_value, proposed_confidence, review_status)
+      proposed_knowledge_type, text_en, value_kind, structured_value, proposed_confidence, review_status, proposed_buyer_importance)
   values ('LC_VAR', v_subj, 'official_fact', 'Bulletin LC-10 adds a first change.',
-      'document_ref', '{"doc_id":"LC-10"}'::jsonb, 'high', 'new')
+      'document_ref', '{"doc_id":"LC-10"}'::jsonb, 'high', 'new', 3)
   returning id into v_cid;
   insert into mi.candidate_evidence (candidate_id, source_id, stance, excerpt, independence_group)
   select v_cid, id, 'supports', 'bulletin', 'doc:LC-10' from mi.source where title = 'LC official bulletin';
@@ -598,9 +598,9 @@ begin
   select v_frag2, id, knowledge_rev from mi.knowledge_subject where id = v_subj;
 
   insert into mi.candidate_claim (proposed_subject_text, resolved_subject_id,
-      proposed_knowledge_type, text_en, value_kind, structured_value, proposed_confidence, review_status)
+      proposed_knowledge_type, text_en, value_kind, structured_value, proposed_confidence, review_status, proposed_buyer_importance)
   values ('LC_VAR', v_subj, 'official_fact', 'Bulletin LC-11 adds a second change.',
-      'document_ref', '{"doc_id":"LC-11"}'::jsonb, 'high', 'new')
+      'document_ref', '{"doc_id":"LC-11"}'::jsonb, 'high', 'new', 3)
   returning id into v_cid;
   insert into mi.candidate_evidence (candidate_id, source_id, stance, excerpt, independence_group)
   select v_cid, id, 'supports', 'bulletin', 'doc:LC-11' from mi.source where title = 'LC official bulletin';
@@ -628,11 +628,11 @@ begin
 
   insert into mi.candidate_claim (proposed_subject_text, resolved_subject_id,
       proposed_knowledge_type, text_en, value_kind, structured_value, proposed_confidence,
-      proposed_applicability, proposed_links, review_status)
+      proposed_applicability, proposed_links, review_status, proposed_buyer_importance)
   values ('LC_VAR', v_subj, 'official_fact', 'Bulletin LC-12 will fail late in publishing.',
       'document_ref', '{"doc_id":"LC-12"}'::jsonb, 'high',
       jsonb_build_array(jsonb_build_object('dimension', 'market_operated', 'operator', 'eq', 'tag', 'US')),
-      '{"supersedes": 999999998}'::jsonb, 'new')
+      '{"supersedes": 999999998}'::jsonb, 'new', 3)
   returning id into v_cid;
   insert into mi.candidate_evidence (candidate_id, source_id, stance, excerpt, independence_group)
   select v_cid, id, 'supports', 'bulletin', 'doc:LC-12' from mi.source where title = 'LC official bulletin';
@@ -650,6 +650,93 @@ begin
   if exists (select 1 from mi.evidence e left join mi.claim c on c.id = e.claim_id where c.id is null) then
     raise exception 'orphan evidence found';
   end if;
+end $$;`);
+
+/* ---- 21..29. Phase 3.2: buyer-метадані переживають публікацію ---- */
+
+/* Спільний каркас: офіційний факт із явною важливістю і buyer-текстом. */
+const BUYER = (imp, impl, contested, note, extra) => `
+do $$
+declare v_cid bigint; v_claim bigint; v_subj bigint; v_imp smallint; v_impl text;
+begin
+  ${SUBJ}
+  insert into mi.candidate_claim (proposed_subject_text, resolved_subject_id,
+      proposed_knowledge_type, text_en, value_kind, structured_value,
+      proposed_confidence, proposed_buyer_importance, proposed_buyer_implication_en,
+      proposed_contested, proposed_contested_note_en, review_status)
+  values ('LC_VAR', v_subj, 'official_fact',
+      'Bulletin LC-9 documents the coolant routing.', 'document_ref',
+      '{"doc_id":"LC-9"}'::jsonb, 'high', ${imp}, ${impl}, ${contested}, ${note}, 'new')
+  returning id into v_cid;
+
+  insert into mi.candidate_evidence (candidate_id, source_id, stance, excerpt, independence_group)
+  select v_cid, id, 'supports', 'bulletin excerpt', 'doc:LC-9'
+    from mi.source where title = 'LC official bulletin';
+
+  v_claim := mi.publish_candidate(v_cid, 'tester');
+  select buyer_importance, buyer_implication_en into v_imp, v_impl
+    from mi.claim where id = v_claim;
+  ${extra}
+end $$;`;
+
+test('21. важливість 5 доходить до клейма', BUYER(5, "'top signal'", 'false', 'null', `
+  if v_imp <> 5 then raise exception 'importance became %', v_imp; end if;`));
+
+test('22. важливість 1 доходить до клейма', BUYER(1, "'minor detail'", 'false', 'null', `
+  if v_imp <> 1 then raise exception 'importance became %', v_imp; end if;`));
+
+test('23. важливість не підмінюється замовчуванням 3', BUYER(4, "'matters for price'", 'false', 'null', `
+  if v_imp = 3 then raise exception 'importance silently defaulted to 3'; end if;
+  if v_imp <> 4 then raise exception 'importance became %', v_imp; end if;`));
+
+test('24. buyer-текст доходить дослівно',
+  BUYER(2, "'Do not pay for the look: the identification number decides.'", 'false', 'null', `
+  if v_impl is distinct from 'Do not pay for the look: the identification number decides.' then
+    raise exception 'buyer implication changed to %', v_impl;
+  end if;`));
+
+rejects('25. суперечливе знання без пояснення не публікується',
+  BUYER(3, "'context'", 'true', 'null', ''));
+
+test('26. суперечливе знання з поясненням публікується',
+  BUYER(3, "'context'", 'true', "'Two owner groups read the same data differently.'", `
+  if not exists (select 1 from mi.claim where id = v_claim and contested
+                   and contested_note_en = 'Two owner groups read the same data differently.') then
+    raise exception 'contested flag or note did not survive';
+  end if;`));
+
+test('27. несуперечливе знання пояснення не вимагає',
+  BUYER(3, "'context'", 'false', 'null', `
+  if exists (select 1 from mi.claim where id = v_claim and contested) then
+    raise exception 'claim became contested on its own';
+  end if;`));
+
+rejects('28. кандидат без важливості не публікується', `
+do $$
+declare v_cid bigint; v_claim bigint; v_subj bigint;
+begin
+  ${SUBJ}
+  insert into mi.candidate_claim (proposed_subject_text, resolved_subject_id,
+      proposed_knowledge_type, text_en, value_kind, structured_value,
+      proposed_confidence, review_status)
+  values ('LC_VAR', v_subj, 'official_fact',
+      'Bulletin LC-10 documents the coolant routing.', 'document_ref',
+      '{"doc_id":"LC-10"}'::jsonb, 'high', 'new')
+  returning id into v_cid;
+  insert into mi.candidate_evidence (candidate_id, source_id, stance, excerpt, independence_group)
+  select v_cid, id, 'supports', 'bulletin excerpt', 'doc:LC-10'
+    from mi.source where title = 'LC official bulletin';
+  v_claim := mi.publish_candidate(v_cid, 'tester');
+end $$;`);
+
+rejects('29. важливість поза межами 1..5 не потрапляє у staging', `
+do $$
+declare v_subj bigint;
+begin
+  ${SUBJ}
+  insert into mi.candidate_claim (proposed_subject_text, resolved_subject_id,
+      proposed_knowledge_type, text_en, proposed_buyer_importance, review_status)
+  values ('LC_VAR', v_subj, 'official_fact', 'Out of range importance.', 6, 'new');
 end $$;`);
 
 /* ---- Прибирання ---- */

@@ -23,6 +23,7 @@ cat data/mi/reference/*.sql | psql -v ON_ERROR_STOP=1 -d "$TARGET_DB"
 | `120_candidates_bmw.sql` | 115 кандидатів зі 103 атомів |
 | `121_candidates_tesla.sql` | 67 кандидатів із 49 атомів |
 | `122_candidates_porsche.sql` | 54 кандидати з 42 атомів |
+| `125_buyer_metadata.sql` | Phase 3.2: важливість для покупця і buyer-текст кожного атома з поля `buyer_implication` картки |
 | `130_publish.sql` | перевірка якості для кожного кандидата, публікація, опори синтезу |
 | `140_reclassified.sql` | Phase 3.1: перекласифікація заблокованого знання, де тип або формулювання були сильніші за джерела |
 
