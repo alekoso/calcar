@@ -24,6 +24,7 @@ cat data/mi/reference/*.sql | psql -v ON_ERROR_STOP=1 -d "$TARGET_DB"
 | `121_candidates_tesla.sql` | 67 кандидатів із 49 атомів |
 | `122_candidates_porsche.sql` | 54 кандидати з 42 атомів |
 | `130_publish.sql` | перевірка якості для кожного кандидата, публікація, опори синтезу |
+| `140_reclassified.sql` | Phase 3.1: перекласифікація заблокованого знання, де тип або формулювання були сильніші за джерела |
 
 ## Що тут можна і чого не можна
 
@@ -48,7 +49,12 @@ INSERT опублікованого клейма відхиляє сторож �
 вибіркою по `task_ref`, без тимчасових таблиць.
 
 Карта покриття: `docs/model-intelligence/backload-reference-map.md`.
+Розбір заблокованого знання: `docs/model-intelligence/blocked-knowledge-reconciliation.md`.
 Заморожені картки: `docs/model-intelligence/reference/`.
+
+Перекласифікований кандидат несе суфікс `-r1` або `#r1` у `task_ref`, а
+старий заблокований кандидат лишається у staging із запискою, хто його
+замінив. Атом при цьому не змінюється, і тест це перевіряє.
 
 ## Тест
 

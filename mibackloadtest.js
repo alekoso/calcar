@@ -262,6 +262,44 @@ eq('аліас не став неоднозначним',
   `select count(*) from (select alias_norm, scope_key from mi.subject_alias
      group by 1,2 having count(distinct target_subject_id) > 1) t;`, 0);
 
+/* ---- 4b. Phase 3.1: перекласифікація ---- */
+
+ok('перекласифіковані кандидати існують', () => {
+  const n = Number(scalar("select count(*) from mi.candidate_claim where task_ref ~ 'r1$';"));
+  if (n < 1) throw new Error('жодного перекласифікованого кандидата');
+});
+
+eq('кожен перекласифікований кандидат опублікований',
+  "select count(*) from mi.candidate_claim where task_ref ~ 'r1$' and review_status <> 'approved';", 0);
+
+eq('жодної перекласифікації через override',
+  "select count(*) from mi.candidate_claim where task_ref ~ 'r1$' and review_note like '%gate override%';", 0);
+
+eq('старий заблокований кандидат збережений і лишається заблокованим',
+  `select count(*) from mi.candidate_claim n
+    where n.task_ref ~ 'r1$'
+      and not exists (select 1 from mi.candidate_claim o
+                      where o.task_ref = regexp_replace(n.task_ref, '(#|-)r1$', '')
+                        and o.review_status not in ('approved','merged','rejected'));`, 0);
+
+eq('старий кандидат знає свою заміну',
+  `select count(*) from mi.candidate_claim n
+    where n.task_ref ~ 'r1$'
+      and not exists (select 1 from mi.candidate_claim o
+                      where o.task_ref = regexp_replace(n.task_ref, '(#|-)r1$', '')
+                        and o.review_note like '%superseded for publication by candidate%');`, 0);
+
+eq('перекласифікація без зміни тексту неможлива',
+  `select count(*) from mi.candidate_claim n
+     join mi.candidate_claim o on o.task_ref = regexp_replace(n.task_ref, '(#|-)r1$', '')
+    where n.task_ref ~ 'r1$' and n.text_en = o.text_en;`, 0);
+
+eq('перекласифікація не змінює атом',
+  `select count(*) from mi.candidate_claim n
+     join mi.candidate_claim o on o.task_ref = regexp_replace(n.task_ref, '(#|-)r1$', '')
+    where n.task_ref ~ 'r1$'
+      and split_part(n.task_ref,'#',1) <> split_part(o.task_ref,'#',1);`, 0);
+
 /* ---- 5. Повторюваність заливки ---- */
 
 ok('відкат після заливки', rollbackAll);
