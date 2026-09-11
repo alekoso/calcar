@@ -41,7 +41,8 @@ const UPS = ['001_schemas_enums_lookups', '002_subjects_hierarchy_source',
   '010_knowledge_lifecycle', '011_staging_buyer_metadata', '012_pack_compiler',
   '013_check_retrieval', '014_check_dedup', '015_identity_resolver',
   '016_vm_adapter', '017_pack_purpose_key', '018_ingest_bridge',
-  '019_request_pack_hit'];
+  '019_request_pack_hit', '020_bridge_decoded_year', '021_anchor_family_equipment',
+  '022_partial_identity', '023_report_version_inference'];
 
 function run(args, sql) {
   return execFileSync(PSQL, ['-X', '-q', '-v', 'ON_ERROR_STOP=1', '-d', DB, ...args],
@@ -368,12 +369,13 @@ t(21, 'тінь при промаху фрагмента не вигадує п�
       'the shadow dropped the resolved identity together with the missing knowledge')}
   end;`);
 
-t(22, 'рік поза каталогом зупиняє тінь, а не міст', `
+t(22, 'рік поза каталогом не вигадує VMY: частковий пакет без кандидатів', `
   declare j jsonb; p jsonb;
   begin
-  -- Напис версії каталогу відомий, але такого року у каталозі немає.
-  -- Міст чесно записує обидва спостереження окремо; відмовляє резолвер,
-  -- бо версії x ринку x року для цієї машини не існує.
+  -- Напис версії каталогу відомий, а такого року у каталозі немає. Міст
+  -- пише обидва спостереження окремо і рік не «виправляє». До Phase 7.3
+  -- тінь тут відмовляла; тепер вона віддає частковий пакет, у якому
+  -- жодного кандидатного VMY немає і конфігурація не вигадується.
   update public.vehicles set year = 1998, model_year = 1998,
          nhtsa = jsonb_set(nhtsa, '{ModelYear}', '"1998"') where vin = ${POR};
   update public.vehicle_snapshots set year = 1998 where vin = ${POR};
@@ -384,47 +386,50 @@ t(22, 'рік поза каталогом зупиняє тінь, а не мі�
          where vin = ${POR} and dimension = 'model_year') = 1998`,
       'the bridge silently corrected the model year it was given')}
   p := mi.shadow_pack(${POR});
-  ${A("(p->>'mi_available')::boolean = false", 'a year outside the catalogue still produced a pack')}
-  ${A("p->>'reason' = 'identity_unresolved'", 'the refusal did not name its reason')}
-  end;`, 'міст записує, резолвер вирішує: рівні не підміняють один одного');
+  ${A("(p->>'mi_available')::boolean and p->>'identity_precision' = 'partial'", 'a confirmed version got no pack')}
+  ${A("(p->'decision'->'meta'->>'candidate_vmy_count')::int = 0", 'a VMY was invented for a year outside the catalogue')}
+  end;`, 'міст записує, резолвер вирішує: рік поза каталогом дає нуль кандидатів, а не підставлений VMY');
 
-/* ---- 23..25. Реальний вхід продакшну (Phase 7.1) ----
+/* ---- 23..25. Реальний вхід продакшну ----
 
-   Рядки нижче це точна копія продакшну на 2026-09-11. Вони доводять не
-   те, що система працює, а те, ЧОГО їй бракує на живих даних. Коли міст
-   навчиться діставати версію, модельний рік і ринок, перевірки 23 і 24
-   треба буде переписати: це навмисно. */
+   Рядки нижче це точна копія продакшну на 2026-09-11. У Phase 7.1
+   перевірки 23 і 24 фіксували, чого бракувало; у Phase 7.3 міст навчився
+   брати версію з розбору Check і перестав писати рік оголошення, тому
+   вони переписані, як і планувалось. */
 
-t(23, 'реальні машини продакшну сьогодні не резолвляться', `
-  declare v text; j jsonb; p jsonb;
+t(23, 'реальні машини продакшну отримують частковий пакет', `
+  declare v text; p jsonb; j jsonb;
   begin
+  -- До Phase 7.3 тут фіксувався провал: версія жила лише у звіті Check.
+  -- Тепер міст читає vehicle.trim звіту як спостереження з низькою
+  -- довірою, а без точного VMY працює частковий шлях.
   foreach v in array array['WBAJB9C50JB049616','WBAJB9C51JB035787','WBAJB9C51JB049950',
                            '5YJSA1H23FFP69703','WP1ZZZ92ZDLA45155'] loop
-    j := mi.ingest_identity_from_check(v);
-    ${A("(j->'version_match'->>'version_id') is null",
-        'a real production car matched a version: the bridge gap is closed, rewrite this test')}
-    ${A("j->'version_match'->>'note' = 'no version in the catalogue matches'",
-        'the refusal on real data changed its reason')}
     p := mi.shadow_pack(v);
-    ${A("(p->>'mi_available')::boolean = false", 'a real production car produced a pack')}
-    ${A("p->>'reason' = 'identity_unresolved'", 'the real car was refused for an unexpected reason')}
+    ${A("(p->>'mi_available')::boolean and p->>'identity_precision' = 'partial'", 'a real production car got no partial pack')}
+    j := mi.identity_json((p->>'identity_id')::bigint);
+    ${A("j->>'version_basis' = 'check_inference' and j->>'market_sold' is null and j->>'vmy' is null",
+        'a real car version is not inferred, or a market or VMY was invented')}
   end loop;
-  end;`, 'версія живе лише у звіті Check, а міст читає vehicles: жодна реальна машина не доходить');
+  end;`, 'пʼять реальних машин: версія з розбору Check, ринок не вигадано, пакет частковий');
 
-t(24, 'на реальних даних міст пише рівно два спостереження', `
+t(24, 'на реальних даних міст не пише рік оголошення', `
   declare n int;
   begin
   perform mi.ingest_identity_from_check('WBAJB9C50JB049616');
   select count(*) into n from public.vehicle_identity_observation
    where vin = 'WBAJB9C50JB049616';
-  ${A('n = 2', 'the bridge wrote something other than model year plus market of operation')}
-  ${A(`(select value_num from public.vehicle_identity_observation
-         where vin = 'WBAJB9C50JB049616' and dimension = 'model_year') = 2017`,
-      'the year from the listing changed')}
+  ${A('n = 2', 'the bridge wrote something other than the inferred version plus market of operation')}
+  ${A(`not exists (select 1 from public.vehicle_identity_observation
+         where vin = 'WBAJB9C50JB049616' and dimension = 'model_year')`,
+      'the listing registration year was written as the model year')}
+  ${A(`(select source_kind from public.vehicle_identity_observation
+         where vin = 'WBAJB9C50JB049616' and dimension = 'version') = 'check_inference'`,
+      'the version did not come from the Check inference')}
   ${A(`not exists (select 1 from public.vehicle_identity_observation
          where vin = 'WBAJB9C50JB049616' and dimension = 'market_sold')`,
       'a market of sale appeared for a car with no auction record')}
-  end;`, 'auto.ria дає рік реєстрації 2017, а 10-й символ VIN каже MY2018');
+  end;`, 'auto.ria дає рік реєстрації 2017; модельний рік лишається невідомим, а не хибним');
 
 t(25, 'конвеєр справний: з трьома входами реальна машина доходить до пакета', `
   declare i bigint; j jsonb; p jsonb; v text := 'WBAJB9C50JB049616';

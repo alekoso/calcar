@@ -8,7 +8,8 @@
 -- Сенс фікстури: прогнати справжній вхід через справжній міст, не
 -- чіпаючи продакшн, і побачити, що саме станеться з живими даними.
 --
--- Що показав звіт Check по цих машинах (поле data->vehicle->modification):
+-- Що показав звіт Check по цих машинах (поле data->vehicle->trim; ключа
+-- `modification` у звітах немає, у Phase 7.1 значення діставалось coalesce):
 --   WBAJB9C50JB049616  M550i xDrive, 4,4 л V8 455 к.с.
 --   WBAJB9C51JB035787  M550i xDrive, 4,4 л V8 455 к.с.
 --   WBAJB9C51JB049950  M550i xDrive, 4,4 л V8 455 к.с.
@@ -25,6 +26,9 @@ begin
     ('WBAJB9C50JB049616','WBAJB9C51JB035787','WBAJB9C51JB049950',
      '5YJSA1H23FFP69703','WP1ZZZ92ZDLA45155');
   delete from public.vehicle_snapshots where vin in
+    ('WBAJB9C50JB049616','WBAJB9C51JB035787','WBAJB9C51JB049950',
+     '5YJSA1H23FFP69703','WP1ZZZ92ZDLA45155');
+  delete from public.reports where kind = 'check' and data->'_meta'->>'vin' in
     ('WBAJB9C50JB049616','WBAJB9C51JB035787','WBAJB9C51JB049950',
      '5YJSA1H23FFP69703','WP1ZZZ92ZDLA45155');
   delete from public.listings where vin in
@@ -81,4 +85,13 @@ begin
     from public.vehicles v join public.listings l on l.vin = v.vin
    where v.vin in ('WBAJB9C50JB049616','WBAJB9C51JB035787','WBAJB9C51JB049950',
                    '5YJSA1H23FFP69703','WP1ZZZ92ZDLA45155');
+
+  -- Phase 7.3: звіти Check. Текст `vehicle.trim` дослівно з продакшну,
+  -- `kind` і дата звіту теж; решта полів звіту мосту не потрібна.
+  insert into public.reports (created_at, kind, data) values
+    ('2026-08-30 19:14:25+00', 'check', '{"_meta": {"vin": "WBAJB9C50JB049616"}, "vehicle": {"trim": "M550i xDrive"}}'),
+    ('2026-08-20 19:21:17+00', 'check', '{"_meta": {"vin": "WBAJB9C51JB035787"}, "vehicle": {"trim": "M550i xDrive"}}'),
+    ('2026-08-17 10:41:40+00', 'check', '{"_meta": {"vin": "WBAJB9C51JB049950"}, "vehicle": {"trim": "M550i xDrive"}}'),
+    ('2026-09-03 12:22:11+00', 'check', '{"_meta": {"vin": "5YJSA1H23FFP69703"}, "vehicle": {"trim": "P85D"}}'),
+    ('2026-08-26 19:46:03+00', 'check', '{"_meta": {"vin": "WP1ZZZ92ZDLA45155"}, "vehicle": {"trim": "GTS 4.8 AT, 420 л.с., AWD"}}');
 end $$;

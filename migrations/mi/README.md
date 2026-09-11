@@ -28,6 +28,10 @@ Phase 1 створює лише структури. Model Intelligence до Chec
 | `017_pack_purpose_key` | призначення, локаль і профіль бюджету входять у ключ скомпільованого пакета |
 | `018_ingest_bridge` | міст із Check у памʼять: зіставлення версії без здогадок, перенесення відомого, тіньова компіляція і єдина публічна точка входу |
 | `019_request_pack_hit` | гаряча дорога віддає скомпільований пакет: прапорець успіху читався не там, де він лежить |
+| `020_bridge_decoded_year` | міст бере модельний рік лише з декоду; рік оголошення (рік реєстрації) модельним роком не пишеться |
+| `021_anchor_family_equipment` | неявна група для знання через родину компонента або опційне обладнання: без доказу CONDITIONAL, на точному і частковому шляху |
+| `022_partial_identity` | часткова ідентичність: підтверджена версія без точного VMY дає знання в межах версії і кандидатних VMY, нічого не вигадуючи |
+| `023_report_version_inference` | модифікація з розбору Check (`vehicle.trim`) як спостереження версії з низькою довірою; рівні за силою незмінні джерела, що розходяться, дають конфлікт |
 
 Відкат виконується у зворотному порядку файлами `*.down.sql`. Відкат
 11 повертає обидві функції життєвого циклу до версії міграції 10 і лише
@@ -40,7 +44,7 @@ Phase 1 створює лише структури. Model Intelligence до Chec
 
 ## Як застосовувати
 
-До Supabase застосовує ВЛАСНИК вручну, у порядку 001..019. Усі файли
+До Supabase застосовує ВЛАСНИК вручну, у порядку 001..023. Усі файли
 аддитивні і ідемпотентні: повторний запуск нічого не ламає і не чистить
 дані. Нічого існуючого не видаляється і не перейменовується.
 
@@ -72,6 +76,7 @@ MI_TEST_DB_URL=postgres://localhost/calcar_mi_test node migoldentest.js
 MI_TEST_DB_URL=postgres://localhost/calcar_mi_test node miresolvertest.js
 MI_TEST_DB_URL=postgres://localhost/calcar_mi_test node mivmtest.js
 MI_TEST_DB_URL=postgres://localhost/calcar_mi_test node mishadowtest.js
+MI_TEST_DB_URL=postgres://localhost/calcar_mi_test node mipartialtest.js
 ```
 
 `mitest.js` перевіряє схему: застосування, повторне застосування, smoke
@@ -112,7 +117,8 @@ MI_TEST_DB_URL=postgres://localhost/calcar_mi_test node mibackloadtest.js
 Аудит production bootstrap і живий shadow:
 `docs/model-intelligence/production-bootstrap.md`.
 Аудит часткової ідентичності і пропозиція поправки:
-`docs/model-intelligence/partial-identity-audit.md`.
+`docs/model-intelligence/partial-identity-audit.md`, реалізація:
+`docs/model-intelligence/partial-identity.md`.
 
 ## Що свідомо лишилось поза Phase 4
 

@@ -29,7 +29,8 @@ const UPS = ['001_schemas_enums_lookups', '002_subjects_hierarchy_source',
   '008_fragments_packs_operations', '009_validation_permissions',
   '010_knowledge_lifecycle', '011_staging_buyer_metadata', '012_pack_compiler',
   '013_check_retrieval', '014_check_dedup', '015_identity_resolver', '016_vm_adapter', '017_pack_purpose_key', '018_ingest_bridge',
-  '019_request_pack_hit'];
+  '019_request_pack_hit', '020_bridge_decoded_year', '021_anchor_family_equipment',
+  '022_partial_identity', '023_report_version_inference'];
 
 function run(args, sql) {
   return execFileSync(PSQL, ['-X', '-q', '-v', 'ON_ERROR_STOP=1', '-d', DB, ...args],
