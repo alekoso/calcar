@@ -69,10 +69,22 @@ MI_TEST_DB_URL=postgres://localhost/calcar_mi_test node milifecycletest.js
 Обидва тести ніколи не підключаються до продакшну: адреса бази задається
 лише змінною оточення.
 
-## Що свідомо лишилось на Phase 3
+## Еталонні дані (Phase 3)
 
-- компілятор пакетів знань і резолвер ідентичності;
+Заливка трьох затверджених карток лежить окремо, у `data/mi/reference/`,
+і міграцією не є: схему вона не змінює. Карта покриття, яка доводить, що
+жоден матеріальний атом не загубився, у
+`docs/model-intelligence/backload-reference-map.md`.
+
+```
+MI_TEST_DB_URL=postgres://localhost/calcar_mi_test node mibackloadtest.js
+```
+
+## Що свідомо лишилось поза Phase 3
+
+- компілятор пакетів знань і збирач `pack_fragment`;
+- резолвер ідентичності і накладання даних за VIN;
 - перенесення існуючих каталогів (`option_dict`, `model_issue_catalog`
   та інших) у нові структури;
-- заливка еталонних даних BMW, Tesla, Porsche;
+- 51 golden retrieval test і синтетичний бенчмарк;
 - підключення Model Intelligence до Check.
