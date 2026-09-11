@@ -24,6 +24,7 @@ const fs = require('fs');
 const path = require('path');
 
 const DIR = path.join(__dirname, 'migrations', 'mi');
+const FIX = path.join(__dirname, 'tests', 'mi', 'fixtures');
 const PSQL = process.env.MI_PSQL || 'psql';
 const DB = process.env.MI_TEST_DB_URL || '';
 const errs = [];
@@ -32,7 +33,8 @@ let checks = 0;
 const UPS = ['001_schemas_enums_lookups', '002_subjects_hierarchy_source',
   '003_components_equipment_state', '004_issue_maintenance_check',
   '005_claims_applicability_evidence', '006_staging', '007_mi_vm_interface',
-  '008_fragments_packs_operations', '009_validation_permissions'];
+  '008_fragments_packs_operations', '009_validation_permissions',
+  '010_knowledge_lifecycle'];
 
 function run(args, sql) {
   return execFileSync(PSQL, ['-X', '-q', '-v', 'ON_ERROR_STOP=1', '-d', DB, ...args],
@@ -49,6 +51,7 @@ function why(e) {
 
 const exec = sql => run([], sql);
 const file = f => run(['-f', path.join(DIR, f)], '');
+const fixture = f => run(['-f', path.join(FIX, f)], '');
 const scalar = sql => run(['-t', '-A'], sql).trim();
 
 function ok(name, fn) {
@@ -66,7 +69,7 @@ function rejects(name, sql) {
 }
 
 function applyAll() {
-  file('000_test_prelude.sql');
+  fixture('000_test_prelude.sql');
   for (const m of UPS) file(m + '.up.sql');
 }
 
