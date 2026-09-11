@@ -20,6 +20,7 @@ Phase 1 створює лише структури. Model Intelligence до Chec
 | `009_validation_permissions` | міжтабличні сторожі, права, фінальна перевірка складу |
 | `010_knowledge_lifecycle` | життєвий цикл знання: перевірка якості, публікація, дедуплікація, повторюваність, ревізії знання, інвалідація фрагментів, сторожі публікації |
 | `011_staging_buyer_metadata` | buyer-метадані у staging: важливість для покупця, buyer-текст, прапорець суперечливості; публікація більше не пише важливість константою |
+| `012_pack_compiler` | детермінований компілятор пакетів знань: замикання версії, оцінювач застосовності, будівник фрагментів із відбитком, заява про повноту покриття |
 
 Відкат виконується у зворотному порядку файлами `*.down.sql`. Відкат
 11 повертає обидві функції життєвого циклу до версії міграції 10 і лише
@@ -32,7 +33,7 @@ Phase 1 створює лише структури. Model Intelligence до Chec
 
 ## Як застосовувати
 
-До Supabase застосовує ВЛАСНИК вручну, у порядку 001..011. Усі файли
+До Supabase застосовує ВЛАСНИК вручну, у порядку 001..012. Усі файли
 аддитивні і ідемпотентні: повторний запуск нічого не ламає і не чистить
 дані. Нічого існуючого не видаляється і не перейменовується.
 
@@ -60,6 +61,7 @@ mi.publish_candidate(candidate_id, reviewer) -- атомарна публіка�
 MI_TEST_DB_URL=postgres://localhost/calcar_mi_test node mitest.js
 MI_TEST_DB_URL=postgres://localhost/calcar_mi_test node milifecycletest.js
 MI_TEST_DB_URL=postgres://localhost/calcar_mi_test node mibackloadtest.js
+MI_TEST_DB_URL=postgres://localhost/calcar_mi_test node migoldentest.js
 ```
 
 `mitest.js` перевіряє схему: застосування, повторне застосування, smoke
@@ -84,9 +86,12 @@ MI_TEST_DB_URL=postgres://localhost/calcar_mi_test node mibackloadtest.js
 MI_TEST_DB_URL=postgres://localhost/calcar_mi_test node mibackloadtest.js
 ```
 
-## Що свідомо лишилось поза Phase 3
+## Компілятор пакетів (Phase 4)
 
-- компілятор пакетів знань і збирач `pack_fragment`;
+Опис і результати 51 golden test: `docs/model-intelligence/pack-compiler.md`.
+
+## Що свідомо лишилось поза Phase 4
+
 - резолвер ідентичності і накладання даних за VIN;
 - перенесення існуючих каталогів (`option_dict`, `model_issue_catalog`
   та інших) у нові структури;
