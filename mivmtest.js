@@ -31,7 +31,7 @@ const UPS = ['001_schemas_enums_lookups', '002_subjects_hierarchy_source',
   '008_fragments_packs_operations', '009_validation_permissions',
   '010_knowledge_lifecycle', '011_staging_buyer_metadata', '012_pack_compiler',
   '013_check_retrieval', '014_check_dedup', '015_identity_resolver',
-  '016_vm_adapter'];
+  '016_vm_adapter', '017_pack_purpose_key'];
 
 function run(args, sql) {
   return execFileSync(PSQL, ['-X', '-q', '-v', 'ON_ERROR_STOP=1', '-d', DB, ...args],
@@ -301,6 +301,150 @@ t(14, 'відновлений базовий DDL відтворює структ
   ${A(`(select relrowsecurity from pg_class c join pg_namespace ns on ns.oid = c.relnamespace
          where ns.nspname = 'public' and c.relname = 'vehicle_snapshots')`,
       'row level security is not enabled on the recovered table')}
+  end;`);
+
+/* ---- 15..24. Phase 6.2: призначення входить у ключ пакета ---- */
+
+/* Спільна підготовка: розвʼязана з памʼяті ідентичність Tesla на зрізі
+   знання, де заміна медіаблока вже відома. */
+const IDENT = `mi.resolve_from_memory(${VIN}, null, '2025-01-01'::timestamptz)`;
+
+t(15, 'пакет рішення зберігається', `
+  declare i bigint; p bigint;
+  begin
+  i := ${IDENT};
+  p := mi.persist_pack(i, 'decision');
+  ${A('p is not null', 'the decision pack was not persisted')}
+  ${A(`(select purpose::text from mi.knowledge_pack where id = p) = 'decision'`,
+      'the stored row has the wrong purpose')}
+  end;`);
+
+t(16, 'пакет звіту з тим самим відбитком теж зберігається', `
+  declare i bigint; d bigint; r bigint;
+  begin
+  i := ${IDENT};
+  d := mi.persist_pack(i, 'decision');
+  r := mi.persist_pack(i, 'report');
+  ${A('r is not null', 'the report pack was refused after the decision pack')}
+  ${A(`(select kp1.fingerprint from mi.knowledge_pack kp1 where kp1.id = d)
+        = (select kp2.fingerprint from mi.knowledge_pack kp2 where kp2.id = r)`,
+      'the two purposes did not share the fragment fingerprint, so the collision was not reproduced')}
+  end;`);
+
+t(17, 'це різні рядки', `
+  declare i bigint; d bigint; r bigint; n int;
+  begin
+  i := ${IDENT};
+  d := mi.persist_pack(i, 'decision');
+  r := mi.persist_pack(i, 'report');
+  ${A('d <> r', 'the report pack reused the row of the decision pack')}
+  select count(*) into n from mi.knowledge_pack where identity_id = i;
+  ${A('n = 2', 'the two packs did not produce two rows')}
+  end;`);
+
+t(18, 'призначення кожного збережене правильно', `
+  declare i bigint; d bigint; r bigint;
+  begin
+  i := ${IDENT};
+  d := mi.persist_pack(i, 'decision');
+  r := mi.persist_pack(i, 'report');
+  ${A(`(select kp.purpose::text from mi.knowledge_pack kp where kp.id = d) = 'decision'`,
+      'the decision row lost its purpose')}
+  ${A(`(select kp.purpose::text from mi.knowledge_pack kp where kp.id = r) = 'report'`,
+      'the report row lost its purpose')}
+  ${A(`(select (kp.payload->'pack_meta'->>'purpose') from mi.knowledge_pack kp where kp.id = d) = 'decision'`,
+      'the decision payload does not describe itself as a decision pack')}
+  ${A(`(select (kp.payload->'pack_meta'->>'purpose') from mi.knowledge_pack kp where kp.id = r) = 'report'`,
+      'the report payload does not describe itself as a report pack')}
+  end;`);
+
+t(19, 'запис звіту не змінює пакет рішення', `
+  declare i bigint; d bigint; before_included int; after_included int; before_bytes int;
+  begin
+  i := ${IDENT};
+  d := mi.persist_pack(i, 'decision');
+  select (kp.payload->'pack_meta'->>'included_count')::int, octet_length(kp.payload::text)
+    into before_included, before_bytes from mi.knowledge_pack kp where kp.id = d;
+  perform mi.persist_pack(i, 'report');
+  select (kp.payload->'pack_meta'->>'included_count')::int
+    into after_included from mi.knowledge_pack kp where kp.id = d;
+  ${A('before_included = after_included', 'writing the report pack changed the decision payload')}
+  ${A(`(select octet_length(kp.payload::text) from mi.knowledge_pack kp where kp.id = d) = before_bytes`,
+      'the decision payload was rewritten by the report write')}
+  end;`);
+
+t(20, 'повторний запис рішення не змінює пакет звіту', `
+  declare i bigint; r bigint; before_included int;
+  begin
+  i := ${IDENT};
+  perform mi.persist_pack(i, 'decision');
+  r := mi.persist_pack(i, 'report');
+  select (kp.payload->'pack_meta'->>'included_count')::int
+    into before_included from mi.knowledge_pack kp where kp.id = r;
+  perform mi.persist_pack(i, 'decision');
+  ${A(`(select (kp.payload->'pack_meta'->>'included_count')::int
+         from mi.knowledge_pack kp where kp.id = r) = before_included`,
+      'retrying the decision pack changed the report payload')}
+  ${A(`(select kp.purpose::text from mi.knowledge_pack kp where kp.id = r) = 'report'`,
+      'the report row lost its purpose after a decision retry')}
+  end;`);
+
+t(21, 'те саме рішення двічі дає той самий рядок', `
+  declare i bigint; a bigint; b bigint; n int;
+  begin
+  i := ${IDENT};
+  a := mi.persist_pack(i, 'decision');
+  b := mi.persist_pack(i, 'decision');
+  ${A('a = b', 'persisting the same decision pack twice created a second row')}
+  select count(*) into n from mi.knowledge_pack where identity_id = i and purpose = 'decision';
+  ${A('n = 1', 'the decision pack exists more than once')}
+  end;`);
+
+t(22, 'той самий звіт двічі дає той самий рядок', `
+  declare i bigint; a bigint; b bigint; n int;
+  begin
+  i := ${IDENT};
+  a := mi.persist_pack(i, 'report');
+  b := mi.persist_pack(i, 'report');
+  ${A('a = b', 'persisting the same report pack twice created a second row')}
+  select count(*) into n from mi.knowledge_pack where identity_id = i and purpose = 'report';
+  ${A('n = 1', 'the report pack exists more than once')}
+  end;`);
+
+t(23, 'зовнішній ключ на розвʼязану ідентичність лишається живим', `
+  declare i bigint; d bigint; n int;
+  begin
+  i := ${IDENT};
+  d := mi.persist_pack(i, 'decision');
+  ${A(`(select kp.identity_id from mi.knowledge_pack kp where kp.id = d) = i`,
+      'the pack lost its identity reference')}
+  ${A(`exists (select 1 from mi_vm.resolved_identity ri where ri.id = i)`,
+      'the referenced identity does not exist')}
+  select count(*) into n from pg_constraint
+   where conrelid = 'mi.knowledge_pack'::regclass and contype = 'f'
+     and confrelid = 'mi_vm.resolved_identity'::regclass;
+  ${A('n = 1', 'the foreign key to the resolved identity is gone')}
+  -- Ключ унікальності тепер справді містить призначення.
+  ${A(`(select pg_get_constraintdef(oid) from pg_constraint
+         where conname = 'knowledge_pack_key') like '%purpose%'`,
+      'the uniqueness key still does not include the purpose')}
+  end;`);
+
+t(24, 'Tesla з памʼяті зберігає обидва призначення', `
+  declare i bigint; d bigint; r bigint;
+  begin
+  i := ${IDENT};
+  ${A(`(mi.identity_json(i)->>'vmy') is not null`, 'the memory derived identity has no version market year')}
+  d := mi.persist_pack(i, 'decision');
+  r := mi.persist_pack(i, 'report');
+  ${A('d is not null and r is not null and d <> r', 'the memory derived identity could not hold both purposes')}
+  -- Обидва пакети несуть одну й ту саму розвʼязану заміну медіаблока.
+  ${A(`(select count(*) from mi.knowledge_pack kp
+         where kp.identity_id = i
+           and kp.applicability_log::text like '%' || mi_test.claim('T-050#a')::text || '%') = 2`,
+      'the two packs do not share the same applicability log subject')}
+  ${A(`(select count(distinct kp.purpose) from mi.knowledge_pack kp where kp.identity_id = i) = 2`,
+      'the two rows do not hold two distinct purposes')}
   end;`);
 
 if (errs.length) {
