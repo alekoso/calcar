@@ -111,6 +111,8 @@ MI_TEST_DB_URL=postgres://localhost/calcar_mi_test node mibackloadtest.js
 `docs/model-intelligence/check-bridge-and-shadow.md`.
 Аудит production bootstrap і живий shadow:
 `docs/model-intelligence/production-bootstrap.md`.
+Аудит часткової ідентичності і пропозиція поправки:
+`docs/model-intelligence/partial-identity-audit.md`.
 
 ## Що свідомо лишилось поза Phase 4
 
