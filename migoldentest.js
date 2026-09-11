@@ -34,7 +34,7 @@ const UPS = ['001_schemas_enums_lookups', '002_subjects_hierarchy_source',
   '003_components_equipment_state', '004_issue_maintenance_check',
   '005_claims_applicability_evidence', '006_staging', '007_mi_vm_interface',
   '008_fragments_packs_operations', '009_validation_permissions',
-  '010_knowledge_lifecycle', '011_staging_buyer_metadata', '012_pack_compiler'];
+  '010_knowledge_lifecycle', '011_staging_buyer_metadata', '012_pack_compiler', '013_check_retrieval'];
 
 function run(args, sql) {
   return execFileSync(PSQL, ['-X', '-q', '-v', 'ON_ERROR_STOP=1', '-d', DB, ...args],
@@ -169,15 +169,24 @@ gold(7, 'вікно виробництва модема', `
   'Відхилення: у каталозі Phase 3 для цієї версії немає рядка комплектації для ролі modem, тому ідентичність не може назвати модем без резолвера. Тест задає роль явно і окремо перевіряє сам предикат вікна виробництва.');
 
 gold(8, 'право на швидку зарядку', `
-  declare salv jsonb;
+  declare salv jsonb; p jsonb;
   begin
   salv := mi_test.with_field(${TESLA}, 'salvage_status', 'true'::jsonb);
   ${ASSERT("mi_test.claim('T-042#a') is null", 'the free charging claim unexpectedly published')}
-  ${ASSERT(`exists (select 1 from jsonb_array_elements(mi_test.pack(salv)->'coverage_statement') c
-                     where c->>'area' = 'entitlement' or (c->>'blocked_high_importance')::int > 0)`,
+  perform mi.build_fragment((salv->>'vmy')::bigint, 'report');
+  p := mi_test.pack(salv, 'report');
+  -- Сама перевірка прав тепер доходить як сутність каталогу, навіть
+  -- без жодного клейма про неї.
+  ${ASSERT(`exists (select 1 from jsonb_array_elements(p->'systems') s,
+                lateral jsonb_array_elements(coalesce(s->'check_items','[]'::jsonb)) c
+               where c->'check'->>'method' = 'entitlement_verification'
+                 and c->'check'->>'priority' = 'must')`,
+           'the entitlement verification check is missing from the pack')}
+  ${ASSERT(`exists (select 1 from jsonb_array_elements(p->'coverage_statement') c
+                     where (c->>'blocked_high_importance')::int > 0)`,
            'entitlement gap is not visible anywhere in coverage')}
   end;`,
-  'Клейм про безкоштовну швидку зарядку заблокований на доказах (official_source), тому у пакет не потрапляє. Прогалина видима лише як агрегована метадані покриття, і це правильна поведінка.');
+  'Клейм про безкоштовну швидку зарядку заблокований на доказах, тому його ТЕКСТ у пакет не потрапляє. Сама обовʼязкова перевірка прав доходить як сутність каталогу, а прогалина у знанні лишається видимою через агреговану метадані покриття.');
 
 gold(9, 'підтверджена пневмопідвіска Porsche', `
   declare id jsonb;
@@ -324,9 +333,17 @@ gold(24, 'політика умовного знання за призначен
   'Умовний клейм потрапляє у пакет лише тоді, коли його невизначеність знімається конкретною перевіркою. Невідомі теги умов експлуатації жодна перевірка з корпусу не знімає, тому C-066 лишається поза пакетом навіть у звіті.');
 
 gold(25, 'невідома ревізія приводу', `
+  declare p jsonb;
+  begin
   ${ASSERT(`mi_test.status('T-010', ${TESLA}) = 'APPLICABLE_ASSUMED'`, 'assumed drive unit did not produce assumed applicability')}
-  ${ASSERT(`mi_test.basis('T-010', ${TESLA}) = 'assumed_factory'`, 'assumed drive unit basis is wrong')}`,
-  'Перевірка датчика швидкості як MUST у пакет не потрапляє: клейм про неї (T-030) заблокований на доказах, сама сутність перевірки у каталозі є.');
+  ${ASSERT(`mi_test.basis('T-010', ${TESLA}) = 'assumed_factory'`, 'assumed drive unit basis is wrong')}
+  p := mi_test.pack(${TESLA}, 'report');
+  ${ASSERT(`exists (select 1 from jsonb_array_elements(p->'systems') s,
+                lateral jsonb_array_elements(coalesce(s->'check_items','[]'::jsonb)) c
+               where c->'check'->>'why_en' like '%rotor coolant leak%'
+                 and c->'check'->>'priority' = 'must')`,
+           'the mandatory speed sensor check is missing from the pack')}
+  end;`);
 
 /* ================= SUPERSESSION ================= */
 
@@ -728,6 +745,133 @@ gold(53, 'B. заблокована прогалина впливає на за�
                            and k.text_en is not null
                            and position(k.text_en in eng::text) > 0)`,
            'blocked candidate text leaked into the coverage statement')}
+  end;`);
+
+/* ========== PHASE 4.1: ВИБІРКА КАНОНІЧНИХ ПЕРЕВІРОК ========== */
+
+gold(54, 'Tesla отримує свої канонічні перевірки', `
+  declare p jsonb; n int; nmust int;
+  begin
+  p := mi_test.pack(${TESLA}, 'report');
+  select count(*) into n from jsonb_array_elements(p->'systems') s,
+       lateral jsonb_array_elements(coalesce(s->'check_items','[]'::jsonb)) c;
+  select count(*) into nmust from jsonb_array_elements(p->'systems') s,
+       lateral jsonb_array_elements(coalesce(s->'check_items','[]'::jsonb)) c
+   where c->'check'->>'priority' = 'must';
+  ${ASSERT('n >= 7', 'the canonical checks of this car are still missing from the pack')}
+  ${ASSERT('nmust >= 4', 'the mandatory checks are missing from the pack')}
+  end;`);
+
+gold(55, 'перевірка не потребує вигаданого клейма про себе', `
+  declare p jsonb; n_cat int; n_claimed int;
+  begin
+  p := mi_test.pack(${TESLA}, 'report');
+  select count(*) into n_cat from jsonb_array_elements(p->'systems') s,
+       lateral jsonb_array_elements(coalesce(s->'check_items','[]'::jsonb)) c
+   where c->>'entry_source' = 'catalogue';
+  ${ASSERT('n_cat >= 7', 'canonical checks did not enter the pack as catalogue entities')}
+  select count(*) into n_claimed from mi.claim c
+    join mi.knowledge_subject k on k.id = c.subject_id
+   where k.kind = 'check_item' and c.status = 'published'
+     and mi.claim_in_scope(c.id, (${TESLA}->>'vmy')::bigint);
+  ${ASSERT('n_claimed = 0', 'the fixture quietly grew a prose claim about a check')}
+  end;`);
+
+gold(56, 'перевірка чужої ревізії у пакет не входить', `
+  declare tu3 jsonb; bore bigint; p jsonb;
+  begin
+  select ci.subject_id into bore from mi.check_item ci
+    join mi.knowledge_subject k on k.id = ci.subject_id
+   where k.label = 'Borescope all eight N63 cylinders';
+  tu3 := mi_test.identity_of('M550I_XDRIVE', 2020, 'US');
+  ${ASSERT(`mi.eval_check(bore, ${BMW})->>'status' = 'APPLICABLE'`, 'the borescope check left the Alusil car')}
+  ${ASSERT("mi.eval_check(bore, tu3)->>'status' = 'EXCLUDED'", 'the borescope check reached the coated bore revision')}
+  perform mi.build_fragment((tu3->>'vmy')::bigint, 'report');
+  p := mi_test.pack(tu3, 'report');
+  ${ASSERT(`not exists (select 1 from jsonb_array_elements(p->'systems') s,
+                lateral jsonb_array_elements(coalesce(s->'check_items','[]'::jsonb)) c
+               where (c->>'check_subject_id')::bigint = bore)`,
+           'a check for another revision entered the pack')}
+  end;`);
+
+gold(57, 'недостатня ідентичність лишає перевірку умовною', `
+  declare id jsonb; hc bigint;
+  begin
+  select ci.subject_id into hc from mi.check_item ci
+    join mi.knowledge_subject k on k.id = ci.subject_id
+   where k.label = 'Read pack health over the vehicle bus';
+  id := mi_test.with_component(${TESLA}, 'battery_pack', 'current', null, 'unresolved');
+  ${ASSERT("mi.eval_check(hc, id)->>'status' = 'CONDITIONAL'", 'an unresolved role did not keep the check conditional')}
+  ${ASSERT(`mi.eval_check(hc, ${TESLA})->>'status' = 'APPLICABLE_ASSUMED'`, 'the assumed role lost its assumed basis')}
+  end;`);
+
+gold(58, 'обовʼязкова перевірка не стає проблемою і не є ризиком', `
+  declare p jsonb;
+  begin
+  p := mi_test.pack(${TESLA}, 'report');
+  ${ASSERT(`not exists (select 1 from jsonb_array_elements(p->'systems') s,
+                lateral jsonb_array_elements(coalesce(s->'issues','[]'::jsonb)) c
+               where c->>'entry_source' = 'catalogue' and jsonb_typeof(c->'check') = 'object')`,
+           'a check was rendered as an issue')}
+  ${ASSERT(`exists (select 1 from jsonb_array_elements(p->'systems') s,
+                lateral jsonb_array_elements(coalesce(s->'check_items','[]'::jsonb)) c
+               where c->'check'->>'cannot_prove_en' is not null)`,
+           'a check entered the pack without saying what it cannot prove')}
+  ${ASSERT('not exists (select 1 from mi.decision_reason)', 'the compiler wrote decision reasons')}
+  end;`);
+
+gold(59, 'жодна машина не отримує чужих перевірок', `
+  declare bad int;
+  begin
+  with cars(vmy, ident) as (values
+      ((${BMW}->>'vmy')::bigint, ${BMW}),
+      ((${TESLA}->>'vmy')::bigint, ${TESLA}),
+      ((${POR}->>'vmy')::bigint, ${POR})),
+  got as (select c.vmy, (e->>'check_subject_id')::bigint cs
+            from cars c, lateral jsonb_array_elements(mi_test.pack(c.ident,'report')->'systems') s,
+                 lateral jsonb_array_elements(coalesce(s->'check_items','[]'::jsonb)) e
+           where e->>'check_subject_id' is not null)
+  select count(*) into bad from got
+   where not exists (select 1 from mi.vmy_scope(got.vmy) sc where sc.subject_id = got.cs);
+  ${ASSERT('bad = 0', 'a car received a check that does not belong to its version closure')}
+  end;`);
+
+gold(60, 'текст заблокованого кандидата не витікає і після зміни', `
+  declare leaked int;
+  begin
+  select count(*) into leaked from (
+    select mi_test.pack(${BMW}, 'report') p union all
+    select mi_test.pack(${TESLA}, 'report') union all
+    select mi_test.pack(${POR}, 'report')) packs,
+    lateral (select k.text_en from mi.candidate_claim k
+              where k.review_status not in ('approved','merged','rejected')
+                and k.text_en is not null) b
+   where position(b.text_en in packs.p::text) > 0;
+  ${ASSERT('leaked = 0', 'text of a blocked candidate appeared in a pack payload')}
+  end;`);
+
+gold(61, 'обладнання, реалізоване варіантом, отримує його систему', `
+  declare pccb bigint;
+  begin
+  pccb := mi_test.sid_of('equipment','pccb');
+  ${ASSERT("mi.subject_area(pccb) = 'chassis'", 'ceramic brakes are still classified as abstract equipment')}
+  ${ASSERT(`mi.subject_area(mi_test.sid_of('equipment','air_suspension')) = 'chassis'`,
+           'air suspension equipment is not classified as chassis')}
+  end;`);
+
+gold(62, 'знання про покоління чесно позначене як загальновузлове', `
+  declare n int;
+  begin
+  ${ASSERT(`mi.subject_area((select i.subject_id from mi.issue i where i.issue_key = 'bmw_g30_ac_evaporator'))
+             = 'vehicle_wide'`, 'a generation anchored issue claims a system it cannot prove')}
+  -- Жодне наявне звʼязування не дає системи для цих проблем: якби давало,
+  -- класифікацію треба було б уточнити, а не пропонувати поправку схеми.
+  select count(*) into n from mi.issue i
+    join mi.knowledge_subject ks on ks.id = i.about_subject_id
+   where ks.kind in ('generation','vehicle_version','version_market_year','brand','model_line')
+     and (exists (select 1 from mi.check_covers cc where cc.target_subject_id = i.subject_id)
+          or exists (select 1 from mi.claim_link cl where cl.target_subject_id = i.subject_id));
+  ${ASSERT('n = 0', 'some generation anchored issues DO carry a derivable system: classification must be improved instead of amending the schema')}
   end;`);
 
 /* ---- Підсумок (проміжний, доповнюється нижче) ---- */
