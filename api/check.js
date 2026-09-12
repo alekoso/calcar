@@ -31,6 +31,9 @@ export { HISTORICAL_VISUAL_VERSION, photoIdentity, photoSetFingerprint, listingF
 const SCORE_VERSION = process.env.CALCAR_SCORE_VERSION === 'v2' ? 'v2' : 'v3';
 import { makeToken, reportSlug, slugify } from './share.js';
 import { findAuctionRecord, shouldRecheck, discoverVinCandidates, photoHasProvenance, fetchHistoricalPhotos, extractLotMeta, verifyLotIdentity, zenrowsFetch, odometerToKm, PARSER_VERSION, EVENT_VERSION } from './auction.js';
+/* Model Intelligence: тінь. Вмикається лише серверним MI_SHADOW_ENABLED,
+   працює у фоні ПІСЛЯ запису готового звіту і у звіт нічого не додає */
+import { runMiShadow } from './mi-shadow.js';
 
 /* ============================================================
    CalCar Check, рушій v1: посилання на оголошення -> звіт.
@@ -2275,6 +2278,10 @@ export default async function handler(req, res) {
         if (shim._o._meta && typeof shim._o._meta === 'object') shim._o._meta.share_token = token;
         const ok = await jobWrite(token, { status: 'done', stage: 'done', report: shim._o, vin: (shim._o._meta && shim._o._meta.vin) || null, finished_at: new Date().toISOString() });
         console.log('[job]', token, 'done', ok ? 'saved' : 'SAVE FAILED');
+        /* Тінь Model Intelligence: лише після успішного запису звіту,
+           лише за прапорцем, лише у фоні. Звіт уже відданий користувачу,
+           тому ні падіння, ні таймаут тіні на Check не впливають. */
+        if (ok) { try { await runMiShadow({ token, report: shim._o }); } catch (e) {} }
       } else {
         await jobWrite(token, { status: 'error', stage: 'error', error: (shim._o && shim._o.error) || errText(jobLang, 'internal'), finished_at: new Date().toISOString() });
         console.log('[job]', token, 'error', shim._s);

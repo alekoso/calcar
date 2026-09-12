@@ -492,11 +492,23 @@ js(28, 'клієнт тіні мовчки вимикається без клю�
   assert(summary === 'mi:off(no_credentials)', 'the log summary is wrong: ' + summary);
 });
 
-js(29, 'тінь ніде не підключена до продакшн-Check', () => {
+/* Phase 7.6 змінила саме цю умову свідомо: тінь підключена до фонового
+   завершення durable-job. Інваріант, який лишається, вужчий і жорсткіший:
+   тінь живе ЛИШЕ у фоні, ЛИШЕ за прапорцем, і синхронний шлях Check та
+   опитування статусу про неї не знають. */
+js(29, 'тінь підключена лише у фоні durable-job і лише за прапорцем', () => {
   const check = fs.readFileSync(path.join(__dirname, 'api', 'check.js'), 'utf8');
-  assert(!/mi-shadow|mi_shadow_pack/.test(check), 'api/check.js references the shadow path');
+  assert(/import \{ runMiShadow \} from '\.\/mi-shadow\.js';/.test(check),
+    'api/check.js does not import the shadow entry point');
+  assert(/if \(ok\) \{ try \{ await runMiShadow\(\{ token, report: shim\._o \}\); \} catch \(e\) \{\} \}/.test(check),
+    'the shadow call is not guarded by a successful report write inside try/catch');
+  assert((check.match(/runMiShadow\(/g) || []).length === 1,
+    'the shadow is called from more than one place in api/check.js');
+  const core = check.slice(check.indexOf('async function runCheck('));
+  assert(!/runMiShadow|mi_shadow_pack/.test(core),
+    'the synchronous Check core references the shadow path');
   const job = fs.readFileSync(path.join(__dirname, 'api', 'check-job.js'), 'utf8');
-  assert(!/mi-shadow|mi_shadow_pack/.test(job), 'api/check-job.js references the shadow path');
+  assert(!/mi-shadow|mi_shadow_pack|runMiShadow/.test(job), 'api/check-job.js references the shadow path');
 });
 
 if (errs.length) {
