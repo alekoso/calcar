@@ -2269,6 +2269,11 @@ export default async function handler(req, res) {
   if (!created) return runCheck(req, res, null);   /* таблиці ще нема: стара синхронна поведінка */
   res.status(202).json({ job: token });
   waitUntil((async () => {
+    /* Phase 7.7, ТИМЧАСОВО: початок відліку для діагностики тіні. Тінь не
+       лишає слідів у продакшні, хоча прапорець у рантаймі увімкнений
+       (доведено /api/mi-shadow-diag), тому треба побачити, чи живе
+       фоновий контекст після запису звіту. Прибрати разом із маркерами. */
+    const tJob = Date.now();
     await jobWrite(token, { status: 'running', stage: 'listing' });
     const shim = fakeRes();
     try {
@@ -2276,12 +2281,36 @@ export default async function handler(req, res) {
       if (shim._s === 200 && shim._o && shim._o.vehicle) {
         /* токен їде у звіт: сторінка будує посилання "Поділитися" з нього */
         if (shim._o._meta && typeof shim._o._meta === 'object') shim._o._meta.share_token = token;
+        /* Phase 7.7, ТИМЧАСОВО: elapsed_ms їде і в сам звіт, у _meta.
+           Публічний серіалізатор віддає лише allowlist PUBLIC_META, тому
+           у відповідь користувачу це поле не потрапляє; зате його видно
+           через Supabase без доступу до логів Vercel. */
+        if (shim._o._meta && typeof shim._o._meta === 'object') {
+          shim._o._meta.mi_shadow_diag = { job_done_elapsed_ms: Date.now() - tJob };
+        }
         const ok = await jobWrite(token, { status: 'done', stage: 'done', report: shim._o, vin: (shim._o._meta && shim._o._meta.vin) || null, finished_at: new Date().toISOString() });
         console.log('[job]', token, 'done', ok ? 'saved' : 'SAVE FAILED');
+        console.log('[mi-shadow-diag] job_done', JSON.stringify({
+          marker: 'job_done', token, vin: (shim._o._meta && shim._o._meta.vin) || null,
+          saved: !!ok, elapsed_ms: Date.now() - tJob }));
         /* Тінь Model Intelligence: лише після успішного запису звіту,
            лише за прапорцем, лише у фоні. Звіт уже відданий користувачу,
            тому ні падіння, ні таймаут тіні на Check не впливають. */
-        if (ok) { try { await runMiShadow({ token, report: shim._o }); } catch (e) {} }
+        if (ok) {
+          console.log('[mi-shadow-diag] call_start', JSON.stringify({ marker: 'call_start', token, elapsed_ms: Date.now() - tJob }));
+          try {
+            const miLine = await runMiShadow({ token, report: shim._o });
+            console.log('[mi-shadow-diag] run_success', JSON.stringify({
+              marker: 'run_success', token, elapsed_ms: Date.now() - tJob,
+              skipped: !!(miLine && miLine.skipped), reason: (miLine && miLine.reason) || null }));
+          } catch (e) {
+            /* семантика та сама: помилка тіні і далі проковтується і Check
+               не чіпає; додано лише корелюючий маркер того самого префікса */
+            console.log('[mi-shadow-diag] call_error', JSON.stringify({
+              marker: 'call_error', token, elapsed_ms: Date.now() - tJob,
+              error: String((e && e.message) || e).slice(0, 120) }));
+          }
+        }
       } else {
         await jobWrite(token, { status: 'error', stage: 'error', error: (shim._o && shim._o.error) || errText(jobLang, 'internal'), finished_at: new Date().toISOString() });
         console.log('[job]', token, 'error', shim._s);

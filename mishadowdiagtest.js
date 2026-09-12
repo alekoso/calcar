@@ -150,9 +150,18 @@ function fakeRes() {
     /const benchAllowed = !!\(process\.env\.BENCH_KEY && req\.headers && req\.headers\['x-calcar-bench'\] === process\.env\.BENCH_KEY\);/.test(CODE));
   ok('10b. без гейта одразу 404', /if \(!benchAllowed\) return res\.status\(404\)/.test(CODE));
 
-  /* 11. продакшн-шлях Check не зачеплений цією фазою */
+  /* 11. продакшн-шлях Check не залежить від діагностичного ЕНДПОІНТА.
+     Префікс логів `[mi-shadow-diag]` у check.js дозволений і саме там і
+     потрібен (Phase 7.7); заборонено інше: імпорт, виклик чи маршрут
+     самого модуля api/mi-shadow-diag.js. */
   const check = fs.readFileSync(path.join(__dirname, 'api', 'check.js'), 'utf8');
-  ok('11. api/check.js не знає про діагностику', !/mi-shadow-diag/.test(check));
+  const checkCode = codeOnly(check);
+  ok('11. api/check.js не імпортує діагностичний ендпоінт',
+    !/from '\.\/mi-shadow-diag\.js'|require\(['"]\.\/mi-shadow-diag/.test(checkCode));
+  ok('11a. api/check.js не викликає діагностичний ендпоінт',
+    !/mi-shadow-diag\.js|\/api\/mi-shadow-diag/.test(checkCode));
+  ok('11b. префікс логів дозволений і присутній',
+    /\[mi-shadow-diag\]/.test(checkCode), 'маркери діагностики зникли з check.js');
   ok('11b. тінь лишилась одним викликом', (check.match(/runMiShadow\(/g) || []).length === 1);
 
   fs.rmSync(dir, { recursive: true, force: true });

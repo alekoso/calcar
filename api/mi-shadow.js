@@ -155,6 +155,12 @@ export function shadowLogLine(input, result) {
    `mi_shadow_pack` (міст пише спостереження через not exists, ідентичність
    і пакети знань ідемпотентні), і Phase 7.4 довела це на продакшні. */
 export async function runMiShadow(input = {}, opts = {}) {
+  /* Phase 7.7, ТИМЧАСОВО: перший виконуваний рядок, ДО перевірки
+     прапорця. Саме цього маркера бракувало: при вимкненому прапорці
+     функція виходила мовчки, і лог не відрізняв «не дійшли» від
+     «прапорець off». Прибрати після діагностики. */
+  console.log('[mi-shadow-diag] run_enter', JSON.stringify({
+    marker: 'run_enter', token: input.token || null, has_report: !!input.report }));
   if (!miShadowEnabled(opts.env)) return { skipped: true, reason: 'flag_off' };
   const call = opts.call || miShadowPack;
   const log = opts.log || (line => console.log('[mi-shadow]', JSON.stringify(line)));

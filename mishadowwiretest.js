@@ -84,9 +84,13 @@ const EXACT_PACK = {
   ok('3c. таймаут переданий клієнту', calls[0] && calls[0].o && calls[0].o.timeoutMs === M.SHADOW_TIMEOUT_MS);
   ok('3d. стеля часу дві секунди', M.SHADOW_TIMEOUT_MS === 2000);
 
-  /* 4. тінь викликається лише після успішного запису звіту */
-  ok('4. виклик під if (ok) у гілці done',
-    /if \(ok\) \{ try \{ await runMiShadow\(\{ token, report: shim\._o \}\); \} catch \(e\) \{\} \}/.test(CHECK_SRC));
+  /* 4. тінь викликається лише після успішного запису звіту.
+     Phase 7.7 розгорнула однорядковий виклик у блок із маркерами, тому
+     перевіряється СТРУКТУРА, а не форматування: виклик під if (ok),
+     усередині try, помилка проковтується. Порядок маркерів перевіряють
+     окремі пункти 15g..15l. */
+  ok('4. виклик під if (ok), у try, з проковтуванням помилки',
+    /if \(ok\) \{[\s\S]{0,600}?try \{[\s\S]{0,300}?await runMiShadow\(\{ token, report: shim\._o \}\)[\s\S]{0,400}?\} catch \(e\) \{/.test(CHECK_SRC));
   const errBranch = CHECK_SRC.slice(CHECK_SRC.indexOf("status: 'error', stage: 'error'"));
   ok('4b. у гілці помилки тіні немає', !/runMiShadow/.test(errBranch.slice(0, 600)));
 
@@ -181,6 +185,31 @@ const EXACT_PACK = {
   ok('15b. у логу немає claims і systems', !/"claims"|"systems"|text_en/.test(dump));
   ok('15c. розмір рядка логу розумний', dump.length < 1200, 'довжина ' + dump.length);
   ok('15d. клієнт не логує пакет цілком', !/JSON\.stringify\((result\.)?pack\)/.test(SHADOW_SRC));
+
+  /* 15e. Phase 7.7, ТИМЧАСОВА діагностика життєвого циклу. Маркери мають
+     стояти у визначених точках, і жоден з них не змінює поведінки. */
+  const MARKERS = ['job_done', 'call_start', 'run_enter', 'run_success'];
+  for (const m of MARKERS) {
+    const src = m === 'run_enter' ? SHADOW_SRC : CHECK_SRC;
+    ok('15e. маркер ' + m + ' присутній', new RegExp("\\[mi-shadow-diag\\] " + m).test(src));
+  }
+  ok('15f. run_enter це перший рядок runMiShadow, ДО прапорця',
+    /export async function runMiShadow[\s\S]{0,400}?\[mi-shadow-diag\] run_enter[\s\S]{0,400}?if \(!miShadowEnabled/.test(SHADOW_SRC));
+  ok('15g. call_start перед викликом тіні',
+    /\[mi-shadow-diag\] call_start[\s\S]{0,300}?await runMiShadow\(/.test(CHECK_SRC));
+  ok('15h. run_success після повернення',
+    /await runMiShadow\([\s\S]{0,200}?\[mi-shadow-diag\] run_success/.test(CHECK_SRC));
+  ok('15i. job_done після запису done і до call_start',
+    /console\.log\('\[job\]'[\s\S]{0,200}?\[mi-shadow-diag\] job_done[\s\S]{0,600}?\[mi-shadow-diag\] call_start/.test(CHECK_SRC));
+  ok('15j. catch і далі проковтує помилку тіні',
+    /catch \(e\) \{[\s\S]{0,400}?\[mi-shadow-diag\] call_error[\s\S]{0,200}?\}/.test(CHECK_SRC));
+  ok('15k. виклик тіні лишився під if (ok)', /if \(ok\) \{[\s\S]{0,400}?await runMiShadow\(/.test(CHECK_SRC));
+  ok('15l. elapsed_ms дзеркалиться у _meta, не у публічні поля',
+    /_meta\.mi_shadow_diag = \{ job_done_elapsed_ms/.test(CHECK_SRC));
+  ok('15m. mi_shadow_diag не в allowlist публічного звіту',
+    !/mi_shadow_diag/.test(fs.readFileSync(path.join(__dirname, 'api', 'share.js'), 'utf8')));
+  ok('15n. у маркери не потрапляє текст знань',
+    !/text_en|claims|systems/.test((CHECK_SRC.match(/\[mi-shadow-diag\][\s\S]{0,300}?\)\);/g) || []).join(' ')));
 
   /* 16. синхронний шлях api/check.js не зачеплений */
   const core = CHECK_SRC.slice(CHECK_SRC.indexOf('async function runCheck('));
