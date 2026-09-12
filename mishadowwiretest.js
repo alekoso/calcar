@@ -193,9 +193,15 @@ const EXACT_PACK = {
   for (const f of fs.readdirSync('.').filter(x => x.endsWith('.html'))) {
     ok('прапорець не в ' + f, !fs.readFileSync(f, 'utf8').includes('MI_SHADOW_ENABLED'));
   }
+  /* Прапорець живе у helper тіні. Phase 7.7 свідомо додала другого читача:
+     тимчасовий діагностичний ендпоінт, який показує, яким прапорець видно
+     у рантаймі продакшну. Список закритий: будь-який третій файл, що
+     читає прапорець, це помилка. */
+  const FLAG_READERS_ALLOWED = ['mi-shadow-diag.js', 'mi-shadow.js'];
   const flagReaders = fs.readdirSync('api').filter(f => f.endsWith('.js'))
-    .filter(f => codeOnly(fs.readFileSync('api/' + f, 'utf8')).includes('MI_SHADOW_ENABLED'));
-  ok('прапорець читається лише у api/mi-shadow.js', flagReaders.join(',') === 'mi-shadow.js',
+    .filter(f => codeOnly(fs.readFileSync('api/' + f, 'utf8')).includes('MI_SHADOW_ENABLED')).sort();
+  ok('прапорець читається лише у helper і у діагностиці',
+    flagReaders.join(',') === FLAG_READERS_ALLOWED.join(','),
     'читають: ' + (flagReaders.join(',') || 'ніхто'));
 
   fs.rmSync(dir, { recursive: true, force: true });
