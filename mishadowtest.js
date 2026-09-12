@@ -500,7 +500,11 @@ js(29, 'тінь підключена лише у фоні durable-job і лиш
   const check = fs.readFileSync(path.join(__dirname, 'api', 'check.js'), 'utf8');
   assert(/import \{ runMiShadow \} from '\.\/mi-shadow\.js';/.test(check),
     'api/check.js does not import the shadow entry point');
-  assert(/if \(ok\) \{ try \{ await runMiShadow\(\{ token, report: shim\._o \}\); \} catch \(e\) \{\} \}/.test(check),
+  /* Phase 7.7 розгорнула однорядковий виклик у блок із тимчасовими
+     маркерами `[mi-shadow-diag]`, тому перевіряється СТРУКТУРА, а не
+     форматування: виклик під `if (ok)`, усередині try, помилка
+     проковтується і Check не чіпає. */
+  assert(/if \(ok\) \{[\s\S]{0,600}?try \{[\s\S]{0,300}?await runMiShadow\(\{ token, report: shim\._o \}\)[\s\S]{0,400}?\} catch \(e\) \{/.test(check),
     'the shadow call is not guarded by a successful report write inside try/catch');
   assert((check.match(/runMiShadow\(/g) || []).length === 1,
     'the shadow is called from more than one place in api/check.js');
