@@ -39,7 +39,8 @@ const UPS = ['001_schemas_enums_lookups', '002_subjects_hierarchy_source',
   '008_fragments_packs_operations', '009_validation_permissions',
   '010_knowledge_lifecycle', '011_staging_buyer_metadata', '012_pack_compiler', '013_check_retrieval', '014_check_dedup', '015_identity_resolver', '016_vm_adapter', '017_pack_purpose_key', '018_ingest_bridge',
   '019_request_pack_hit', '020_bridge_decoded_year', '021_anchor_family_equipment',
-  '022_partial_identity', '023_report_version_inference'];
+  '022_partial_identity', '023_report_version_inference',
+  '024_safeupdate_temp_clear', '025_decoder_model_year_plausibility'];
 
 /* Кількість матеріальних атомів кожної картки рахується з самого
    замороженого документа, а не задається константою: якщо картку колись

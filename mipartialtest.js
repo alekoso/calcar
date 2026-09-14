@@ -46,7 +46,8 @@ const LEGACY = ['001_schemas_enums_lookups', '002_subjects_hierarchy_source',
   '016_vm_adapter', '017_pack_purpose_key', '018_ingest_bridge',
   '019_request_pack_hit'];
 const AMEND = ['020_bridge_decoded_year', '021_anchor_family_equipment',
-  '022_partial_identity', '023_report_version_inference'];
+  '022_partial_identity', '023_report_version_inference',
+  '024_safeupdate_temp_clear', '025_decoder_model_year_plausibility'];
 
 function run(args, sql) {
   return execFileSync(PSQL, ['-X', '-q', '-v', 'ON_ERROR_STOP=1', '-d', DB, ...args],
@@ -568,6 +569,126 @@ t(28, 'підсумок ідентичності позначає висново
   e := mi.shadow_pack('5YJSA1E28FF0S0002');
   ${A("(e->>'mi_available')::boolean and e->>'identity_precision' = 'exact'", 'the decoded synthetic Tesla lost its exact pack')}
   ${A("not (e->'identity_summary' ? 'version_note') and not (e->'identity_summary' ? 'version')", 'a decoded exact identity gained inference markers')}
+  end;`);
+
+/* ---- 29..37. Правдоподібність року декодера (міграція 025) ----
+   Реальні декоди продакшну: Santa Fe 1991 при оголошенні 2020 і Mercedes
+   2001 при оголошенні 2016 не стають модельним роком; нормальні декоди
+   (повні і часткові) і далі мають силу vin_decoder. */
+
+t(29, 'коди року на 10-й позиції циклічні', `
+  begin
+  ${A("mi.vin_year_code_years('M') = array[1991, 2021]", 'code M is not 1991/2021')}
+  ${A("mi.vin_year_code_years('D') = array[1983, 2013]", 'code D is not 1983/2013')}
+  ${A("mi.vin_year_code_years('1') = array[2001, 2031]", 'code 1 is not 2001/2031')}
+  ${A("mi.vin_year_code_years('9') = array[2009, 2039]", 'code 9 is not 2009/2039')}
+  ${A("mi.vin_year_code_years('0') is null and mi.vin_year_code_years('U') is null and mi.vin_year_code_years('Z') is null", 'a non-year character got years')}
+  end;`);
+
+t(30, 'Santa Fe: декод 1991 при оголошенні 2020 не стає модельним роком', `
+  declare j jsonb; o record; i bigint;
+  begin
+  perform mi_test.seed_vehicle('KMHS281HGMU335923', null, null, null,
+    '{"ModelYear": "1991", "PlantCountry": "SOUTH KOREA"}'::jsonb, 1991, 2020);
+  j := mi.ingest_identity_from_check('KMHS281HGMU335923');
+  select * into o from public.vehicle_identity_observation where vin = 'KMHS281HGMU335923' and dimension = 'model_year';
+  ${A("o.value_num = 1991 and o.source_kind = 'vin_decoder' and o.source_ref = 'nhtsa'", 'the raw decoder year was not kept with its provenance')}
+  ${A("o.confidence = 'low' and o.invalidated_at is not null and o.invalidated_reason like 'rejected_for_resolution: decoder model_year implausible%'", 'the implausible year was not rejected for resolution')}
+  ${A("o.invalidated_reason like '%older_year_code_cycle_chosen%'", 'the cycle reason is not visible')}
+  ${A("j->>'model_year' is null and (j->'model_year_plausibility'->>'plausible')::boolean = false", 'the bridge still reports the implausible year')}
+  i := mi.resolve_from_memory('KMHS281HGMU335923');
+  ${A("mi.identity_json(i)->>'model_year' is null", 'the implausible year reached the identity')}
+  ${A(`not exists (select 1 from mi_vm.resolved_identity_dimension where identity_id = i
+         and dimension = 'model_year' and resolution_status in ('confirmed', 'conflicted'))`, 'a single implausible year became confirmed or conflicted')}
+  ${A("(mi.ingest_identity_from_check('KMHS281HGMU335923')->>'written')::int = 0", 'a repeated ingest wrote the rejected year again')}
+  end;`, 'KMHS281HGMU335923: код M це 1991 або 2021, для корейського VIN правило вибору циклу США не діє');
+
+t(31, 'Mercedes: декод 2001 при оголошенні 2016 не стає модельним роком', `
+  declare j jsonb; o record; i bigint;
+  begin
+  perform mi_test.seed_vehicle('WDC2923241A051752', 'MERCEDES-BENZ', null, null,
+    '{"Make": "MERCEDES-BENZ", "ModelYear": "2001"}'::jsonb, 2001, 2016);
+  j := mi.ingest_identity_from_check('WDC2923241A051752');
+  select * into o from public.vehicle_identity_observation where vin = 'WDC2923241A051752' and dimension = 'model_year';
+  ${A("o.value_num = 2001 and o.confidence = 'low' and o.invalidated_at is not null", 'the Mercedes decoder year was not kept and rejected')}
+  ${A("o.invalidated_reason like '%listing_year_far_from_partial_decode%'", 'the listing year signal is not visible')}
+  i := mi.resolve_from_memory('WDC2923241A051752');
+  ${A("mi.identity_json(i)->>'model_year' is null", 'the Mercedes 2001 year reached the identity')}
+  end;`, 'ECE VIN Mercedes: 10-та позиція це кермо, а не рік; один абсурдний рік без другого джерела це відхилений доказ, а не конфлікт');
+
+t(32, 'нормальний повний декод лишає силу vin_decoder', `
+  declare o record; i bigint; d record;
+  begin
+  perform mi.ingest_identity_from_check(${TSL});
+  select * into o from public.vehicle_identity_observation where vin = ${TSL} and dimension = 'model_year' and source_kind = 'vin_decoder';
+  ${A("o.value_num = 2015 and o.confidence = 'high' and o.invalidated_at is null", 'a valid full decode lost authority')}
+  i := mi.resolve_from_memory(${TSL});
+  select * into d from mi_vm.resolved_identity_dimension where identity_id = i and dimension = 'model_year';
+  ${A("d.resolution_status = 'confirmed' and d.value_num = 2015 and d.provenance->>'basis' = 'vin_decoder'", 'the valid decoded year is not confirmed from the decoder')}
+  end;`);
+
+t(33, 'нормальний частковий декод лишає силу vin_decoder', `
+  declare p jsonb;
+  begin
+  perform mi.ingest_identity_from_check(${POR});
+  ${A(`(select confidence || '/' || (invalidated_at is null)::text from public.vehicle_identity_observation
+         where vin = ${POR} and dimension = 'model_year' and source_kind = 'vin_decoder') = 'high/true'`, 'the real Porsche partial decode lost authority')}
+  p := mi.decoder_model_year_plausibility('WVWZZZ7MZ6V009287', '{"Make": "VOLKSWAGEN", "ModelYear": "2006"}'::jsonb, 2006, 2006);
+  ${A("(p->>'plausible')::boolean", 'the real Touareg 2006 partial decode was rejected')}
+  p := mi.decoder_model_year_plausibility('WVGZZZCR6TD014831', '{"Make": "VOLKSWAGEN", "ModelYear": "2026"}'::jsonb, 2026, 2025);
+  ${A("(p->>'plausible')::boolean", 'the real Touareg 2026 partial decode was rejected')}
+  p := mi.decoder_model_year_plausibility('JF1SK9LL5LG074291', '{"ModelYear": "2020"}'::jsonb, 2020, 2020);
+  ${A("(p->>'plausible')::boolean", 'a year-only decode that matches its code and listing was rejected')}
+  end;`, 'Porsche D = 2013, Touareg 6 = 2006 і T = 2026, Subaru L = 2020: частковий декод сам по собі не провал');
+
+t(34, 'код року на 10-й позиції застосовний і незастосовний', `
+  declare p jsonb;
+  begin
+  p := mi.decoder_model_year_plausibility('1FADP3J2XJL279655', '{"ModelYear": "2020"}'::jsonb, 2020, null);
+  ${A("not (p->>'plausible')::boolean and p->'reasons' ? 'year_not_encoded_at_position_10'", 'a partial decode year not encoded at position 10 passed')}
+  p := mi.decoder_model_year_plausibility('1FADP3J2XJL279655', '{"ModelYear": "1988"}'::jsonb, 1988, null);
+  ${A("(p->>'plausible')::boolean", 'a North American VIN older cycle was wrongly rejected: the 7th position rule allows it')}
+  p := mi.decoder_model_year_plausibility('JTJCV00W204011123', '{"ModelYear": "2019"}'::jsonb, 2019, null);
+  ${A("not (p->>'plausible')::boolean and p->'reasons' ? 'year_code_not_applicable_at_position_10'", 'a partial decode without a year code at position 10 passed')}
+  p := mi.decoder_model_year_plausibility('JTJCV00W204011123', '{"Make": "LEXUS", "Model": "LX", "ModelYear": "2019"}'::jsonb, 2019, null);
+  ${A("(p->>'plausible')::boolean", 'a full decode was judged by a position 10 code that does not apply')}
+  p := mi.decoder_model_year_plausibility('VF3LBYHZRJS241569', '{"Make": "PEUGEOT", "ModelYear": "1988"}'::jsonb, 1988, null);
+  ${A("not (p->>'plausible')::boolean and p->'reasons' ? 'older_year_code_cycle_chosen'", 'the real Peugeot 1988 decode passed without any listing year')}
+  end;`);
+
+t(35, 'розбіжність із роком оголошення сама не перебиває повний декод', `
+  declare o record; i bigint;
+  begin
+  perform mi_test.seed_vehicle('PARTLISTINGYEAR01', 'bmw', '5 series', '540i',
+    '{"Make": "BMW", "Model": "5-Series", "Trim": "540i", "ModelYear": "2018"}'::jsonb, 2018, 2011);
+  perform mi.ingest_identity_from_check('PARTLISTINGYEAR01');
+  select * into o from public.vehicle_identity_observation where vin = 'PARTLISTINGYEAR01' and dimension = 'model_year';
+  ${A("o.value_num = 2018 and o.confidence = 'high' and o.invalidated_at is null", 'a listing year disagreement downgraded a valid full decode')}
+  ${A(`not exists (select 1 from public.vehicle_identity_observation
+         where vin = 'PARTLISTINGYEAR01' and dimension = 'model_year' and value_num = 2011)`, 'the listing year was written as model year')}
+  i := mi.resolve_from_memory('PARTLISTINGYEAR01');
+  ${A("(mi.identity_json(i)->>'model_year')::int = 2018", 'the valid decoded year did not reach the identity')}
+  end;`);
+
+t(36, 'правдоподібний декод і далі перебиває висновок Check', `
+  declare i bigint; row mi_vm.resolved_identity_dimension;
+  begin
+  perform mi_test.seed_vehicle('PARTDECODER000002', 'bmw', '5 series', '540i',
+    '{"Make": "BMW", "Model": "5-Series", "Trim": "540i", "ModelYear": "2018"}'::jsonb, 2018, 2018);
+  perform mi_test.add_report('PARTDECODER000002', 'M550i xDrive', '2026-08-02');
+  perform mi.ingest_identity_from_check('PARTDECODER000002');
+  i := mi.resolve_from_memory('PARTDECODER000002');
+  select * into row from mi_vm.resolved_identity_dimension where identity_id = i and dimension = 'version';
+  ${A("row.resolution_status = 'confirmed' and row.provenance->>'basis' = 'vin_decoder'", 'the plausible decode no longer beats the inference')}
+  end;`);
+
+t(37, 'неправдоподібний рік не звужує вибір версії', `
+  declare j jsonb;
+  begin
+  perform mi_test.seed_vehicle('KMHS281HGMU335923', null, null, null,
+    '{"ModelYear": "1991", "PlantCountry": "SOUTH KOREA"}'::jsonb, 1991, 2020);
+  j := mi.ingest_identity_from_check('KMHS281HGMU335923');
+  ${A("j->'version_match'->>'version_id' is null", 'an implausible year produced a version match')}
   end;`);
 
 if (errs.length) {
