@@ -273,6 +273,26 @@ export async function snapshotHasPhotos(snapshotId, kind = 'listing') {
   return !!(r.ok && Array.isArray(r.rows) && r.rows.length);
 }
 
+/* відомі кадри ОГОЛОШЕНЬ цієї машини: ідентичності і SHA-256 бінарників.
+   Потрібні, щоб "історичний" кадр, який насправді є копією кадру оголошення
+   (агрегатор переписав фото площадки), не став незалежним доказом */
+export async function readListingPhotoFingerprints(vehicleId) {
+  const out = { identities: new Set(), hashes: new Set(), ok: false };
+  if (!vehicleId) return out;
+  const r = await rest('snapshot_photos?vehicle_id=eq.' + encodeURIComponent(vehicleId) + '&kind=eq.listing&select=photo_identity,photo_assets(content_hash)&limit=2000');
+  if (!r.ok || !Array.isArray(r.rows)) {
+    if (!r.missing) console.log('[vehicle-memory]', JSON.stringify({ op: 'read_listing_photo_fingerprints', status: r.status, vehicle_id: vehicleId, error: r.error || null }));
+    return out;
+  }
+  for (const row of r.rows) {
+    if (row.photo_identity) out.identities.add(row.photo_identity);
+    const h = row.photo_assets && row.photo_assets.content_hash;
+    if (h) out.hashes.add(h);
+  }
+  out.ok = true;
+  return out;
+}
+
 /* після AI: нормалізовані заяви продавця з розбіжностей ДОПОВНЮЮТЬ знімок
    (нове поле, raw-доказ не чіпається) */
 export async function patchSnapshotClaims(id, parsed) {

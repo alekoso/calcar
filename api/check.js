@@ -13,7 +13,7 @@ import {
 } from './visual-signals.js';
 import {
   photoIdentity, photoSetFingerprint, listingFingerprint, snapshotRow, listingKey, dedupePhotoVariants,
-  readVehicle, upsertVehicle, observeListing, patchSnapshotClaims, preservePhotos, snapshotHasPhotos,
+  readVehicle, upsertVehicle, observeListing, patchSnapshotClaims, preservePhotos, snapshotHasPhotos, readListingPhotoFingerprints,
   NHTSA_DECODER_VERSION, LISTING_FINGERPRINT_VERSION,
 } from './vehicle-memory.js';
 /* Current Vehicle Vision v1: у production лише SHADOW (CV_MODE=shadow):
@@ -646,6 +646,30 @@ function photoKey(u) {
   const m = /riastatic\.com\/photosnew\/auto\/photo\/([a-z0-9_\-]*?\d+)(?:hd|fx|bx)\.(?:webp|jpe?g)/i.exec(String(u));
   if (m) return 'ria:' + m[1].toLowerCase();
   return String(u).split('#')[0].split('?')[0];
+}
+
+/* "Історичний" кадр, що є копією кадру ОГОЛОШЕННЯ цієї ж машини, не є
+   незалежним доказом і не йде в Historical Vision як "до ремонту".
+   Реальний випадок: carsniper для WVGZZZCR6TD014831 віддав кадр
+   cdn0.riastatic.com/...644158307hd.webp, байт у байт (SHA-256) той самий,
+   що кадр оголошення cdn2.riastatic.com/...644158307hd.webp.
+   Звірка за URL-ідентичністю з кадрами поточного оголошення і з кадрами
+   оголошень цієї машини, відомими памʼяті; байти звіряються окремо */
+export function splitCopiedListingPhotos(urls, { listingPhotos = [], known = null } = {}) {
+  const keys = new Set((listingPhotos || []).map(photoKey));
+  const ids = new Set((listingPhotos || []).map(photoIdentity).filter(Boolean));
+  const kept = [], dropped = [];
+  for (const u of Array.isArray(urls) ? urls : []) {
+    if (typeof u !== 'string' || /^data:/.test(u)) { kept.push(u); continue; }
+    const id = photoIdentity(u);
+    const copy = keys.has(photoKey(u)) || ids.has(id) || !!(known && known.identities && known.identities.has(id));
+    (copy ? dropped : kept).push(u);
+  }
+  return { kept, dropped };
+}
+export function isCopiedListingBytes(buf, known) {
+  if (!buf || !known || !known.hashes || !known.hashes.size) return false;
+  return known.hashes.has(crypto.createHash('sha256').update(buf).digest('hex'));
 }
 
 /* ---------- 4в1. Кеш нормалізованого історичного візуалу ----------
@@ -2861,8 +2885,16 @@ async function runCheck(req, res, job) {
        (JSON-LD image[]) привʼязані до авто самим джерелом, тому VIN у
        назві файла їм не потрібен, як і usa_photos площадки */
     const ldPhotoSet = new Set((auctionSearch && auctionSearch.jsonld_photos) || []);
-    const photoCandidates = [...new Set([...ldPhotoSet, ...(auction?.photos || []), ...((auctionSearch && auctionSearch.extra_photos) || [])])]
+    const provenancedCandidates = [...new Set([...ldPhotoSet, ...(auction?.photos || []), ...((auctionSearch && auctionSearch.extra_photos) || [])])]
       .filter(u => ldPhotoSet.has(u) || (auction && auction.from_ria && /riastatic\.com\/photos\/auto\/usa\//.test(u)) || photoHasProvenance(u, listing.vin, auctionLotId));
+    /* копії кадрів оголошення цієї машини не є історичним доказом */
+    const knownListingPhotos = (provenancedCandidates.length && observation.vehicle_id)
+      ? await readListingPhotoFingerprints(observation.vehicle_id) : { identities: new Set(), hashes: new Set(), ok: false };
+    const copyGuard = splitCopiedListingPhotos(provenancedCandidates, { listingPhotos: listing.photos, known: knownListingPhotos });
+    if (copyGuard.dropped.length) {
+      console.log('[auction-photos]', JSON.stringify({ op: 'copied_listing_photo_dropped', by: 'identity', vin: listing.vin || null, count: copyGuard.dropped.length, source: (auctionSearch && auctionSearch.source) || null }));
+    }
+    const photoCandidates = copyGuard.kept;
     /* безкоштовно завантажувані йдуть Vision як URL (як і раніше);
        захищені проходять серверну лестницю і йдуть як base64-байти */
     /* Галерея лота невелика (Copart/IAAI дають ~12 кадрів), і коли вона
@@ -2886,6 +2918,11 @@ async function runCheck(req, res, job) {
         const hp = await fetchHistoricalPhotos(photoCandidates.filter(u => !auctionPhotos.includes(u)), { max: need, min: Math.min(3, need), nhtsa }, undefined);
         historicalPhotoStats = hp.stats;
         for (const ph of hp.photos) {
+          /* захищений CDN: байти вже на руках, звіряємо SHA-256 з кадрами оголошень */
+          if (isCopiedListingBytes(ph.buf, knownListingPhotos)) {
+            console.log('[auction-photos]', JSON.stringify({ op: 'copied_listing_photo_dropped', by: 'sha256', vin: listing.vin || null, count: 1, source: (auctionSearch && auctionSearch.source) || null }));
+            continue;
+          }
           auctionPhotos.push('data:' + (ph.type || 'image/jpeg') + ';base64,' + ph.buf.toString('base64'));
           photoOriginByData.set(auctionPhotos[auctionPhotos.length - 1], ph.url);
         }
