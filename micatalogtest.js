@@ -53,7 +53,9 @@ function t(n, name, body) {
   const sql = 'begin;\ndo $g$\nbegin\n' + body + '\nend $g$;\nrollback;';
   try { exec(sql); } catch (e) { errs.push(n + '. ' + name + ': ' + why(e)); }
 }
-const A = (cond, msg) => `if not (${cond}) then raise exception '${msg}'; end if;`;
+/* NULL у твердженні це провал, а не пропуск: порівняння з NULL версією
+   не має мовчки проходити. */
+const A = (cond, msg) => `if not coalesce((${cond}), false) then raise exception '${msg}'; end if;`;
 
 /* Часткова ідентичність, як у mipartialtest: лише версія і те, що з неї
    випливає; компонентів немає. Усі claim_id пакета. */
@@ -123,7 +125,7 @@ try {
 
 const X = 'mi_test.id_530ix()';        // 530i xDrive US MY2018, точна ідентичність
 const X20 = 'mi_test.id_530ix_2020()'; // той самий автомобіль MY2020
-const RWD = 'mi_test.id_530i_rwd()';   // суміжна версія: 530i з заднім приводом
+const RWD = 'mi_test.id_530i_rwd()';   // суміжна версія: 530i з заднім приводом (лише фікстура стенду)
 const UA = 'mi_test.id_530ix_ua()';    // ринок продажу невідомий
 const M550 = 'mi_test.id_bmw()';       // еталонна картка того самого кузова
 
@@ -261,9 +263,9 @@ t(12, 'канонічні перевірки картки доходять до 
 
 t(13, 'матчер версій розрізняє 530i xDrive, 530i і M550i на реальних написах', `
   ${A(`(mi.match_version('BMW', array['xDrive', '530i', '530i xDrive'], 2017)->>'version_id')::bigint = mi_test.sid_of('version', '530I_XDRIVE')`, 'decoder labels of a 530i xDrive do not resolve')}
-  ${A(`(mi.match_version('BMW', array['530i'], 2018)->>'version_id')::bigint = mi_test.sid_of('version', '530I')`, 'the rear drive 530i does not resolve')}
+  ${A(`mi.match_version('BMW', array['530i'], 2018)->>'version_id' is null`, 'a bare 530i label resolved to a catalogue version although the rear drive car is not catalogued')}
   ${A(`(mi.match_version_text('BMW', '5 series', '530i xDrive')->>'version_id')::bigint = mi_test.sid_of('version', '530I_XDRIVE')`, 'the Check text 530i xDrive does not resolve')}
-  ${A(`(mi.match_version_text('BMW', '5 series', '530i Steptronic')->>'version_id')::bigint = mi_test.sid_of('version', '530I')`, 'the Check text 530i Steptronic does not resolve to the rear drive car')}
+  ${A(`mi.match_version_text('BMW', '5 series', '530i Steptronic')->>'version_id' is null and (mi.match_version_text('BMW', '5 series', '530i Steptronic')->>'ambiguous')::boolean is false`, 'the rear drive text resolved to a version it is not, or became ambiguous')}
   ${A(`(mi.match_version_text('BMW', '5 series', 'M550i xDrive')->>'version_id')::bigint = mi_test.sid_of('version', 'M550I_XDRIVE')`, 'adding the 530i broke the M550i match')}
   ${A(`mi.match_version_text('BMW', '5 series', '540i Steptronic, Luxury Line')->>'version_id' is null`, 'a 540i text resolved to a catalogue version it is not')}`);
 

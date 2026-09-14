@@ -24,15 +24,14 @@
 
 -- ---------- Версії ----------
 
--- 530i xDrive (предмет картки) і 530i (задній привод) заводяться обидві:
--- матчер версій розрізняє «530i xDrive» і «530i Steptronic» лише тоді,
--- коли обидві мітки є у каталозі. Знання картки стосується xDrive; RWD
--- версія несе лише ідентичність і комплектацію для негативного тесту.
+-- Лише досліджена версія. Задньопривідний 530i у продакшн-каталог НЕ
+-- заводиться: його мітка «530i» міститься у тексті «530i xDrive», і матчер
+-- тексту (міграція 023) тоді бачить дві версії і не пише жодної. Для
+-- негативного тесту застосовності RWD-версія живе у тестовій фікстурі
+-- tests/mi/fixtures/022_catalog_identities.sql із синтетичною міткою.
 insert into mi.vehicle_version (subject_id, generation_id, version_code, name_en, powertrain) values
   (mi_load.mk('ver:530ix_g30', 'vehicle_version', 'BMW 530i xDrive G30'),
-   mi_load.sid('gen:g30'), '530I_XDRIVE', '530i xDrive', 'ice'),
-  (mi_load.mk('ver:530i_g30', 'vehicle_version', 'BMW 530i G30'),
-   mi_load.sid('gen:g30'), '530I', '530i', 'ice');
+   mi_load.sid('gen:g30'), '530I_XDRIVE', '530i xDrive', 'ice');
 
 -- ---------- Версія x ринок x рік ----------
 
@@ -54,11 +53,7 @@ insert into mi.version_market_year (subject_id, version_id, market_code, model_y
    date '0001-01-01', 'unknown', date '9999-12-31', 'unknown', null, null),
   (mi_load.mk('vmy:530ix_us_2020', 'version_market_year', 'BMW 530i xDrive US MY2020'),
    mi_load.sid('ver:530ix_g30'), 'US', 2020,
-   date '2019-07-01', 'known', date '2020-06-26', 'known', null, null),
-  -- RWD 530i лише MY2018, для негативного тесту застосовності xDrive-знання.
-  (mi_load.mk('vmy:530i_us_2018', 'version_market_year', 'BMW 530i US MY2018'),
-   mi_load.sid('ver:530i_g30'), 'US', 2018,
-   date '2017-07-01', 'known', date '9999-12-31', 'unknown', 52400.00, 'USD');
+   date '2019-07-01', 'known', date '2020-06-26', 'known', null, null);
 
 -- ---------- Родина B48 і варіанти ----------
 
@@ -127,17 +122,14 @@ insert into mi.version_fitment (vmy_id, role_code, variant_id, fitment) values
   (mi_load.sid('vmy:530ix_us_2019'), 'transfer_case', mi_load.sid('var:atc13_1'),  'standard'),
   (mi_load.sid('vmy:530ix_us_2020'), 'engine',        mi_load.sid('var:b46b20o0'), 'standard'),
   (mi_load.sid('vmy:530ix_us_2020'), 'transmission',  mi_load.sid('var:zf8hp50'),  'standard'),
-  (mi_load.sid('vmy:530ix_us_2020'), 'transfer_case', mi_load.sid('var:atc13_1'),  'standard'),
-  -- RWD: той самий мотор і коробка (S-G-OFF-01), роздатки немає.
-  (mi_load.sid('vmy:530i_us_2018'),  'engine',        mi_load.sid('var:b46b20o0'), 'standard'),
-  (mi_load.sid('vmy:530i_us_2018'),  'transmission',  mi_load.sid('var:zf8hp50'),  'standard');
+  (mi_load.sid('vmy:530ix_us_2020'), 'transfer_case', mi_load.sid('var:atc13_1'),  'standard');
 
 -- ---------- Аліаси ----------
 
 -- Під реальні написи продакшну: декод NHTSA дає Model «530i» + Trim
--- «xDrive», розбір Check дає «530i xDrive» або «530i Steptronic». Аліас
--- «530i» на RWD-версію свідомо НЕ пишеться: назва версії і так «530i», а
--- аліас зробив би текст «530i xDrive» двозначним на кроці аліасів матчера.
+-- «xDrive», розбір Check дає «530i xDrive». Текст «530i Steptronic»
+-- (задній привід) не резолвиться у жодну версію, і це правильно: картки
+-- про RWD немає, а хибне ототожнення з xDrive гірше за відмову.
 insert into mi.subject_alias (target_subject_id, alias, alias_norm, lang, alias_kind, scope_kind, scope_subject_id) values
   (mi_load.sid('ver:530ix_g30'), '530i xDrive', '530i xdrive', 'en', 'official',  'generation', mi_load.sid('gen:g30')),
   (mi_load.sid('ver:530ix_g30'), '530iX',       '530ix',       'en', 'catalog',   'generation', mi_load.sid('gen:g30')),
