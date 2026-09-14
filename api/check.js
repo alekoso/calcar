@@ -597,16 +597,21 @@ function normalizeListingUrl(u) {
   } catch (e) { return String(u || ''); }
 }
 
-async function readSnapshots(vin, currentUrl) {
+export async function readSnapshots(vin, currentUrl) {
   const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!base || !key || !vin) return [];
   try {
+    /* час знімка це captured_at: колонки created_at у vehicle_snapshots
+       немає, і запит із нею роками тихо давав HTTP 400 і порожню історію */
     const r = await fetch(base.replace(/\/$/, '')
       + '/rest/v1/vehicle_snapshots?vin=eq.' + encodeURIComponent(vin)
-      + '&select=odometer_km,source_url,created_at&order=created_at.asc&limit=200', {
+      + '&select=odometer_km,source_url,captured_at&order=captured_at.asc&limit=200', {
       headers: { apikey: key, authorization: 'Bearer ' + key },
     });
-    if (!r.ok) return [];
+    if (!r.ok) {
+      console.log('[vehicle-memory]', JSON.stringify({ op: 'read_snapshots', status: r.status, vin }));
+      return [];
+    }
     const rows = await r.json();
     /* одне джерело рахується один раз: дедуплікація за нормалізованим URL */
     const cur = normalizeListingUrl(currentUrl);
@@ -616,10 +621,14 @@ async function readSnapshots(vin, currentUrl) {
       const u = normalizeListingUrl(row.source_url);
       if (!u || u === cur || seen.has(u)) continue;
       seen.add(u);
-      out.push({ odometer_km: row.odometer_km ?? null, source_url: u, created_at: row.created_at });
+      /* ключ created_at лишається інтерфейсом для споживачів нижче */
+      out.push({ odometer_km: row.odometer_km ?? null, source_url: u, created_at: row.captured_at });
     }
     return out;
-  } catch (e) { return []; }
+  } catch (e) {
+    console.log('[vehicle-memory]', JSON.stringify({ op: 'read_snapshots', error: String((e && e.message) || e).slice(0, 120), vin }));
+    return [];
+  }
 }
 
 /* унікальність кадру для photos_sufficient: у riastatic один кадр приходить
