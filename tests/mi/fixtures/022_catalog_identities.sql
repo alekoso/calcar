@@ -57,3 +57,65 @@ create or replace function mi_test.id_530ix_ua() returns jsonb language sql stab
            mi_test.with_field(mi_test.id_530ix(), 'market_sold', 'null'::jsonb),
            'market_operated', '"UA"'::jsonb);
 $$;
+
+-- Картка 2: Tesla Model 3 Long Range AWD, US MY2018 (апаратура 2.5, PTC,
+-- свинцева 12 В, Intel, пак 2018), 110 тис. км, 7 років.
+create or replace function mi_test.id_m3() returns jsonb language sql stable as $$
+  select mi_test.with_field(
+           mi_test.with_field(mi_test.identity_of('M3_LR_AWD', 2018, 'US'),
+                              'mileage_km', to_jsonb(110000)),
+           'age_years', to_jsonb(7));
+$$;
+
+-- Той самий автомобіль після оновлення: MY2021 (тепловий насос, пак 2021,
+-- FSD-компʼютер, ще свинцева 12 В і Intel).
+create or replace function mi_test.id_m3_2021() returns jsonb language sql stable as $$
+  select mi_test.with_field(
+           mi_test.with_field(mi_test.identity_of('M3_LR_AWD', 2021, 'US'),
+                              'mileage_km', to_jsonb(70000)),
+           'age_years', to_jsonb(4));
+$$;
+
+-- MY2019: рік без заводського припущення про компʼютер Autopilot.
+create or replace function mi_test.id_m3_2019() returns jsonb language sql stable as $$
+  select mi_test.with_field(
+           mi_test.with_field(mi_test.identity_of('M3_LR_AWD', 2019, 'US'),
+                              'mileage_km', to_jsonb(95000)),
+           'age_years', to_jsonb(6));
+$$;
+
+-- Той самий MY2018 із salvage-титулом (аукціонний сценарій).
+create or replace function mi_test.id_m3_salvage() returns jsonb language sql stable as $$
+  select mi_test.with_field(mi_test.id_m3(), 'salvage_status', 'true'::jsonb);
+$$;
+
+-- Суміжна версія для негативного тесту: Long Range із заднім приводом,
+-- той самий задній привод, пак і PTC, без переднього привода. Живе ЛИШЕ
+-- на стенді і з синтетичною міткою: справжня мітка «Long Range»
+-- міститься у тексті «Long Range AWD».
+do $$
+declare v_gen bigint; v_ver bigint; v_vmy bigint;
+begin
+  select subject_id into v_gen from mi.generation where platform_code = 'M3_PRE_HIGHLAND';
+  if not exists (select 1 from mi.vehicle_version where version_code = 'M3_LR_RWD_FIXTURE') then
+    insert into mi.knowledge_subject (kind, label) values ('vehicle_version', 'Tesla Model 3 rear drive long range (test fixture)') returning id into v_ver;
+    insert into mi.vehicle_version (subject_id, generation_id, version_code, name_en, powertrain)
+    values (v_ver, v_gen, 'M3_LR_RWD_FIXTURE', 'rear drive long range test fixture', 'bev');
+    insert into mi.knowledge_subject (kind, label) values ('version_market_year', 'Tesla Model 3 rear drive long range (test fixture) US MY2018') returning id into v_vmy;
+    insert into mi.version_market_year (subject_id, version_id, market_code, model_year, prod_from, prod_from_kind, prod_to, prod_to_kind)
+    values (v_vmy, v_ver, 'US', 2018, date '0001-01-01', 'unknown', date '9999-12-31', 'unknown');
+    insert into mi.version_fitment (vmy_id, role_code, variant_id, fitment)
+    select v_vmy, r.role, cv.subject_id, 'standard'
+      from (values ('battery_pack', 'M3_PACK_LR_2018'), ('drive_unit_rear', 'M3_RDU_LR'),
+                   ('cabin_heater', 'M3_PTC'), ('other', 'M3_LV_LEAD_ACID'),
+                   ('mcu', 'M3_ICE_INTEL'), ('adas_hw', 'AP2_5')) r(role, code)
+      join mi.component_variant cv on cv.variant_code = r.code;
+  end if;
+end $$;
+
+create or replace function mi_test.id_m3_rwd() returns jsonb language sql stable as $$
+  select mi_test.with_field(
+           mi_test.with_field(mi_test.identity_of('M3_LR_RWD_FIXTURE', 2018, 'US'),
+                              'mileage_km', to_jsonb(110000)),
+           'age_years', to_jsonb(7));
+$$;

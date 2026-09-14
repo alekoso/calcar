@@ -128,6 +128,11 @@ const X20 = 'mi_test.id_530ix_2020()'; // той самий автомобіль
 const RWD = 'mi_test.id_530i_rwd()';   // суміжна версія: 530i з заднім приводом (лише фікстура стенду)
 const UA = 'mi_test.id_530ix_ua()';    // ринок продажу невідомий
 const M550 = 'mi_test.id_bmw()';       // еталонна картка того самого кузова
+const M3 = 'mi_test.id_m3()';           // картка 2: Model 3 Long Range AWD US MY2018
+const M321 = 'mi_test.id_m3_2021()';    // той самий автомобіль після оновлення, MY2021
+const M319 = 'mi_test.id_m3_2019()';    // MY2019: два компʼютери Autopilot як optional
+const M3RWD = 'mi_test.id_m3_rwd()';    // суміжна версія: Long Range із заднім приводом (лише фікстура)
+const TESLA = 'mi_test.id_tesla()';     // еталонна картка Model S P85D того самого бренду
 
 /* ================= Картка 1: BMW 530i xDrive G30 ================= */
 
@@ -275,6 +280,148 @@ t(14, 'еталонна картка M550i у пакеті не зрушена',
   p := mi_test.pack(${M550}, 'report');
   ${A(`(select bool_and(mi_test.has(p, r)) from unnest(array['C-001','C-033','C-051','C-080','C-083','C-110']) r)`, 'the M550i pack lost reference knowledge')}
   ${A(`mi_test.check_in_pack(p, 'Borescope all eight N63 cylinders', 'must')`, 'the M550i lost its borescope check')}
+  end;`);
+
+/* ================= Картка 2: Tesla Model 3 Long Range AWD ================= */
+
+t(15, 'картка 2: опубліковано те, що має бути опубліковане', `
+  ${A(`(select count(*) from unnest(array['M-001','M-003','M-006','M-007','M-009','M-010','M-011','M-013','M-015','M-016','M-017','M-021','M-023','M-024','M-026','M-027','M-031','M-032','M-035','M-036','M-037','M-038','M-039','M-040','M-042','M-044','M-045','M-046','M-047','M-049#a','M-052','M-053']) r
+         where mi_test.claim(r) is null) = 0`, 'a high value candidate of card 2 is not published')}`);
+
+t(16, 'картка 2: заблоковано те, чому доказів бракує, і саме на доказах', `
+  ${A(`(select count(*) from mi.candidate_claim k
+         where k.task_ref in ('M-012','M-014','M-019','M-043','M-048','M-051')
+           and (k.published_claim_id is not null or (k.gate_result->>'passed')::boolean is not false)) = 0`,
+       'a card 2 candidate that lacks evidence got published')}
+  ${A(`(select count(*) from mi.candidate_claim k, jsonb_array_elements(k.gate_result->'rules') r
+         where k.task_ref like 'M-%' and k.review_status = 'gate_pending' and (r->>'ok')::boolean is false
+           and r->>'code' not in ('owner_pattern_groups','owner_pattern_context','specialist_source',
+                                  'vendor_not_alone','known_issue_evidence','official_source',
+                                  'broad_claim_broad_source')) = 0`,
+       'a card 2 candidate is blocked by a rule other than an evidence rule')}
+  ${A("(select count(*) from mi.candidate_claim where task_ref like 'M-%' and review_note like '%gate override%') = 0", 'an override was used in card 2')}`);
+
+t(17, 'лічильники картки 2', `
+  ${A("(select count(distinct split_part(task_ref,'#',1)) from mi.candidate_claim where task_ref like 'M-%') = 53", 'card 2 atom count changed')}
+  ${A("(select count(*) from mi.candidate_claim where task_ref like 'M-%') = 56", 'card 2 candidate count changed')}
+  ${A("(select count(*) from mi.candidate_claim where task_ref like 'M-%' and review_status = 'approved') = 50", 'card 2 published count changed')}
+  ${A("(select count(*) from mi.candidate_claim where task_ref like 'M-%' and review_status = 'merged') = 0", 'a card 2 candidate merged into an older claim')}`);
+
+t(18, 'точний пакет Model 3 MY2018 несе знання до оновлення і жодного після нього', `
+  declare p jsonb; d jsonb;
+  begin
+  p := mi_test.pack(${M3}, 'report'); d := mi_test.pack(${M3}, 'decision');
+  ${A(`(select bool_and(mi_test.has(p, r)) from unnest(array['M-001','M-006','M-007','M-009','M-010','M-013','M-015','M-016','M-017','M-021','M-024','M-026','M-027','M-037','M-038','M-039','M-042','M-044','M-046','M-047','M-049#a','M-049#b','M-052','M-053']) r)`,
+       'an expected card 2 claim is missing from the MY2018 report pack')}
+  ${A(`(select bool_and(not mi_test.has(p, r)) from unnest(array['M-002','M-003','M-004','M-011','M-023','M-031','M-032','M-033','M-035','M-036','M-050']) r)`,
+       'knowledge of the refreshed or later cars leaked into the MY2018 pack')}
+  ${A(`(select bool_and(mi_test.has(d, r)) from unnest(array['M-006','M-007','M-016','M-021','M-042','M-053']) r)`,
+       'a high importance claim is missing from the MY2018 decision pack')}
+  ${A(`mi_test.status('M-009', ${M3}) = 'APPLICABLE_ASSUMED' and mi_test.status('M-013', ${M3}) = 'APPLICABLE_ASSUMED'`,
+       'family and variant knowledge is not assumed from the factory fitment')}
+  ${A(`mi_test.status('M-024', ${M3}) = 'CONDITIONAL' and mi_test.status('M-026', ${M3}) = 'CONDITIONAL'`,
+       'a production date bound recall is not conditional without a build date')}
+  ${A(`(select count(*) from mi.candidate_claim k where k.published_claim_id = any (mi_test.pack_claims(p)) and k.task_ref not like 'M-%') = 0`,
+       'knowledge of another card reached the Model 3')}
+  end;`);
+
+t(19, 'MY2021 отримує тепловий насос і новий пак, втрачає PTC, компʼютер 2.5 і відклики 2017..2020', `
+  declare p jsonb;
+  begin
+  p := mi_test.pack(${M321}, 'report');
+  ${A(`(select bool_and(mi_test.has(p, r)) from unnest(array['M-003','M-011','M-023','M-026','M-028','M-031','M-035','M-036','M-038','M-050','M-052']) r)`,
+       'refreshed car knowledge is missing from the MY2021 pack')}
+  ${A(`(select bool_and(not mi_test.has(p, r)) from unnest(array['M-001','M-002','M-013','M-024','M-027','M-029','M-037','M-039','M-049#b']) r)`,
+       'pre-refresh knowledge leaked into the MY2021 pack')}
+  ${A(`coalesce(mi_test.status('M-013', ${M321}), 'EXCLUDED') in ('EXCLUDED', 'EXCLUDED_ASSUMED')`,
+       'the Autopilot 2.5 recall is not excluded on a car with the FSD computer')}
+  end;`);
+
+t(20, 'MY2019 без заводського припущення про компʼютер: знання про 2.5 стає умовним, не зникає і не стверджується', `
+  declare p jsonb;
+  begin
+  p := mi_test.pack(${M319}, 'report');
+  ${A(`mi_test.status('M-013', ${M319}) = 'CONDITIONAL'`, 'the Autopilot 2.5 knowledge is not conditional on a mixed year')}
+  ${A(`not mi_test.has(p, 'M-013')`, 'a low importance conditional claim entered the report pack')}
+  ${A(`mi_test.has(p, 'M-037') and mi_test.has(p, 'M-001') and mi_test.has(p, 'M-027')`, 'MY2019 lost its pre-refresh knowledge')}
+  ${A(`mi_test.check_in_pack(p, 'Read the Autopilot computer version on the screen', 'must')`, 'the hardware identification check is missing on the mixed year')}
+  end;`);
+
+t(21, 'суміжна версія із заднім приводом ділить покоління і компоненти, не версію', `
+  declare p jsonb;
+  begin
+  p := mi_test.pack(${M3RWD}, 'report');
+  ${A(`(select bool_and(not mi_test.has(p, r)) from unnest(array['M-001','M-002','M-005','M-006','M-007','M-052','M-053']) r)`,
+       'version level knowledge of the Long Range AWD reached the rear drive fixture')}
+  ${A(`(select bool_and(mi_test.has(p, r)) from unnest(array['M-008','M-013','M-021','M-024','M-037','M-038','M-042','M-046']) r)`,
+       'generation, component or line knowledge did not reach the rear drive fixture')}
+  end;`);
+
+t(22, 'права бренду не витікають у Model S і Model 3 не витікає у BMW', `
+  declare s jsonb; b jsonb;
+  begin
+  s := mi_test.pack(${TESLA}, 'report'); b := mi_test.pack(${X}, 'report');
+  ${A(`(select count(*) from mi.candidate_claim k where k.task_ref like 'M-%' and k.published_claim_id = any (mi_test.pack_claims(s))) = 0`,
+       'Model 3 knowledge reached the Model S P85D pack')}
+  ${A(`not mi_test.check_in_pack(s, 'Run a direct current charging session on the Model 3')`, 'a Model 3 check reached the Model S pack')}
+  ${A(`(select count(*) from mi.candidate_claim k where k.task_ref like 'M-%' and k.published_claim_id = any (mi_test.pack_claims(b))) = 0`,
+       'Model 3 knowledge reached the BMW 530i pack')}
+  ${A(`(select count(*) from mi.claim c join mi.candidate_claim k on k.published_claim_id = c.id
+         join mi.knowledge_subject sj on sj.id = c.subject_id
+         left join mi.issue i on i.subject_id = c.subject_id
+        where k.task_ref like 'M-%' and (sj.kind = 'entitlement' or i.about_subject_id in (select subject_id from mi.entitlement))
+          and not exists (select 1 from mi.claim_applicability a where a.claim_id = c.id and a.dimension = 'model_line')) = 0`,
+       'a card 2 claim on a brand entitlement carries no model line scope')}
+  end;`);
+
+t(23, 'текст заблокованих кандидатів картки 2 не витікає у пакети', `
+  ${A(`(select count(*) from mi.candidate_claim k
+         where k.task_ref like 'M-%' and k.review_status = 'gate_pending'
+           and (position(left(k.text_en, 60) in mi_test.pack_text(mi_test.pack(${M3}, 'report'))) > 0
+             or position(left(k.text_en, 60) in mi_test.pack_text(mi_test.pack(${M321}, 'report'))) > 0
+             or position(left(k.text_en, 60) in mi_test.pack_text(mi_test.pack(${M3}, 'decision'))) > 0)) = 0`,
+       'blocked text of card 2 leaked into a pack')}`);
+
+t(24, 'канонічні перевірки картки 2 доходять до пакета', `
+  declare p jsonb;
+  begin
+  p := mi_test.pack(${M3}, 'report');
+  ${A(`mi_test.check_in_pack(p, 'Verify Autopilot, Full Self-Driving and connectivity in the account after transfer', 'must')`, 'the rights check is missing or not MUST')}
+  ${A(`mi_test.check_in_pack(p, 'Run a direct current charging session on the Model 3', 'must')`, 'the fast charging session is missing or not MUST')}
+  ${A(`mi_test.check_in_pack(p, 'Cabin heat and defrost test', 'must')`, 'the heat test is missing or not MUST')}
+  ${A(`mi_test.check_in_pack(p, 'Read the manufacture month on the door jamb label', 'must')`, 'the build date check is missing or not MUST')}
+  ${A(`mi_test.check_in_pack(p, 'Read pack capacity and battery alerts', 'must')`, 'the pack health check is missing or not MUST')}
+  ${A(`not mi_test.check_in_pack(p, 'Inspect the LDU speed sensor for coolant')`, 'a Model S check reached the Model 3')}
+  end;`);
+
+t(25, 'матчер версій резолвить написи Long Range AWD і мовчить на Long Range, Dual Motor і Performance', `
+  ${A(`(mi.match_version_text('Tesla', 'Model 3', 'Long Range AWD')->>'version_id')::bigint = mi_test.sid_of('version', 'M3_LR_AWD')`, 'the text Long Range AWD does not resolve')}
+  ${A(`(mi.match_version_text('Tesla', 'Model 3', 'Long Range Dual Motor AWD')->>'version_id')::bigint = mi_test.sid_of('version', 'M3_LR_AWD')`, 'the text Long Range Dual Motor AWD does not resolve')}
+  ${A(`(mi.match_version_text('Tesla', 'Model 3', 'LR AWD')->>'version_id')::bigint = mi_test.sid_of('version', 'M3_LR_AWD')`, 'the community label LR AWD does not resolve')}
+  ${A(`mi.match_version_text('Tesla', 'Model 3', 'Long Range')->>'version_id' is null and (mi.match_version_text('Tesla', 'Model 3', 'Long Range')->>'ambiguous')::boolean is false`, 'the rear drive text Long Range resolved to the AWD car or became ambiguous')}
+  ${A(`mi.match_version_text('Tesla', 'Model 3', 'Dual Motor')->>'version_id' is null`, 'the bare text Dual Motor resolved to a catalogue version')}
+  ${A(`mi.match_version_text('Tesla', 'Model 3', 'Long Range AWD Performance')->>'version_id' is null`, 'a Performance text resolved to the Long Range AWD')}
+  ${A(`mi.match_version_text('Tesla', 'Model 3', 'Standard Range Plus')->>'version_id' is null`, 'a Standard Range text resolved to a catalogue version')}
+  ${A(`(mi.match_version_text('Tesla', 'Model S', 'P85D')->>'version_id')::bigint = mi_test.sid_of('version', 'P85D')`, 'adding the Model 3 broke the Model S match')}`);
+
+t(26, 'часткова ідентичність Model 3 лише з версії дає пакет, лише з ряду не дає', `
+  declare p jsonb; q jsonb;
+  begin
+  p := mi_test.pack(mi_test.partial_of('M3_LR_AWD'), 'report');
+  ${A("(p->>'fragment_available')::boolean and p->'pack_meta'->>'identity_precision' = 'partial'", 'the version alone got no partial pack')}
+  ${A("(p->'pack_meta'->>'candidate_vmy_count')::int = 6", 'the six US model years are not all candidates')}
+  ${A(`mi_test.has(p, 'M-006') and mi_test.has(p, 'M-021') and mi_test.has(p, 'M-053')`, 'version and line knowledge did not reach the partial pack')}
+  q := mi.compile_pack(jsonb_build_object('brand', (select subject_id from mi.brand where name = 'Tesla'), 'model_line', (select subject_id from mi.model_line where name = 'Model 3'),
+         'model_year', 2019, 'market_sold', 'US', 'components', '[]'::jsonb, 'equipment', '[]'::jsonb, 'entitlements', '[]'::jsonb, 'states', '[]'::jsonb), 'report');
+  ${A("(q->>'fragment_available')::boolean is false and q->>'reason' = 'version_not_identified'", 'a decode that names only the model line produced a pack')}
+  end;`);
+
+t(27, 'еталонна картка Model S у пакеті не зрушена', `
+  declare p jsonb;
+  begin
+  p := mi_test.pack(${TESLA}, 'report');
+  ${A(`(select bool_and(mi_test.has(p, r)) from unnest(array['T-002#a','T-010','T-022#a','T-050#a']) r)`, 'the Model S pack lost reference knowledge')}
+  ${A(`mi_test.check_in_pack(p, 'Inspect the LDU speed sensor for coolant', 'must')`, 'the Model S lost its speed sensor check')}
   end;`);
 
 /* ---- Підсумок ---- */

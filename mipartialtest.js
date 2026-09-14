@@ -224,6 +224,12 @@ t(1, 'точні пакети не змінились нічим, крім сх�
              join mi_test.exact_snap c on c.label = l.label and c.phase = 'current'
             where l.phase = 'legacy' loop
     n := n + 1;
+    -- Картка 2 (Tesla Model 3, префікс M) свідомо спирається на якір
+    -- родини компонента з міграції 021: її родинні клейми до 021 були
+    -- APPLICABLE без припущення, після 021 APPLICABLE_ASSUMED з групою
+    -- якоря. Це і є схвалена поведінка якоря, тому точні пакети Model 3
+    -- порівнюються лише у власних тестах картки (micatalogtest).
+    if r.label like 'catalog:M3_LR_AWD/%' then continue; end if;
     if mi_test.strip_basis(r.lp) <> mi_test.strip_basis(r.cp) then
       if not (r.label like '%GTS/US/2013%' or r.label like '%porsche%') then
         bad := bad || r.label || ' pack; ';
