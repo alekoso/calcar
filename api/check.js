@@ -30,7 +30,8 @@ export { HISTORICAL_VISUAL_VERSION, photoIdentity, photoSetFingerprint, listingF
    Rollback на v2 = env CALCAR_SCORE_VERSION=v2, НЕ revert коміту */
 const SCORE_VERSION = process.env.CALCAR_SCORE_VERSION === 'v2' ? 'v2' : 'v3';
 import { makeToken, reportSlug, slugify } from './share.js';
-import { findAuctionRecord, shouldRecheck, discoverVinCandidates, photoHasProvenance, fetchHistoricalPhotos, extractLotMeta, verifyLotIdentity, zenrowsFetch, odometerToKm, PARSER_VERSION, EVENT_VERSION } from './auction.js';
+import { findAuctionRecord, shouldRecheck, discoverVinCandidates, photoHasProvenance, fetchHistoricalPhotos, extractLotMeta, verifyLotIdentity, zenrowsFetch, odometerToKm, PARSER_VERSION, EVENT_VERSION,
+  admitAuctionRecord, applyAdmission, storedAuctionAdmission, auctionEventEligible } from './auction.js';
 /* Model Intelligence: тінь. Вмикається лише серверним MI_SHADOW_ENABLED,
    працює у фоні ПІСЛЯ запису готового звіту і у звіт нічого не додає */
 import { runMiShadow } from './mi-shadow.js';
@@ -199,12 +200,19 @@ async function reparseCachedLot(cached, vin, nhtsa) {
   if (page.status !== 200 || page.blocked) return null;
   const identity = verifyLotIdentity({ url: lotUrl, html: page.body }, vin, nhtsa);
   if (!identity.matched) return null;
-  const meta = extractLotMeta(page.body, lotUrl, vin);
+  /* перепарс теж проходить допуск: інакше оновлення кешу знову
+     принесло б неприв'язаний номер лота */
+  const admission = admitAuctionRecord({ url: lotUrl, html: page.body }, vin, null);
+  if (!admission.admitted) {
+    console.log('[auction]', JSON.stringify({ op: 'cache_reparse_rejected', vin, host: admission.host, reason: admission.reason }));
+    return null;
+  }
+  const meta = applyAdmission(extractLotMeta(page.body, lotUrl, vin), admission);
   const ld = meta.jsonld_photos || [];
   const photoUrls = [...new Set([...ld, ...[...page.body.matchAll(/https?:\/\/[^"'\s>]+\.(?:jpe?g|png|webp)/gi)].map(m => m[0])
     .filter(u => photoHasProvenance(u, vin, meta.lot_id) && !/logo|icon|favicon|sprite|flag|thumb/i.test(u))])];
   console.log('[auction] cache reparse:', lotUrl.slice(0, 80), 'house=' + meta.auction_house, 'lot=' + meta.lot_id);
-  return { meta, photo_urls: photoUrls, jsonld_photos: ld, identity };
+  return { meta, photo_urls: photoUrls, jsonld_photos: ld, identity, admission };
 }
 
 /* meta події для кеша: рівно ті поля, які читає гілка cache-hit */
@@ -702,32 +710,50 @@ async function writeHvCache(vin, fingerprint, source, urls, hv, diag) {
    Читаємо збережену подію з auction_events за VIN. Знайдена подія постійна:
    повторний аналіз використовує її і НЕ платить за ретривал знову.
    До виконання міграції функція тихо повертає null, пайплайн не залежить */
-async function readAuctionCache(vin) {
+export async function readAuctionCache(vin) {
   const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!base || !key || !vin) return null;
+  const hdr = { apikey: key, authorization: 'Bearer ' + key };
+  const root = base.replace(/\/$/, '');
   try {
-    const r = await fetch(base.replace(/\/$/, '') + '/rest/v1/auction_events?vin=eq.' + encodeURIComponent(vin) + '&order=checked_at.desc&limit=1&select=*', {
-      headers: { apikey: key, authorization: 'Bearer ' + key },
-    });
-    if (!r.ok) return null;
+    const r = await fetch(root + '/rest/v1/auction_events?vin=eq.' + encodeURIComponent(vin) + '&order=checked_at.desc&limit=5&select=*', { headers: hdr });
+    if (!r.ok) {
+      console.log('[auction-cache]', JSON.stringify({ op: 'read_auction_events', status: r.status, vin }));
+      return null;
+    }
     const rows = await r.json();
-    const row = Array.isArray(rows) && rows[0] ? rows[0] : null;
+    /* збережена подія довіряється лише з перевіреною привʼязкою до VIN:
+       рядок без неї лишається в таблиці, але found-доказом не є */
+    let row = null;
+    for (const x of Array.isArray(rows) ? rows : []) {
+      const lotUrl = x.lot_url || (Array.isArray(x.source_urls) ? x.source_urls[0] : null);
+      const adm = storedAuctionAdmission(x.record, lotUrl);
+      if (adm.admitted) { row = x; break; }
+      console.log('[auction-cache]', JSON.stringify({ op: 'event_untrusted', vin, auction_house: x.auction_house, lot_id: x.lot_id, reason: adm.reason || null }));
+    }
     if (!row) {
-      /* події нема: читаємо negative/discovery-кеш (auction_checks, TTL).
+      /* довіреної події нема: negative/discovery-кеш (auction_checks, TTL).
          Він же захищає від повторних Serper-викликів на кожен Check */
       try {
-        const r2 = await fetch(base.replace(/\/$/, '') + '/rest/v1/auction_checks?vin=eq.' + encodeURIComponent(vin) + '&limit=1&select=*', {
-          headers: { apikey: key, authorization: 'Bearer ' + key },
-        });
-        if (r2.ok) {
-          const rows2 = await r2.json();
-          const c = Array.isArray(rows2) && rows2[0] ? rows2[0] : null;
-          if (c && c.status === 'absent') return { status: 'absent', source: null, lot_url: null, checked_at: c.checked_at, record: c.record || {} };
-          /* found без канонічного lot_id (запис не потрапив у auction_events,
-             напр. vincheck-джерело): теж кеш, повторний Serper не потрібен */
-          if (c && c.status === 'found' && c.lot_url) return { status: 'found', source: c.source || null, lot_url: c.lot_url, checked_at: c.checked_at, record: c.record || {} };
+        const r2 = await fetch(root + '/rest/v1/auction_checks?vin=eq.' + encodeURIComponent(vin) + '&limit=1&select=*', { headers: hdr });
+        if (!r2.ok) {
+          console.log('[auction-cache]', JSON.stringify({ op: 'read_auction_checks', status: r2.status, vin }));
+          return null;
         }
-      } catch (e) { /* negative-кеш опційний */ }
+        const rows2 = await r2.json();
+        const c = Array.isArray(rows2) && rows2[0] ? rows2[0] : null;
+        if (c && c.status === 'absent') return { status: 'absent', source: null, lot_url: null, checked_at: c.checked_at, record: c.record || {} };
+        /* found без події (напр. vincheck-джерело) довіряється лише з
+           перевіреною привʼязкою; інакше кешу немає і пошук піде заново
+           за чинними правилами допуску. Сам рядок не чіпається */
+        if (c && c.status === 'found' && c.lot_url) {
+          const adm = storedAuctionAdmission(c.record, c.lot_url);
+          if (adm.admitted) return { status: 'found', source: c.source || null, lot_url: c.lot_url, checked_at: c.checked_at, record: c.record || {} };
+          console.log('[auction-cache]', JSON.stringify({ op: 'found_cache_untrusted', vin, source: c.source || null, reason: adm.reason || null }));
+        }
+      } catch (e) {
+        console.log('[auction-cache]', JSON.stringify({ op: 'read_auction_checks', error: String((e && e.message) || e).slice(0, 120), vin }));
+      }
       return null;
     }
     /* приводимо рядок події до форми, яку очікує гілка cache-hit */
@@ -738,70 +764,104 @@ async function readAuctionCache(vin) {
       checked_at: row.checked_at,
       record: row.record || { photo_urls: [], meta: { auction_house: row.auction_house, lot_id: row.lot_id } },
     };
-  } catch (e) { return null; }
+  } catch (e) {
+    console.log('[auction-cache]', JSON.stringify({ op: 'read_auction_cache', error: String((e && e.message) || e).slice(0, 120), vin }));
+    return null;
+  }
 }
 /* аукціонна подія: ключ (auction_house, lot_id) ідентифікує ПОДІЮ, не
    джерело. Одна подія, знайдена на кількох дзеркалах, лишається одним
    рядком і обогачується (source_urls зливаються). У VIN подій може бути
    кілька. До виконання міграції власником запис мовчки не відбувається */
-async function writeAuctionEvent(vin, rec) {
+/* ІНВАРІАНТ: наявна подія ніколи не змінює VIN. Запис іде у два кроки,
+   жоден із яких не здатен переписати чужий рядок: insert з
+   ignore-duplicates (наявний рядок не чіпається) і, для того самого VIN,
+   PATCH із фільтром vin=eq. Кандидат з іншим VIN відхиляється з логом.
+   Невдале читання наявного рядка теж зупиняє запис: fail closed.
+   Повертає { status: inserted | updated | vin_conflict | skipped | error } */
+export async function writeAuctionEvent(vin, rec) {
   const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!base || !key || !vin || !rec) return;
+  if (!base || !key || !vin || !rec) return { status: 'skipped', reason: 'no_env_or_input' };
   const house = String(rec.meta?.auction_house || '');
   const lotId = String(rec.meta?.lot_id || '');
   /* ключ мусить бути повним і канонічним. Домен дзеркала домом не є */
-  if (house !== 'IAAI' && house !== 'COPART') return;
-  if (!lotId) return;
+  if (house !== 'IAAI' && house !== 'COPART') return { status: 'skipped', reason: 'house_not_canonical' };
+  if (!lotId) return { status: 'skipped', reason: 'no_lot_id' };
+  /* ключ події лише з перевіреного лота; неприв'язаний номер подією не стає */
+  if (!auctionEventEligible(rec)) return { status: 'skipped', reason: 'lot_not_verified' };
   const unit = ['mi', 'km', 'unknown'].includes(rec.meta?.odometer_unit) ? rec.meta.odometer_unit : 'unknown';
   const root = base.replace(/\/$/, '');
   const hdr = { apikey: key, authorization: 'Bearer ' + key };
+  const key2 = 'auction_house=eq.' + encodeURIComponent(house) + '&lot_id=eq.' + encodeURIComponent(lotId);
+  let sourceHost = null;
+  try { sourceHost = new URL(String(rec.lot_url || '')).hostname.replace(/^www\./, ''); } catch (e) { sourceHost = null; }
+  const fields = {
+    sale_date: rec.meta?.sale_date || null,
+    odometer_value: rec.meta?.odometer_value ?? null,
+    odometer_unit: unit,
+    odometer_status: ['actual', 'not_actual', 'exempt', 'unknown'].includes(rec.meta?.odometer_status) ? rec.meta.odometer_status : 'unknown',
+    primary_damage: rec.meta?.primary_damage || null,
+    secondary_damage: rec.meta?.secondary_damage || null,
+    title_status: rec.meta?.title_status || null,
+    record: {
+      photo_urls: rec.photo_urls || [],
+      identity: rec.identity || null,
+      admission: rec.admission || null,
+      meta: rec.meta || null,
+      sources_checked: rec.sources_checked || [],
+      lot_id_source: rec.meta?.lot_id_source || null,
+      sale_date_raw: rec.meta?.sale_date_raw || null,
+      odometer_status_raw: rec.meta?.odometer_status_raw || null,
+    },
+    checked_at: new Date().toISOString(),
+  };
+  const fail = (step, extra) => {
+    console.log('[auction-event]', JSON.stringify({ op: 'write_auction_event', step, auction_house: house, lot_id: lotId, vin, ...extra }));
+    return { status: 'error', reason: step };
+  };
   try {
-    /* обогачення source_urls: читаємо наявний рядок, зливаємо джерела */
-    let sourceUrls = rec.lot_url ? [rec.lot_url] : [];
-    try {
-      const r = await fetch(root + '/rest/v1/auction_events?auction_house=eq.' + encodeURIComponent(house) + '&lot_id=eq.' + encodeURIComponent(lotId) + '&select=source_urls', { headers: hdr });
-      if (r.ok) {
-        const rows = await r.json();
-        const prev = Array.isArray(rows?.[0]?.source_urls) ? rows[0].source_urls : [];
-        sourceUrls = [...new Set([...prev, ...sourceUrls])];
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const r = await fetch(root + '/rest/v1/auction_events?' + key2 + '&select=vin,source_urls', { headers: hdr });
+      if (!r.ok) return fail('read_existing', { status: r.status });
+      const rows = await r.json();
+      const existing = Array.isArray(rows) && rows[0] ? rows[0] : null;
+      if (existing && String(existing.vin || '').toUpperCase() !== String(vin).toUpperCase()) {
+        console.log('[auction-event]', JSON.stringify({ op: 'vin_conflict', auction_house: house, lot_id: lotId,
+          existing_vin: existing.vin, candidate_vin: vin, source_url: rec.lot_url || null, source_host: sourceHost }));
+        return { status: 'vin_conflict', existing_vin: existing.vin };
       }
-    } catch (e) { /* перший запис події: наявного рядка нема */ }
-    /* first_seen_at НЕ шлемо: default now() на insert, при обогаченні лишається */
-    await fetch(root + '/rest/v1/auction_events?on_conflict=auction_house,lot_id', {
-      method: 'POST',
-      headers: { ...hdr, 'content-type': 'application/json', prefer: 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify({
-        auction_house: house,
-        lot_id: lotId,
-        vin,
-        sale_date: rec.meta?.sale_date || null,
-        odometer_value: rec.meta?.odometer_value ?? null,
-        odometer_unit: unit,
-        odometer_status: ['actual', 'not_actual', 'exempt', 'unknown'].includes(rec.meta?.odometer_status) ? rec.meta.odometer_status : 'unknown',
-        primary_damage: rec.meta?.primary_damage || null,
-        secondary_damage: rec.meta?.secondary_damage || null,
-        title_status: rec.meta?.title_status || null,
-        source_urls: sourceUrls,
-        record: {
-          photo_urls: rec.photo_urls || [],
-          identity: rec.identity || null,
-          meta: rec.meta || null,
-          sources_checked: rec.sources_checked || [],
-          lot_id_source: rec.meta?.lot_id_source || null,
-          sale_date_raw: rec.meta?.sale_date_raw || null,
-          odometer_status_raw: rec.meta?.odometer_status_raw || null,
-        },
-        checked_at: new Date().toISOString(),
-      }),
-    });
-  } catch (e) { /* persistence не критичний */ }
+      if (existing) {
+        const sourceUrls = [...new Set([...(Array.isArray(existing.source_urls) ? existing.source_urls : []), ...(rec.lot_url ? [rec.lot_url] : [])])];
+        const u = await fetch(root + '/rest/v1/auction_events?' + key2 + '&vin=eq.' + encodeURIComponent(existing.vin), {
+          method: 'PATCH',
+          headers: { ...hdr, 'content-type': 'application/json', prefer: 'return=minimal' },
+          body: JSON.stringify({ ...fields, source_urls: sourceUrls }),
+        });
+        if (!u.ok) return fail('update_same_vin', { status: u.status });
+        return { status: 'updated' };
+      }
+      /* first_seen_at НЕ шлемо: default now() на insert */
+      const ins = await fetch(root + '/rest/v1/auction_events?on_conflict=auction_house,lot_id', {
+        method: 'POST',
+        headers: { ...hdr, 'content-type': 'application/json', prefer: 'resolution=ignore-duplicates,return=representation' },
+        body: JSON.stringify({ auction_house: house, lot_id: lotId, vin, ...fields, source_urls: rec.lot_url ? [rec.lot_url] : [] }),
+      });
+      if (!ins.ok) return fail('insert', { status: ins.status });
+      const got = await ins.json().catch(() => null);
+      if (Array.isArray(got) && got.length) return { status: 'inserted' };
+      /* паралельний запис встиг раніше: перечитуємо і перевіряємо VIN ще раз */
+    }
+    return fail('insert_race_unresolved', {});
+  } catch (e) {
+    return fail('exception', { error: String((e && e.message) || e).slice(0, 120) });
+  }
 }
 
 async function writeAuctionCache(vin, row) {
   const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!base || !key || !vin) return;
   try {
-    await fetch(base.replace(/\/$/, '') + '/rest/v1/auction_checks?on_conflict=vin', {
+    const r = await fetch(base.replace(/\/$/, '') + '/rest/v1/auction_checks?on_conflict=vin', {
       method: 'POST',
       headers: {
         apikey: key, authorization: 'Bearer ' + key,
@@ -809,7 +869,10 @@ async function writeAuctionCache(vin, row) {
       },
       body: JSON.stringify({ vin, checked_at: new Date().toISOString(), ...row }),
     });
-  } catch (e) { /* кеш не критичний */ }
+    if (!r.ok) console.log('[auction-cache]', JSON.stringify({ op: 'write_auction_checks', status: r.status, vin, cache_status: row && row.status }));
+  } catch (e) {
+    console.log('[auction-cache]', JSON.stringify({ op: 'write_auction_checks', error: String((e && e.message) || e).slice(0, 120), vin }));
+  }
 }
 
 /* ---------- 4в2. Нормалізація фактів держ/історичного блоку RIA ----------
@@ -2672,7 +2735,7 @@ async function runCheck(req, res, job) {
                 const prevShots = rec0.photo_urls || [];
                 const sameShots = photoSetFingerprint(prevShots) === photoSetFingerprint(fresh.photo_urls);
                 rec0 = {
-                  ...rec0, meta: { ...fresh.meta }, photo_urls: fresh.photo_urls, jsonld_photos: fresh.jsonld_photos,
+                  ...rec0, meta: { ...fresh.meta }, admission: fresh.admission, photo_urls: fresh.photo_urls, jsonld_photos: fresh.jsonld_photos,
                   parser_version: PARSER_VERSION, event_version: EVENT_VERSION,
                   /* набір кадрів не змінився і версія екстрактора поточна:
                      historical_visual лишається; інакше буде перерахований */
@@ -2725,7 +2788,16 @@ async function runCheck(req, res, job) {
             identity: rec.identity ? { confidence: rec.identity.confidence, year_page: rec.identity.year_page, year_vin: rec.identity.year_vin } : null,
             sources: rec.diagnostics.map(d => ({ source: d.source, step: d.step, status: d.status, blocked: !!d.blocked, found: !!d.found, ms: d.ms })),
           };
-          if (rec.status === 'found') {
+          /* подія пишеться ДО того, як запис стане доказом: лот, уже закріплений
+             за іншим VIN, робить привʼязку спірною, і такий запис не йде ні в
+             звіт, ні в found-кеш цього VIN */
+          const eventWrite = rec.status === 'found' ? await writeAuctionEvent(listing.vin, rec) : null;
+          if (eventWrite && eventWrite.status === 'vin_conflict') {
+            auctionSearch.status = 'unknown';
+            auctionSearch.reason = 'auction_event_vin_conflict';
+          }
+          auctionSearch.event_write = eventWrite ? eventWrite.status : null;
+          if (rec.status === 'found' && !(eventWrite && eventWrite.status === 'vin_conflict')) {
             const passport = 'Джерело: архів аукціону' + (rec.meta?.auction_house ? ' ' + rec.meta.auction_house : '') + (rec.meta?.sale_date ? ', продаж ' + rec.meta.sale_date : '');
             auction = { url: rec.lot_url, photos: (rec.photo_urls || []).slice(0, 8), text: passport, from_search: true };
             auctionSearch.house = rec.meta?.auction_house || null;
@@ -2739,9 +2811,9 @@ async function runCheck(req, res, job) {
             auctionSearch.field_provenance = rec.meta?.field_provenance || null;
             auctionSearch.extra_photos = rec.photo_urls || [];
             auctionSearch.jsonld_photos = rec.jsonld_photos || [];
-            /* подія постійна за source+lot; vin-кеш лишається для сумісності */
-            await writeAuctionEvent(listing.vin, rec);
-            await writeAuctionCache(listing.vin, { status: 'found', source: rec.source, lot_url: rec.lot_url, record: { photo_urls: rec.photo_urls || [], identity: rec.identity, meta: rec.meta || null, sources_checked: rec.sources_checked || [] } });
+            /* подія вже записана вище; vin-кеш несе рішення допуску, щоб
+               наступне читання кешу могло його перевірити */
+            await writeAuctionCache(listing.vin, { status: 'found', source: rec.source, lot_url: rec.lot_url, record: { photo_urls: rec.photo_urls || [], identity: rec.identity, admission: rec.admission || null, meta: rec.meta || null, sources_checked: rec.sources_checked || [] } });
           } else if (rec.status === 'absent') {
             await writeAuctionCache(listing.vin, { status: 'absent', source: null, lot_url: null, record: { sources_checked: rec.sources_checked || [] } });
           }

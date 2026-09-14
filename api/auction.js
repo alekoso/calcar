@@ -670,6 +670,128 @@ export function recoverLotId(candidate, eventHouse, vin) {
   return m ? m[1] : null;
 }
 
+/* ---------- допуск аукціонного запису до VIN ----------
+   Discovery-контекст НЕ є доказом ідентичності. Сторінку агрегатора,
+   знайдену пошуком за VIN, пошук сам і привʼязав до VIN: VIN у запиті, в
+   URL, у <title>, у <h1>, поруч у видачі нічого не доводить. Номер лота,
+   надрукований десь на такій сторінці, теж не привʼязаний до VIN: stat.vin
+   віддав той самий "Лот 45129191" для пʼяти різних машин.
+
+   Запис допускається ЛИШЕ з source-specific канонічним звʼязком:
+   - json_ld_exact_vin: structured-вузол сторінки несе рівно цей VIN;
+   - lot_page_labeled_vin: сторінка лота первинного джерела (bid.cars,
+     copart.com, iaai.com), лот у власному ключі URL і підписане поле VIN;
+   - lot_vin_pair: джерело, чий шаблон перевірено (americamotors друкує
+     "Лот: #<лот> VIN: <VIN>" однією парою), і пара для цього VIN одна.
+   Усе інше fail closed: для ідентичності аукціону хибний пропуск краще
+   за хибну привʼязку. Номер лота без канонічного звʼязку не стає lot_id. */
+export const AUTHORITATIVE_LOT_HOSTS = /(?:^|\.)(?:bid\.cars|copart\.com|iaai\.com)$/i;
+export const LOT_VIN_PAIR_HOSTS = /(?:^|\.)americamotors\.com$/i;
+
+const hostOf = u => { try { return new URL(String(u)).hostname.toLowerCase().replace(/^www\./, ''); } catch (e) { return ''; } };
+
+/* лот із URL лише там, де URL є власним ключем запису первинного джерела */
+export function lotFromAuthoritativeUrl(url) {
+  const host = hostOf(url);
+  if (!AUTHORITATIVE_LOT_HOSTS.test(host)) return null;
+  const u = String(url || '');
+  if (/bid\.cars$/.test(host)) {
+    const m = u.match(/\/lot\/[01]-(\d{6,9})\b/);
+    return m ? m[1] : null;
+  }
+  const m = u.match(/\/lot(?:s|Details)?\/(\d{6,9})\b/i);
+  return m ? m[1] : null;
+}
+
+export function admitAuctionRecord(page, vin, meta) {
+  const V = String(vin || '').toUpperCase();
+  const url = String((page && page.url) || '');
+  const html = String((page && page.html) || '');
+  const host = hostOf(url);
+  if (!V) return { admitted: false, host, reason: 'no_vin' };
+  const PLAIN = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').toUpperCase();
+  const ld = vinScopedRegions(html, V).jsonld;
+  let ldLot = null;
+  for (const node of ld) {
+    for (const k of Object.keys(node)) {
+      if (!/lot/i.test(k)) continue;
+      const m = String(node[k]).match(/^\s*#?(\d{6,9})\s*$/);
+      if (m) ldLot = m[1];
+    }
+  }
+  const urlLot = lotFromAuthoritativeUrl(url);
+  const labeledVin = new RegExp('VIN[^A-Z0-9]{0,10}' + V).test(PLAIN);
+  let pairLot = null;
+  if (LOT_VIN_PAIR_HOSTS.test(host)) {
+    const pairs = new Set();
+    const re = new RegExp('(?:ЛОТА?|LOT|ID)\\s*[:#№]?\\s*#?\\s*(\\d{6,9})\\s*[,;|]?\\s*VIN\\s*[:#]?\\s*' + V, 'g');
+    for (const m of PLAIN.matchAll(re)) pairs.add(m[1]);
+    if (pairs.size === 1) pairLot = [...pairs][0];
+  }
+  let basis = null;
+  if (ld.length) basis = 'json_ld_exact_vin';
+  else if (urlLot && labeledVin) basis = 'lot_page_labeled_vin';
+  else if (pairLot) basis = 'lot_vin_pair';
+  if (!basis) {
+    const title = ((html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || '').toUpperCase();
+    const h1 = ((html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i) || [])[1] || '').toUpperCase();
+    const zones = [];
+    if (url.toUpperCase().includes(V)) zones.push('url');
+    if (title.includes(V)) zones.push('title');
+    if (h1.includes(V)) zones.push('h1');
+    if (labeledVin) zones.push('labeled_text');
+    return { admitted: false, host, reason: zones.length ? 'vin_only_in_discovery_context' : 'no_vin_binding', vin_zones: zones };
+  }
+  let lot_id = null, lot_basis = null;
+  if (urlLot) { lot_id = urlLot; lot_basis = 'source_url'; }
+  else if (ldLot) { lot_id = ldLot; lot_basis = 'json_ld'; }
+  else if (pairLot) { lot_id = pairLot; lot_basis = 'lot_vin_pair'; }
+  const parsedLot = meta && meta.lot_id ? String(meta.lot_id) : null;
+  return { admitted: true, basis, host, lot_id, lot_basis,
+    lot_id_unverified: parsedLot && parsedLot !== lot_id ? parsedLot : null };
+}
+
+/* переносить рішення допуску в meta: неперевірений номер лота лишається
+   лише діагностикою і ні ключем події, ні фактом звіту не стає */
+export function applyAdmission(meta, admission) {
+  if (!meta || !admission) return meta;
+  meta.lot_id = admission.lot_id || null;
+  meta.lot_id_source = admission.lot_basis || null;
+  meta.lot_id_unverified = admission.lot_id_unverified || null;
+  if (meta.field_provenance) {
+    meta.field_provenance.lot_id = admission.lot_id
+      ? { value: admission.lot_id, source: admission.host || null, evidence_type: admission.lot_basis } : null;
+  }
+  return meta;
+}
+
+/* рішення для ЗБЕРЕЖЕНОГО запису (кеш, подія). Записи після цієї зміни
+   несуть admission; старі оцінюються лише за тим, що вони самі зберегли:
+   structured-привʼязка у provenance або лот у ключі URL первинного джерела */
+export function storedAuctionAdmission(record, lotUrl) {
+  const r = record || {};
+  if (r.admission && typeof r.admission === 'object') {
+    return r.admission.admitted === true ? r.admission : { ...r.admission, admitted: false };
+  }
+  const meta = r.meta || {};
+  const houseEv = meta.field_provenance && meta.field_provenance.auction_house && meta.field_provenance.auction_house.evidence_type;
+  if (houseEv === 'json_ld_exact_vin') {
+    return { admitted: true, basis: 'legacy_json_ld_exact_vin', host: hostOf(lotUrl), lot_id: meta.lot_id || null, lot_basis: null, legacy: true };
+  }
+  const urlLot = lotFromAuthoritativeUrl(lotUrl);
+  if (urlLot) return { admitted: true, basis: 'legacy_authoritative_lot_url', host: hostOf(lotUrl), lot_id: urlLot, lot_basis: 'source_url', legacy: true };
+  return { admitted: false, host: hostOf(lotUrl), reason: 'legacy_record_without_verified_binding', legacy: true };
+}
+
+/* подія в auction_events лише з канонічним домом і ПЕРЕВІРЕНИМ лотом */
+export function auctionEventEligible(rec) {
+  const a = rec && rec.admission;
+  const house = String((rec && rec.meta && rec.meta.auction_house) || '');
+  return !!(a && a.admitted === true && a.lot_basis && a.lot_id
+    && rec.meta && String(rec.meta.lot_id || '') === String(a.lot_id)
+    && (house === 'IAAI' || house === 'COPART'));
+}
+
 /* ---------- оркестратор ----------
    Статуси: found (запис підтверджений), absent (джерела ВІДПОВІЛИ і запису
    нема), unknown/source_unreachable (вся ланка відвалилась по блокуваннях
@@ -729,11 +851,25 @@ export async function findAuctionRecord(vin, nhtsa, opts = {}, cfg = AUCTION_CON
            VIN (лістинг, каталог без аукціонного контенту) found не дає */
         if (identity.matched) {
           const metaProbe = extractLotMeta(r.body, cand.url, vin);
-          if (!metaProbe.auction_house && !metaProbe.lot_id && !metaProbe.primary_damage) {
+          /* VIN на сторінці ще не привʼязує до VIN сам запис аукціону */
+          const admission = admitAuctionRecord({ url: cand.url, html: r.body }, vin, metaProbe);
+          if (!admission.admitted) {
+            outcomes[cand.source] = 'not_found';
+            d.identity = (d.identity || 'high') + '+unbound';
+            d.admission = admission.reason;
+            d.ms = Date.now() - ts;
+            console.log('[auction]', JSON.stringify({ op: 'admission_rejected', source: cand.source, host: admission.host, reason: admission.reason, vin_zones: admission.vin_zones || [], lot_seen: metaProbe.lot_id || null }));
+            diagnostics.push(d);
+            continue;
+          }
+          /* привʼязана сторінка мусить бути АУКЦІОННИМ записом: дім, ПЕРЕВІРЕНИЙ
+             лот або аукціонні damage-поля. Оголошення з VIN у JSON-LD (цифри id
+             оголошення в URL не лот) і каталог без аукціонного контенту found не дають */
+          if (!metaProbe.auction_house && !admission.lot_id && !metaProbe.primary_damage) {
             outcomes[cand.source] = 'not_found';
             d.identity = (d.identity || 'high') + '+no_auction_content';
             d.ms = Date.now() - ts;
-            console.log('[auction] source=' + cand.source, 'step=lot VIN ok, але не аукціонний запис');
+            console.log('[auction]', JSON.stringify({ op: 'no_auction_content', source: cand.source, host: admission.host, basis: admission.basis, lot_seen: metaProbe.lot_id || null }));
             diagnostics.push(d);
             continue;
           }
@@ -744,7 +880,7 @@ export async function findAuctionRecord(vin, nhtsa, opts = {}, cfg = AUCTION_CON
           diagnostics.push(d);
           console.log('[auction] source=' + cand.source, 'step=lot', 'status=200 found identity=' + d.identity, d.ms + 'ms');
           /* ранній вихід законний ЛИШЕ при found */
-          const meta = extractLotMeta(r.body, cand.url, vin);
+          const meta = applyAdmission(extractLotMeta(r.body, cand.url, vin), admission);
           /* кадри зі structured-блоку цього VIN мають провенанс за
              побудовою і зазвичай відкриваються прямо: ставимо їх ПЕРШИМИ */
           const ldPhotos = meta.jsonld_photos || [];
@@ -753,6 +889,7 @@ export async function findAuctionRecord(vin, nhtsa, opts = {}, cfg = AUCTION_CON
             source: cand.source,
             lot_url: cand.url,
             identity,
+            admission,
             meta,
             photo_urls: [...new Set([...ldPhotos, ...photoUrls])].slice(0, cfg.MAX_PHOTOS),
             jsonld_photos: ldPhotos,
@@ -772,7 +909,10 @@ export async function findAuctionRecord(vin, nhtsa, opts = {}, cfg = AUCTION_CON
               const z = await zenrowsFetch(alt.url, { missing_reason: reason, missing_fact_required: true }, opts, cfg);
               if (!z.skipped && z.status === 200) {
                 const id2 = verifyLotIdentity({ url: alt.url, html: z.body }, vin, nhtsa);
-                if (id2.matched) {
+                /* сторінка-добір теж мусить бути привʼязана до VIN, інакше її
+                   кадри, подушки і лот належать чужому запису */
+                const adm2 = id2.matched ? admitAuctionRecord({ url: alt.url, html: z.body }, vin, null) : { admitted: false };
+                if (id2.matched && adm2.admitted) {
                   /* VIN-specific фото exact-lot: сильний провенанс */
                   const more = [...new Set([...z.body.matchAll(/https?:\/\/[^"'\s>]+\.(?:jpe?g|png|webp)/gi)]
                     .map(m => m[0]).filter(u => photoHasProvenance(u, vin, rec.meta?.lot_id) && !/logo|icon|favicon|sprite|flag|thumb/i.test(u)))];
@@ -780,7 +920,12 @@ export async function findAuctionRecord(vin, nhtsa, opts = {}, cfg = AUCTION_CON
                   /* сторінку вже отримано з необхідної причини: беремо достовірні
                      metadata (подушки, damage) без окремого запиту */
                   const m2 = extractLotMeta(z.body, alt.url, vin);
-                  rec.meta = { ...rec.meta, airbags: rec.meta?.airbags || m2.airbags, primary_damage: rec.meta?.primary_damage || m2.primary_damage, secondary_damage: rec.meta?.secondary_damage || m2.secondary_damage, lot_id: rec.meta?.lot_id || m2.lot_id };
+                  rec.meta = { ...rec.meta, airbags: rec.meta?.airbags || m2.airbags, primary_damage: rec.meta?.primary_damage || m2.primary_damage, secondary_damage: rec.meta?.secondary_damage || m2.secondary_damage };
+                  /* лот лише перевірений: з ключа URL привʼязаної сторінки лота */
+                  if (!rec.meta.lot_id && adm2.lot_id) {
+                    rec.admission = { ...rec.admission, lot_id: adm2.lot_id, lot_basis: 'verified_lot_page:' + adm2.basis };
+                    applyAdmission(rec.meta, { ...rec.admission, host: adm2.host, lot_id_unverified: rec.meta.lot_id_unverified || null });
+                  }
                   rec.paid = { provider: 'zenrows', reason, calls: z.calls, credits: z.credits };
                 }
               }
@@ -809,7 +954,12 @@ export async function findAuctionRecord(vin, nhtsa, opts = {}, cfg = AUCTION_CON
     if (!z.skipped && z.status === 200) {
       const identity = verifyLotIdentity({ url: best.url, html: z.body }, vin, nhtsa);
       const metaZ = identity.matched ? extractLotMeta(z.body, best.url, vin) : null;
-      if (identity.matched && metaZ && (metaZ.auction_house || metaZ.lot_id || metaZ.primary_damage)) {
+      const admissionZ = metaZ ? admitAuctionRecord({ url: best.url, html: z.body }, vin, metaZ) : { admitted: false };
+      if (identity.matched && metaZ && !admissionZ.admitted) {
+        console.log('[auction]', JSON.stringify({ op: 'admission_rejected', source: best.source, host: admissionZ.host, reason: admissionZ.reason, vin_zones: admissionZ.vin_zones || [], lot_seen: metaZ.lot_id || null, paid: 'zenrows' }));
+      }
+      if (identity.matched && metaZ && admissionZ.admitted && (metaZ.auction_house || admissionZ.lot_id || metaZ.primary_damage)) {
+        applyAdmission(metaZ, admissionZ);
         const photoUrls = [...new Set([...z.body.matchAll(/https?:\/\/[^"'\s>]+\.(?:jpe?g|png|webp)/gi)]
           .map(m => m[0]).filter(u => (u.toUpperCase().includes(String(vin).toUpperCase()) || /(copart|iaai|bid\.car|bidfax|poctra)/i.test(u)) && !/logo|icon|favicon|sprite|flag|thumb/i.test(u)))];
         outcomes[best.source] = 'found';
@@ -818,6 +968,7 @@ export async function findAuctionRecord(vin, nhtsa, opts = {}, cfg = AUCTION_CON
           source: best.source,
           lot_url: best.url,
           identity,
+          admission: admissionZ,
           meta: metaZ,
           photo_urls: photoUrls.slice(0, cfg.MAX_PHOTOS),
           paid: { provider: 'zenrows', reason: 'photos_unavailable', calls: z.calls, credits: z.credits },
