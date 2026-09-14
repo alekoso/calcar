@@ -27,6 +27,18 @@ cat data/mi/reference/*.sql | psql -v ON_ERROR_STOP=1 -d "$TARGET_DB"
 | `130_publish.sql` | перевірка якості для кожного кандидата, публікація, опори синтезу |
 | `140_reclassified.sql` | Phase 3.1: перекласифікація заблокованого знання, де тип або формулювання були сильніші за джерела |
 
+## Картки каталогу (MI Catalog)
+
+Картки каталогу додаються тими самими правилами, своїми файлами між
+наявними номерами і з власною літерою префікса `task_ref`. Публікація
+іде через наявний `130_publish.sql`; синтез картки отримує опори і
+публікується у своєму файлі після 130. Контракт:
+`docs/model-intelligence/catalog-contract.md`.
+
+| Файл | Картка |
+|---|---|
+| `103_entities_bmw_530i.sql`, `111_sources_bmw_530i.sql`, `123_candidates_bmw_530i.sql`, `131_synthesis_bmw_530i.sql` | картка 1: BMW 530i xDrive G30 B48 (B46B20O0), US MY2017-2020, префікс `G`; звіт `docs/model-intelligence/catalog-card-1-bmw-530i-xdrive.md` |
+
 ## Що тут можна і чого не можна
 
 Прямо вставляються ЛИШЕ сутності каталогу: бренд, ряд, покоління, версія,
@@ -61,6 +73,7 @@ INSERT опублікованого клейма відхиляє сторож �
 
 ```bash
 MI_TEST_DB_URL=postgres://localhost/calcar_mi_test node mibackloadtest.js
+MI_TEST_DB_URL=postgres://localhost/calcar_mi_test node micatalogtest.js
 ```
 
 Тест рахує матеріальні атоми з самих заморожених карток, а не з константи,

@@ -238,9 +238,14 @@ t(1, 'точні пакети не змінились нічим, крім сх�
       bad := bad || r.label || ' log; ';
     end if;
   end loop;
-  ${A('n = 44', 'the snapshot does not cover all 44 exact packs')}
+  -- Кількість точних пакетів виводиться з каталогу (кожен VMY у чотирьох
+  -- призначеннях плюс три золоті і три резолверні ідентичності у двох), а не
+  -- задається константою: картки каталогу додають VMY, і константа 44
+  -- відстала б від корпусу так само, як список міграцій відстав від 024.
+  ${A('n = (select count(*) from mi.version_market_year) * 4 + 12', 'the snapshot does not cover all exact packs')}
+  ${A('n >= 44', 'the exact pack snapshot is smaller than the frozen corpus of Phase 7.3')}
   ${A("bad = ''", 'the exact path changed beyond the anchor fix')}
-  end;`, 'на 44 точних пакетах змінилися лише basis родинного знання і PTV+ (APPLICABLE -> CONDITIONAL)');
+  end;`, 'на всіх точних пакетах змінилися лише basis родинного знання і PTV+ (APPLICABLE -> CONDITIONAL)');
 
 t(2, 'точний пакет не несе метаданих часткової ідентичності і читає фрагмент', `
   begin

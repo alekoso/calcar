@@ -48,7 +48,30 @@ const UPS = ['001_schemas_enums_lookups', '002_subjects_hierarchy_source',
 const CARD_FILES = {
   C: 'bmw-m550i-g30-my2018.md',
   T: 'tesla-model-s-p85d-my2015.md',
-  P: 'porsche-cayenne-gts-958-1-my2013.md'
+  P: 'porsche-cayenne-gts-958-1-my2013.md',
+  /* Картки каталогу (MI Catalog) рахуються тим самим правилом. */
+  G: 'bmw-530i-xdrive-g30-b48-my2017-2020.md'
+};
+
+/* Три еталонні картки: їхні лічильники і хеші заморожені окремо, щоб
+   нова картка каталогу не могла зрушити baseline BMW, Tesla чи Porsche
+   непомітно. Хеші рахуються по підмножині task_ref з префіксом картки,
+   тому додавання Hyundai не змінює хеш Porsche, поки не змінився сам
+   Porsche. Значення зняті 2026-09-14 на a7cf4f8, міграції 001..025. */
+const REFERENCE_CARDS = ['C', 'T', 'P'];
+const REFERENCE_BASELINE = {
+  C: { atoms: 103, candidates: 121, published: 71, blocked: 50,
+       text_md5: 'c106acb638be8bba018b68444967c15a',
+       dedup_md5: '46793cab1eb7abfd1be55d61f4656bd9',
+       taskref_md5: '1c364c6443eea681294c04df3cbc2583' },
+  T: { atoms: 49, candidates: 71, published: 31, blocked: 40,
+       text_md5: 'e60048bf76cd720ffaad002b584f0cc4',
+       dedup_md5: '14a20a02c19d52971080c18bab44ea83',
+       taskref_md5: '570383cbb028f682ff5ed47be86883a7' },
+  P: { atoms: 42, candidates: 62, published: 27, blocked: 35,
+       text_md5: '29d2840b276d9e1aee521555d061a9f9',
+       dedup_md5: 'd1c7bfea41941ae6fdb6721424f0d103',
+       taskref_md5: 'd85255a00e930f6539ca623f6375c5c4' }
 };
 
 function run(args, sql) {
@@ -212,11 +235,42 @@ ok('усі шість типів знання представлені', () => {
   if (n !== '6') throw new Error('типів знання ' + n + ' із 6');
 });
 
-ok('три картки дали опубліковане знання', () => {
+ok('три еталонні картки дали опубліковане знання', () => {
   const n = scalar(`select count(distinct left(task_ref,1)) from mi.candidate_claim
-                    where review_status = 'approved';`);
-  if (n !== '3') throw new Error('карток із публікаціями ' + n + ' із 3');
+                    where review_status = 'approved' and left(task_ref,1) in ('C','T','P');`);
+  if (n !== '3') throw new Error('еталонних карток із публікаціями ' + n + ' із 3');
 });
+
+ok('кожна картка каталогу дала опубліковане знання', () => {
+  for (const prefix of Object.keys(CARD_FILES).filter(p => !REFERENCE_CARDS.includes(p))) {
+    const n = Number(scalar(`select count(*) from mi.candidate_claim
+                              where review_status = 'approved' and task_ref like '${prefix}-%';`));
+    if (n < 1) throw new Error('картка ' + prefix + ' не має жодного опублікованого клейма');
+  }
+});
+
+/* ---- 3b. Еталонні картки не зрушені новими картками ---- */
+
+for (const prefix of REFERENCE_CARDS) {
+  const b = REFERENCE_BASELINE[prefix];
+  ok('еталонна картка ' + prefix + ': лічильники baseline', () => {
+    const got = scalar(`select count(distinct split_part(task_ref,'#',1)) || '/' || count(*)
+        || '/' || count(*) filter (where review_status = 'approved')
+        || '/' || count(*) filter (where review_status not in ('approved','merged','rejected'))
+      from mi.candidate_claim where left(task_ref,1) = '${prefix}';`);
+    const want = [b.atoms, b.candidates, b.published, b.blocked].join('/');
+    if (got !== want) throw new Error('атоми/кандидати/опубліковано/заблоковано: очікували ' + want + ', маємо ' + got);
+  });
+  ok('еталонна картка ' + prefix + ': хеші baseline', () => {
+    const got = scalar(`select md5(string_agg(coalesce(c.normalized_assertion,''), '|' order by k.task_ref) filter (where c.status = 'published'))
+        || '/' || md5(string_agg(coalesce(c.dedup_key,''), '|' order by k.task_ref) filter (where c.status = 'published'))
+        || '/' || md5(string_agg(k.task_ref, '|' order by k.task_ref))
+      from mi.candidate_claim k left join mi.claim c on c.id = k.published_claim_id
+     where left(k.task_ref,1) = '${prefix}';`);
+    const want = [b.text_md5, b.dedup_md5, b.taskref_md5].join('/');
+    if (got !== want) throw new Error('text/dedup/taskref md5: очікували ' + want + ', маємо ' + got);
+  });
+}
 
 ok('шари обслуговування не злиті між собою', () => {
   const n = Number(scalar(`select count(*) from (
