@@ -402,6 +402,14 @@ t(25, 'матчер версій резолвить написи Long Range AWD 
   ${A(`mi.match_version_text('Tesla', 'Model 3', 'Dual Motor')->>'version_id' is null`, 'the bare text Dual Motor resolved to a catalogue version')}
   ${A(`mi.match_version_text('Tesla', 'Model 3', 'Long Range AWD Performance')->>'version_id' is null`, 'a Performance text resolved to the Long Range AWD')}
   ${A(`mi.match_version_text('Tesla', 'Model 3', 'Standard Range Plus')->>'version_id' is null`, 'a Standard Range text resolved to a catalogue version')}
+  ${A(`(select bool_and(mi.match_version_text('Tesla', 'Model 3', t)->>'version_id' is null and (mi.match_version_text('Tesla', 'Model 3', t)->>'ambiguous')::boolean is false
+                        and mi.match_version_text('Tesla', null, t)->>'version_id' is null)
+         from unnest(array['Model 3 Long Range', 'Tesla Model 3 Long Range', 'Model 3 Dual Motor', 'Tesla Model 3 Dual Motor', 'Dual Motor AWD']) t)`,
+       'a generic Model 3 Long Range or Dual Motor text resolved to the Long Range AWD')}
+  ${A(`(select bool_and((mi.match_version_text('Tesla', 'Model 3', t)->>'version_id')::bigint = mi_test.sid_of('version', 'M3_LR_AWD')
+                        and (mi.match_version_text('Tesla', null, t)->>'version_id')::bigint = mi_test.sid_of('version', 'M3_LR_AWD'))
+         from unnest(array['Model 3 Long Range AWD', 'Tesla Model 3 Long Range Dual Motor', 'Model 3 LR AWD']) t)`,
+       'a full Long Range AWD label does not resolve with or without the model line')}
   ${A(`(mi.match_version_text('Tesla', 'Model S', 'P85D')->>'version_id')::bigint = mi_test.sid_of('version', 'P85D')`, 'adding the Model 3 broke the Model S match')}`);
 
 t(26, 'часткова ідентичність Model 3 лише з версії дає пакет, лише з ряду не дає', `
@@ -414,6 +422,34 @@ t(26, 'часткова ідентичність Model 3 лише з версі�
   q := mi.compile_pack(jsonb_build_object('brand', (select subject_id from mi.brand where name = 'Tesla'), 'model_line', (select subject_id from mi.model_line where name = 'Model 3'),
          'model_year', 2019, 'market_sold', 'US', 'components', '[]'::jsonb, 'equipment', '[]'::jsonb, 'entitlements', '[]'::jsonb, 'states', '[]'::jsonb), 'report');
   ${A("(q->>'fragment_available')::boolean is false and q->>'reason' = 'version_not_identified'", 'a decode that names only the model line produced a pack')}
+  end;`);
+
+t(28, 'часткова ідентичність Model 3: широке знання застосовне, залежне від виміру умовне', `
+  declare v jsonb; y jsonb; y21 jsonb; p jsonb; q jsonb;
+  begin
+  v := mi_test.partial_of('M3_LR_AWD'); y := mi_test.partial_of('M3_LR_AWD', 2018, 'US'); y21 := mi_test.partial_of('M3_LR_AWD', 2021, 'US');
+  p := mi_test.pack(v, 'report'); q := mi_test.pack(y, 'report');
+  -- лише версія: знання версії і ряду застосовне, знання року і компонентів умовне
+  ${A(`mi_test.status('M-006', v) = 'APPLICABLE' and mi_test.status('M-007', v) = 'APPLICABLE' and mi_test.status('M-015', v) = 'APPLICABLE' and mi_test.status('M-053', v) = 'APPLICABLE'`,
+       'version or line knowledge is not applicable on the version-only identity')}
+  ${A(`mi_test.status('M-001', v) = 'CONDITIONAL' and mi_test.status('M-003', v) = 'CONDITIONAL' and mi_test.status('M-027', v) = 'CONDITIONAL'`,
+       'model year bound knowledge is not conditional without a model year')}
+  ${A(`mi_test.status('M-009', v) = 'CONDITIONAL' and mi_test.status('M-013', v) = 'CONDITIONAL' and mi_test.status('M-037', v) = 'CONDITIONAL' and mi_test.status('M-042', v) = 'CONDITIONAL'`,
+       'component bound knowledge is not conditional without components')}
+  ${A(`mi_test.has(p, 'M-006') and mi_test.has(p, 'M-021') and mi_test.has(p, 'M-053') and mi_test.has(p, 'M-037') and mi_test.has(p, 'M-024')`,
+       'the version-only pack lost applicable or resolvable conditional knowledge')}
+  ${A(`not mi_test.has(p, 'M-001') and not mi_test.has(p, 'M-003')`, 'a year bound rating entered the version-only pack')}
+  -- версія і рік, без компонентів: рік знімає рейтинг і відклики за роком, компоненти лишаються умовними
+  ${A(`mi_test.status('M-001', y) = 'APPLICABLE' and mi_test.status('M-027', y) = 'APPLICABLE' and mi_test.status('M-003', y) = 'EXCLUDED'`,
+       'the model year did not settle year bound knowledge')}
+  ${A(`mi_test.status('M-037', y) = 'CONDITIONAL' and mi_test.status('M-013', y) = 'CONDITIONAL' and mi_test.status('M-035', y) = 'CONDITIONAL'`,
+       'component knowledge became applicable without a fitment on the partial path')}
+  ${A(`mi_test.has(q, 'M-001') and mi_test.has(q, 'M-027') and mi_test.has(q, 'M-037') and not mi_test.has(q, 'M-035') and not mi_test.has(q, 'M-003')`,
+       'the version plus year pack has the wrong membership')}
+  ${A(`mi_test.status('M-003', y21) = 'APPLICABLE' and mi_test.status('M-001', y21) = 'EXCLUDED' and mi_test.status('M-035', y21) = 'CONDITIONAL' and mi_test.status('M-037', y21) = 'CONDITIONAL'`,
+       'the refreshed year did not settle year bound knowledge on the partial path')}
+  ${A(`(select count(*) from mi.candidate_claim k where k.published_claim_id = any (mi_test.pack_claims(p)) and k.task_ref not like 'M-%') = 0`,
+       'knowledge of another card reached the partial Model 3 pack')}
   end;`);
 
 t(27, 'еталонна картка Model S у пакеті не зрушена', `
