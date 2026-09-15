@@ -43,7 +43,8 @@ const UPS = ['001_schemas_enums_lookups', '002_subjects_hierarchy_source',
   '016_vm_adapter', '017_pack_purpose_key', '018_ingest_bridge',
   '019_request_pack_hit', '020_bridge_decoded_year', '021_anchor_family_equipment',
   '022_partial_identity', '023_report_version_inference',
-  '024_safeupdate_temp_clear', '025_decoder_model_year_plausibility'];
+  '024_safeupdate_temp_clear', '025_decoder_model_year_plausibility',
+  '026_applicability_known_contradiction'];
 
 function run(args, sql) {
   return execFileSync(PSQL, ['-X', '-q', '-v', 'ON_ERROR_STOP=1', '-d', DB, ...args],
@@ -370,13 +371,15 @@ t(21, 'тінь при промаху фрагмента не вигадує п�
       'the shadow dropped the resolved identity together with the missing knowledge')}
   end;`);
 
-t(22, 'рік поза каталогом не вигадує VMY: частковий пакет без кандидатів', `
+t(22, 'рік поза каталогом не вигадує VMY і не дає пакета версії, якій він суперечить', `
   declare j jsonb; p jsonb;
   begin
   -- Напис версії каталогу відомий, а такого року у каталозі немає. Міст
-  -- пише обидва спостереження окремо і рік не «виправляє». До Phase 7.3
-  -- тінь тут відмовляла; тепер вона віддає частковий пакет, у якому
-  -- жодного кандидатного VMY немає і конфігурація не вигадується.
+  -- пише обидва спостереження окремо і рік не «виправляє». Phase 7.3
+  -- віддавала тут частковий пакет без кандидатів, тобто відомий
+  -- суперечливий рік поводився як невідомий. Міграція 26 це виправляє:
+  -- застосовність версії NO_MATCH, тінь відмовляє з причиною
+  -- version_excluded_by_model_year і лишає розвʼязану ідентичність.
   update public.vehicles set year = 1998, model_year = 1998,
          nhtsa = jsonb_set(nhtsa, '{ModelYear}', '"1998"') where vin = ${POR};
   update public.vehicle_snapshots set year = 1998 where vin = ${POR};
@@ -386,10 +389,11 @@ t(22, 'рік поза каталогом не вигадує VMY: частко�
   ${A(`(select value_num from public.vehicle_identity_observation
          where vin = ${POR} and dimension = 'model_year') = 1998`,
       'the bridge silently corrected the model year it was given')}
+  ${A(`mi.identity_json(mi.resolve_from_memory(${POR}))->>'vmy' is null`, 'a VMY was invented for a year outside the catalogue')}
   p := mi.shadow_pack(${POR});
-  ${A("(p->>'mi_available')::boolean and p->>'identity_precision' = 'partial'", 'a confirmed version got no pack')}
-  ${A("(p->'decision'->'meta'->>'candidate_vmy_count')::int = 0", 'a VMY was invented for a year outside the catalogue')}
-  end;`, 'міст записує, резолвер вирішує: рік поза каталогом дає нуль кандидатів, а не підставлений VMY');
+  ${A("(p->>'mi_available')::boolean is false and p->>'reason' = 'version_excluded_by_model_year'", 'a known contradictory year still produced a pack of the version')}
+  ${A("p->'identity_summary' is not null", 'the refusal dropped the resolved identity')}
+  end;`, 'міст записує, резолвер вирішує: рік поза каталогом не підставляє VMY, а версія, якій він суперечить, пакета не дає (міграція 26)');
 
 /* ---- 23..25. Реальний вхід продакшну ----
 

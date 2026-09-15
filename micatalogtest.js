@@ -623,6 +623,90 @@ t(40, 'часткова ідентичність Tucson: версія без р�
   ${A(`(select count(*) from mi.candidate_claim k where k.published_claim_id = any (mi_test.pack_claims(p)) and k.task_ref not like 'H-%') = 0`, 'knowledge of another card reached the partial Tucson pack')}
   end;`);
 
+/* ================= Інваріант застосовності (міграція 026) =================
+   UNKNOWN означає, що вимір справді невідомий. Відомий вимір, що суперечить
+   застосовності, дає NO_MATCH, а не UNKNOWN чи CONDITIONAL. */
+
+t(41, 'відомий модельний рік поза роками версії: часткового пакета версії немає', `
+  declare q jsonb; d jsonb;
+  begin
+  q := mi.compile_pack(mi_test.partial_of('TL_THETA2_24', 2015, 'US'), 'report');
+  d := mi.compile_pack(mi_test.partial_of('TL_THETA2_24', 2015, 'US'), 'decision');
+  ${A(`(q->>'fragment_available')::boolean is false and q->>'reason' = 'version_excluded_by_model_year'`, 'a 2015 Tucson got a partial pack of the 2018-2021 Tucson 2.4')}
+  ${A(`q->'pack' is null and cardinality(mi_test.pack_claims(q)) = 0`, 'claims of the Tucson 2.4 card reached a 2015 Tucson')}
+  ${A(`(q->'version_model_years') = '[2018,2019,2020,2021]'::jsonb and (q->>'model_year')::int = 2015`, 'the exclusion does not name the known year and the version years')}
+  ${A(`(d->>'fragment_available')::boolean is false and d->>'reason' = 'version_excluded_by_model_year'`, 'the decision purpose still falls back for a known contradictory year')}
+  ${A(`mi.request_pack(mi_test.partial_of('TL_THETA2_24', 2015, 'US'), 'report')->>'reason' = 'version_excluded_by_model_year'`, 'the request path still falls back for a known contradictory year')}
+  end;`);
+
+t(42, 'відомий рік поза роками версії: Model 3 2017 і 530i xDrive 2016', `
+  declare q jsonb; b jsonb;
+  begin
+  q := mi.compile_pack(mi_test.partial_of('M3_LR_AWD', 2017, 'US'), 'report');
+  b := mi.compile_pack(mi_test.partial_of('530I_XDRIVE', 2016, 'US'), 'report');
+  ${A(`(q->>'fragment_available')::boolean is false and q->>'reason' = 'version_excluded_by_model_year' and cardinality(mi_test.pack_claims(q)) = 0`, 'a 2017 Model 3 got the 2018-2023 Long Range AWD partial pack')}
+  ${A(`(b->>'fragment_available')::boolean is false and b->>'reason' = 'version_excluded_by_model_year' and cardinality(mi_test.pack_claims(b)) = 0`, 'a 2016 530i got the 2017-2020 530i xDrive partial pack')}
+  ${A(`(mi_test.pack(mi_test.partial_of('530I_XDRIVE', 2017, 'US'), 'report')->>'fragment_available')::boolean
+       and (mi_test.pack(mi_test.partial_of('M3_LR_AWD', 2023, 'US'), 'report')->>'fragment_available')::boolean
+       and (mi_test.pack(mi_test.partial_of('TL_THETA2_24', 2018, 'US'), 'report')->>'fragment_available')::boolean`, 'a boundary year inside the version range lost its partial pack')}
+  end;`);
+
+t(43, 'невідомий рік лишається невідомим: частковий пакет і умовне знання працюють', `
+  declare v jsonb; p jsonb;
+  begin
+  v := mi_test.partial_of('TL_THETA2_24'); p := mi_test.pack(v, 'report');
+  ${A(`(p->>'fragment_available')::boolean and (p->'pack_meta'->>'candidate_vmy_count')::int = 4`, 'the version without a year lost its partial pack')}
+  ${A(`mi_test.status('H-013', v) = 'CONDITIONAL' and mi_test.status('H-020', v) = 'CONDITIONAL' and mi_test.has(p, 'H-020')`, 'year and component dependent knowledge is no longer conditional without a year')}
+  ${A(`(mi_test.pack(mi_test.partial_of('M3_LR_AWD'), 'report')->>'fragment_available')::boolean
+       and (mi_test.pack(mi_test.partial_of('530I_XDRIVE'), 'report')->>'fragment_available')::boolean`, 'a version without a year lost its partial pack on cards 1 or 2')}
+  end;`);
+
+t(44, 'відомий N63 проти знання родини і варіанта B48: NO_MATCH, не CONDITIONAL', `
+  ${A(`(select bool_and(mi_test.status(r, ${M550}) = 'EXCLUDED') from unnest(array['G-043','G-019','G-021','G-022#a','G-023','G-024','G-026#a']) r)`,
+       'B48 family or variant knowledge is not excluded on a known N63 car')}
+  ${A(`exists (select 1 from jsonb_array_elements(mi.eval_claim(mi_test.claim('G-043'), ${M550})->'predicates') pr
+               where pr->>'dimension' = 'component_family' and pr->>'result' = 'NO_MATCH' and pr->>'observed' is not null)`,
+       'the family anchor of G-043 does not record the observed incompatible engine')}
+  ${A(`exists (select 1 from jsonb_array_elements(mi.eval_claim(mi_test.claim('G-019'), ${M550})->'predicates') pr
+               where pr->>'dimension' = 'component_variant' and pr->>'result' = 'NO_MATCH' and pr->>'observed' is not null)`,
+       'the variant anchor of G-019 (B46B20O0 oil service) is not NO_MATCH on a known N63 car')}
+  ${A(`mi.eval_check((select c.subject_id from mi.check_item c where c.scope_subject_id in (select subject_id from mi.component_family where family_key = 'BMW_B48')
+                      or c.scope_subject_id in (select v.subject_id from mi.component_variant v join mi.component_family f on f.subject_id = v.family_id where f.family_key = 'BMW_B48') limit 1), ${M550})->>'status' = 'EXCLUDED'`,
+       'a B48 check is not excluded on a known N63 car')}
+  ${A(`mi_test.status('G-043', ${X}) in ('APPLICABLE', 'APPLICABLE_ASSUMED') and mi_test.status('G-022#a', ${X}) = 'APPLICABLE'`, 'B48 knowledge stopped applying to the B48 car')}`);
+
+t(45, 'відомий Nu 2.0 проти знання Theta II 2.4: NO_MATCH у клеймах, перевірках і предикатах', `
+  ${A(`(select bool_and(mi_test.status(r, ${NU19}) = 'EXCLUDED' and mi_test.status(r, ${NU20}) = 'EXCLUDED') from unnest(array['H-003','H-020','H-021','H-030','H-040','H-050','H-060']) r)`,
+       'Theta II 2.4 knowledge is not excluded on a known Nu 2.0 car')}
+  ${A(`mi.eval_check((select subject_id from mi.check_item c join mi.knowledge_subject k on k.id = c.subject_id where k.label = 'Cold start and rev test for connecting rod knock'), ${NU19})->>'status' = 'EXCLUDED'`,
+       'the Theta II knock check is not excluded on a known Nu 2.0 car')}
+  ${A(`mi.eval_predicate(jsonb_populate_record(null::mi.claim_applicability, jsonb_build_object('dimension', 'component_family', 'operator', 'eq',
+         'ref_subject_id', (select subject_id from mi.component_family where family_key = 'HYUNDAI_THETA_II'), 'group_no', 1, 'config_scope', 'current')), ${NU19})->>'result' = 'NO_MATCH'
+       and mi.eval_predicate(jsonb_populate_record(null::mi.claim_applicability, jsonb_build_object('dimension', 'component_variant', 'operator', 'eq',
+         'ref_subject_id', (select subject_id from mi.component_variant where variant_code = 'THETA2_24_GDI'), 'group_no', 1, 'config_scope', 'current')), ${NU19})->>'result' = 'NO_MATCH'`,
+       'an explicit Theta II family or variant predicate is not NO_MATCH on a known Nu 2.0 car')}
+  ${A(`mi_test.status('H-020', ${TUC}) = 'APPLICABLE'`, 'Theta II knowledge stopped applying to the Theta II car')}`);
+
+t(46, 'невідомий компонент лишається невідомим: UNKNOWN і CONDITIONAL там, де роль не розвʼязана', `
+  declare u jsonb; w jsonb;
+  begin
+  u := mi_test.partial_of('TL_THETA2_24', 2020, 'US');
+  w := jsonb_set(mi_test.id_tucson_nu20(2019), '{components}', '[]'::jsonb);
+  ${A(`mi_test.status('H-020', u) = 'CONDITIONAL' and mi_test.status('H-060', u) = 'CONDITIONAL'`, 'engine knowledge is not conditional when the engine is unresolved')}
+  ${A(`mi_test.status('H-020', w) = 'CONDITIONAL'`, 'engine knowledge is not conditional on a car whose engine is unresolved')}
+  ${A(`mi_test.status('H-070', ${NU19}) = 'CONDITIONAL'`, 'transmission knowledge became excluded although the transmission role of the car is unresolved')}
+  ${A(`mi_test.status('H-020', jsonb_set(${NU19}, '{components}', (select jsonb_agg(jsonb_set(e, '{status}', '"conflicted"')) from jsonb_array_elements(${NU19}->'components') e))) = 'CONDITIONAL'`,
+       'a conflicted engine observation was treated as a known incompatible engine')}
+  ${A(`mi_test.status('M-042', ${M3}) in ('APPLICABLE', 'APPLICABLE_ASSUMED', 'CONDITIONAL')`, 'Model 3 low voltage knowledge in the shared other role changed status')}
+  end;`);
+
+t(47, 'слабке заводське припущення про іншу родину дає EXCLUDED_ASSUMED, а не впевнене виключення', `
+  ${A(`mi.eval_claim(mi_test.claim('M-009'), ${TESLA})->>'status' = 'EXCLUDED_ASSUMED'`,
+       'the Model 3 thermal family claim on a Model S with an assumed PTC heater is not an assumed exclusion')}
+  ${A(`exists (select 1 from jsonb_array_elements(mi.eval_claim(mi_test.claim('M-009'), ${TESLA})->'predicates') pr
+               where pr->>'dimension' = 'component_family' and pr->>'result' = 'ASSUMED_NO_MATCH' and pr->>'basis' = 'assumed_factory')`,
+       'a weak factory assumption was turned into a confirmed exclusion')}`);
+
 /* ---- Підсумок ---- */
 
 if (errs.length) {
