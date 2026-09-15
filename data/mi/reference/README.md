@@ -38,7 +38,8 @@ cat data/mi/reference/*.sql | psql -v ON_ERROR_STOP=1 -d "$TARGET_DB"
 | Файл | Картка |
 |---|---|
 | `103_entities_bmw_530i.sql`, `111_sources_bmw_530i.sql`, `123_candidates_bmw_530i.sql`, `131_synthesis_bmw_530i.sql` | картка 1: BMW 530i xDrive G30 B48 (B46B20O0), US MY2017-2020, префікс `G`; звіт `docs/model-intelligence/catalog-card-1-bmw-530i-xdrive.md` |
-| `104_entities_tesla_model_3.sql`, `112_sources_tesla_model_3.sql`, `124_candidates_tesla_model_3.sql`, `132_synthesis_tesla_model_3.sql` | картка 2: Tesla Model 3 Long Range AWD (pre-Highland), US MY2018-2023, префікс `M`; звіт `docs/model-intelligence/catalog-card-2-tesla-model-3.md`; у продакшн не завантажена |
+| `104_entities_tesla_model_3.sql`, `112_sources_tesla_model_3.sql`, `124_candidates_tesla_model_3.sql`, `132_synthesis_tesla_model_3.sql` | картка 2: Tesla Model 3 Long Range AWD (pre-Highland), US MY2018-2023, префікс `M`; звіт `docs/model-intelligence/catalog-card-2-tesla-model-3.md`; у продакшні з 2026-09-14 |
+| `105_entities_hyundai_tucson.sql`, `113_sources_hyundai_tucson.sql`, `126_candidates_hyundai_tucson.sql`, `133_synthesis_hyundai_tucson.sql` | картка 3: Hyundai Tucson TL 2.4 GDI Theta II, US MY2018-2021, префікс `H`; звіт `docs/model-intelligence/catalog-card-3-hyundai-tucson.md`; у продакшн не завантажена |
 
 ## Що тут можна і чого не можна
 

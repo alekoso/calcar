@@ -230,6 +230,22 @@ t(1, 'точні пакети не змінились нічим, крім сх�
     -- якоря. Це і є схвалена поведінка якоря, тому точні пакети Model 3
     -- порівнюються лише у власних тестах картки (micatalogtest).
     if r.label like 'catalog:M3_LR_AWD/%' then continue; end if;
+    -- Картка 3 (Hyundai Tucson TL 2.4, префікс H): знання про опційне
+    -- обладнання AWD (H-064#a, H-064#b, H-065) до 021 було APPLICABLE, після
+    -- 021 CONDITIONAL, доки ідентичність не скаже про привід. Це та сама
+    -- схвалена поведінка якоря, що і PTV+. Перевіряється точно: рівно три
+    -- клейми змінюють статус, пакет втрачає лише їх, журнал отримує групу якоря.
+    if r.label like 'catalog:TL_THETA2_24/%' then
+      if not ((r.cp->'pack_meta'->'counts'->>'CONDITIONAL')::int = (r.lp->'pack_meta'->'counts'->>'CONDITIONAL')::int + 3
+              and (r.cp->'pack_meta'->'counts'->>'APPLICABLE')::int = (r.lp->'pack_meta'->'counts'->>'APPLICABLE')::int - 3
+              and coalesce((r.cp->'pack_meta'->'counts'->>'EXCLUDED')::int, 0) = coalesce((r.lp->'pack_meta'->'counts'->>'EXCLUDED')::int, 0)
+              and array(select unnest(mi_test.pack_claims(r.lp)) except select unnest(mi_test.pack_claims(r.cp)))
+                  <@ array[mi_test.claim('H-064#a'), mi_test.claim('H-064#b'), mi_test.claim('H-065')]
+              and (r.label like '%:chat' or cardinality(array(select unnest(mi_test.pack_claims(r.cp)) except select unnest(mi_test.pack_claims(r.lp)))) = 0)) then
+        bad := bad || r.label || ' tucson; ';
+      end if;
+      continue;
+    end if;
     if mi_test.strip_basis(r.lp) <> mi_test.strip_basis(r.cp) then
       if not (r.label like '%GTS/US/2013%' or r.label like '%porsche%') then
         bad := bad || r.label || ' pack; ';

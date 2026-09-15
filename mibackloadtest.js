@@ -51,7 +51,8 @@ const CARD_FILES = {
   P: 'porsche-cayenne-gts-958-1-my2013.md',
   /* Картки каталогу (MI Catalog) рахуються тим самим правилом. */
   G: 'bmw-530i-xdrive-g30-b48-my2017-2020.md',
-  M: 'tesla-model-3-lr-awd-my2018-2023.md'
+  M: 'tesla-model-3-lr-awd-my2018-2023.md',
+  H: 'hyundai-tucson-tl-24-gdi-my2018-2021.md'
 };
 
 /* Три еталонні картки: їхні лічильники і хеші заморожені окремо, щоб

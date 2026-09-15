@@ -8,6 +8,8 @@
    матчера версій на реальних написах Check.
 
    Картка 1: BMW 530i xDrive G30 B48 (B46B20O0), US MY2017-2020, префікс G.
+   Картка 2: Tesla Model 3 Long Range AWD (pre-Highland), US MY2018-2023, префікс M.
+   Картка 3: Hyundai Tucson TL 2.4 GDI Theta II, US MY2018-2021, префікс H.
 
    Запуск:
      MI_TEST_DB_URL=postgres://... node micatalogtest.js
@@ -133,6 +135,16 @@ const M321 = 'mi_test.id_m3_2021()';    // той самий автомобіл�
 const M319 = 'mi_test.id_m3_2019()';    // MY2019: два компʼютери Autopilot як optional
 const M3RWD = 'mi_test.id_m3_rwd()';    // суміжна версія: Long Range із заднім приводом (лише фікстура)
 const TESLA = 'mi_test.id_tesla()';     // еталонна картка Model S P85D того самого бренду
+const TUC = 'mi_test.id_tucson24(2020)';              // картка 3: Tucson 2.4 US MY2020, привід і дата невідомі
+const TUC18 = 'mi_test.id_tucson24(2018)';
+const TUC19 = 'mi_test.id_tucson24(2019)';
+const TUC21 = 'mi_test.id_tucson24(2021)';
+const TUCAWD = 'mi_test.id_tucson24_drive(true)';     // MY2020 з підтвердженим повним приводом
+const TUCFWD = 'mi_test.id_tucson24_drive(false)';    // MY2020 з підтвердженим переднім приводом
+const TUC19IN = "mi_test.id_tucson24_built(2019, date '2019-03-01')";   // усередині вікна відклику 195
+const TUC19OUT = "mi_test.id_tucson24_built(2019, date '2019-08-15')";  // після вікна
+const NU19 = 'mi_test.id_tucson_nu20(2019)';          // суміжна версія: Tucson TL з Nu 2.0 (лише фікстура)
+const NU20 = 'mi_test.id_tucson_nu20(2020)';
 
 /* ================= Картка 1: BMW 530i xDrive G30 ================= */
 
@@ -458,6 +470,157 @@ t(27, 'еталонна картка Model S у пакеті не зрушена
   p := mi_test.pack(${TESLA}, 'report');
   ${A(`(select bool_and(mi_test.has(p, r)) from unnest(array['T-002#a','T-010','T-022#a','T-050#a']) r)`, 'the Model S pack lost reference knowledge')}
   ${A(`mi_test.check_in_pack(p, 'Inspect the LDU speed sensor for coolant', 'must')`, 'the Model S lost its speed sensor check')}
+  end;`);
+
+/* ================= Картка 3: Hyundai Tucson TL 2.4 GDI Theta II ================= */
+
+t(29, 'картка 3: опубліковано те, що має бути опубліковане', `
+  ${A(`(select count(*) from unnest(array['H-001','H-004','H-010','H-011','H-012','H-013','H-014','H-020','H-021','H-030','H-040','H-041','H-050','H-052','H-053','H-060','H-065','H-070','H-080#a','H-080#b','H-081','H-082','H-090','H-032','H-042']) r
+         where mi_test.claim(r) is null) = 0`, 'a high value candidate of card 3 is not published')}`);
+
+t(30, 'картка 3: заблоковано те, чому доказів бракує, і саме на доказах', `
+  ${A(`(select count(*) from mi.candidate_claim k
+         where k.task_ref in ('H-025','H-031')
+           and (k.published_claim_id is not null or (k.gate_result->>'passed')::boolean is not false)) = 0`,
+       'a card 3 candidate that lacks evidence got published')}
+  ${A(`(select count(*) from mi.candidate_claim k, jsonb_array_elements(k.gate_result->'rules') r
+         where k.task_ref like 'H-%' and k.review_status = 'gate_pending' and (r->>'ok')::boolean is false
+           and r->>'code' not in ('owner_pattern_groups','owner_pattern_context','specialist_source',
+                                  'vendor_not_alone','known_issue_evidence','official_source',
+                                  'broad_claim_broad_source')) = 0`,
+       'a card 3 candidate is blocked by a rule other than an evidence rule')}
+  ${A("(select count(*) from mi.candidate_claim where task_ref like 'H-%' and review_note like '%gate override%') = 0", 'an override was used in card 3')}`);
+
+t(31, 'лічильники і шкала важливості картки 3', `
+  ${A("(select count(distinct split_part(task_ref,'#',1)) from mi.candidate_claim where task_ref like 'H-%') = 36", 'card 3 atom count changed')}
+  ${A("(select count(*) from mi.candidate_claim where task_ref like 'H-%') = 40", 'card 3 candidate count changed')}
+  ${A("(select count(*) from mi.candidate_claim where task_ref like 'H-%' and review_status = 'approved') = 38", 'card 3 published count changed')}
+  ${A("(select count(*) from mi.candidate_claim where task_ref like 'H-%' and review_status = 'merged') = 0", 'a card 3 candidate merged into an older claim')}
+  ${A(`(select array_agg(task_ref order by task_ref) from mi.candidate_claim where task_ref like 'H-%' and review_status = 'approved' and proposed_buyer_importance = 5) = array['H-020','H-090']`,
+       'importance 5 of card 3 is not exactly the bearing failure and the import synthesis')}`);
+
+t(32, 'точні пакети Tucson 2.4 за роками: покриття 2018..2019 і його відсутність 2020..2021', `
+  declare p18 jsonb; p19 jsonb; p20 jsonb; p21 jsonb; d20 jsonb;
+  begin
+  p18 := mi_test.pack(${TUC18}, 'report'); p19 := mi_test.pack(${TUC19}, 'report');
+  p20 := mi_test.pack(${TUC}, 'report'); p21 := mi_test.pack(${TUC21}, 'report'); d20 := mi_test.pack(${TUC}, 'decision');
+  ${A(`(select bool_and(mi_test.has(p20, r)) from unnest(array['H-001','H-004','H-010','H-013','H-020','H-021','H-030','H-040','H-050','H-052','H-053','H-060','H-070','H-081','H-090','H-032','H-042']) r)`,
+       'an expected claim is missing from the MY2020 report pack')}
+  ${A(`(select bool_and(not mi_test.has(p20, r)) from unnest(array['H-002','H-011','H-012','H-014','H-022','H-041','H-080#a','H-080#c','H-080#d']) r)`,
+       '2018 or 2019 coverage knowledge leaked into the MY2020 pack')}
+  ${A(`(select bool_and(mi_test.has(p18, r)) from unnest(array['H-002','H-011','H-012','H-014','H-041','H-080#d','H-020','H-090']) r) and not mi_test.has(p18, 'H-013') and not mi_test.has(p18, 'H-021')`,
+       'the MY2018 pack has the wrong coverage knowledge')}
+  ${A(`mi_test.has(p19, 'H-022') and mi_test.has(p19, 'H-080#a') and mi_test.has(p19, 'H-012') and not mi_test.has(p19, 'H-013') and not mi_test.has(p19, 'H-002')`,
+       'the MY2019 pack has the wrong year bound knowledge')}
+  ${A(`mi_test.has(p21, 'H-013') and mi_test.has(p21, 'H-021') and mi_test.has(p21, 'H-080#c') and not mi_test.has(p21, 'H-011') and not mi_test.has(p21, 'H-080#b')`,
+       'the MY2021 pack has the wrong year bound knowledge')}
+  ${A(`mi_test.status('H-012', ${TUC19}) = 'CONDITIONAL' and mi_test.status('H-014', ${TUC18}) = 'CONDITIONAL'`,
+       'the certain 2018 and 2019 extension is asserted without the dealer lookup')}
+  ${A(`mi_test.status('H-020', ${TUC21}) = 'APPLICABLE' and mi_test.status('H-030', ${TUC21}) = 'APPLICABLE'`,
+       'component knowledge of the Theta II 2.4 did not transfer to the 2021 engine')}
+  ${A(`(select bool_and(mi_test.has(d20, r)) from unnest(array['H-020','H-090','H-010','H-013','H-053']) r)`,
+       'a high importance claim is missing from the MY2020 decision pack')}
+  ${A(`(d20->'pack_meta'->>'truncated_count')::int = 0`, 'the MY2020 decision pack dropped knowledge at the budget cap')}
+  ${A(`(select count(*) from mi.candidate_claim k where k.published_claim_id = any (mi_test.pack_claims(p20) || mi_test.pack_claims(p18)) and k.task_ref not like 'H-%') = 0`,
+       'knowledge of another card reached the Tucson')}
+  end;`);
+
+t(33, 'привід Tucson: знання про AWD умовне без приводу, застосовне на AWD, виключене на FWD', `
+  declare p jsonb; a jsonb; f jsonb;
+  begin
+  p := mi_test.pack(${TUC}, 'report'); a := mi_test.pack(${TUCAWD}, 'report'); f := mi_test.pack(${TUCFWD}, 'report');
+  ${A(`mi_test.status('H-065', ${TUC}) = 'CONDITIONAL' and mi_test.status('H-064#a', ${TUC}) = 'CONDITIONAL'`, 'AWD knowledge is not conditional when the drive is unknown')}
+  ${A(`mi_test.status('H-065', ${TUCAWD}) = 'APPLICABLE' and mi_test.status('H-064#b', ${TUCAWD}) = 'APPLICABLE'`, 'AWD knowledge is not applicable on a confirmed AWD car')}
+  ${A(`coalesce(mi_test.status('H-065', ${TUCFWD}), 'EXCLUDED') = 'EXCLUDED' and not mi_test.has(f, 'H-065') and not mi_test.has(f, 'H-064#a')`, 'AWD knowledge reached a front-wheel drive car')}
+  ${A(`mi_test.has(p, 'H-065') and mi_test.check_in_pack(p, 'Confirm all-wheel drive on the Tucson: AWD LOCK button and rear drive shaft')`, 'the drive check does not accompany the conditional AWD knowledge')}
+  ${A(`mi_test.has(f, 'H-020') and mi_test.has(f, 'H-090') and mi_test.has(a, 'H-020')`, 'the drive changed engine knowledge')}
+  end;`);
+
+t(34, 'дата виробництва: відклик ABS-модуля умовний без дати, розвʼязується датою', `
+  declare p jsonb;
+  begin
+  p := mi_test.pack(${TUC19}, 'report');
+  ${A(`mi_test.status('H-080#a', ${TUC19}) = 'CONDITIONAL' and mi_test.has(p, 'H-080#a')`, 'the 2019 build window recall is not conditional in the report without a build date')}
+  ${A(`mi_test.check_in_pack(p, 'Read the manufacture month on the door jamb label of the Tucson', 'must')`, 'the build date check is missing or not MUST')}
+  ${A(`mi_test.status('H-080#a', ${TUC19IN}) = 'APPLICABLE' and coalesce(mi_test.status('H-080#a', ${TUC19OUT}), 'EXCLUDED') = 'EXCLUDED'`, 'the build date does not settle the recall window')}
+  ${A(`mi_test.status('H-081', ${TUC19OUT}) = 'APPLICABLE'`, 'the generation level recall description disappeared with the build date')}
+  end;`);
+
+t(35, 'суміжна версія Tucson TL з Nu 2.0 не отримує знання Theta II, продовжень і перевірок мотора', `
+  declare p19 jsonb; p20 jsonb;
+  begin
+  p19 := mi_test.pack(${NU19}, 'report'); p20 := mi_test.pack(${NU20}, 'report');
+  ${A(`(select count(*) from mi.candidate_claim k where k.published_claim_id = any (mi_test.pack_claims(p19) || mi_test.pack_claims(p20))
+         and k.task_ref not in ('H-080#a','H-080#b','H-081','H-082')) = 0`,
+       'engine, version or extension knowledge of the 2.4 reached the Nu 2.0 fixture')}
+  ${A(`mi_test.has(p19, 'H-080#a') and mi_test.has(p19, 'H-081') and mi_test.has(p20, 'H-080#b')`, 'generation level recall knowledge did not reach the Nu 2.0 fixture')}
+  ${A(`not mi_test.check_in_pack(p19, 'Read stored engine codes for P1326 on the Tucson 2.4') and not mi_test.check_in_pack(p19, 'Ask a Hyundai dealer to look up T3G, campaign 953, TXXC and TXXI on the VIN')`,
+       'a Theta II check reached the Nu 2.0 fixture')}
+  ${A(`coalesce(mi_test.status('H-012', ${NU19}), 'EXCLUDED') = 'EXCLUDED' and coalesce(mi_test.status('H-014', ${NU19}), 'EXCLUDED') = 'EXCLUDED'`,
+       'the extension of the 2.4 is not excluded on a 2019 Nu 2.0 car')}
+  end;`);
+
+t(36, 'картка 3 не витікає у BMW і Tesla, клейми про право несуть предикат версії', `
+  ${A(`(select count(*) from (values (mi_test.pack(${X}, 'report')), (mi_test.pack(${M3}, 'report')), (mi_test.pack(${M550}, 'report')), (mi_test.pack(${TESLA}, 'report'))) v(p), mi.candidate_claim k
+         where k.task_ref like 'H-%' and k.published_claim_id = any (mi_test.pack_claims(p))) = 0`,
+       'Tucson knowledge reached a BMW or Tesla pack')}
+  ${A(`(select count(*) from mi.claim c join mi.candidate_claim k on k.published_claim_id = c.id
+         join mi.knowledge_subject sj on sj.id = c.subject_id
+        where k.task_ref like 'H-%' and sj.kind = 'entitlement'
+          and not exists (select 1 from mi.claim_applicability a where a.claim_id = c.id and a.dimension in ('version', 'model_line'))) = 0`,
+       'a card 3 claim on a brand entitlement carries no version or model line scope')}`);
+
+t(37, 'текст заблокованих кандидатів картки 3 не витікає у пакети', `
+  ${A(`(select count(*) from mi.candidate_claim k
+         where k.task_ref like 'H-%' and k.review_status = 'gate_pending'
+           and (position(left(k.text_en, 60) in mi_test.pack_text(mi_test.pack(${TUC}, 'report'))) > 0
+             or position(left(k.text_en, 60) in mi_test.pack_text(mi_test.pack(${TUC19}, 'report'))) > 0
+             or position(left(k.text_en, 60) in mi_test.pack_text(mi_test.pack(${TUC21}, 'decision'))) > 0
+             or position(left(k.text_en, 60) in mi_test.pack_text(mi_test.pack(mi_test.partial_of('TL_THETA2_24'), 'report'))) > 0)) = 0`,
+       'blocked text of card 3 leaked into a pack')}`);
+
+t(38, 'канонічні перевірки картки 3 доходять до пакета', `
+  declare p jsonb;
+  begin
+  p := mi_test.pack(${TUC}, 'report');
+  ${A(`mi_test.check_in_pack(p, 'Cold start and rev test for connecting rod knock', 'must')`, 'the knock test is missing or not MUST')}
+  ${A(`mi_test.check_in_pack(p, 'Read stored engine codes for P1326 on the Tucson 2.4', 'must')`, 'the P1326 scan is missing or not MUST')}
+  ${A(`mi_test.check_in_pack(p, 'Check the oil level on the dipstick of the Tucson 2.4', 'must')`, 'the oil level check is missing or not MUST')}
+  ${A(`mi_test.check_in_pack(p, 'Ask for oil change records and the Hyundai campaign history', 'must')`, 'the records check is missing or not MUST')}
+  ${A(`mi_test.check_in_pack(p, 'Read the eighth VIN character for the Tucson engine code', 'must')`, 'the VIN engine check is missing or not MUST')}
+  ${A(`mi_test.check_in_pack(mi_test.pack(${TUC19}, 'report'), 'Ask a Hyundai dealer to look up T3G, campaign 953, TXXC and TXXI on the VIN', 'must')`, 'the extension lookup is missing on a 2019 car')}
+  ${A(`not mi_test.check_in_pack(p, 'Read pack capacity and battery alerts') and not mi_test.check_in_pack(p, 'Read the manufacture month on the door jamb label')`, 'a Tesla check reached the Tucson')}
+  end;`);
+
+t(39, 'матчер резолвить написи 2.4 і мовчить на 2.0, 1.6, 2.5, комплектаціях і інших моделях', `
+  ${A(`(select bool_and((mi.match_version_text('Hyundai', 'Tucson', t)->>'version_id')::bigint = mi_test.sid_of('version', 'TL_THETA2_24'))
+         from unnest(array['2.4 GDI', '2.4L', 'Theta II 2.4', '2.4', '2.4 AWD', 'Tucson 2.4', 'Hyundai Tucson 2.4 AWD', '2.4L FWD']) t)`,
+       'a Tucson 2.4 label does not resolve')}
+  ${A(`(select bool_and(mi.match_version_text('Hyundai', 'Tucson', t)->>'version_id' is null and (mi.match_version_text('Hyundai', 'Tucson', t)->>'ambiguous')::boolean is false)
+         from unnest(array['2.0 GDI', '2.0L', 'SE 2.0 FWD', 'Nu 2.0 GDI 4-cylinder', '2.0L 4 cyl AWD', '2.0 4 AWD', '4 2', '1.6 Turbo', '2.5', 'SEL', 'Limited AWD', 'TL', 'Tucson TL', 'AWD']) t)`,
+       'a non 2.4 or engine-less Tucson text resolved to the 2.4 version')}
+  ${A(`mi.match_version_text('Hyundai', null, 'Sonata 2.4 GDI')->>'version_id' is null and mi.match_version_text('Hyundai', 'Sonata', '2.4 GDI')->>'version_id' is null
+       and mi.match_version_text('Kia', 'Sportage', '2.4 GDI')->>'version_id' is null`, 'an adjacent Hyundai or Kia Theta II text resolved to the Tucson')}
+  ${A(`(mi.match_version_text('Tesla', 'Model 3', 'Long Range AWD')->>'version_id')::bigint = mi_test.sid_of('version', 'M3_LR_AWD')
+       and (mi.match_version_text('BMW', '5 series', '530i xDrive')->>'version_id')::bigint = mi_test.sid_of('version', '530I_XDRIVE')`, 'adding the Tucson broke an earlier card match')}`);
+
+t(40, 'часткова ідентичність Tucson: версія без року, рік без приводу, ряд без версії', `
+  declare v jsonb; y jsonb; p jsonb; q jsonb; r jsonb;
+  begin
+  v := mi_test.partial_of('TL_THETA2_24'); y := mi_test.partial_of('TL_THETA2_24', 2020, 'US');
+  p := mi_test.pack(v, 'report'); q := mi_test.pack(y, 'report');
+  ${A("(p->>'fragment_available')::boolean and p->'pack_meta'->>'identity_precision' = 'partial' and (p->'pack_meta'->>'candidate_vmy_count')::int = 4", 'the version alone got no partial pack over the four years')}
+  ${A(`mi_test.status('H-090', v) = 'APPLICABLE' and mi_test.status('H-010', v) = 'APPLICABLE' and mi_test.status('H-053', v) = 'APPLICABLE'`, 'version knowledge is not applicable on the version-only identity')}
+  ${A(`mi_test.status('H-020', v) = 'CONDITIONAL' and mi_test.has(p, 'H-020') and mi_test.has(p, 'H-090')`, 'the bearing failure is not carried as conditional knowledge on the version-only identity')}
+  ${A(`mi_test.status('H-011', v) = 'CONDITIONAL' and mi_test.status('H-013', v) = 'CONDITIONAL' and not mi_test.has(p, 'H-011') and not mi_test.has(p, 'H-013')`, 'year bound coverage is asserted without a model year')}
+  ${A(`mi_test.check_in_pack(p, 'Read the eighth VIN character for the Tucson engine code', 'must')`, 'the engine identity check is missing on the version-only pack')}
+  ${A(`mi_test.status('H-013', y) = 'APPLICABLE' and coalesce(mi_test.status('H-012', y), 'EXCLUDED') = 'EXCLUDED' and mi_test.status('H-065', y) = 'CONDITIONAL' and mi_test.status('H-080#b', y) = 'CONDITIONAL'`, 'the version plus year identity has the wrong statuses')}
+  ${A(`mi_test.has(q, 'H-013') and mi_test.has(q, 'H-020') and not mi_test.has(q, 'H-011') and not mi_test.has(q, 'H-080#a')`, 'the version plus year pack has the wrong membership')}
+  r := mi.compile_pack(jsonb_build_object('brand', (select subject_id from mi.brand where name = 'Hyundai'), 'model_line', (select subject_id from mi.model_line where name = 'Tucson'),
+         'generation', (select subject_id from mi.generation where platform_code = 'TL'),
+         'model_year', 2020, 'market_sold', 'US', 'components', '[]'::jsonb, 'equipment', '[]'::jsonb, 'entitlements', '[]'::jsonb, 'states', '[]'::jsonb), 'report');
+  ${A("(r->>'fragment_available')::boolean is false and r->>'reason' = 'version_not_identified'", 'a Tucson TL identity without the engine produced a pack')}
+  ${A(`(select count(*) from mi.candidate_claim k where k.published_claim_id = any (mi_test.pack_claims(p)) and k.task_ref not like 'H-%') = 0`, 'knowledge of another card reached the partial Tucson pack')}
   end;`);
 
 /* ---- Підсумок ---- */

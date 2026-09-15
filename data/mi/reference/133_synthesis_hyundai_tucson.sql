@@ -1,0 +1,40 @@
+-- MI Catalog, картка 3: опори і публікація синтезу CalCar (Hyundai Tucson TL 2.4 GDI Theta II).
+--
+-- 130_publish.sql уже прогнав перевірку якості для всіх кандидатів і
+-- опублікував звичайні клейми картки. Синтез існує лише поверх ОПУБЛІКОВАНИХ
+-- клеймів двох типів знання, тому опори підставляються тут, після 130, а
+-- потім gate проганяється ще раз і синтез публікується без override.
+--
+-- Рецензентом названо саму операцію картки: вона відтворювана і
+-- зафіксована у репозиторії, як і у картках 1 і 2.
+
+
+do $$
+declare r record; ids bigint[]; v_id bigint;
+begin
+  for r in select * from (values
+    ('H-090', array['H-020', 'H-021', 'H-010', 'H-011']),
+    ('H-032', array['H-030', 'H-021']),
+    ('H-042', array['H-040', 'H-041', 'H-021'])
+  ) as t(synth, supports) loop
+    select array_agg(c.published_claim_id) into ids
+      from mi.candidate_claim c
+     where c.task_ref = any (r.supports) and c.published_claim_id is not null;
+    update mi.candidate_claim
+       set proposed_links = jsonb_build_object('supports',
+             to_jsonb(coalesce(ids, '{}'::bigint[])::text[])),
+           reviewer = 'mi-catalog-card-3-hyundai-tucson-tl-24'
+     where task_ref = r.synth;
+  end loop;
+
+  for r in select id from mi.candidate_claim
+            where task_ref in ('H-090', 'H-032', 'H-042') order by id loop
+    perform mi.run_gate(r.id);
+  end loop;
+  for r in select id from mi.candidate_claim
+            where task_ref in ('H-090', 'H-032', 'H-042')
+              and (gate_result->>'passed')::boolean
+            order by id loop
+    v_id := mi.publish_candidate(r.id, 'mi-catalog-card-3-hyundai-tucson-tl-24');
+  end loop;
+end $$;
