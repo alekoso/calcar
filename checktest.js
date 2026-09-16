@@ -87,7 +87,9 @@ const REPORTS = [
   const grabFn = grab(api, 'extractHistoryFacts');
   if (!grabFn) errs.push('extractHistoryFacts не знайдена в api/check.js');
   else {
-    const hf = new Function('text', grabFn + '\nreturn extractHistoryFacts(text);');
+    /* extractHistoryFacts бере номери власників з api/history-owners.js */
+    const ownersSrc = fs.readFileSync('api/history-owners.js', 'utf8').replace(/^export /gm, '');
+    const hf = new Function('text', ownersSrc + grabFn + '\nreturn extractHistoryFacts(text);');
     /* фрагмент S550 (реєстр є, ДТП нема, 2 минулі продажі з пробігами) */
     const s550 = 'ДТП Немає офіційно зареєстрованих Страхові випадки в Україні Не виявлено '
       + 'Історія авто за VIN-кодом 25.08.26 Продається на AUTO.RIA Продавець вказав пробіг 153 тис. км 4-ий власник '
@@ -803,7 +805,7 @@ const REPORTS = [
 /* ---- imported_used, history gap і позитивний доказ ---- */
 {
   const src = grab(api, 'extractHistoryFacts');
-  const fns = new Function(src + '\nreturn { extractHistoryFacts };')();
+  const fns = new Function(fs.readFileSync('api/history-owners.js', 'utf8').replace(/^export /gm, '') + src + '\nreturn { extractHistoryFacts };')();
   const t1 = 'за офіційними відкритими державними даними 1 власник Остання операція Первинна реєстрація Б/В ТЗ ввезене по ВМД';
   const hf1 = fns.extractHistoryFacts(t1);
   if (hf1.imported_used !== true) errs.push('ввезене по ВМД не дало imported_used');

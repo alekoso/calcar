@@ -1,5 +1,8 @@
 /* CalCar: відгук на звіт. POST /api/feedback
    { report_ref, product, verdict: 'positive'|'negative', text?, anon_id?, page? }
+   GET /api/feedback?report_ref=&anon_id= -> { submitted: bool }: чи ця людина
+   вже залишила відгук на цей звіт (звіт не питає вдруге після перезавантаження).
+   Відповідь лише булева: ні тексту, ні вердикту, ні чужих записів.
    з необовʼязковим Authorization: Bearer <JWT Supabase> (тоді user_id
    перевіряється в Auth і записується). Пише лише сервер через service role;
    на Score і зміст звіту не впливає. Один відгук на звіт з одного
@@ -25,14 +28,56 @@ export function sanitizeFeedback(body) {
   return { report_ref, verdict, text: text || null, product, anon_id, page };
 }
 
+/* параметри читання стану: ті самі формати, що й у записі */
+export function sanitizeFeedbackQuery(query) {
+  const q = query && typeof query === 'object' ? query : {};
+  const report_ref = String(q.report_ref || '').trim();
+  if (!REF_RE.test(report_ref)) return { error: 'bad_ref' };
+  const anon_id = typeof q.anon_id === 'string' && ANON_RE.test(q.anon_id) ? q.anon_id : null;
+  return { report_ref, anon_id };
+}
+
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (req.method !== 'POST' && req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
   const lang = resolveLocale(req.body?.lang);
   const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   res.setHeader('cache-control', 'no-store');
   if (!base || !key) return res.status(500).json({ error: errText(lang, 'internal') });
   const root = base.replace(/\/$/, '');
   const hdr = { apikey: key, authorization: 'Bearer ' + key, 'content-type': 'application/json' };
+  if (req.method === 'GET') {
+    const fq = sanitizeFeedbackQuery(req.query);
+    if (fq.error) return res.status(400).json({ error: 'bad_request' });
+    try {
+      let user_id = null;
+      const jwt = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+      if (jwt) {
+        const ur = await fetch(root + '/auth/v1/user', { headers: { apikey: key, authorization: 'Bearer ' + jwt } });
+        const user = ur.ok ? await ur.json().catch(() => null) : null;
+        if (user && user.id) user_id = user.id;
+      }
+      if (!user_id && !fq.anon_id) return res.status(400).json({ error: 'bad_request' });
+      /* той самий шлях фільтра, що і в записі нижче: user_id=eq., потім anon_id=eq. */
+      const base = root + '/rest/v1/report_feedback?report_ref=eq.' + encodeURIComponent(fq.report_ref) + '&select=id&limit=1&';
+      const probes = [];
+      if (user_id) probes.push('user_id=eq.' + encodeURIComponent(user_id));
+      if (fq.anon_id) probes.push('anon_id=eq.' + encodeURIComponent(fq.anon_id));
+      for (const who of probes) {
+        const r = await fetch(base + who, { headers: hdr });
+        if (!r.ok) {
+          console.error(JSON.stringify({ op: 'feedback_submitted_read', status: r.status, has_user: !!user_id, has_anon: !!fq.anon_id }));
+          return res.status(500).json({ error: errText(lang, 'internal') });
+        }
+        const rows = await r.json().catch(() => []);
+        if (Array.isArray(rows) && rows.length) return res.status(200).json({ submitted: true });
+      }
+      return res.status(200).json({ submitted: false });
+    } catch (e) {
+      console.error(JSON.stringify({ op: 'feedback_submitted_read', error: String(e && e.message || e).slice(0, 200) }));
+      return res.status(500).json({ error: errText(lang, 'internal') });
+    }
+  }
+
   const fb = sanitizeFeedback(req.body);
   if (fb.error) return res.status(400).json({ error: 'bad_request' });
   try {

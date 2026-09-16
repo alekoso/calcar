@@ -341,6 +341,45 @@ async function storageUpload(path, buf, mime) {
     return r.ok || r.status === 409;
   } catch (err) { return false; }
 }
+/* Збережена копія ІСТОРИЧНОГО кадру для показу у звіті. Кадр уже пройшов
+   provenance, уже був доказом у Check і лежить у приватному bucket, тож
+   звіт не залежить від хоста-джерела (allowlist, bot-фільтр, зник файл).
+   Лише kind=historical_evidence і лише stored: кадри оголошень цей шлях
+   не віддає. Нема копії: null, і проксі повертає звичайну відмову. */
+const STORED_PATH_RE = /^[0-9a-f]{2}\/[0-9a-f]{2}\/[0-9a-f]{64}\.[a-z0-9]{2,5}$/;
+export async function readStoredHistoricalPhoto(url) {
+  const identity = photoIdentity(url);
+  if (!identity || !/^https:\/\//i.test(String(url || ''))) return null;
+  const e = env();
+  if (!e) return null;
+  const r = await rest('snapshot_photos?photo_identity=eq.' + encodeURIComponent(identity)
+    + '&kind=eq.historical_evidence&storage_status=eq.stored&select=source_url_at_observation,photo_assets(storage_path,mime_type,storage_status)&order=observed_at.desc&limit=20');
+  if (!r.ok || !Array.isArray(r.rows)) {
+    if (!r.missing) console.log('[vehicle-memory]', JSON.stringify({ op: 'read_stored_historical_photo', status: r.status, identity, error: r.error || null }));
+    return null;
+  }
+  /* identity лише звужує пошук за індексом; видаємо тільки ТОЧНИЙ URL, який
+     спостерігали як доказ, і лише шлях bucket канонічного формату з бази */
+  const asset = r.rows
+    .filter(x => x && x.source_url_at_observation === url)
+    .map(x => x.photo_assets)
+    .find(a => a && a.storage_status === 'stored' && STORED_PATH_RE.test(String(a.storage_path || '')));
+  if (!asset) return null;
+  try {
+    const o = await fetch(e.root + '/storage/v1/object/' + PHOTO_STORAGE_BUCKET + '/' + asset.storage_path, { headers: { apikey: e.key, authorization: 'Bearer ' + e.key } });
+    if (!o.ok) {
+      console.log('[vehicle-memory]', JSON.stringify({ op: 'read_stored_historical_photo_object', status: o.status, identity }));
+      return null;
+    }
+    const buf = Buffer.from(await o.arrayBuffer());
+    if (!buf.length || buf.length > PHOTO_MAX_BYTES) return null;
+    const type = String(asset.mime_type || o.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+    return /^image\//.test(type) ? { buf, type } : null;
+  } catch (err) {
+    console.log('[vehicle-memory]', JSON.stringify({ op: 'read_stored_historical_photo_object', error: String(err && err.message || err).slice(0, 120), identity }));
+    return null;
+  }
+}
 /* photos: [{ url, position, kind: 'listing'|'historical_evidence', event_key?, buf?, type? }] */
 export async function preservePhotos({ snapshotId, vehicleId = null, listingId = null, photos, budgetMs = 90000, timeoutMs = 12000 }) {
   const stats = { total: 0, hashed: 0, existing: 0, uploaded: 0, metadata_only: 0, unavailable: 0, linked: 0, bytes: 0, ms: 0 };

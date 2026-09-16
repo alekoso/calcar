@@ -425,7 +425,80 @@
   /* ---- report toolbar: дії конкретного звіту (спільний компонент) ---- */
   .topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:20px;position:relative}
   .reg-badge{background:var(--bg);border:1px solid var(--line-strong);color:var(--ink-2);margin-left:6px;vertical-align:1px}
-  .spec-mo{color:var(--ink-2);font-weight:600;font-size:.93em;margin-left:6px;white-space:nowrap}
+  /* ---- пробіг: основне значення і вторинна інтерактивна метрика ----
+     Між ними лише відступ, без жодного текстового розділювача. Вторинна
+     метрика разом з іконкою це кнопка: наведення, фокус або тап відкривають
+     шкалу інтенсивності. Шкала малюється з осі Пробіг звіту (mileage-intensity.js) */
+  .mil-v{display:inline-flex;align-items:baseline;flex-wrap:wrap;column-gap:14px;row-gap:2px}
+  .mi-trig{display:inline-flex;align-items:center;gap:5px;border:none;background:none;padding:0;margin:0;font:inherit;font-size:.93em;font-weight:500;color:var(--muted);cursor:pointer;white-space:nowrap;border-radius:6px;text-decoration:underline dotted var(--line-strong);text-underline-offset:3px}
+  .mi-trig:hover,.mi-trig[aria-expanded="true"]{color:var(--ink);text-decoration-color:var(--muted)}
+  .mi-trig:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  .mi-trig svg{width:14px;height:14px;flex:0 0 auto}
+  .mi-pop{position:fixed;z-index:160;width:288px;max-width:calc(100vw - 32px);background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 28px rgba(20,22,25,.16);padding:14px 16px 14px;display:none}
+  .mi-pop.open{display:block}
+  .mi-pop .mi-t{display:block;font-size:12.5px;font-weight:600;color:var(--muted)}
+  .mi-pop .mi-val{display:block;font-size:20px;font-weight:800;color:var(--ink);letter-spacing:-.2px;margin-top:2px;font-variant-numeric:tabular-nums}
+  /* шкала вимірювання, не повзунок: тонка риска і маленький трикутник над нею */
+  .mi-meter{position:relative;margin:18px 0 6px;height:8px}
+  .mi-bar{position:absolute;inset:0;border-radius:8px}
+  .mi-mark{position:absolute;top:-4px;bottom:-4px;width:2px;margin-left:-1px;background:var(--ink);border-radius:1px}
+  .mi-mark::before{content:"";position:absolute;left:50%;top:-6px;margin-left:-5px;border:5px solid transparent;border-top-color:var(--ink);border-bottom-width:0}
+  .mi-scale{position:relative;display:flex;justify-content:space-between;gap:8px;font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+  /* норма класу: тонка риска на шкалі і підпис під нею; поточне авто лишається чорною рискою з трикутником */
+  .mi-norm{position:absolute;top:-3px;bottom:-3px;width:0;border-left:1px solid var(--ink-2);opacity:.55}
+  .mi-norm-l{position:absolute;top:0;transform:translateX(-50%);white-space:nowrap;color:var(--ink-2)}
+  .mi-note{display:block;margin-top:10px;font-size:12px;line-height:1.45;color:var(--muted)}
+
+  /* ---- оригінальний опис продавця: чіп біля VIN і бокова шухляда ----
+     Геометрія та сама, що в панелі CalCar Assistant: праворуч на десктопі,
+     шторка знизу на телефоні. Звіт під нею не зсувається */
+  .seller-chip{cursor:pointer;font-family:inherit;color:var(--ink);transition:background .15s,border-color .15s}
+  .seller-chip:hover{background:var(--surface-2);border-color:var(--line-strong)}
+  .seller-chip:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  .seller-chip svg{width:13px;height:13px;color:var(--muted);flex:0 0 auto}
+  .ss-ov{position:fixed;inset:0;background:rgba(15,25,40,.28);z-index:145;opacity:0;pointer-events:none;transition:opacity .22s}
+  .ss-ov.open{opacity:1;pointer-events:auto}
+  .ss-panel{position:fixed;top:0;right:0;bottom:0;width:420px;max-width:100vw;z-index:150;display:flex;flex-direction:column;background:var(--card);border-left:1px solid var(--line);box-shadow:-16px 0 40px rgba(20,22,25,.08);transform:translateX(102%);transition:transform .26s cubic-bezier(.22,.61,.36,1),visibility 0s linear .26s;visibility:hidden}
+  /* закрита шухляда поза фокусом і скрінрідером, але анімація виїзду встигає зіграти */
+  .ss-panel.open{transform:none;visibility:visible;transition:transform .26s cubic-bezier(.22,.61,.36,1),visibility 0s}
+  .ss-grab{display:none;width:38px;height:4px;border-radius:4px;background:var(--line-strong);margin:8px auto 0;flex:0 0 auto}
+  .ss-head{flex-shrink:0;display:flex;align-items:center;gap:12px;padding:0 14px 0 20px;height:57px;border-bottom:1px solid var(--line)}
+  .ss-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+  .ss-t b{font-size:15px;font-weight:700;color:var(--ink)}
+  .ss-t span{font-size:11.5px;color:var(--muted)}
+  .ss-t span:empty{display:none}
+  .ss-x{width:32px;height:32px;border:none;border-radius:50%;background:transparent;color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+  .ss-x:hover{background:var(--surface-2);color:var(--ink)}
+  .ss-x:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  .ss-body{flex:1;overflow-y:auto;padding:18px 20px 24px;overscroll-behavior:contain}
+  .ss-par{margin:0 0 12px;font-size:14.5px;line-height:1.6;color:var(--text);white-space:pre-wrap;overflow-wrap:anywhere}
+  .ss-par:last-child{margin-bottom:0}
+  @media(max-width:760px){
+    .ss-panel{top:auto;left:0;right:0;width:auto;height:82vh;border-left:0;border-top:1px solid var(--line);border-radius:18px 18px 0 0;transform:translateY(102%);box-shadow:0 -14px 44px rgba(20,22,25,.18)}
+    .ss-grab{display:block}
+    .ss-head{height:52px}
+    .ss-body{padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
+  }
+
+  /* ---- відгук: лише в кінці повного розбору, стримано ---- */
+  .fbx{margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
+  .fbx-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .fbx[hidden], .fbx [hidden]{display:none}
+  .fbx-q{font-size:13.5px;font-weight:600;color:var(--ink-2)}
+  .fbx-btn{height:32px;padding:0 13px;border:1px solid var(--line-strong);border-radius:10px;background:var(--card);color:var(--ink);font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;transition:background .15s,border-color .15s}
+  .fbx-btn:hover{background:var(--surface-2)}
+  .fbx-btn:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  .fbx-btn:disabled{opacity:.55;cursor:default}
+  .fbx-more{display:grid;grid-template-rows:0fr;transition:grid-template-rows .22s ease}
+  .fbx-more.open{grid-template-rows:1fr}
+  .fbx-more > div{overflow:hidden}
+  .fbx-more label{display:block;margin:12px 0 6px;font-size:13px;font-weight:600;color:var(--ink-2)}
+  .fbx-more textarea{display:block;width:100%;box-sizing:border-box;border:1px solid var(--line-strong);border-radius:10px;padding:9px 12px;font:inherit;font-size:13.5px;color:var(--text);resize:vertical;min-height:64px}
+  .fbx-more textarea:focus{outline:none;border-color:var(--ink)}
+  .fbx-send{margin-top:8px;height:34px;padding:0 14px;border:none;border-radius:10px;background:var(--ink);color:#fff;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer}
+  .fbx-send:disabled{opacity:.55;cursor:default}
+  .fbx-done{font-size:13.5px;font-weight:600;color:var(--ink-2)}
+  .fbx-err{margin-top:6px;font-size:12.5px;color:var(--red)}
   /* дії звіту рівно по краях: ліворуч повернення, праворуч "Поділитися".
      Посередині дій нема; підказка збереження це текст, а не дія */
   .topbar #saveHint{margin-left:auto}
@@ -441,7 +514,6 @@
   body.readonly #aiBtn,body.readonly .pd-cta,body.readonly #saveHint,body.readonly #trBar,body.readonly .chat-selask{display:none!important}
   /* архівні фото недоступні: компактна плашка замість порожнього місця */
   .arch-fail{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 20px 4px;padding:9px 12px;border:1px dashed var(--line-strong);border-radius:10px;font-size:13px;color:var(--muted)}
-  .arch-fail button,.arch-fail a{font:inherit;font-weight:600;color:var(--ink);background:var(--card);border:1px solid var(--line-strong);border-radius:8px;padding:4px 10px;cursor:pointer;text-decoration:none}
   @media(max-width:620px){
     /* мобільний topbar: дві дії по краях, 40px, без переносу. Share
        лишається читабельним: іконка з підписом, поки він вміщається */
@@ -765,15 +837,6 @@
   .pd-cta-hint{font-size:12.5px;color:var(--muted);line-height:1.45;flex:1;min-width:180px}
   @media print{.pd-cta{display:none}}
   /* відгук про звіт: два кліки після вердикту, без модалки; на Score не впливає */
-  .fb{margin-top:14px;padding-top:12px;border-top:1px dashed var(--line);font-size:13.5px;color:var(--muted)}
-  .fb-q{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-  .fb-btn{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:5px 10px;font-size:16px;line-height:1;cursor:pointer;font-family:inherit;transition:background .15s,border-color .15s}
-  .fb-btn:hover{background:var(--surface-2)}
-  .fb-btn.on{background:var(--brand-soft);border-color:#DCEFAE}
-  .fb-more{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;margin-top:10px}
-  .fb-more textarea{flex:1;min-width:220px;border:1px solid var(--line-strong);border-radius:10px;padding:9px 12px;font:inherit;font-size:13.5px;color:var(--text);resize:vertical;min-height:44px;background:var(--card)}
-  .fb-send{border:none;border-radius:10px;background:var(--ink);color:#fff;font-weight:700;font-size:13px;padding:9px 14px;cursor:pointer;font-family:inherit}
-  .fb-done{margin-top:8px;color:var(--ink);font-weight:600}
   @media print{.fb{display:none}}
   .srcline{font-size:12.5px;color:var(--muted);word-break:break-all}
   .srcline a{color:var(--brand-ink)}
@@ -817,6 +880,9 @@
 <script src="/calcar-public.js"></script>
 <script src="/analytics.js"></script>
 <script src="/chat.js"></script>
+<!-- шкала інтенсивності пробігу: лише презентація осі Пробіг звіту -->
+<script src="/mileage-intensity.js"></script>
+<script src="/vehicle-timeline.js"></script>
 </head>
 <body>
 
@@ -943,15 +1009,16 @@
         <div id="pdShort"></div>
         <button class="pd-more" id="pdMoreBtn" type="button">Read the full reasoning</button>
         <div class="pd-reasoning" id="pdReasoning" style="display:none"></div>
+        <!-- відгук: лише в кінці розгорнутого повного розбору; поле тексту приховане від session replay -->
+        <div class="fbx" id="fbBox" hidden>
+          <div class="fbx-row" id="fbAsk"><span class="fbx-q">Did this analysis help you decide?</span><button class="fbx-btn" type="button" data-fb="positive">Yes</button><button class="fbx-btn" type="button" data-fb="negative">Not really</button></div>
+          <div class="fbx-more" id="fbMore" inert data-private-block><div><label for="fbText">What was missing?</label><textarea id="fbText" rows="3" maxlength="1000"></textarea><button class="fbx-send" id="fbSend" type="button">Send</button></div></div>
+          <div class="fbx-done" id="fbDone" role="status" hidden></div>
+          <div class="fbx-err" id="fbErr" role="alert" hidden></div>
+        </div>
         <div class="pd-cta">
           <button class="pd-cta-btn" id="pdChatBtn" type="button"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg><span>Discuss this car in chat</span></button>
           <span class="pd-cta-hint">Ask about the accident, mileage, options, risks, or compare with other cars</span>
-        </div>
-        <!-- відгук: чи був аналіз корисним; текст блокується в session replay -->
-        <div class="fb" id="fbBox">
-          <div class="fb-q"><span>Was this analysis useful?</span><button class="fb-btn" type="button" data-fb="positive" aria-label="Useful">👍</button><button class="fb-btn" type="button" data-fb="negative" aria-label="Not useful">👎</button></div>
-          <div class="fb-more" id="fbMore" hidden data-private-block><textarea id="fbText" rows="2" maxlength="1000" placeholder="What was missing?"></textarea><button class="fb-send" id="fbSend" type="button">Send</button></div>
-          <div class="fb-done" id="fbDone" hidden></div>
         </div>
       </div>
       <div class="v-text" id="vText"></div>
@@ -983,7 +1050,7 @@
       <a class="ext-link" id="usSrcBtn" href="#" target="_blank" rel="noopener" style="display:none" title="Open the source">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>
       </a>
-      <span class="badge blue">AI photo analysis</span>
+      <span class="badge blue" id="usAiBadge">AI photo analysis</span>
     </div>
     <div class="ba-label" id="baBefore" style="display:none"><span class="dot bad"></span>Before repair (US auction)</div>
     <div class="photo-strip" id="auctionStrip" style="display:none"></div>
@@ -1068,6 +1135,26 @@
 <!-- Чат по авто живе у спільному CalCar Assistant (chat.js). Тут лише кнопка біля виділеного тексту. -->
 <button class="chat-selask" id="chatSelAsk" type="button">Ask about this</button>
 
+<!-- оригінальний опис продавця: шухляда праворуч, на телефоні шторка знизу.
+     Текст третьої сторони; у session replay прихований -->
+<div class="ss-ov" id="sellerOverlay"></div>
+<div class="ss-panel" id="sellerSheet" role="dialog" aria-modal="true" aria-labelledby="sellerTitle" tabindex="-1" aria-hidden="true">
+  <div class="ss-grab" aria-hidden="true"></div>
+  <div class="ss-head">
+    <div class="ss-t"><b id="sellerTitle">From the seller</b><span id="sellerSource"></span></div>
+    <button class="ss-x" id="sellerClose" type="button" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+  </div>
+  <div class="ss-body" id="sellerBody" data-private-block></div>
+</div>
+<!-- шкала інтенсивності пробігу: одна на сторінку, позиціонується від кнопки -->
+<div class="mi-pop" id="miPop" role="tooltip">
+  <span class="mi-t">Average mileage</span>
+  <span class="mi-val" id="miVal"></span>
+  <div class="mi-meter" aria-hidden="true"><div class="mi-bar" id="miBar"></div><div class="mi-norm" id="miNorm"></div><div class="mi-mark" id="miMark"></div></div>
+  <div class="mi-scale" id="miScale"><span aria-hidden="true">0</span><span class="mi-norm-l" id="miNormL"></span><span id="miUpper" aria-hidden="true"></span></div>
+  <span class="mi-note">Average calculated from the vehicle age.</span>
+</div>
+
 <script src="/config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
@@ -1086,6 +1173,28 @@ if (SB) SB.auth.getSession().then(({ data }) => { window.CALCAR_USER_ID = data?.
    адресу кабінету, де звіт бачить лише його власник після входу */
 const TOKEN_RE = /^[A-Za-z0-9_-]{16,64}$/;
 const PATH_R = location.pathname.match(/^\/check\/r\/(?:([a-z0-9-]{1,60})\/)?([A-Za-z0-9_-]{4,64})$/) || [];
+/* ---------- межа доказу для тверджень про архівні фото ----------
+   Дослівна копія api/historical-claims.js (checkuxtest.js стереже збіг):
+   старі збережені звіти не проходили серверну перевірку. Без фотодоказу
+   прибирається БУДЬ-ЯКЕ речення, що спирається на архівні фото, зокрема
+   заперечне ("по архівних фото не підтверджується").
+   Стоїть ДО завантажувача звіту: boot() викликається синхронно, а const
+   нижче за текстом ще не ініціалізовані */
+const ARCHIVE_PHOTO_REF_RE = /(?:^|[\s,(«"])(?:на|по|за|з|із|из|от|згідно|согласно|on|in|from|per|by)\s+(?:(?:доступн|наявн|имеющ|цих|этих|тих|these|those|the|available)[a-zа-яіїєґё]*\s+)?(?:аукціонн|архівн|аукционн|архивн|історичн|историческ|auction|archive|historical)[a-zа-яіїєґё]*\s+(?:фото|кадр|знімк|снимк|photo|image)[a-zа-яіїєґё]*|(?:аукціонн|архівн|аукционн|архивн|історичн|историческ|auction|archive|historical)[a-zа-яіїєґё]*\s+(?:фото|кадр|знімк|снимк|photo|image)[a-zа-яіїєґё]*[^.!?]{0,24}?\s(?:не\s+|do\s+not\s+|don't\s+|doesn't\s+)?(?:показ|фіксу|фиксиру|зафікс|зафикс|підтверджу|подтвержда|демонстру|свідч|свидетельств|дозволя|позволя|show|confirm|reveal|indicate|allow)/i;
+function referencesArchivePhotos(sentence) {
+  return ARCHIVE_PHOTO_REF_RE.test(String(sentence || ''));
+}
+function stripUnbackedPhotoClaims(auction) {
+  if (!auction || typeof auction !== 'object') return auction;
+  const out = Object.assign({}, auction);
+  if (typeof out.summary === 'string' && out.summary.trim()) {
+    const parts = out.summary.match(/[^.!?]+[.!?]*\s*/g) || [out.summary];
+    out.summary = parts.filter(p => !referencesArchivePhotos(p)).join('').trim() || null;
+  }
+  if (Array.isArray(out.findings)) out.findings = out.findings.filter(f => !(f && referencesArchivePhotos(f.text)));
+  return out;
+}
+
 const OPEN_TOKEN = (function(){
   const q = new URLSearchParams(location.search).get('r') || PATH_R[2] || null;
   return q && TOKEN_RE.test(q) ? q : null;
@@ -1339,29 +1448,6 @@ function boot(){
   document.body.classList.add('report-ready');
 }
 
-/* ---------- номер власника в історії: лише за явним доказом ----------
-   Перереєстрація САМА ПО СОБІ власника не змінює: заміна номерного знака,
-   зміна документа чи технічна перереєстрація це та сама людина. Тому бейдж
-   зʼявляється лише коли подія прямо називає власника. Номер беремо з тексту
-   події, якщо він там названий, інакше рахуємо підтверджені переходи
-   послідовно. Немає доказу зміни власника: немає і бейджа. */
-function ownerBadges(history){
-  const OWNER = '(?:власник|владел|owner)';
-  const hasOwner = new RegExp(OWNER, 'i');
-  const numRe = new RegExp('(\\d+)\\s*[-\u2011]?\\s*(?:й|я|го|ий|ый|st|nd|rd|th)?\\s*' + OWNER, 'i');
-  const ORD = [[/перш|перв|first/i, 1], [/друг|втор|second/i, 2], [/трет|third/i, 3], [/четверт|fourth/i, 4], [/пʼят|пят|fifth/i, 5]];
-  let seq = 0;
-  return (Array.isArray(history) ? history : []).map(h => {
-    const txt = String((h && h.event) || '');
-    if (!hasOwner.test(txt)) return null;
-    const m = numRe.exec(txt);
-    if (m) { seq = Math.max(seq, parseInt(m[1], 10) || 0); return parseInt(m[1], 10) || null; }
-    const ord = ORD.find(o => o[0].test(txt));
-    if (ord) { seq = Math.max(seq, ord[1]); return ord[1]; }
-    return ++seq;
-  });
-}
-
 function boot2(D){
 
   /* ---- авто: стрічка фото + факти, як в Import ---- */
@@ -1376,23 +1462,32 @@ function boot2(D){
      змінюється лише подача. 6 полів: 4+2, менше: порівну */
   const spec = [];
   if (M.price) spec.push([t('Price'), nf(M.price) + ' ' + (M.currency || ''), 'price']);
-  /* середній пробіг за МІСЯЦЬ: суто presentation з того самого
-     canonical annual_mileage_km осі Пробіг, округлення до 50 */
+  /* пробіг: основне значення і вторинна метрика інтенсивності. Обидва числа
+     з однієї осі Пробіг звіту (score_dimensions.mileage): одометр у км і
+     середньорічний пробіг, які вже порахувала модель. Шкалу малює
+     mileage-intensity.js; своєї формули пробігу тут нема. Бракує пробігу чи
+     віку: вісь недоступна, і вторинну метрику не показуємо */
   const dimsMil = ((D.score_breakdown || D.score_breakdown_v2 || {}).score_dimensions || {}).mileage;
-  const monthlyKm = (dimsMil && dimsMil.score_available === true && typeof dimsMil.annual_mileage_km === 'number')
-    ? Math.round(dimsMil.annual_mileage_km / 12 / 50) * 50 : null;
-  const annualHtml = monthlyKm !== null
-    ? '<span class="spec-mo" title="' + esc(t('Average monthly mileage over the whole life of the vehicle.')) + '">(≈' + esc(nf(monthlyKm)) + ' ' + esc(t('km/mo')) + ')</span>'
+  const mi = window.CalCarMileageIntensity ? window.CalCarMileageIntensity.fromDimension(dimsMil) : null;
+  const miIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.5h.01"/></svg>';
+  const miBtn = mi
+    ? '<button class="mi-trig" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="miPop"'
+      + ' aria-label="' + esc(t('Average mileage') + ': ' + nf(mi.monthly_km) + ' ' + t('km/mo')) + '"'
+      + ' data-mi="' + esc(JSON.stringify(mi)) + '">≈' + esc(nf(mi.monthly_km)) + ' ' + esc(t('km/mo')) + miIcon + '</button>'
     : '';
-  if (v.mileage_note) spec.push([t('Mileage'), clean(v.mileage_note), null, annualHtml]);
-  else if (M.odometer_km) spec.push([t('Mileage'), nf(M.odometer_km) + ' ' + t('km'), null, annualHtml]);
+  const milPrimary = (mi && mi.odometer_km !== null) ? nf(mi.odometer_km) + ' ' + t('km')
+    : v.mileage_note ? clean(v.mileage_note)
+    : M.odometer_km ? nf(M.odometer_km) + ' ' + t('km') : null;
+  if (milPrimary) spec.push([t('Mileage'), milPrimary, null, miBtn]);
   if (v.engine) spec.push([t('Engine'), clean(v.engine)]);
   if (v.transmission) spec.push([t('Gearbox'), clean(v.transmission)]);
   if (v.drive) spec.push([t('Drivetrain'), clean(v.drive)]);
   if (v.trim) spec.push([t('Trim'), clean(v.trim)]);
   const FUEL = { petrol: t('Petrol'), diesel: t('Diesel'), hybrid: t('Hybrid'), electric: t('Electric') };
   if (v.fuel && FUEL[v.fuel]) spec.push([t('Fuel'), FUEL[v.fuel]]);
-  const specRow = r => '<div class="spec-row"><span class="spec-l">' + esc(r[0]) + '</span><span class="spec-v' + (r[2] ? ' ' + r[2] : '') + '">' + esc(r[1]) + (r[3] || '') + '</span></div>';
+  /* вторинна частина значення (метрика інтенсивності) стоїть поруч лише з відступом */
+  const specRow = r => '<div class="spec-row"><span class="spec-l">' + esc(r[0]) + '</span><span class="spec-v' + (r[2] ? ' ' + r[2] : '') + '">'
+    + (r[3] ? '<span class="mil-v"><span>' + esc(r[1]) + '</span>' + r[3] + '</span>' : esc(r[1])) + '</span></div>';
   /* збалансовані колонки: 5=3+2, 6=3+3, 7=4+3, 8=4+4 */
   const specCut = Math.ceil(spec.length / 2);
   $('specGrid').innerHTML = '<div class="spec-col">' + spec.slice(0, specCut).map(specRow).join('') + '</div>'
@@ -1403,6 +1498,12 @@ function boot2(D){
   const idBits = [];
   if (M.vin) idBits.push(chip('VIN', M.vin));
   if (M.plate) idBits.push(chip(t('Plate'), M.plate));
+  /* оригінальний опис продавця: кнопка лише тоді, коли текст справді є у звіті */
+  if (typeof M.seller_text === 'string' && M.seller_text.trim()) {
+    idBits.push('<button class="id-chip seller-chip" type="button" id="sellerBtn" aria-haspopup="dialog" aria-controls="sellerSheet" aria-expanded="false">'
+      + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.9 8.9 0 0 1-3.7-.8L3 20l1-4.9a8.4 8.4 0 0 1-.9-3.6 8.5 8.5 0 0 1 9-8.4 8.4 8.4 0 0 1 9 8.4z"/><path d="M8.5 10.5h.01"/><path d="M12 10.5h.01"/><path d="M15.5 10.5h.01"/></svg>'
+      + '<span>' + esc(t('From the seller')) + '</span></button>');
+  }
   if (idBits.length) {
     $('titleChips').innerHTML = idBits.join('');
     $('titleChips').addEventListener('click', e => {
@@ -1457,6 +1558,8 @@ function boot2(D){
         const open = $('pdReasoning').style.display !== 'none';
         $('pdReasoning').style.display = open ? 'none' : '';
         $('pdMoreBtn').textContent = open ? t('Read the full reasoning') : t('Collapse the reasoning');
+        /* відгук живе лише в кінці розгорнутого повного розбору */
+        if (window.calcarFeedbackSync) window.calcarFeedbackSync(open === false);
       };
     } else {
       $('pdMoreBtn').style.display = 'none';
@@ -1576,8 +1679,15 @@ function boot2(D){
      відновлення або історичні фото такої події. Нейтральна історія
      (реєстрації, власники) блок не створює. Фото нема: ані порожньої галереї,
      ані повідомлень про невдачу, ані сирих URL */
-  const au = D.auction || {};
+  const auction0 = D.auction || {};
   const auPh = httpsOnly(M.auction_photos);
+  /* архівні кадри були доказом: їх передали у Vision (_meta.auction_photos),
+     або є канонічний historical_visual з evidence по auction_photo_N */
+  const hvEv = (D.historical_visual && Array.isArray(D.historical_visual.evidence)) ? D.historical_visual.evidence : [];
+  const photoEvidence = auPh.length > 0 || hvEv.some(e => e && /auction_photo_\d+/.test(String(e.ref || '')));
+  /* межа доказу і для старих збережених звітів: без кадрів речення
+     "на аукціонних фото видно" не показуємо (копія api/historical-claims.js) */
+  const au = photoEvidence ? auction0 : stripUnbackedPhotoClaims(auction0);
   const damageStory = (au.found === true || auPh.length > 0)
     && (au.summary || auPh.length || (Array.isArray(au.findings) && au.findings.length));
   if (damageStory) {
@@ -1585,34 +1695,39 @@ function boot2(D){
     const am = M.auction_meta || {};
     /* американський контекст лише коли історія справді американська */
     const isUS = !!(am.house || (M.auction_search && M.auction_search.status === 'found') || (M.auction_url && /bidfax|copart|iaai|bid\.cars|poctra/i.test(M.auction_url)) || (auPh.length && auPh.every(u => /riastatic\.com\/photos\/auto\/usa\//.test(u))));
+    /* стан архівних кадрів одним рядком, без кнопок повтору і службових дій:
+       використані, але зараз не показуються, або недоступні взагалі */
+    const archNote = key => {
+      if (document.getElementById('archFail')) return;
+      const box = document.createElement('div');
+      box.className = 'arch-fail'; box.id = 'archFail'; box.setAttribute('role', 'note');
+      box.textContent = t(key);
+      const strip = $('auctionStrip');
+      strip.parentNode.insertBefore(box, strip.nextSibling);
+    };
     if (auPh.length) {
       $('baBefore').style.display = '';
       $('baBefore').innerHTML = '<span class="dot bad"></span>' + esc(isUS ? t('Before repair (US auction)') : t('Past photos'));
       $('auctionStrip').style.display = '';
-      /* архівні кадри йдуть через CalCar-проксі: збережений звіт не залежить
-         від того, чи пустить сторонній CDN цей телефон за прямим посиланням.
-         Кадр, що не завантажився, зникає, а не лишає порожній прямокутник;
-         якщо не завантажився жоден, компактна плашка з повтором і джерелом */
+      /* архівні кадри йдуть через CalCar-проксі: він бере кадр у джерела або
+         збережену копію доказу з Vehicle Memory. Кадр, що не завантажився,
+         зникає; якщо не завантажився жоден, лишається рядок стану */
       const proxied = u => /^https:\/\//.test(u) ? '/api/img?u=' + encodeURIComponent(u) : u;
-      $('auctionStrip').innerHTML = auPh.map(u => '<img loading="lazy" src="' + esc(proxied(u)) + '" data-src="' + esc(u) + '" alt="">').join('');
       const stripEl = $('auctionStrip');
-      const archFail = () => {
+      stripEl.innerHTML = auPh.map(u => '<img loading="lazy" src="' + esc(proxied(u)) + '" data-src="' + esc(u) + '" alt="">').join('');
+      stripEl.querySelectorAll('img').forEach(img => img.addEventListener('error', () => {
+        img.remove();
         if (stripEl.querySelector('img')) return;
         stripEl.style.display = 'none';
-        if (document.getElementById('archFail')) return;
-        const box = document.createElement('div');
-        box.className = 'arch-fail'; box.id = 'archFail';
-        box.innerHTML = '<span>' + esc(t('Archive photos are temporarily unavailable')) + '</span><button type="button" id="archRetry">' + esc(t('Retry')) + '</button>'
-          + (M.auction_url ? '<a href="' + esc(M.auction_url) + '" target="_blank" rel="noopener">' + esc(t('Open source')) + '</a>' : '');
-        stripEl.parentNode.insertBefore(box, stripEl.nextSibling);
-        box.querySelector('#archRetry').onclick = () => {
-          box.remove(); stripEl.style.display = '';
-          stripEl.innerHTML = auPh.map(u => '<img loading="lazy" src="' + esc(proxied(u)) + '&r=' + Date.now() + '" data-src="' + esc(u) + '" alt="">').join('');
-          wireStrip();
-        };
-      };
-      const wireStrip = () => stripEl.querySelectorAll('img').forEach(img => img.addEventListener('error', () => { img.remove(); archFail(); }, { once: true }));
-      wireStrip();
+        $('baBefore').style.display = 'none';
+        archNote('Archive photos were used in the analysis but are not available to view right now.');
+      }, { once: true }));
+    } else if (photoEvidence) {
+      archNote('Archive photos were used in the analysis but are not available to view right now.');
+    } else {
+      archNote('Archive photos are unavailable.');
+      /* кадрів не було: позначка "AI-аналіз фото" була б неправдою */
+      $('usAiBadge').style.display = 'none';
     }
     if (au.summary) { $('usSummary').style.display = ''; $('usSummary').textContent = clean(au.summary); }
     if (Array.isArray(au.findings) && au.findings.length) {
@@ -1721,15 +1836,17 @@ function boot2(D){
   const aas = (D.score_breakdown || D.score_breakdown_v2 || {}).auction_absent_state || null;
   if (Array.isArray(D.history) && D.history.length) {
     $('histCard').style.display = '';
-    const owners = ownerBadges(D.history);
+    /* канонічний порядок і тривалості рахує код (vehicle-timeline.js); номер
+       власника лише зі структурованого реєстру оригінального звіту, не з перекладу */
+    const hist = CalCarTimeline.normalize(D.history, window.calcarLang(), DATA && DATA.history);
     /* connector між подіями малюється ЗАВЖДИ (крім останньої), підпис
        інтервалу опційний: невідому дату не вигадуємо заради лінії */
-    $('histList').innerHTML = D.history.map((h, i) =>
+    $('histList').innerHTML = hist.map((h, i) =>
       (i > 0 ? '<div class="hgap">' + (h.gap ? esc(h.gap) : '') + '</div>' : '')
       /* реєстраційні події видно при скануванні; бейдж лише за явну
          перереєстрацію, "зміну власника" не вигадуємо */
-      + '<div class="hrow' + (/реєстрац|регистрац|registration/i.test(h.event) ? ' reg' : '') + (i === D.history.length - 1 ? ' last' : '') + '"><span class="hd">' + esc(h.date) + '</span><span>' + esc(h.event)
-      + (owners[i] ? ' <span class="badge reg-badge">' + esc(t('Owner #{n}').replace('{n}', owners[i])) + '</span>' : '') + '</span></div>'
+      + '<div class="hrow' + (/реєстрац|регистрац|registration/i.test(h.event) ? ' reg' : '') + (i === hist.length - 1 ? ' last' : '') + '"><span class="hd">' + esc(h.date) + '</span><span>' + esc(h.event)
+      + (h.owner_ordinal ? ' <span class="badge reg-badge">' + esc(t('Owner #{n}').replace('{n}', h.owner_ordinal)) + '</span>' : '') + '</span></div>'
     ).join('')
     + (D.history_note ? '<div class="dmg-note hnote">' + esc(D.history_note) + '</div>' : '')
     /* стан аукціонної перевірки: НЕ твердження, що всі авто з США мусять
@@ -1816,37 +1933,261 @@ function shareToast(msg){
   el.textContent = msg; el.classList.add('on');
   clearTimeout(shareToast._t); shareToast._t = setTimeout(() => el.classList.remove('on'), 2200);
 }
-/* Відгук про звіт: 👍/👎 після вердикту і необовʼязкове "чого не вистачило".
-   Пишеться в report_feedback через /api/feedback з посиланням на звіт
-   (токен публічного посилання або public_id), на Score не впливає.
-   Текст відгуку в аналітику не йде. */
+/* ---------- відгук про звіт ----------
+   Лише в кінці ПОВНОГО розбору, який людина відкрила сама, і лише для її
+   перших трьох завершених перевірок. Жодних модалок, таймерів чи відсотка
+   прокрутки. Пишеться в report_feedback через /api/feedback, на Score не
+   впливає; текст відгуку в аналітику не йде. Джерела правди:
+   - автор чи публічне посилання: READONLY (локальний список перевірок цього
+     пристрою calcar_recent_checks, той самий, що визначає авторство звіту);
+   - перші три перевірки: у залогіненого таблиця reports (kind = check), у
+     гостя той самий локальний список;
+   - чи відгук уже залишено: GET /api/feedback для цього звіту й ідентичності. */
+const FEEDBACK_FIRST_N = 3;
+const RECENT_LIST_CAP = 20; /* check.html тримає не більше 20 записів */
+/* rows: перевірки людини від найстаріших. Звіт серед перших N, або всього
+   перевірок менше N (тоді ця, навіть якщо ще не записалась, серед перших) */
+function isAmongFirstChecks(rows, ids, n, truncated) {
+  if (truncated) return false;
+  const list = Array.isArray(rows) ? rows : [];
+  if (list.length < n) return true;
+  const hit = r => !!r && (
+    (ids.token && (r.token === ids.token || r.share_token === ids.token)) ||
+    (ids.share_token && (r.token === ids.share_token || r.share_token === ids.share_token)) ||
+    (ids.row_id && r.id === ids.row_id) ||
+    (ids.analyzed_at && r.analyzed_at === ids.analyzed_at));
+  return list.slice(0, n).some(hit);
+}
 (function () {
-  const box = document.getElementById('fbBox'); if (!box) return;
-  const more = document.getElementById('fbMore'), done = document.getElementById('fbDone'), txt = document.getElementById('fbText'), sendBtn = document.getElementById('fbSend');
-  let verdict = null, busy = false;
+  const box = $('fbBox'); if (!box) return;
+  const ask = $('fbAsk'), more = $('fbMore'), txt = $('fbText'), sendBtn = $('fbSend'), done = $('fbDone'), err = $('fbErr');
+  let verdict = null, busy = false, eligible = null;
   function ref() { return OPEN_TOKEN || (DATA && DATA._meta && DATA._meta.share_token) || OPEN_ID || null; }
+  async function authHeaders() {
+    const h = {};
+    try { const { data: s } = SB ? await SB.auth.getSession() : { data: null }; if (s && s.session) h.authorization = 'Bearer ' + s.session.access_token; } catch (e) {}
+    return h;
+  }
+  async function firstChecks() {
+    const ids = { token: OPEN_TOKEN, share_token: M.share_token || null, row_id: ROW_ID || OPEN_ID || null, analyzed_at: M.analyzed_at || null };
+    let session = null;
+    try { const { data } = SB ? await SB.auth.getSession() : { data: null }; session = data && data.session; } catch (e) {}
+    if (session && SB) {
+      const { data: rows, error } = await SB.from('reports')
+        .select('id, created_at, share_token:data->_meta->>share_token, analyzed_at:data->_meta->>analyzed_at')
+        .eq('kind', 'check').order('created_at', { ascending: true }).limit(FEEDBACK_FIRST_N);
+      if (error) return false;
+      return isAmongFirstChecks(rows, ids, FEEDBACK_FIRST_N, false);
+    }
+    const local = localRecent().filter(x => x && x.token)
+      .slice().sort((a, b) => Date.parse(a.created_at || 0) - Date.parse(b.created_at || 0));
+    return isAmongFirstChecks(local, ids, FEEDBACK_FIRST_N, local.length >= RECENT_LIST_CAP);
+  }
+  async function alreadySent(r) {
+    const q = '/api/feedback?report_ref=' + encodeURIComponent(r) + (window.calcar ? '&anon_id=' + encodeURIComponent(window.calcar.aid()) : '');
+    const res = await fetch(q, { headers: await authHeaders(), cache: 'no-store' });
+    if (!res.ok) return true; /* стан невідомий: краще не питати ще раз */
+    const j = await res.json().catch(() => ({}));
+    return j.submitted !== false;
+  }
+  async function decide() {
+    if (eligible !== null) return eligible;
+    try {
+      const r = ref();
+      eligible = !READONLY && !!r && await firstChecks() && !(await alreadySent(r));
+    } catch (e) { eligible = false; }
+    return eligible;
+  }
   async function post(text) {
     const r = ref(); if (!r || !verdict) return false;
-    const headers = { 'content-type': 'application/json' };
-    try { const { data: s } = SB ? await SB.auth.getSession() : { data: null }; if (s && s.session) headers.authorization = 'Bearer ' + s.session.access_token; } catch (e) {}
+    const headers = Object.assign({ 'content-type': 'application/json' }, await authHeaders());
     const body = { report_ref: r, product: 'check', verdict, text: text || '', anon_id: window.calcar ? window.calcar.aid() : null, page: location.pathname.replace(/\/check\/.*/, '/check/*'), lang: window.calcarLang() };
     try { const res = await fetch('/api/feedback', { method: 'POST', headers, body: JSON.stringify(body) }); return res.ok; } catch (e) { return false; }
   }
-  box.addEventListener('click', async e => {
-    const b = e.target.closest('.fb-btn'); if (!b || busy) return;
-    if (!ref()) { box.hidden = true; return; }   /* звіт лише в цьому браузері: нема на що посилатись */
-    verdict = b.dataset.fb;
-    box.querySelectorAll('.fb-btn').forEach(x => x.classList.toggle('on', x === b));
-    more.hidden = false; done.hidden = true;
-    busy = true; const ok = await post(''); busy = false;
-    if (!ok) { done.textContent = t('Could not send, try again'); done.hidden = false; }
-  });
-  sendBtn.onclick = async () => {
-    if (!verdict || busy) return;
-    busy = true; const ok = await post(txt.value.trim().slice(0, 1000)); busy = false;
-    done.textContent = ok ? t('Thanks for the feedback') : t('Could not send, try again');
-    done.hidden = false; if (ok) more.hidden = true;
+  function finish() {
+    ask.hidden = true; more.classList.remove('open'); more.setAttribute('inert', '');
+    err.hidden = true;
+    done.textContent = t('Thanks for the feedback') + ' ✓';
+    done.hidden = false;
+    eligible = false; /* у цій сесії більше не питаємо */
+  }
+  function fail() { err.textContent = t('Could not send, try again'); err.hidden = false; }
+  /* викликає кнопка "Читати повний розбір": відгук живе лише в розгорнутому розборі */
+  window.calcarFeedbackSync = async function (isOpen) {
+    /* згорнутий розбір ховає і питання, і подяку: вони належать розгорнутому розбору */
+    if (!isOpen) { box.hidden = true; return; }
+    if (!done.hidden) { box.hidden = false; return; }
+    if (await decide() && $('pdReasoning').style.display !== 'none') box.hidden = false;
   };
+  ask.addEventListener('click', async e => {
+    const b = e.target.closest('.fbx-btn'); if (!b || busy) return;
+    verdict = b.dataset.fb;
+    ask.querySelectorAll('.fbx-btn').forEach(x => { x.disabled = true; });
+    busy = true; const ok = await post(''); busy = false;
+    ask.querySelectorAll('.fbx-btn').forEach(x => { x.disabled = false; });
+    if (!ok) { fail(); return; }
+    err.hidden = true;
+    if (verdict === 'positive') { finish(); return; }
+    /* "не зовсім": відповідь уже записана, далі лише необовʼязкове пояснення */
+    ask.hidden = true;
+    more.removeAttribute('inert'); more.classList.add('open');
+    setTimeout(() => txt.focus(), 230);
+  });
+  sendBtn.addEventListener('click', async () => {
+    if (busy || !verdict) return;
+    sendBtn.disabled = true; busy = true;
+    const ok = await post(txt.value.trim().slice(0, 1000));
+    busy = false; sendBtn.disabled = false;
+    if (ok) finish(); else fail();
+  });
+})();
+
+/* ---------- шкала інтенсивності пробігу ----------
+   Одна плаваюча панель на сторінку, фіксована відносно вікна: у картці авто
+   overflow:hidden, і абсолютна панель там обрізалась би. Наведення і фокус
+   відкривають, клік закріплює, на тачі тап. ESC закриває і повертає фокус */
+(function () {
+  const pop = $('miPop'); if (!pop) return;
+  let trig = null, pinned = false, hideT = null;
+  const hoverable = () => window.matchMedia && window.matchMedia('(hover:hover) and (pointer:fine)').matches;
+  function place() {
+    if (!trig || !pop.classList.contains('open')) return;
+    const r = trig.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const left = Math.max(16, Math.min(r.left, vw - w - 16));
+    let top = r.bottom + 8;
+    if (top + h > vh - 12 && r.top - h - 8 > 12) top = r.top - h - 8;
+    pop.style.left = left + 'px'; pop.style.top = top + 'px';
+  }
+  function fill(mi) {
+    $('miVal').textContent = nf(mi.monthly_km) + ' ' + t('km/mo');
+    /* одиниця вже є у значенні зверху: підписи шкали лише числа */
+    $('miUpper').textContent = nf(mi.upper_km) + '+';
+    const normOk = typeof mi.norm_km === 'number' && typeof mi.norm_pct === 'number';
+    $('miNorm').style.display = normOk ? '' : 'none';
+    $('miNormL').style.display = normOk ? '' : 'none';
+    if (normOk) {
+      $('miNorm').style.left = Math.max(0, Math.min(100, mi.norm_pct)).toFixed(2) + '%';
+      $('miNormL').textContent = t('Norm') + ' ' + nf(mi.norm_km);
+      /* підпис не налазить на 0 і праву межу, риска стоїть точно */
+      $('miNormL').style.left = Math.max(22, Math.min(64, mi.norm_pct)).toFixed(2) + '%';
+    }
+    const b = mi.bands, f = x => Math.max(0, Math.min(100, x)).toFixed(1) + '%';
+    /* спокійно, звичайний діапазон класу лаймом, далі amber і червоний */
+    $('miBar').style.background = 'linear-gradient(90deg,'
+      + ' var(--line-strong) 0%, var(--line-strong) ' + f(b.low_end_pct * 0.6) + ','
+      + ' var(--brand) ' + f(b.low_end_pct) + ', var(--brand) ' + f(b.normal_end_pct) + ','
+      + ' var(--amber) ' + f(b.normal_end_pct + (b.high_end_pct - b.normal_end_pct) * 0.45) + ', var(--amber) ' + f(b.high_end_pct) + ','
+      + ' var(--red) ' + f(b.high_end_pct + 10) + ', var(--red) 100%)';
+    $('miMark').style.left = f(mi.marker_pct);
+  }
+  function open(btn, pin) {
+    let mi = null; try { mi = JSON.parse(btn.dataset.mi || 'null'); } catch (e) {}
+    if (!mi) return;
+    clearTimeout(hideT);
+    if (trig && trig !== btn) trig.setAttribute('aria-expanded', 'false');
+    trig = btn; pinned = !!pin;
+    fill(mi);
+    pop.classList.add('open');
+    btn.setAttribute('aria-expanded', 'true');
+    place();
+  }
+  function close(returnFocus) {
+    clearTimeout(hideT);
+    if (!trig) return;
+    pop.classList.remove('open');
+    trig.setAttribute('aria-expanded', 'false');
+    const t0 = trig; trig = null; pinned = false;
+    if (returnFocus) t0.focus();
+  }
+  document.addEventListener('click', e => {
+    const b = e.target.closest ? e.target.closest('.mi-trig') : null;
+    if (b) {
+      e.preventDefault();
+      if (trig === b && pinned) close(false); else open(b, true);
+      return;
+    }
+    if (trig && !pop.contains(e.target)) close(false);
+  });
+  document.addEventListener('mouseover', e => {
+    if (!hoverable()) return;
+    const b = e.target.closest ? e.target.closest('.mi-trig') : null;
+    if (b) { if (trig !== b) open(b, false); else clearTimeout(hideT); return; }
+    if (pop.contains(e.target)) { clearTimeout(hideT); return; }
+    if (trig && !pinned) { clearTimeout(hideT); hideT = setTimeout(() => { if (!pinned) close(false); }, 180); }
+  });
+  document.addEventListener('focusin', e => {
+    const b = e.target.closest ? e.target.closest('.mi-trig') : null;
+    if (b && trig !== b) open(b, false);
+  });
+  document.addEventListener('focusout', e => {
+    if (trig && e.target === trig && !pinned) close(false);
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && trig) close(true); });
+  window.addEventListener('scroll', place, { passive: true });
+  window.addEventListener('resize', place);
+})();
+
+/* ---------- оригінальний опис продавця ----------
+   Текст показується дослівно, як його написав продавець: без переказу і
+   виправлень. Абзаци окремими вузлами: згодом у них можна буде підсвітити
+   фрази, які CalCar використав в аналізі. Шухляда не веде зі звіту */
+(function () {
+  const sheet = $('sellerSheet'), ov = $('sellerOverlay'), body = $('sellerBody'), closeBtn = $('sellerClose');
+  if (!sheet || !ov || !body || !closeBtn) return;
+  let lastTrig = null;
+  /* підпис джерела лише з реального домену посилання, без здогадок */
+  const SOURCE_NAMES = { 'auto.ria.com': 'AUTO.RIA', 'mobile.de': 'mobile.de', 'suchen.mobile.de': 'mobile.de', 'autoscout24.com': 'AutoScout24', 'otomoto.pl': 'OTOMOTO' };
+  function sourceLabel() {
+    const d = String(M.domain || '').toLowerCase().replace(/^www\./, '');
+    return SOURCE_NAMES[d] || d || '';
+  }
+  function fill() {
+    body.textContent = '';
+    const paras = String(M.seller_text || '').replace(/\r\n?/g, '\n').split(/\n{2,}/).map(p => p.replace(/^\n+|\n+$/g, '')).filter(p => p.trim());
+    paras.forEach((p, i) => {
+      const el = document.createElement('p');
+      el.className = 'ss-par'; el.dataset.par = String(i);
+      el.textContent = clean(p);
+      body.appendChild(el);
+    });
+    $('sellerSource').textContent = sourceLabel();
+    body.scrollTop = 0;
+  }
+  function open(btn) {
+    if (!(typeof M.seller_text === 'string' && M.seller_text.trim())) return;
+    lastTrig = btn || null;
+    fill();
+    sheet.classList.add('open'); ov.classList.add('open');
+    sheet.setAttribute('aria-hidden', 'false');
+    if (lastTrig) lastTrig.setAttribute('aria-expanded', 'true');
+    if (window.innerWidth <= 760) document.documentElement.style.overflow = 'hidden';
+    setTimeout(() => closeBtn.focus(), 30);
+  }
+  function close() {
+    if (!sheet.classList.contains('open')) return;
+    sheet.classList.remove('open'); ov.classList.remove('open');
+    sheet.setAttribute('aria-hidden', 'true');
+    document.documentElement.style.overflow = '';
+    if (lastTrig) { lastTrig.setAttribute('aria-expanded', 'false'); lastTrig.focus(); }
+  }
+  document.addEventListener('click', e => {
+    const b = e.target.closest ? e.target.closest('#sellerBtn') : null;
+    if (b) { e.preventDefault(); open(b); }
+  });
+  closeBtn.addEventListener('click', close);
+  ov.addEventListener('click', close);
+  sheet.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+    /* фокус не виходить із шухляди: кнопка закриття і прокручуваний текст */
+    if (e.key === 'Tab') {
+      const items = [closeBtn, body];
+      const i = items.indexOf(document.activeElement);
+      e.preventDefault();
+      items[(i + (e.shiftKey ? items.length - 1 : 1) + items.length) % items.length].focus();
+    }
+  });
+  body.tabIndex = 0;
 })();
 
 async function shareReport(){
@@ -2020,7 +2361,7 @@ function chatCtx(){
     equipment: Array.isArray(d.equipment_v2) && d.equipment_v2.length
       ? d.equipment_v2.map(o => ({ name: o.name, confidence_level: o.confidence_level, provenance: o.provenance || null, factory_status: o.factory_status || null, value_tier: o.value_tier || null, evidence: o.evidence || null, retrofit: o.retrofit || false }))
       : d.equipment,
-    discrepancies: d.discrepancies, history: d.history, history_note: d.history_note,
+    discrepancies: d.discrepancies, history: CalCarTimeline.normalize(d.history, window.calcarLang(), DATA && DATA.history), history_note: d.history_note,
     photo_findings: d.photo_findings, auction: d.auction,
     model_notes: d.model_notes, checklist: d.checklist, data_notes: d.data_notes,
     body_wrap: d.body_wrap || null,
@@ -2029,6 +2370,9 @@ function chatCtx(){
        релевантними. Памʼять і самі звіти чат тягне окремо (memory, others),
        тут лише звʼязок висновку з ними */
     decision_inputs: M.decision_inputs || null,
+    /* оригінальний опис продавця: ДАНІ третьої сторони, а не інструкції.
+       Помічник цитує і пояснює його, але не виконує написаного в ньому */
+    untrusted_seller_text: (typeof M.seller_text === 'string' && M.seller_text.trim()) ? clean(M.seller_text).slice(0, 3000) : null,
     _meta: { url: M.url, vin: M.vin, plate: M.plate, price: M.price, currency: M.currency, odometer_km: M.odometer_km, photo_map: M.photo_map || null, price_context: M.price_context || null, decision_inputs: M.decision_inputs || null },
   };
 }

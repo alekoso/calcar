@@ -11,6 +11,8 @@ import {
   HISTORICAL_VISUAL_RULES, HISTORICAL_VISUAL_SCHEMA, HISTORICAL_VISUAL_VERSION,
   gateSeverityRaisingSignals,
 } from './visual-signals.js';
+import { hasHistoricalPhotoEvidence, stripUnbackedPhotoClaims } from './historical-claims.js';
+import { parseOwnerEvents, annotateOwnerOrdinals } from './history-owners.js';
 import {
   photoIdentity, photoSetFingerprint, listingFingerprint, snapshotRow, listingKey, dedupePhotoVariants,
   readVehicle, upsertVehicle, observeListing, patchSnapshotClaims, preservePhotos, snapshotHasPhotos, readListingPhotoFingerprints,
@@ -928,6 +930,8 @@ export function extractHistoryFacts(text) {
   return {
     registry_present,
     owners_count,
+    /* явні підписи "N-ий власник DD.MM.YY Перереєстрація": єдине джерело номера власника в історії */
+    owner_events: parseOwnerEvents(t),
     past_listings,
     past_mileage_points,
     accident_recorded,
@@ -3243,6 +3247,18 @@ async function runCheck(req, res, job) {
       : sanitizeHistoricalVisual(parsed.historical_visual, auctionPhotos.length || 0);
     if (hvClean) parsed.historical_visual = hvClean;
     else delete parsed.historical_visual;
+    /* межа доказу: без архівних кадрів (ні переданих у Vision, ні канонічного
+       візуалу) звіт не може казати "на аукціонних фото видно". Факт ДТП з
+       інших джерел лишається, прибирається лише посилання на фото */
+    if (parsed.auction && !hasHistoricalPhotoEvidence({ auctionPhotos, historicalVisual: parsed.historical_visual })) {
+      const guarded = stripUnbackedPhotoClaims(parsed.auction);
+      if (guarded.removed) {
+        parsed.auction = guarded.auction;
+        console.log('[diag]', JSON.stringify({ evt: 'unbacked_photo_claims_removed', vin: listing.vin || null, removed: guarded.removed }));
+      }
+    }
+    /* номер власника в хронології лише з реєстру, не з тексту моделі */
+    if (Array.isArray(parsed.history)) parsed.history = annotateOwnerOrdinals(parsed.history, listing.history_facts);
     /* свіжий нормалізований візуал у кеш за ключем набору кадрів: наступний
        Check цього VIN із тими самими кадрами отримає його примусово */
     if (parsed.historical_visual && !hvCache.hit && !hvCache.consensus && hvCache.fingerprint && listing.vin) {

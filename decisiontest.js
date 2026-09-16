@@ -9,7 +9,7 @@ const errs = [];
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'calcar_dec_'));
 fs.mkdirSync(path.join(dir, 'api'));
 fs.writeFileSync(path.join(dir, 'package.json'), '{"type":"module"}');
-for (const x of ['check.js', 'check-schema.js', 'current-visual.js', 'canonical-merge.js', 'score.js', 'score-v3.js', 'auction.js', 'locale.js', 'visual-signals.js', 'share.js', 'vehicle-memory.js', 'mi-shadow.js']) {
+for (const x of ['check.js', 'check-schema.js', 'current-visual.js', 'canonical-merge.js', 'score.js', 'score-v3.js', 'auction.js', 'locale.js', 'visual-signals.js', 'share.js', 'vehicle-memory.js', 'mi-shadow.js', 'historical-claims.js', 'history-owners.js']) {
   fs.writeFileSync(path.join(dir, 'api', x), fs.readFileSync('api/' + x, 'utf8'));
 }
 
@@ -260,27 +260,15 @@ const VALID = {
     if (!/decision_inputs/.test(chat)) errs.push('api/chat.js не знає про входи рішення');
 
     /* ---- 19/20. UI: формат пробігу і бейдж власника ---- */
-    if (!/\(≈' \+ esc\(nf\(monthlyKm\)\)/.test(page) || !/esc\(t\('km\/mo'\)\) \+ '\)<\/span>'/.test(page)) errs.push('19: місячний пробіг не в дужках');
+    /* формат змінено: місячний пробіг стоїть поруч без дужок і розділювачів, це кнопка шкали (checkuxtest.js) */
+    if (!/'<span class="mil-v"><span>' \+ esc\(r\[1\]\) \+ '<\/span>' \+ r\[3\]/.test(page) || !/'">≈' \+ esc\(nf\(mi\.monthly_km\)\) \+ ' ' \+ esc\(t\('km\/mo'\)\)/.test(page)) errs.push('19: місячний пробіг не поруч з основним значенням');
     if (/">· ≈'/.test(page)) errs.push('19: крапка перед місячним пробігом лишилась');
     if (/\.hrow\.reg > span:not\(\.hd\)\{font-weight:600\}/.test(page)) errs.push('20: реєстраційні події досі жирні');
-    const obIdx = page.indexOf('function ownerBadges');
-    const obEnd = page.indexOf('\nfunction boot2');
-    if (obIdx < 0 || obEnd < obIdx) errs.push('20: нема функції ownerBadges');
-    else {
-      const ownerBadges = new Function(page.slice(obIdx, obEnd) + '\nreturn ownerBadges;')();
-      const badges = ownerBadges([
-        { event: 'Перша реєстрація в Україні' },
-        { event: 'Re-registration' },
-        { event: 'Заміна номерного знака, перереєстрація' },
-        { event: 'Перереєстрація: 2-й власник' },
-        { event: 'Зміна власника' },
-        { event: 'Продавалось на AUTO.RIA' },
-      ]);
-      if (badges[0] !== null || badges[1] !== null || badges[2] !== null) errs.push('L: технічна перереєстрація створила власника: ' + JSON.stringify(badges));
-      if (badges[3] !== 2) errs.push('L: названий у записі номер власника не використаний: ' + badges[3]);
-      if (badges[4] !== 3) errs.push('L: підтверджена зміна власника не пронумерована: ' + badges[4]);
-      if (badges[5] !== null) errs.push('L: минуле оголошення прирівняне до зміни власника');
-    }
+    /* L: номер власника лише зі структурованого реєстру (api/history-owners.js,
+       owner_ordinal у рядку history). Текст моделі і кількість подій номер не дають
+       (повні перевірки хронології в checkuxtest.js) */
+    if (/function ownerBadges/.test(page)) errs.push('20: повернувся підрахунок власників з тексту подій');
+    if (!/h\.owner_ordinal \? ' <span class="badge reg-badge">'/.test(page)) errs.push('20: бейдж власника не з owner_ordinal');
     for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
       const dict = fs.readFileSync(d, 'utf8');
       for (const k of ['Owner #{n}', 'Discuss this car in chat', 'Use memory in report conclusions']) {

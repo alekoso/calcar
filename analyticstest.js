@@ -133,7 +133,7 @@ function browser(opts) {
   if (!block.includes('[data-private-block]')) errs.push('нема загального маркера приватного блоку для replay');
   if (!/autocapture: false/.test(an)) errs.push('autocapture увімкнений: він тягне текст кнопок і полів');
   /* поле відгуку і редактор памʼяті позначені приватними */
-  if (!/<div class="fb-more" id="fbMore" hidden data-private-block>/.test(S['result-check.html'])) errs.push('поле відгуку не приховане від replay');
+  if (!/<div class="fbx-more" id="fbMore" inert data-private-block>/.test(S['result-check.html'])) errs.push('поле відгуку не приховане від replay');
   for (const id of ['memCard', 'authBox']) if (!S['cabinet.html'].includes('id="' + id + '"')) errs.push('cabinet.html: нема #' + id + ', селектор блокування replay порожній');
   if (!fs.readFileSync('chat.js', 'utf8').includes('cc-panel')) errs.push('chat.js: панель помічника не .cc-panel, replay її не блокує');
 }
@@ -179,10 +179,16 @@ function browser(opts) {
   /* UI: після вердикту, два стани, без модалки, на Score не впливає */
   const r = S['result-check.html'];
   const vc = r.slice(r.indexOf('id="verdictCard"'), r.indexOf('id="risksCard"'));
-  if (!/<div class="fb" id="fbBox">/.test(vc)) errs.push('блок відгуку не в картці вердикту');
-  if (vc.indexOf('class="pd-cta"') > vc.indexOf('id="fbBox"')) errs.push('відгук стоїть перед CTA чату');
-  if (!/data-fb="positive"/.test(vc) || !/data-fb="negative"/.test(vc)) errs.push('нема кнопок 👍/👎');
+  /* відгук лише в кінці повного розбору: одразу після #pdReasoning, до CTA чату,
+     схований до відкриття; у самій картці рішення після CTA відгуку нема */
+  if (!/<div class="pd-reasoning" id="pdReasoning" style="display:none"><\/div>\n\s*<!--[^>]*-->\n\s*<div class="fbx" id="fbBox" hidden>/.test(vc)) errs.push('відгук не стоїть одразу після повного розбору або не схований');
+  if (vc.indexOf('id="fbBox"') > vc.indexOf('class="pd-cta"')) errs.push('відгук опинився після CTA чату');
+  if (/class="fb" id="fbBox"|data-fb="positive"[^>]*>👍/.test(r)) errs.push('старий постійний блок відгуку повернувся');
+  if (!/data-fb="positive">Yes</.test(vc) || !/data-fb="negative">Not really</.test(vc)) errs.push('нема кнопок Так / Не зовсім');
   if (!/id="fbText"[^>]*maxlength="1000"/.test(vc)) errs.push('поле "чого не вистачило" без ліміту');
+  /* без модалок, таймерів і прокрутки: блок відкриває лише кнопка повного розбору */
+  if (!/calcarFeedbackSync\(open === false\)/.test(r)) errs.push('відгук не привʼязаний до кнопки повного розбору');
+  if (/fbBox[\s\S]{0,400}setTimeout\(\s*\(\)\s*=>\s*\{?\s*box\.hidden\s*=\s*false/.test(r)) errs.push('відгук показується за таймером');
   if (!/fetch\('\/api\/feedback'/.test(r)) errs.push('відгук не йде в /api/feedback');
   if (!/report_ref: r, product: 'check', verdict, text: text \|\| '', anon_id: window\.calcar \? window\.calcar\.aid\(\) : null/.test(r)) errs.push('тіло відгуку не те (report_ref/verdict/text/anon_id)');
   if (/calcar\.track\('[^']*feedback/.test(r)) errs.push('текст відгуку або сама подія відгуку йде в аналітику');
@@ -333,7 +339,7 @@ tourChecks();
   if (!c.includes('<div class="hf-help">For example, paste a link to an AUTO.RIA listing</div>')) errs.push('check.html: нема підказки під полем');
   for (const d of ['i18n/ua.js', 'i18n/ru.js']) {
     const t = fs.readFileSync(d, 'utf8');
-    for (const k of ['Car listing link', 'For example, paste a link to an AUTO.RIA listing', 'Contact', 'Was this analysis useful?', 'What was missing?', 'Transfer from an AI chat', 'CalCar does not know much about you yet']) if (!t.includes("'" + k + "':")) errs.push(d + ': нема ключа "' + k + '"');
+    for (const k of ['Car listing link', 'For example, paste a link to an AUTO.RIA listing', 'Contact', 'Did this analysis help you decide?', 'Yes', 'Not really', 'What was missing?', 'Transfer from an AI chat', 'CalCar does not know much about you yet']) if (!t.includes("'" + k + "':")) errs.push(d + ': нема ключа "' + k + '"');
   }
   /* мова памʼяті: одна й та сама правило в обох специфікаціях, мова інтерфейсу передається */
   const mem = fs.readFileSync('api/memory.js', 'utf8'), chat = fs.readFileSync('api/chat.js', 'utf8');

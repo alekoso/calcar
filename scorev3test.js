@@ -756,11 +756,13 @@ const THIN = {
      публічному read-only звіті */
   if (/calcar_chat_hint_seen|chat-coach|You can ask about this car/.test(pageSrc)) errs.push('result-check: coachmark чату повернувся');
   /* середній пробіг за рік: ТІ САМІ canonical-дані осі Пробіг */
-  if (!/annual_mileage_km/.test(pageSrc)) errs.push('result-check: річний пробіг не з breakdown осі');
-  if (!/Average monthly mileage over the whole life of the vehicle\./.test(pageSrc)) errs.push('result-check: нема tooltip місячного пробігу');
+  if (!/CalCarMileageIntensity\.fromDimension\(dimsMil\)/.test(pageSrc)) errs.push('result-check: місячний пробіг не з breakdown осі');
+  if (!/annual_mileage_km/.test(fs.readFileSync('mileage-intensity.js', 'utf8'))) errs.push('шкала пробігу не читає annual_mileage_km осі');
+  if (!/Average calculated from the vehicle age\./.test(pageSrc)) errs.push('result-check: нема пояснення шкали місячного пробігу');
   /* реєстраційні події історії: рядок лишається помітним, але generic-бейдж
      "Перереєстрація" прибраний, бо перереєстрація не доводить зміну власника */
-  if (!/reg-badge/.test(pageSrc) || !/ownerBadges/.test(pageSrc)) errs.push('result-check: нема бейджа підтвердженого власника');
+  /* номер власника лише зі структурованого owner_ordinal реєстру (checkuxtest.js) */
+  if (!/reg-badge/.test(pageSrc) || !/h\.owner_ordinal \?/.test(pageSrc)) errs.push('result-check: нема бейджа підтвердженого власника');
   if (/t\('Re-registration'\)/.test(pageSrc)) errs.push('result-check: generic-бейдж перереєстрації лишився');
   /* старий вигляд Score відновлений: окремої картки більше нема, лише popover */
   if (/dimCard|dim-wrap|dim-track|dimLimit/.test(pageSrc)) errs.push('result-check: залишки окремої картки підоцінок');
