@@ -79,9 +79,18 @@
   var ORD = '(?:\\d{1,2}\\s*[-‑]?\\s*(?:й|я|ій|ий|ый|ой|го|st|nd|rd|th)?|перш[' + L + ']*|перв[' + L + ']*|друг[' + L + ']*|втор[' + L + ']*|трет[' + L + ']*|четверт[' + L + ']*|п[ʼ\'’]?ят[' + L + ']*|first|second|third|fourth|fifth)';
   var OWNER = '(?:власник[' + L + ']*|владел[' + L + ']*|owner)';
   var ORDINAL_CLAUSE = new RegExp('\\s*[,;:(]\\s*(?:' + ORD + '\\s+' + OWNER + '|' + OWNER + '\\s*(?:#|№)\\s*\\d{1,2})\\s*\\)?', 'gi');
+  /* порядковий номер у самій фразі події: "to the second owner", "на третьего
+     владельца", "на другого власника" -> "новий власник" без номера */
+  var ORDINAL_PHRASES = [
+    [new RegExp('\\bto\\s+(?:the|a|an)\\s+' + ORD + '\\s+owner\\b', 'gi'), 'to a new owner'],
+    [new RegExp('(^|[^' + L + '])(на|к)\\s+' + ORD + '\\s+владельц[' + L + ']*', 'gi'), '$1$2 нового владельца'],
+    [new RegExp('(^|[^' + L + '])(на|до)\\s+' + ORD + '\\s+власник[' + L + ']*', 'gi'), '$1$2 нового власника']
+  ];
   function stripOwnerOrdinal(text) {
     var s = String(text == null ? '' : text);
-    var out = s.replace(ORDINAL_CLAUSE, '').replace(/\s{2,}/g, ' ').trim();
+    var out = s.replace(ORDINAL_CLAUSE, '');
+    ORDINAL_PHRASES.forEach(function (p) { out = out.replace(p[0], p[1]); });
+    out = out.replace(/\s{2,}/g, ' ').trim();
     return out || s;
   }
 

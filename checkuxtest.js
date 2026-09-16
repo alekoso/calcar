@@ -266,7 +266,9 @@ const page = fs.readFileSync('result-check.html', 'utf8');
     if (out.some(r => r.owner_ordinal)) errs.push('без структурованого реєстру зʼявився номер власника');
     if (out.some(r => /трет|перв|втор/i.test(r.event) && /владел/i.test(r.event))) errs.push('порядкове слово моделі про власника лишилось у тексті');
     if (out[4].event !== 'Перерегистрация на нового владельца') errs.push('дубль "третий владелец" не прибраний: ' + out[4].event);
-    for (const [src, want] of [['Перереєстрація на нового власника', 'Перереєстрація на нового власника'], ['Re-registration, 2nd owner', 'Re-registration'], ['Перерегистрация (3-й владелец)', 'Перерегистрация'], ['Реєстрація; власник №3', 'Реєстрація']]) {
+    for (const [src, want] of [['Перереєстрація на нового власника', 'Перереєстрація на нового власника'], ['Re-registration, 2nd owner', 'Re-registration'], ['Перерегистрация (3-й владелец)', 'Перерегистрация'], ['Реєстрація; власник №3', 'Реєстрація'],
+      /* прод 16.09: "Re-registration to the second owner" поруч із бейджем "Owner #2" */
+      ['Re-registration to the second owner.', 'Re-registration to a new owner.'], ['Перерегистрация на третьего владельца', 'Перерегистрация на нового владельца'], ['Перереєстрація до другого власника', 'Перереєстрація до нового власника'], ['First registration in Ukraine after import.', 'First registration in Ukraine after import.']]) {
       if (TL.stripOwnerOrdinal(src) !== want) errs.push('stripOwnerOrdinal: ' + src + ' -> ' + TL.stripOwnerOrdinal(src));
     }
     /* стабільний порядок: та сама дата у вихідному порядку, YYYY перед місяцями року, без дати в кінці */
