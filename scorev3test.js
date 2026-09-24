@@ -748,10 +748,10 @@ const THIN = {
   }
   /* Технічні ризики свідомо приховані з popover (бекенд-вісь лишається) */
   if (/\['technical'/.test(pageSrc)) errs.push('result-check: technical лишився в popover ORDER');
-  /* affordance і межі подій щита/бейджа */
-  if (!/dim-caret/.test(pageSrc)) errs.push('result-check: нема caret-affordance на бейджі');
-  if (!/has-dims\{cursor:pointer\}/.test(pageSrc.replace(/\s/g, ''))) errs.push('result-check: бейдж без cursor:pointer');
-  if (!/shieldEl\.contains\(e\.target\)/.test(pageSrc)) errs.push('result-check: межі подій щита не розділені');
+  /* компонент Оцінка CalCar + повнота перевірки: кнопка з chevron,
+     панель відкривається кліком і клавіатурою (деталі у checkuxtest.js) */
+  if (!/class="sc-chev"/.test(pageSrc)) errs.push('result-check: нема chevron-affordance на картці оцінки');
+  if (!/\.sc-card\{[^}]*cursor:pointer/.test(pageSrc)) errs.push('result-check: картка оцінки без cursor:pointer');
   /* coachmark чату прибраний разом із верхньою кнопкою: він чіплявся до
      правого краю topbar і виринав під кнопкою "Поділитися", зокрема в
      публічному read-only звіті */
@@ -767,8 +767,8 @@ const THIN = {
   if (/t\('Re-registration'\)/.test(pageSrc)) errs.push('result-check: generic-бейдж перереєстрації лишився');
   /* старий вигляд Score відновлений: окремої картки більше нема, лише popover */
   if (/dimCard|dim-wrap|dim-track|dimLimit/.test(pageSrc)) errs.push('result-check: залишки окремої картки підоцінок');
-  if (!/dim-pop/.test(pageSrc)) errs.push('result-check: popover підоцінок відсутній');
-  if (!/mouseenter/.test(pageSrc) || !/tabIndex = 0|tabindex/.test(pageSrc)) errs.push('result-check: popover без hover/focus');
+  if (!/id="scorePop"/.test(pageSrc)) errs.push('result-check: панель оцінки відсутня');
+  if (!/aria-expanded/.test(pageSrc) || !/e\.key === 'Escape' && !pop\.hidden/.test(pageSrc)) errs.push('result-check: панель оцінки без клавіатурної поведінки');
   /* Vision structural gate: строгі правила в промпті + страхувальний хід */
   if (!/STRONG structural evidence/.test(checkSrc)) errs.push('check.js: нема gate STRONG structural evidence у промпті');
   if (!/possible_structural_damage/.test(checkSrc)) errs.push('check.js: нема сигналу possible_structural_damage');

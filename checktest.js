@@ -222,7 +222,7 @@ const REPORTS = [
     if (!api.includes('photos.slice(0, 120)')) errs.push('кап екстракції фото не піднятий');
     /* перейменування оцінки */
     const pgS = fs.readFileSync('result-check.html', 'utf8');
-    if (!pgS.includes('CalCar Score:')) errs.push('бейдж не перейменований в Оцінка CalCar');
+    if (!pgS.includes("t('CalCar Score')")) errs.push('картка оцінки не підписана Оцінка CalCar');
     for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
       if (!fs.readFileSync(d, 'utf8').includes("'CalCar Score:'")) errs.push('нема ключа "Оцінка CalCar:" у ' + d);
     }
@@ -346,7 +346,7 @@ const REPORTS = [
     if (page.includes('id="chatTopBtn"')) errs.push('верхня кнопка чату повернулась');
     if (page.includes('id="askAi"')) errs.push('generic-кнопка чату у фінальних діях повернулась');
     if (!page.includes("id=\"pdChatBtn\"") || !page.includes('calcarOpenChat')) errs.push('контекстний вхід у помічника зник разом із рештою');
-    if (!page.includes('id="scoreTip"') || !page.includes('Critical risks can weigh more heavily on the final score.')) errs.push('нема premium tooltip щита');
+    if (!page.includes('Our assessment of the car based on the data we could verify.')) errs.push('нема пояснення Оцінки CalCar у панелі');
     if (/score-shield[^>]*title=/.test(page)) errs.push('щит досі з browser-title');
     if (page.includes("t('після перевірок')")) errs.push('grade-бейдж біля оцінки лишився');
     if (page.includes('id="vHint"')) errs.push('рядок-підпис під оцінкою лишився');
@@ -365,9 +365,9 @@ const REPORTS = [
     if (page.includes('Фото з архіву не вдалося завантажити')) errs.push('failure-текст про фото лишився');
     if (!page.includes('au.found === true')) errs.push('блок історії не звіряється з found');
     if (!page.includes('id="usSrcBtn"') || !page.includes('|| M.auction_url || null')) errs.push('нема переходу до першоджерела в шапці історичного блоку');
-    /* бейдж: колір строго за балом, щит із тултіпом */
-    if (!page.includes("sc >= 7.5 ? 'ok' : sc >= 5.5 ? 'warn' : 'bad'")) errs.push('пороги кольору бейджа не 7.5/5.5');
-    if (!page.includes('score-shield') || !page.includes('id="scoreTip"')) errs.push('нема щита CalCar з тултіпом');
+    /* картка оцінки: без зеленої крапки і без щита, бал головний, повнота вторинна */
+    if (page.includes('id="scoreDot"') || page.includes('id="scoreShield"')) errs.push('стара крапка чи щит оцінки повернулись');
+    if (!page.includes('id="scoreCard"') || !page.includes('id="scorePop"')) errs.push('нема картки і панелі Оцінки CalCar');
     /* болячки: позначка про заявлене обслуговування */
     if (!page.includes('seller_serviced === true')) errs.push('нема позначки заявленого обслуговування');
   }

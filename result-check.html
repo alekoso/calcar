@@ -448,6 +448,65 @@
   .mi-norm{position:absolute;top:-3px;bottom:-3px;width:0;border-left:1px solid var(--ink-2);opacity:.55}
   .mi-norm-l{position:absolute;top:0;transform:translateX(-50%);white-space:nowrap;color:var(--ink-2)}
   .mi-note{display:block;margin-top:10px;font-size:12px;line-height:1.45;color:var(--muted)}
+  /* ---- Оцінка CalCar + повнота перевірки: один компонент ----
+     Візуально родич шкали пробігу: той самий радіус, лінія, тінь, типографіка
+     і горизонтальна шкала з маркером. Повнота це НЕ ризик: нейтральна рейка,
+     лаймовий акцент, без червоно-зеленого градієнта */
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+  .sc-card{display:flex;flex-direction:column;gap:9px;width:100%;margin:0 0 18px;padding:12px 14px 13px;text-align:left;font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:12px;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+  .sc-card:hover{border-color:var(--line-strong);box-shadow:0 4px 14px rgba(20,22,25,.06)}
+  .sc-card:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  .sc-row{display:flex;align-items:center;gap:12px;min-width:0}
+  .sc-l{font-size:13px;font-weight:600;color:var(--muted);white-space:nowrap}
+  .sc-v{margin-left:auto;font-size:22px;font-weight:800;letter-spacing:-.3px;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--ink)}
+  .sc-v small{font-size:13px;font-weight:600;color:var(--muted);letter-spacing:0;margin-left:2px}
+  .sc-v.na{font-size:14px;font-weight:600;color:var(--muted);letter-spacing:0;white-space:normal;text-align:right}
+  .sc-chev{display:inline-flex;color:var(--muted);transition:transform .18s ease,color .15s}
+  .sc-card:hover .sc-chev{color:var(--ink)}
+  .sc-card[aria-expanded="true"] .sc-chev{transform:rotate(180deg)}
+  .sc-cov{flex:0 0 132px;margin-left:auto;margin-right:26px}
+  /* рейка повноти: нейтральна основа, лаймове заповнення до маркера, риска "достатньо" */
+  .cv-rail{position:relative;height:6px;border-radius:6px;background:var(--line)}
+  .cv-fill{position:absolute;left:0;top:0;bottom:0;border-radius:6px;background:var(--brand)}
+  .cv-tick{position:absolute;top:-4px;bottom:-4px;width:0;border-left:1px solid var(--ink-2);opacity:.55}
+  .cv-knob{position:absolute;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:var(--card);border:2px solid var(--ink);box-sizing:border-box}
+  .sc-pop{position:fixed;z-index:160;width:360px;max-width:calc(100vw - 32px);max-height:calc(100vh - 24px);overflow:auto;overscroll-behavior:contain;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 28px rgba(20,22,25,.16);padding:14px 16px 16px;color:var(--ink)}
+  .sc-pop[hidden]{display:none}
+  .sc-ov{position:fixed;inset:0;z-index:155;background:rgba(15,25,40,.28)}
+  .sc-ov[hidden]{display:none}
+  .sc-head{display:flex;align-items:flex-start;gap:10px}
+  .sc-t{display:block;font-size:12.5px;font-weight:600;color:var(--muted)}
+  .sc-big{display:block;font-size:24px;font-weight:800;letter-spacing:-.3px;margin-top:2px;font-variant-numeric:tabular-nums}
+  .sc-big small{font-size:14px;font-weight:600;color:var(--muted);letter-spacing:0;margin-left:2px}
+  .sc-sub{display:block;margin-top:3px;font-size:12.5px;color:var(--muted)}
+  .sc-x{margin-left:auto;flex:0 0 auto;width:30px;height:30px;border:none;border-radius:50%;background:transparent;color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+  .sc-x:hover{background:var(--bg);color:var(--ink)}
+  .sc-x:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
+  .sc-sec{margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}
+  .sc-cov-text{display:block;margin-top:3px;font-size:15px;font-weight:700;color:var(--ink)}
+  .sc-meter{position:relative;margin:26px 0 7px}
+  .sc-meter .cv-rail{height:8px;border-radius:8px}
+  .sc-meter .cv-fill{border-radius:8px}
+  .sc-meter .cv-tick{top:-6px;bottom:-6px;opacity:.7}
+  .sc-meter .cv-knob{width:16px;height:16px;margin:-8px 0 0 -8px}
+  .sc-tick-l{position:absolute;bottom:calc(100% + 8px);transform:translateX(-50%);font-size:11.5px;color:var(--ink-2);white-space:nowrap}
+  .sc-scale{display:flex;justify-content:space-between;gap:8px;font-size:11.5px;color:var(--muted)}
+  .sc-note{display:block;margin-top:9px;font-size:12px;line-height:1.45;color:var(--muted)}
+  .sc-list{margin-top:7px}
+  .sc-li{display:flex;justify-content:space-between;align-items:baseline;gap:14px;padding:7px 0;font-size:13.5px;color:var(--ink-2)}
+  .sc-li+.sc-li{border-top:1px solid var(--line)}
+  .sc-li span{min-width:0}
+  .sc-li em{font-style:normal;color:var(--muted)}
+  .sc-li b{flex:0 0 auto;font-variant-numeric:tabular-nums;color:var(--ink)}
+  .sc-dom{display:grid;grid-template-columns:minmax(0,1fr) 112px;align-items:center;gap:14px;padding:7px 0;font-size:13.5px;color:var(--ink-2)}
+  .sc-dom+.sc-dom{border-top:1px solid var(--line)}
+  .sc-dom .na{font-size:12px;color:var(--faint);text-align:right}
+  @media(max-width:620px){
+    .sc-v{font-size:21px}
+    .sc-cov{flex-basis:112px}
+    .sc-pop{left:12px!important;right:12px;top:auto!important;bottom:12px;width:auto;max-width:none;max-height:82vh;border-radius:16px;padding:16px 16px 18px}
+    .sc-li,.sc-dom{font-size:14.5px}
+  }
 
   /* ---- оригінальний опис продавця: чіп біля VIN і бокова шухляда ----
      Геометрія та сама, що в панелі CalCar Assistant: праворуч на десктопі,
@@ -999,9 +1058,9 @@
   <div class="card" id="verdictCard" style="display:none">
     <div class="card-head">
       <h2>Worth buying?</h2>
-      <span class="risk-badge" id="scoreBadge" style="display:none"><span class="dot ok" id="scoreDot"></span>CalCar Score: <b id="scoreVal">–</b> <span class="risk-label" id="scoreLabel"></span><span class="score-shield" id="scoreShield" tabindex="0" role="button" aria-label="CalCar Score"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg><span class="score-tip" id="scoreTip"><b>CalCar Score</b><span id="scoreRiskLvl" style="display:none;font-weight:600"></span><span>Our assessment of the car based on the data we could verify.</span><span>Critical risks can weigh more heavily on the final score.</span></span></span></span>
     </div>
     <div class="card-body">
+      <div id="scoreSlot"></div>
       <div id="pdBlock" style="display:none">
         <div class="pd-top">
           <div class="pd-headline" id="pdHeadline"></div>
@@ -1146,6 +1205,10 @@
   </div>
   <div class="ss-body" id="sellerBody" data-private-block></div>
 </div>
+<!-- Оцінка CalCar і повнота перевірки: одна панель на сторінку, від картки оцінки;
+     на телефоні шторка знизу. Вміст будує renderScoreBlock з ЗБЕРЕЖЕНИХ даних звіту -->
+<div class="sc-ov" id="scoreOv" hidden></div>
+<div class="sc-pop" id="scorePop" role="dialog" aria-modal="false" aria-labelledby="scPopTitle" hidden></div>
 <!-- шкала інтенсивності пробігу: одна на сторінку, позиціонується від кнопки -->
 <div class="mi-pop" id="miPop" role="tooltip">
   <span class="mi-t">Average mileage</span>
@@ -1572,105 +1635,9 @@ function boot2(D){
   if (vd && vd.summary) {
     if (!(pd && pd.headline)) $('verdictCard').style.display = '';
     $('vText').textContent = clean(vd.summary);
-    /* на екрані активний CalCar Score (детермінована формула); канонічне
-       поле score_breakdown, score_breakdown_v2 це compatibility alias для
-       старих звітів; легасі verdict.score лишається фолбеком найстаріших */
-    const bd2 = D.score_breakdown || D.score_breakdown_v2 || null;
-    /* нижче порога даних цифру не показуємо взагалі */
-    if (bd2 && bd2.score_available === false) {
-      $('scoreBadge').style.display = '';
-      $('scoreDot').className = 'dot unknown';
-      $('scoreVal').textContent = '';
-      $('scoreLabel').textContent = t('Not enough data to score');
-    }
-    const v2 = (bd2 && bd2.score_available === false) ? null
-      : (bd2 && typeof bd2.final === 'number' ? bd2.final
-        : (typeof D.score_v2_preview === 'number' ? D.score_v2_preview : null));
-    const sc = v2 !== null ? v2
-      : (typeof vd.score === 'number' ? Math.round(Math.max(0, Math.min(10, vd.score)) * 10) / 10 : null);
-    if (sc !== null) {
-      /* оцінка авто: вище = краще, колір строго за балом. Пояснення живе
-         в tooltip щита, окремого grade-бейджа і підпису знизу нема */
-      const cls = sc >= 7.5 ? 'ok' : sc >= 5.5 ? 'warn' : 'bad';
-      $('scoreBadge').style.display = '';
-      $('scoreDot').className = 'dot ' + cls;
-      $('scoreVal').textContent = sc.toFixed(1) + ' / 10';
-      $('scoreLabel').style.display = 'none';
-      /* рівень ВИЯВЛЕНОГО ризику: wording, сам бал незмінний */
-      const riskLabel = sc >= 8.5 ? t('Low detected risk')
-        : sc >= 7.0 ? t('Moderate detected risk')
-        : sc >= 5.5 ? t('Elevated detected risk') : t('High detected risk');
-      const riskEl = document.getElementById('scoreRiskLvl');
-      if (riskEl) { riskEl.textContent = riskLabel; riskEl.style.display = ''; }
-      /* компактний popover підоцінок на самому бейджі Оцінки CalCar:
-         desktop hover + click/focus, mobile tap. Лише пʼять міток і балів,
-         без пояснень; недоступна вісь = прочерк. Зовнішній вигляд Score
-         у звіті лишається старим */
-      const dims = bd2 && bd2.score_dimensions;
-      /* Score v4: замість осей сім входів зі штрафами (0 = перевірено, чисто; прочерк = даних нема) */
-      const v4in = bd2 && bd2.score_version === 'v4' && bd2.inputs ? bd2.inputs : null;
-      const V4_ORDER = [['accident_history', 'Accident history'], ['body_condition', 'Body condition'], ['interior_condition', 'Interior condition'], ['mileage_intensity', 'Mileage intensity'], ['mileage_rollback', 'Mileage rollback'], ['seller_disclosures', 'Seller disclosures'], ['vehicle_age', 'Vehicle age'], ['vehicle_owners', 'Number of owners']];
-      if ((dims || v4in) && v2 !== null) {
-        /* Технічні ризики свідомо НЕ показуються в popover: бекенд-вісь
-           лишається в breakdown, це лише presentation */
-        const ORDER = [['history', 'Vehicle history'], ['mileage', 'Mileage'], ['damage_repair', 'Damage and repair'], ['current_condition', 'Condition from photos']];
-        const pop = document.createElement('span');
-        pop.className = 'dim-pop';
-        pop.innerHTML = v4in ? V4_ORDER.map(([k, lbl]) => {
-          const d = v4in[k] || {};
-          const val = d.status === 'unavailable' ? null : (typeof d.penalty === 'number' && d.penalty > 0 ? '\u2212' + d.penalty.toFixed(2) : '0');
-          return '<span class="dim-pop-row"><span>' + esc(t(lbl)) + '</span><b' + (val === null ? ' class="na"' : '') + '>' + (val === null ? '\u2013' : val) + '</b></span>';
-        }).join('') : ORDER.map(([k, lbl]) => {
-          const d = dims[k] || {};
-          const val = d.score_available === true && typeof d.score === 'number' ? d.score.toFixed(1) : null;
-          return '<span class="dim-pop-row"><span>' + esc(t(lbl)) + '</span><b' + (val === null ? ' class="na"' : '') + '>' + (val === null ? '\u2013' : val) + '</b></span>';
-        }).join('');
-        const badge = $('scoreBadge');
-        const shieldEl = $('scoreShield');
-        const shieldTip = $('scoreTip');
-        /* ненавʼязливий affordance: бейдж явно розкривається */
-        const caret = document.createElement('span');
-        caret.className = 'dim-caret';
-        caret.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
-        badge.insertBefore(caret, shieldEl);
-        badge.appendChild(pop);
-        badge.classList.add('has-dims');
-        badge.tabIndex = 0;
-        const openPop = () => { pop.classList.add('open'); badge.classList.add('pop-open'); if (shieldTip) shieldTip.classList.remove('open'); };
-        const closePop = () => { pop.classList.remove('open'); badge.classList.remove('pop-open'); };
-        /* щит = окремий interactive target: наведення на нього показує ЛИШЕ
-           пояснення Score і закриває popover підоцінок, і навпаки */
-        badge.addEventListener('mouseover', e => {
-          if (shieldEl && shieldEl.contains(e.target)) closePop();
-          else openPop();
-        });
-        badge.addEventListener('mouseleave', closePop);
-        badge.addEventListener('focus', e => { if (e.target === badge) openPop(); });
-        badge.addEventListener('blur', closePop);
-        badge.addEventListener('click', e => {
-          if (shieldEl && shieldEl.contains(e.target)) return;
-          e.stopPropagation();
-          pop.classList.toggle('open');
-          if (pop.classList.contains('open') && shieldTip) shieldTip.classList.remove('open');
-        });
-        if (shieldEl) {
-          shieldEl.addEventListener('mouseenter', closePop);
-          shieldEl.addEventListener('focus', closePop);
-          shieldEl.addEventListener('click', closePop);
-        }
-        document.addEventListener('click', e => { if (!badge.contains(e.target)) closePop(); });
-      }
-    }
-    /* tooltip щита: hover/focus на desktop, tap на mobile, закриття кліком поза */
-    const shield = $('scoreShield'), tip = $('scoreTip');
-    if (shield && tip) {
-      shield.addEventListener('mouseenter', () => tip.classList.add('open'));
-      shield.addEventListener('mouseleave', () => tip.classList.remove('open'));
-      shield.addEventListener('focus', () => tip.classList.add('open'));
-      shield.addEventListener('blur', () => tip.classList.remove('open'));
-      shield.addEventListener('click', e => { e.stopPropagation(); tip.classList.toggle('open'); });
-      document.addEventListener('click', e => { if (!shield.contains(e.target)) tip.classList.remove('open'); });
-    }
+    /* Оцінка CalCar і повнота перевірки: один компонент зі ЗБЕРЕЖЕНИХ даних
+       звіту (breakdown і знімок confidence); сторінка нічого не перераховує */
+    renderScoreBlock(D);
   }
 
   /* ---- ключові ризики ---- */
@@ -2138,6 +2105,144 @@ function isAmongFirstChecks(rows, ids, n, truncated) {
   window.addEventListener('scroll', place, { passive: true });
   window.addEventListener('resize', place);
 })();
+
+/* ---------- Оцінка CalCar + повнота перевірки ----------
+   Бал береться як є зі збереженого breakdown (score_breakdown.final), повнота
+   як є зі знімка confidence, зробленого в момент Check: фронтенд нічого не
+   перераховує і внутрішнє число 0..100 ніде не показує. Звіти без знімка
+   (v3 і старіші) повноти не вигадують. Панель: клік або Enter/Space
+   відкриває, Esc, хрестик чи клік поза закривають і повертають фокус; на
+   телефоні шторка знизу */
+function scoreAmount(x) { const r = Math.round(x * 100) / 100; return '\u2212' + (Number.isInteger(r) ? r.toFixed(1) : String(r)); }
+function scoreCausalRows(bd) {
+  const items = Array.isArray(bd && bd.items) ? bd.items.filter(i => i && typeof i.amount === 'number' && i.amount > 0) : [];
+  const ACC = { light: 'Accident: light damage', medium: 'Accident: medium damage', heavy: 'Accident: heavy damage', total: 'Accident: total-loss level damage', unknown: 'Accident: severity not established', unrepaired_seller: 'Accident: not restored per the seller' };
+  const GROUP = { body_condition: 'Body condition from photos', interior_condition: 'Interior condition from photos', mileage_intensity: 'Mileage intensity', mileage_rollback: 'Mileage decreased between records', seller_disclosures: 'Faults disclosed by the seller', vehicle_age: 'Vehicle age', vehicle_owners: 'Number of owners' };
+  const rows = new Map();
+  for (const it of items) {
+    let key, label, extra = null;
+    if (/^accident_latest_/.test(it.key)) { key = it.key; label = ACC[it.key.slice(16)] || 'Accident history'; }
+    else if (it.key === 'accident_earlier_events') { key = it.key; label = 'Earlier accidents'; }
+    else if (it.key === 'flood_event') { key = it.key; label = 'Flood damage'; }
+    else if (it.key === 'fire_event') { key = it.key; label = 'Fire damage'; }
+    else if (GROUP[it.input]) { key = it.input; label = GROUP[it.input]; if (it.input === 'vehicle_owners' && it.params && it.params.owners_count) extra = String(it.params.owners_count); }
+    else continue;
+    const cur = rows.get(key);
+    if (cur) cur.amount += it.amount; else rows.set(key, { label, extra, amount: it.amount });
+  }
+  return [...rows.values()].sort((a, b) => b.amount - a.amount);
+}
+function coverageRail(value, big) {
+  const v = Math.max(0, Math.min(100, value));
+  return (big ? '<div class="sc-meter" aria-hidden="true"><span class="sc-tick-l" style="left:70%">' + esc(t('Sufficient')) + '</span>' : '<div class="sc-cov" aria-hidden="true">')
+    + '<div class="cv-rail"><div class="cv-fill" style="width:' + v.toFixed(1) + '%"></div><div class="cv-tick" style="left:70%"></div><div class="cv-knob" data-pos="' + v + '" style="left:' + v.toFixed(1) + '%"></div></div></div>';
+}
+function renderScoreBlock(D) {
+  const slot = $('scoreSlot'), pop = $('scorePop'), ov = $('scoreOv');
+  if (!slot || !pop) return;
+  const vd = D.verdict || {};
+  const bd = D.score_breakdown || D.score_breakdown_v2 || null;
+  const unavailable = !!(bd && bd.score_available === false);
+  const final = unavailable ? null
+    : (bd && typeof bd.final === 'number' ? bd.final
+      : (typeof D.score_v2_preview === 'number' ? D.score_v2_preview
+        : (typeof vd.score === 'number' ? Math.round(Math.max(0, Math.min(10, vd.score)) * 10) / 10 : null)));
+  if (final === null && !unavailable) return;
+  /* функції звіту викликаються з boot() ще до кінця скрипта: жодних const верхнього рівня */
+  const COVERAGE_TEXT = { 'Data is limited': 1, 'Partially checked': 1, 'Enough data': 1, 'Studied in detail': 1 };
+  const conf = D.confidence && typeof D.confidence.overall_internal === 'number' && COVERAGE_TEXT[D.confidence.text_key] ? D.confidence : null;
+  const covText = conf ? t(conf.text_key) : null;
+  const valHtml = final !== null
+    ? esc(final.toFixed(1)) + '<small>/ 10</small>'
+    : esc(t('Not enough data to score'));
+  /* закрита картка: бал головний, повнота вторинна */
+  slot.innerHTML = '<button type="button" class="sc-card" id="scoreCard" aria-haspopup="dialog" aria-expanded="false" aria-controls="scorePop">'
+    + '<span class="sc-row"><span class="sc-l">' + esc(t('CalCar Score')) + '</span><span class="sc-v' + (final === null ? ' na' : '') + '">' + valHtml + '</span>'
+    + '<span class="sc-chev" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span></span>'
+    + (conf ? '<span class="sc-row"><span class="sc-l">' + esc(t('Check coverage')) + '<span class="sr-only">: ' + esc(covText) + '</span></span>' + coverageRail(conf.overall_internal, false) + '</span>' : '')
+    + '</button>';
+  /* панель */
+  let h = '<div class="sc-head"><div><span class="sc-t" id="scPopTitle">' + esc(t('CalCar Score')) + '</span>'
+    + '<span class="sc-big">' + (final !== null ? esc(final.toFixed(1)) + '<small>/ 10</small>' : esc(t('Not enough data to score'))) + '</span>';
+  if (final !== null) {
+    const riskLabel = final >= 8.5 ? t('Low detected risk') : final >= 7.0 ? t('Moderate detected risk') : final >= 5.5 ? t('Elevated detected risk') : t('High detected risk');
+    h += '<span class="sc-sub">' + esc(riskLabel) + '</span>';
+  }
+  h += '</div><button type="button" class="sc-x" id="scoreClose" aria-label="' + esc(t('Close')) + '"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>';
+  h += '<span class="sc-note">' + esc(t('Our assessment of the car based on the data we could verify.')) + '</span>';
+  /* повнота перевірки */
+  h += '<div class="sc-sec"><span class="sc-t">' + esc(t('Check coverage')) + '</span>';
+  if (conf) {
+    h += '<span class="sc-cov-text">' + esc(covText) + '</span>' + coverageRail(conf.overall_internal, true)
+      + '<div class="sc-scale"><span>' + esc(t('Limited data')) + '</span><span>' + esc(t('Well covered')) + '</span></div>';
+  } else {
+    h += '<span class="sc-note" style="margin-top:4px">' + esc(t('No coverage data for this check')) + '</span>';
+  }
+  h += '</div>';
+  /* що вплинуло на оцінку: реальні штрафи Score v4 зі збереженого breakdown */
+  if (bd && bd.score_version === 'v4' && final !== null) {
+    const rows = scoreCausalRows(bd);
+    h += '<div class="sc-sec"><span class="sc-t">' + esc(t('What affected the score')) + '</span>';
+    h += rows.length
+      ? '<div class="sc-list">' + rows.map(r => '<div class="sc-li"><span>' + esc(t(r.label)) + (r.extra ? ' <em>' + esc(r.extra) + '</em>' : '') + '</span><b>' + esc(scoreAmount(r.amount)) + '</b></div>').join('') + '</div>'
+      : '<span class="sc-note" style="margin-top:4px">' + esc(t('No significant factors lowering the score were found.')) + '</span>';
+    h += '</div>';
+  } else if (bd && bd.score_dimensions && final !== null) {
+    /* старі звіти v3: їхні збережені пояснювальні осі як fallback */
+    const ORDER = [['history', 'Vehicle history'], ['mileage', 'Mileage'], ['damage_repair', 'Damage and repair'], ['current_condition', 'Condition from photos']];
+    h += '<div class="sc-sec"><span class="sc-t">' + esc(t('Score details')) + '</span><div class="sc-list">'
+      + ORDER.map(([k, lbl]) => { const d = bd.score_dimensions[k] || {}; const val = d.score_available === true && typeof d.score === 'number' ? d.score.toFixed(1) : '–'; return '<div class="sc-li"><span>' + esc(t(lbl)) + '</span><b>' + esc(val) + '</b></div>'; }).join('')
+      + '</div></div>';
+  }
+  /* покриття даних по доменах: без відсотків */
+  if (conf && conf.domains) {
+    const DOM = [['history', 'History'], ['photos', 'Photos and current condition'], ['mileage', 'Mileage'], ['identity', 'Vehicle data']];
+    h += '<div class="sc-sec"><span class="sc-t">' + esc(t('Data coverage')) + '</span><div class="sc-list">'
+      + DOM.map(([k, lbl]) => {
+        const d = conf.domains[k] || {};
+        const right = d.status === 'not_applicable' || typeof d.score_internal !== 'number'
+          ? '<span class="na">' + esc(t('Not applicable')) + '</span>'
+          : '<div class="cv-rail" aria-hidden="true"><div class="cv-fill" style="width:' + Math.max(0, Math.min(100, d.score_internal)).toFixed(1) + '%"></div></div>';
+        return '<div class="sc-dom"><span>' + esc(t(lbl)) + '</span>' + right + '</div>';
+      }).join('') + '</div></div>';
+  }
+  pop.innerHTML = h;
+
+  const card = $('scoreCard');
+  const phone = () => window.matchMedia && window.matchMedia('(max-width:620px)').matches;
+  function place() {
+    if (pop.hidden) return;
+    if (phone()) { pop.style.left = ''; pop.style.top = ''; return; }
+    const r = card.getBoundingClientRect(), w = pop.offsetWidth, ph = pop.offsetHeight;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const left = Math.max(16, Math.min(r.right - w, vw - w - 16));
+    let top = r.bottom + 8;
+    if (top + ph > vh - 12 && r.top - ph - 8 > 12) top = r.top - ph - 8;
+    /* не вміщується ні знизу, ні зверху: піднімаємо, щоб панель лишалась у вікні */
+    top = Math.max(12, Math.min(top, vh - ph - 12));
+    pop.style.left = left + 'px'; pop.style.top = top + 'px';
+  }
+  function open() {
+    pop.hidden = false;
+    if (phone() && ov) ov.hidden = false;
+    card.setAttribute('aria-expanded', 'true');
+    place();
+  }
+  function close(returnFocus) {
+    if (pop.hidden) return;
+    pop.hidden = true;
+    if (ov) ov.hidden = true;
+    card.setAttribute('aria-expanded', 'false');
+    if (returnFocus) card.focus();
+  }
+  card.addEventListener('click', e => { e.stopPropagation(); if (pop.hidden) open(); else close(false); });
+  const x = $('scoreClose'); if (x) x.addEventListener('click', e => { e.stopPropagation(); close(true); });
+  if (ov) ov.addEventListener('click', () => close(false));
+  document.addEventListener('click', e => { if (!pop.hidden && !pop.contains(e.target) && !card.contains(e.target)) close(false); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !pop.hidden) close(true); });
+  window.addEventListener('scroll', place, { passive: true });
+  window.addEventListener('resize', place);
+}
 
 /* ---------- оригінальний опис продавця ----------
    Текст показується дослівно, як його написав продавець: без переказу і
