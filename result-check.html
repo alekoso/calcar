@@ -1467,7 +1467,11 @@ function boot2(D){
      середньорічний пробіг, які вже порахувала модель. Шкалу малює
      mileage-intensity.js; своєї формули пробігу тут нема. Бракує пробігу чи
      віку: вісь недоступна, і вторинну метрику не показуємо */
-  const dimsMil = ((D.score_breakdown || D.score_breakdown_v2 || {}).score_dimensions || {}).mileage;
+  /* шкала пробігу: вісь v3 або, для Score v4, той самий канонічний вхід
+     інтенсивності (annual_km, norm_km_year) у формі осі */
+  const bdMil = D.score_breakdown || D.score_breakdown_v2 || {};
+  const dimsMil = bdMil.score_dimensions ? bdMil.score_dimensions.mileage
+    : (bdMil.mileage_intensity ? { score_available: true, annual_mileage_km: bdMil.mileage_intensity.annual_km, reference_km_year: bdMil.mileage_intensity.norm_km_year, current_odometer_km: bdMil.mileage_intensity.odometer_km, powertrain_class: bdMil.mileage_intensity.powertrain_class } : null);
   const mi = window.CalCarMileageIntensity ? window.CalCarMileageIntensity.fromDimension(dimsMil) : null;
   const miIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.5h.01"/></svg>';
   const miBtn = mi
@@ -1603,13 +1607,20 @@ function boot2(D){
          без пояснень; недоступна вісь = прочерк. Зовнішній вигляд Score
          у звіті лишається старим */
       const dims = bd2 && bd2.score_dimensions;
-      if (dims && v2 !== null) {
+      /* Score v4: замість осей сім входів зі штрафами (0 = перевірено, чисто; прочерк = даних нема) */
+      const v4in = bd2 && bd2.score_version === 'v4' && bd2.inputs ? bd2.inputs : null;
+      const V4_ORDER = [['accident_history', 'Accident history'], ['body_condition', 'Body condition'], ['interior_condition', 'Interior condition'], ['mileage_intensity', 'Mileage intensity'], ['mileage_rollback', 'Mileage rollback'], ['seller_disclosures', 'Seller disclosures'], ['vehicle_age', 'Vehicle age']];
+      if ((dims || v4in) && v2 !== null) {
         /* Технічні ризики свідомо НЕ показуються в popover: бекенд-вісь
            лишається в breakdown, це лише presentation */
         const ORDER = [['history', 'Vehicle history'], ['mileage', 'Mileage'], ['damage_repair', 'Damage and repair'], ['current_condition', 'Condition from photos']];
         const pop = document.createElement('span');
         pop.className = 'dim-pop';
-        pop.innerHTML = ORDER.map(([k, lbl]) => {
+        pop.innerHTML = v4in ? V4_ORDER.map(([k, lbl]) => {
+          const d = v4in[k] || {};
+          const val = d.status === 'unavailable' ? null : (typeof d.penalty === 'number' && d.penalty > 0 ? '\u2212' + d.penalty.toFixed(2) : '0');
+          return '<span class="dim-pop-row"><span>' + esc(t(lbl)) + '</span><b' + (val === null ? ' class="na"' : '') + '>' + (val === null ? '\u2013' : val) + '</b></span>';
+        }).join('') : ORDER.map(([k, lbl]) => {
           const d = dims[k] || {};
           const val = d.score_available === true && typeof d.score === 'number' ? d.score.toFixed(1) : null;
           return '<span class="dim-pop-row"><span>' + esc(t(lbl)) + '</span><b' + (val === null ? ' class="na"' : '') + '>' + (val === null ? '\u2013' : val) + '</b></span>';
