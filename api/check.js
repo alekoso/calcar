@@ -29,9 +29,10 @@ import { decisionEvidenceBlock, mergeCanonicalEquipment, mergeCanonicalCondition
 /* спільні ідентичності і версії: тести і сусідні модулі беруть їх звідси */
 export { HISTORICAL_VISUAL_VERSION, photoIdentity, photoSetFingerprint, listingFingerprint, snapshotRow, listingKey, NHTSA_DECODER_VERSION, LISTING_FINGERPRINT_VERSION };
 
-/* активна версія CalCar Score: перемикається конфігурацією без деплою коду.
-   Rollback на v2 = env CALCAR_SCORE_VERSION=v2, НЕ revert коміту */
-const SCORE_VERSION = process.env.CALCAR_SCORE_VERSION === 'v4' ? 'v4' : 'v3';
+/* активна версія CalCar Score: v4 (з 2026-09-24), перемикається
+   конфігурацією без деплою коду. Rollback на v3 = env
+   CALCAR_SCORE_VERSION=v3, НЕ revert коміту; v3 і далі рахується як тінь */
+const SCORE_VERSION = process.env.CALCAR_SCORE_VERSION === 'v3' ? 'v3' : 'v4';
 import { makeToken, reportSlug, slugify } from './share.js';
 import { findAuctionRecord, shouldRecheck, discoverVinCandidates, photoHasProvenance, fetchHistoricalPhotos, extractLotMeta, verifyLotIdentity, zenrowsFetch, odometerToKm, PARSER_VERSION, EVENT_VERSION,
   admitAuctionRecord, applyAdmission, storedAuctionAdmission, auctionEventEligible } from './auction.js';
@@ -3468,6 +3469,9 @@ async function runCheck(req, res, job) {
             powertrain_class: resolvePowertrainClass({ nhtsa, fuel: parsed?.vehicle?.fuel || null }) },
           mileagePoints,
           platformMileageFlag: hf.mileage_mismatch_flag === true,
+          /* власники: лише структуровані події реєстру площадки (ті самі, що дають бейджі) */
+          ownerEvents: Array.isArray(hf.owner_events) ? hf.owner_events : [],
+          ownersCountRegistry: typeof hf.owners_count === 'number' ? hf.owners_count : null,
           sellerDisclosures: Array.isArray(parsed.seller_disclosures) ? parsed.seller_disclosures : [],
           listingText: listing.text || '',
           evidence: {
@@ -3539,7 +3543,9 @@ async function runCheck(req, res, job) {
        написане моделлю, але ніколи сильнішим) і зняття внутрішніх позначок
        на кшталт SRS з тексту для людини */
     try {
-      const sev = maxResolvedSeverity(parsed.score_breakdown);
+      /* resolved severity живе у breakdown v3 (accident_events); при
+         активному v4 він лежить у тіні */
+      const sev = maxResolvedSeverity(parsed.score_breakdown && parsed.score_breakdown.score_version === 'v4' ? parsed.score_breakdown_shadow : parsed.score_breakdown);
       if (parsed.purchase_decision) {
         const before = JSON.stringify(parsed.purchase_decision);
         applyDecisionLanguage(parsed.purchase_decision, { severity: sev, lang });

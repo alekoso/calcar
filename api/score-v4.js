@@ -18,9 +18,10 @@
    Резолвер подій, sanitize знахідок і класи зон беруться з v3 без змін.
    Модуль чистий: жодної мережі, жодних звернень до моделі. */
 import { resolveAccidentEvents, sanitizeFindingsV3, zoneClasses } from './score-v3.js';
+import { ownerEventsConsistent } from './history-owners.js';
 
 export const SCORE_CONFIG_V4 = {
-  CONFIG_TAG: 'v4-shadow-2026-09-24-age2',
+  CONFIG_TAG: 'v4-prod-2026-09-24',
   STARTING_SCORE: 10,
   ACCIDENT: { light: 0.4, medium: 1.2, heavy: 2.5, total: 5.0, unknown: 1.5, unrepaired_seller: 2.5, earlier_events: 1.0, flood: 2.5, fire: 3.0 },
   BODY: { dent: 0.5, corrosion: 0.6, headlight: 0.4, windshield: 0.3, broken_element: 0.3, missing_part: 0.3, wheel: 0.15, wheel_max: 0.3 },
@@ -31,6 +32,8 @@ export const SCORE_CONFIG_V4 = {
   /* вік: до року 0, далі 0.1 + (роки - 1) * 0.05 від точного age_months,
      без капа (лінійні 0.1 за рік у тіні домінували над реальними знахідками) */
   AGE: { first_year: 0.1, per_extra_year: 0.05 },
+  /* власники: перший 0, кожен наступний надійно підтверджений 0.1, без капа */
+  OWNERS: { per_extra_owner: 0.1 },
   ROLLBACK: { threshold_km: 30000, tiers: [[60000, 1.0], [120000, 2.0], [Infinity, 3.0]], platform_flag: 0.8, same_day_ms: 36 * 3600 * 1000, dedupe_km: 1000 },
   SELLER: {
     vehicle_not_running_or_unit_replacement: 5.0, major_powertrain_symptom: 3.0, generic_powertrain_warning: 1.0,
@@ -448,6 +451,27 @@ function ageInput(inp, cfg) {
   return { items, available: true, status: amount > 0 ? 'applied' : 'clean', detail };
 }
 
+/* ---------- 8. кількість власників ----------
+   Лише структурований реєстр площадки (ті самі owner_events, що дають
+   надійні бейджі власників): порядкові номери 1..N без пропусків і
+   дублікатів, узгоджені з кількістю власників того ж реєстру. Неповний
+   ряд (2,3 без 1; 1,3), вільна фраза, кількість подій чи оголошень
+   власників НЕ дають: unknown. Невідомо = unavailable, 0, не "один власник" */
+export function resolveOwnersCount(ownerEvents, registryCount) {
+  const events = Array.isArray(ownerEvents) ? ownerEvents.filter(e => e && Number.isInteger(e.ordinal) && e.ordinal > 0) : [];
+  if (!events.length) return null;
+  const sorted = [...events].sort((a, b) => a.ordinal - b.ordinal || String(a.date || '').localeCompare(String(b.date || '')));
+  const rc = typeof registryCount === 'number' && registryCount > 0 ? registryCount : undefined;
+  return ownerEventsConsistent(sorted, rc) ? sorted.length : null;
+}
+function ownersInput(inp, cfg) {
+  const count = resolveOwnersCount(inp.ownerEvents, inp.ownersCountRegistry);
+  if (count === null) return { items: [], available: false, status: 'unavailable', owners_count: null };
+  const amount = round2(Math.max(0, count - 1) * cfg.OWNERS.per_extra_owner);
+  const items = amount > 0 ? [{ key: 'input8:owners', input: 'vehicle_owners', amount, label_key: 'Number of owners', params: { owners_count: count }, evidence: [{ source: 'registry', ref: 'platform_registry', description: 'owners ' + count }] }] : [];
+  return { items, available: true, status: amount > 0 ? 'applied' : 'clean', owners_count: count };
+}
+
 /* ---------- 5. відкат пробігу ---------- */
 export function normalizeMileagePoints(points, cfg = SCORE_CONFIG_V4) {
   const out = [];
@@ -658,6 +682,7 @@ export function computeScoreV4(input, cfg = SCORE_CONFIG_V4) {
   const cur = currentConditionInputs({ currentVisual: inp.currentVisual, cvStatus: ev.cv_status }, cfg);
   const inten = intensityInput(inp, cfg);
   const age = ageInput(inp, cfg);
+  const owners = ownersInput(inp, cfg);
   const roll = rollbackInput({ mileagePoints: inp.mileagePoints, platformMileageFlag: inp.platformMileageFlag }, cfg);
   const sel = sellerInput(disclosures, cfg);
 
@@ -673,7 +698,7 @@ export function computeScoreV4(input, cfg = SCORE_CONFIG_V4) {
     }
   }
 
-  const items = [...acc.items, ...cur.body.items, ...cur.interior.items, ...inten.items, ...age.items, ...roll.items, ...sellerItems]
+  const items = [...acc.items, ...cur.body.items, ...cur.interior.items, ...inten.items, ...age.items, ...owners.items, ...roll.items, ...sellerItems]
     .map(i => ({ ...i, amount: round2(i.amount) }));
   const rawSum = round2(items.reduce((s, i) => s + i.amount, 0));
   const raw = round2(cfg.STARTING_SCORE - rawSum);
@@ -690,6 +715,7 @@ export function computeScoreV4(input, cfg = SCORE_CONFIG_V4) {
     interior_condition: state(cur.interior.available, cur.interior.items, cur.interior.status),
     mileage_intensity: state(inten.available, inten.items, inten.status),
     vehicle_age: state(age.available, age.items, age.status),
+    vehicle_owners: { ...state(owners.available, owners.items, owners.status), owners_count: owners.owners_count },
     mileage_rollback: state(roll.available, roll.items, roll.status),
     seller_disclosures: state(!!(inp.listingText && String(inp.listingText).trim()), sellerItems),
   };
@@ -713,12 +739,15 @@ export function computeScoreV4(input, cfg = SCORE_CONFIG_V4) {
     mileage_points: roll.points,
     mileage_intensity: inten.detail,
     vehicle_age: age.detail,
+    vehicle_owners: { owners_count: owners.owners_count, status: owners.status },
     availability: {
       hv: !!inp.historicalVisual, auction_record: ev.auction_record_exists === true, registry: ev.registry_present === true,
       cv_exterior: cur.body.available, cv_interior: cur.interior.available, cv_status: ev.cv_status || null,
       mileage_points: mileageDated, seller_text: !!(inp.listingText && String(inp.listingText).trim()), seller_text_chars: num(ev.seller_text_chars) || 0,
       age: inten.available || (inten.detail && inten.detail.reason) || false, powertrain: (inp.vehicle && inp.vehicle.powertrain_class) || null,
       photos_count: num(ev.photos_count) || 0,
+      owners: owners.owners_count,
+      ownership_history: owners.available ? 'known' : 'unavailable',
     },
     unresolved,
     dropped: { findings: droppedFindings, disclosures: droppedDisclosures, cv_findings: cur.dropped },

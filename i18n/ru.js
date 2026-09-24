@@ -218,6 +218,7 @@ window.CALCAR_DICTS.ru = {
   'Mileage intensity': 'Интенсивность пробега',
   'Mileage rollback': 'Откат пробега',
   'Seller disclosures': 'Признания продавца',
+  'Number of owners': 'Количество владельцев',
   'Vehicle age': 'Возраст автомобиля',
   'Not enough data to score': 'Недостаточно данных для оценки',
   'What to ask before viewing': 'Что спросить до осмотра',

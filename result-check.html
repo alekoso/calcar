@@ -1609,7 +1609,7 @@ function boot2(D){
       const dims = bd2 && bd2.score_dimensions;
       /* Score v4: замість осей сім входів зі штрафами (0 = перевірено, чисто; прочерк = даних нема) */
       const v4in = bd2 && bd2.score_version === 'v4' && bd2.inputs ? bd2.inputs : null;
-      const V4_ORDER = [['accident_history', 'Accident history'], ['body_condition', 'Body condition'], ['interior_condition', 'Interior condition'], ['mileage_intensity', 'Mileage intensity'], ['mileage_rollback', 'Mileage rollback'], ['seller_disclosures', 'Seller disclosures'], ['vehicle_age', 'Vehicle age']];
+      const V4_ORDER = [['accident_history', 'Accident history'], ['body_condition', 'Body condition'], ['interior_condition', 'Interior condition'], ['mileage_intensity', 'Mileage intensity'], ['mileage_rollback', 'Mileage rollback'], ['seller_disclosures', 'Seller disclosures'], ['vehicle_age', 'Vehicle age'], ['vehicle_owners', 'Number of owners']];
       if ((dims || v4in) && v2 !== null) {
         /* Технічні ризики свідомо НЕ показуються в popover: бекенд-вісь
            лишається в breakdown, це лише presentation */

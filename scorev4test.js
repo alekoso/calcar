@@ -226,6 +226,35 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     eq(run({ vehicle: { odometer_km: 1000, age_months: 480, powertrain_class: 'petrol' } }).items.find(i => i.key === 'input7:age').amount, 2.05, '40 років = 2.05, без капа');
   }
 
+  /* ===== 9в. вхід 8: кількість власників ===== */
+  {
+    const ev = (...ords) => ords.map((o, i) => ({ ordinal: o, date: '20' + (10 + i) + '-01-01' }));
+    const own = (events, reg) => run({ ownerEvents: events, ownersCountRegistry: reg });
+    for (const [n, pen] of [[1, 0], [2, 0.1], [3, 0.2], [5, 0.4], [7, 0.6], [10, 0.9]]) {
+      const r = own(ev(...Array.from({ length: n }, (_, i) => i + 1)), n);
+      const it = r.items.find(i => i.key === 'input8:owners');
+      eq(it ? it.amount : 0, pen, 'власників ' + n); eq(r.inputs.vehicle_owners.owners_count, n, 'owners_count ' + n);
+      eq(r.inputs.vehicle_owners.status, n === 1 ? 'clean' : 'applied', 'статус власників ' + n);
+      if (it) eq(it.label_key, 'Number of owners', 'label власників');
+    }
+    const unk = own([], null);
+    eq(unk.inputs.vehicle_owners.status, 'unavailable', 'невідомо = unavailable'); eq(unk.inputs.vehicle_owners.owners_count, null, 'owners_count null'); eq(sum(unk), 0, 'невідомо = 0');
+    eq(unk.availability.ownership_history, 'unavailable', 'availability для Confidence');
+    eq(V4.resolveOwnersCount(ev(1, 2, 3), 3), 3, '1,2,3 -> 3');
+    eq(V4.resolveOwnersCount(ev(1, 2, 3), null), 3, '1,2,3 без лічильника реєстру -> 3');
+    eq(V4.resolveOwnersCount(ev(1, 3), null), null, '1,3 -> unknown');
+    eq(V4.resolveOwnersCount(ev(2, 3), null), null, '2,3 без 1 -> unknown');
+    eq(V4.resolveOwnersCount([{ ordinal: 1, date: '2020-01-01' }, { ordinal: 2, date: '2021-01-01' }, { ordinal: 2, date: '2021-01-01' }], null), null, 'дублікат не збільшує кількість');
+    eq(V4.resolveOwnersCount(ev(1, 2, 3), 4), null, 'суперечність із лічильником реєстру -> unknown');
+    /* власники не впливають на eligibility */
+    const weak = { ...baseEv, photos_count: 1, seller_text_chars: 0, registry_present: true, historical_listings_count: 0, cv_status: 'failed', cv_zones_sufficient: 0 };
+    const w5 = run({ evidence: weak, ownerEvents: ev(1, 2, 3, 4, 5), ownersCountRegistry: 5 });
+    eq(w5.score_eligible, false, 'пʼять власників самі по собі не роблять Score eligible'); eq(w5.eligibility.strong_negative, false, 'власники не strong negative');
+    /* незалежність від віку та інтенсивності */
+    const both = run({ ownerEvents: ev(1, 2, 3), ownersCountRegistry: 3, vehicle: { odometer_km: 180000, age_months: 60, powertrain_class: 'petrol' } });
+    ok(near(sum(both), 1.9, 1.9), 'власники 0.2 + інтенсивність 1.4 + вік 0.3: ' + sum(both)); eq(both.final, 8.1, 'final 8.1 сходиться з items');
+  }
+
   /* ===== 10. вхід 5: відкат ===== */
   {
     const p = (date, km, family, o = {}) => ({ date, km, source: family, family, ...o });
@@ -285,7 +314,7 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
   /* ===== 12. незмінний config_tag ===== */
   {
     const hash = crypto.createHash('md5').update(JSON.stringify(C)).digest('hex');
-    const EXPECTED = '59640c04075132fa30f7d159c665ad36';
+    const EXPECTED = '8813cf075a0467bf0295500543ed97cf';
     if (hash !== EXPECTED) errs.push('SCORE_CONFIG_V4 змінився (md5 ' + hash + '), онови CONFIG_TAG і хеш у тесті');
   }
 
@@ -294,7 +323,8 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     const checkSrc = fs.readFileSync('api/check.js', 'utf8');
     ok(/computeScoreV4/.test(checkSrc), 'check.js: v4 не викликається');
     ok(/SCORE_VERSION === 'v4' \? breakdownV4 : breakdownV3/.test(checkSrc), 'check.js: активний breakdown обирає диспетчер');
-    ok(/const SCORE_VERSION = .*'v4'.*:\s*'v3'/.test(checkSrc) || /CALCAR_SCORE_VERSION === 'v4' \? 'v4' : 'v3'/.test(checkSrc), 'check.js: за замовчуванням має лишатись v3');
+    ok(/CALCAR_SCORE_VERSION === 'v3' \? 'v3' : 'v4'/.test(checkSrc), 'check.js: за замовчуванням має бути v4, rollback через env v3');
+    ok(/maxResolvedSeverity\(parsed\.score_breakdown && parsed\.score_breakdown\.score_version === 'v4' \? parsed\.score_breakdown_shadow : parsed\.score_breakdown\)/.test(checkSrc), 'check.js: resolved severity для текстів береться з v3 у тіні');
     ok(!/parsed\.score_breakdown = breakdownV4/.test(checkSrc), 'check.js: v4 напряму пишеться у продакшн-поле');
     ok(/score_breakdown_shadow = shadow/.test(checkSrc), 'check.js: тінь не пишеться');
     const v3src = fs.readFileSync('api/score-v3.js', 'utf8');

@@ -243,7 +243,8 @@ const VALID = {
     if (!/const decisionContext = buildDecision|let decisionContext = null/.test(src)) errs.push('decisionContext не збирається в хендлері');
     if (!/decision_inputs: decisionContext/.test(src)) errs.push('_meta не зберігає входи рішення');
     if (!/applyDecisionLanguage\(parsed\.purchase_decision/.test(src)) errs.push('мова висновку не нормалізується після моделі');
-    if (!/maxResolvedSeverity\(parsed\.score_breakdown\)/.test(src)) errs.push('нормалізація мови не спирається на вирішену тяжкість');
+    /* resolved severity живе у breakdown v3; при активному v4 він у тіні */
+    if (!/maxResolvedSeverity\(parsed\.score_breakdown && parsed\.score_breakdown\.score_version === 'v4' \? parsed\.score_breakdown_shadow : parsed\.score_breakdown\)/.test(src)) errs.push('нормалізація мови не спирається на вирішену тяжкість');
 
     /* ---- сторінка Check: профіль і недавні звіти беруться з наявних сховищ ---- */
     if (!/collectDecisionContext/.test(home)) errs.push('check.html не збирає контекст рішення');

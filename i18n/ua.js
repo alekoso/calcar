@@ -218,6 +218,7 @@ window.CALCAR_DICTS.ua = {
   'Mileage intensity': 'Інтенсивність пробігу',
   'Mileage rollback': 'Відкат пробігу',
   'Seller disclosures': 'Зізнання продавця',
+  'Number of owners': 'Кількість власників',
   'Vehicle age': 'Вік автомобіля',
   'Not enough data to score': 'Недостатньо даних для оцінки',
   'What to ask before viewing': 'Що спитати до огляду',
