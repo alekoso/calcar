@@ -453,23 +453,30 @@
      і горизонтальна шкала з маркером. Повнота це НЕ ризик: нейтральна рейка,
      лаймовий акцент, без червоно-зеленого градієнта */
   .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
-  .sc-card{display:flex;flex-direction:column;gap:9px;width:100%;margin:0 0 18px;padding:12px 14px 13px;text-align:left;font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:12px;cursor:pointer;transition:border-color .15s,box-shadow .15s}
-  .sc-card:hover{border-color:var(--line-strong);box-shadow:0 4px 14px rgba(20,22,25,.06)}
+  .sc-slot:empty{display:none}
+  /* закрита картка: ліворуч бал, праворуч повнота, тонкий нейтральний роздільник */
+  .sc-card{position:relative;display:grid;grid-template-columns:minmax(150px,.8fr) 1px minmax(0,2fr);align-items:center;column-gap:28px;width:100%;margin:0 0 12px;padding:18px 52px 18px 22px;text-align:left;font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:var(--radius);cursor:pointer;transition:border-color .15s,box-shadow .15s}
+  .sc-card:hover{border-color:var(--line-strong);box-shadow:0 4px 14px rgba(20,22,25,.05)}
   .sc-card:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
-  .sc-row{display:flex;align-items:center;gap:12px;min-width:0}
+  .sc-sep{align-self:stretch;width:1px;background:var(--line)}
+  .sc-col{display:flex;flex-direction:column;min-width:0}
   .sc-l{font-size:13px;font-weight:600;color:var(--muted);white-space:nowrap}
-  .sc-v{margin-left:auto;font-size:22px;font-weight:800;letter-spacing:-.3px;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--ink)}
-  .sc-v small{font-size:13px;font-weight:600;color:var(--muted);letter-spacing:0;margin-left:2px}
-  .sc-v.na{font-size:14px;font-weight:600;color:var(--muted);letter-spacing:0;white-space:normal;text-align:right}
-  .sc-chev{display:inline-flex;color:var(--muted);transition:transform .18s ease,color .15s}
+  .sc-v{margin-top:4px;font-size:38px;line-height:1.05;font-weight:800;letter-spacing:-.8px;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--ink)}
+  .sc-v small{font-size:16px;font-weight:500;color:var(--muted);letter-spacing:0;margin-left:4px}
+  .sc-v.na{font-size:15px;line-height:1.35;font-weight:600;color:var(--muted);letter-spacing:0;white-space:normal}
+  .sc-cov-t{margin-top:3px;font-size:15px;font-weight:700;color:var(--ink)}
+  .sc-cov-na{margin-top:4px;font-size:13px;color:var(--muted)}
+  .sc-chev{position:absolute;top:50%;right:18px;margin-top:-8px;display:inline-flex;color:var(--muted);transition:transform .18s ease,color .15s}
   .sc-card:hover .sc-chev{color:var(--ink)}
   .sc-card[aria-expanded="true"] .sc-chev{transform:rotate(180deg)}
-  .sc-cov{flex:0 0 132px;margin-left:auto;margin-right:26px}
   /* рейка повноти: нейтральна основа, лаймове заповнення до маркера, риска "достатньо" */
   .cv-rail{position:relative;height:6px;border-radius:6px;background:var(--line)}
   .cv-fill{position:absolute;left:0;top:0;bottom:0;border-radius:6px;background:var(--brand)}
   .cv-tick{position:absolute;top:-4px;bottom:-4px;width:0;border-left:1px solid var(--ink-2);opacity:.55}
   .cv-knob{position:absolute;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:var(--card);border:2px solid var(--ink);box-sizing:border-box}
+  /* шкала у картці: та сама мова, що в панелі, стримана ширина */
+  .sc-card .sc-meter{max-width:440px;margin:24px 0 6px}
+  .sc-card .sc-scale{max-width:440px}
   .sc-pop{position:fixed;z-index:160;width:360px;max-width:calc(100vw - 32px);max-height:calc(100vh - 24px);overflow:auto;overscroll-behavior:contain;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 28px rgba(20,22,25,.16);padding:14px 16px 16px;color:var(--ink)}
   .sc-pop[hidden]{display:none}
   .sc-ov{position:fixed;inset:0;z-index:155;background:rgba(15,25,40,.28)}
@@ -493,19 +500,17 @@
   .sc-scale{display:flex;justify-content:space-between;gap:8px;font-size:11.5px;color:var(--muted)}
   .sc-note{display:block;margin-top:9px;font-size:12px;line-height:1.45;color:var(--muted)}
   .sc-list{margin-top:7px}
-  .sc-li{display:flex;justify-content:space-between;align-items:baseline;gap:14px;padding:7px 0;font-size:13.5px;color:var(--ink-2)}
-  .sc-li+.sc-li{border-top:1px solid var(--line)}
-  .sc-li span{min-width:0}
-  .sc-li em{font-style:normal;color:var(--muted)}
-  .sc-li b{flex:0 0 auto;font-variant-numeric:tabular-nums;color:var(--ink)}
   .sc-dom{display:grid;grid-template-columns:minmax(0,1fr) 112px;align-items:center;gap:14px;padding:7px 0;font-size:13.5px;color:var(--ink-2)}
   .sc-dom+.sc-dom{border-top:1px solid var(--line)}
   .sc-dom .na{font-size:12px;color:var(--faint);text-align:right}
   @media(max-width:620px){
-    .sc-v{font-size:21px}
-    .sc-cov{flex-basis:112px}
+    .sc-card{grid-template-columns:minmax(0,1fr);row-gap:14px;padding:16px 44px 16px 16px}
+    .sc-sep{width:auto;height:1px;align-self:auto}
+    .sc-v{font-size:32px}
+    .sc-chev{top:22px;margin-top:0;right:14px}
+    .sc-card .sc-meter,.sc-card .sc-scale{max-width:none}
     .sc-pop{left:12px!important;right:12px;top:auto!important;bottom:12px;width:auto;max-width:none;max-height:82vh;border-radius:16px;padding:16px 16px 18px}
-    .sc-li,.sc-dom{font-size:14.5px}
+    .sc-dom{font-size:14.5px}
   }
 
   /* ---- оригінальний опис продавця: чіп біля VIN і бокова шухляда ----
@@ -1054,13 +1059,15 @@
     <div class="card-body"><div id="eqList"></div></div>
   </div>
 
+  <!-- Оцінка CalCar + повнота перевірки: окрема компактна картка перед вердиктом -->
+  <div class="sc-slot" id="scoreSlot"></div>
+
   <!-- вердикт -->
   <div class="card" id="verdictCard" style="display:none">
     <div class="card-head">
       <h2>Worth buying?</h2>
     </div>
     <div class="card-body">
-      <div id="scoreSlot"></div>
       <div id="pdBlock" style="display:none">
         <div class="pd-top">
           <div class="pd-headline" id="pdHeadline"></div>
@@ -2113,33 +2120,17 @@ function isAmongFirstChecks(rows, ids, n, truncated) {
    (v3 і старіші) повноти не вигадують. Панель: клік або Enter/Space
    відкриває, Esc, хрестик чи клік поза закривають і повертають фокус; на
    телефоні шторка знизу */
-function scoreAmount(x) { const r = Math.round(x * 100) / 100; return '\u2212' + (Number.isInteger(r) ? r.toFixed(1) : String(r)); }
-function scoreCausalRows(bd) {
-  const items = Array.isArray(bd && bd.items) ? bd.items.filter(i => i && typeof i.amount === 'number' && i.amount > 0) : [];
-  const ACC = { light: 'Accident: light damage', medium: 'Accident: medium damage', heavy: 'Accident: heavy damage', total: 'Accident: total-loss level damage', unknown: 'Accident: severity not established', unrepaired_seller: 'Accident: not restored per the seller' };
-  const GROUP = { body_condition: 'Body condition from photos', interior_condition: 'Interior condition from photos', mileage_intensity: 'Mileage intensity', mileage_rollback: 'Mileage decreased between records', seller_disclosures: 'Faults disclosed by the seller', vehicle_age: 'Vehicle age', vehicle_owners: 'Number of owners' };
-  const rows = new Map();
-  for (const it of items) {
-    let key, label, extra = null;
-    if (/^accident_latest_/.test(it.key)) { key = it.key; label = ACC[it.key.slice(16)] || 'Accident history'; }
-    else if (it.key === 'accident_earlier_events') { key = it.key; label = 'Earlier accidents'; }
-    else if (it.key === 'flood_event') { key = it.key; label = 'Flood damage'; }
-    else if (it.key === 'fire_event') { key = it.key; label = 'Fire damage'; }
-    else if (GROUP[it.input]) { key = it.input; label = GROUP[it.input]; if (it.input === 'vehicle_owners' && it.params && it.params.owners_count) extra = String(it.params.owners_count); }
-    else continue;
-    const cur = rows.get(key);
-    if (cur) cur.amount += it.amount; else rows.set(key, { label, extra, amount: it.amount });
-  }
-  return [...rows.values()].sort((a, b) => b.amount - a.amount);
-}
-function coverageRail(value, big) {
+function coverageRail(value, withLabels) {
   const v = Math.max(0, Math.min(100, value));
-  return (big ? '<div class="sc-meter" aria-hidden="true"><span class="sc-tick-l" style="left:70%">' + esc(t('Sufficient')) + '</span>' : '<div class="sc-cov" aria-hidden="true">')
-    + '<div class="cv-rail"><div class="cv-fill" style="width:' + v.toFixed(1) + '%"></div><div class="cv-tick" style="left:70%"></div><div class="cv-knob" data-pos="' + v + '" style="left:' + v.toFixed(1) + '%"></div></div></div>';
+  return '<div class="sc-meter" aria-hidden="true"><span class="sc-tick-l" style="left:70%">' + esc(t('Sufficient')) + '</span>'
+    + '<div class="cv-rail"><div class="cv-fill" style="width:' + v.toFixed(1) + '%"></div><div class="cv-tick" style="left:70%"></div><div class="cv-knob" data-pos="' + v + '" style="left:' + v.toFixed(1) + '%"></div></div></div>'
+    + (withLabels ? '<div class="sc-scale" aria-hidden="true"><span>' + esc(t('Limited data')) + '</span><span>' + esc(t('Well covered')) + '</span></div>' : '');
 }
 function renderScoreBlock(D) {
   const slot = $('scoreSlot'), pop = $('scorePop'), ov = $('scoreOv');
   if (!slot || !pop) return;
+  /* функції звіту викликаються з boot() ще до кінця скрипта: жодних const верхнього рівня */
+  const COVERAGE_TEXT = { 'Data is limited': 1, 'Partially checked': 1, 'Enough data': 1, 'Studied in detail': 1 };
   const vd = D.verdict || {};
   const bd = D.score_breakdown || D.score_breakdown_v2 || null;
   const unavailable = !!(bd && bd.score_available === false);
@@ -2148,53 +2139,30 @@ function renderScoreBlock(D) {
       : (typeof D.score_v2_preview === 'number' ? D.score_v2_preview
         : (typeof vd.score === 'number' ? Math.round(Math.max(0, Math.min(10, vd.score)) * 10) / 10 : null)));
   if (final === null && !unavailable) return;
-  /* функції звіту викликаються з boot() ще до кінця скрипта: жодних const верхнього рівня */
-  const COVERAGE_TEXT = { 'Data is limited': 1, 'Partially checked': 1, 'Enough data': 1, 'Studied in detail': 1 };
   const conf = D.confidence && typeof D.confidence.overall_internal === 'number' && COVERAGE_TEXT[D.confidence.text_key] ? D.confidence : null;
   const covText = conf ? t(conf.text_key) : null;
-  const valHtml = final !== null
-    ? esc(final.toFixed(1)) + '<small>/ 10</small>'
-    : esc(t('Not enough data to score'));
-  /* закрита картка: бал головний, повнота вторинна */
+  const scoreHtml = final !== null ? esc(final.toFixed(1)) + '<small>/ 10</small>' : esc(t('Not enough data to score'));
+  /* закрита картка: ліворуч бал, праворуч повнота перевірки. Жодних
+     штрафів, формули, ризик-лейбла чи підоцінок */
   slot.innerHTML = '<button type="button" class="sc-card" id="scoreCard" aria-haspopup="dialog" aria-expanded="false" aria-controls="scorePop">'
-    + '<span class="sc-row"><span class="sc-l">' + esc(t('CalCar Score')) + '</span><span class="sc-v' + (final === null ? ' na' : '') + '">' + valHtml + '</span>'
-    + '<span class="sc-chev" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span></span>'
-    + (conf ? '<span class="sc-row"><span class="sc-l">' + esc(t('Check coverage')) + '<span class="sr-only">: ' + esc(covText) + '</span></span>' + coverageRail(conf.overall_internal, false) + '</span>' : '')
+    + '<span class="sc-col"><span class="sc-l">' + esc(t('CalCar Score')) + '</span><span class="sc-v' + (final === null ? ' na' : '') + '">' + scoreHtml + '</span></span>'
+    + '<span class="sc-sep" aria-hidden="true"></span>'
+    + '<span class="sc-col"><span class="sc-l">' + esc(t('Check coverage')) + '</span>'
+    + (conf ? '<span class="sc-cov-t">' + esc(covText) + '</span>' + coverageRail(conf.overall_internal, true)
+      : '<span class="sc-cov-na">' + esc(t('No coverage data for this check')) + '</span>')
+    + '</span>'
+    + '<span class="sc-chev" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>'
     + '</button>';
-  /* панель */
+  /* панель: бал з коротким поясненням без математики, повнота, покриття доменів */
   let h = '<div class="sc-head"><div><span class="sc-t" id="scPopTitle">' + esc(t('CalCar Score')) + '</span>'
-    + '<span class="sc-big">' + (final !== null ? esc(final.toFixed(1)) + '<small>/ 10</small>' : esc(t('Not enough data to score'))) + '</span>';
-  if (final !== null) {
-    const riskLabel = final >= 8.5 ? t('Low detected risk') : final >= 7.0 ? t('Moderate detected risk') : final >= 5.5 ? t('Elevated detected risk') : t('High detected risk');
-    h += '<span class="sc-sub">' + esc(riskLabel) + '</span>';
-  }
-  h += '</div><button type="button" class="sc-x" id="scoreClose" aria-label="' + esc(t('Close')) + '"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>';
-  h += '<span class="sc-note">' + esc(t('Our assessment of the car based on the data we could verify.')) + '</span>';
-  /* повнота перевірки */
+    + '<span class="sc-big">' + scoreHtml + '</span></div>'
+    + '<button type="button" class="sc-x" id="scoreClose" aria-label="' + esc(t('Close')) + '"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>';
+  h += '<span class="sc-note">' + esc(t('An assessment of this specific car based on confirmed data about its history, condition, mileage and other available facts.')) + '</span>';
   h += '<div class="sc-sec"><span class="sc-t">' + esc(t('Check coverage')) + '</span>';
-  if (conf) {
-    h += '<span class="sc-cov-text">' + esc(covText) + '</span>' + coverageRail(conf.overall_internal, true)
-      + '<div class="sc-scale"><span>' + esc(t('Limited data')) + '</span><span>' + esc(t('Well covered')) + '</span></div>';
-  } else {
-    h += '<span class="sc-note" style="margin-top:4px">' + esc(t('No coverage data for this check')) + '</span>';
-  }
+  h += conf
+    ? '<span class="sc-cov-text">' + esc(covText) + '</span>' + coverageRail(conf.overall_internal, true)
+    : '<span class="sc-note" style="margin-top:4px">' + esc(t('No coverage data for this check')) + '</span>';
   h += '</div>';
-  /* що вплинуло на оцінку: реальні штрафи Score v4 зі збереженого breakdown */
-  if (bd && bd.score_version === 'v4' && final !== null) {
-    const rows = scoreCausalRows(bd);
-    h += '<div class="sc-sec"><span class="sc-t">' + esc(t('What affected the score')) + '</span>';
-    h += rows.length
-      ? '<div class="sc-list">' + rows.map(r => '<div class="sc-li"><span>' + esc(t(r.label)) + (r.extra ? ' <em>' + esc(r.extra) + '</em>' : '') + '</span><b>' + esc(scoreAmount(r.amount)) + '</b></div>').join('') + '</div>'
-      : '<span class="sc-note" style="margin-top:4px">' + esc(t('No significant factors lowering the score were found.')) + '</span>';
-    h += '</div>';
-  } else if (bd && bd.score_dimensions && final !== null) {
-    /* старі звіти v3: їхні збережені пояснювальні осі як fallback */
-    const ORDER = [['history', 'Vehicle history'], ['mileage', 'Mileage'], ['damage_repair', 'Damage and repair'], ['current_condition', 'Condition from photos']];
-    h += '<div class="sc-sec"><span class="sc-t">' + esc(t('Score details')) + '</span><div class="sc-list">'
-      + ORDER.map(([k, lbl]) => { const d = bd.score_dimensions[k] || {}; const val = d.score_available === true && typeof d.score === 'number' ? d.score.toFixed(1) : '–'; return '<div class="sc-li"><span>' + esc(t(lbl)) + '</span><b>' + esc(val) + '</b></div>'; }).join('')
-      + '</div></div>';
-  }
-  /* покриття даних по доменах: без відсотків */
   if (conf && conf.domains) {
     const DOM = [['history', 'History'], ['photos', 'Photos and current condition'], ['mileage', 'Mileage'], ['identity', 'Vehicle data']];
     h += '<div class="sc-sec"><span class="sc-t">' + esc(t('Data coverage')) + '</span><div class="sc-list">'

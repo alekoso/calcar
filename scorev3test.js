@@ -729,7 +729,8 @@ const THIN = {
   if (!/delete c\.score_breakdown;/.test(chatSrc)) errs.push('chat.js: канонічний breakdown не вирізається з контексту чату');
   const pageSrc = fs.readFileSync('result-check.html', 'utf8');
   if (!/D\.score_breakdown \|\| D\.score_breakdown_v2/.test(pageSrc)) errs.push('result-check: читач не переведений на канонічне поле з alias-фолбеком');
-  if (!/Low detected risk/.test(pageSrc)) errs.push('result-check: risk-wording рівня нема');
+  /* компонент оцінки показує лише бал і повноту: ні ризик-лейбла, ні штрафів (scoreuitest.js) */
+  if (/Low detected risk|scoreCausalRows/.test(pageSrc)) errs.push('result-check: ризик-лейбл чи штрафи повернулись у компонент оцінки');
   if (!/No auction records found in the checked sources/.test(pageSrc)) errs.push('result-check: нейтральне повідомлення checked_absent нема');
   /* AI-висновок: старий стиль головного виклику; числові підоцінки в текст
      не вплітаються; в кінці ОДНА фраза з точним бекенд-балом */
@@ -738,11 +739,14 @@ const THIN = {
   if (!/оценка CalCar этого автомобиля составляет/.test(checkSrc)) errs.push('check.js: нема фінальної фрази з балом (ru)');
   if (!/CalCar Score of this car is/.test(checkSrc)) errs.push('check.js: нема фінальної фрази з балом (en)');
   if (!/vehicle: vehicleV3/.test(checkSrc)) errs.push('check.js: vehicle-вхід осі Пробіг не передається');
-  /* картка підоцінок: пʼять міток на сторінці і в обох словниках */
+  /* старі псевдо-підоцінки v3 на екрані не показуються; переклади міток
+     лишаються у словниках (ними користуються інші блоки звіту) */
   const ruDict = fs.readFileSync('i18n/ru.js', 'utf8');
   const enDict = fs.readFileSync('i18n/ua.js', 'utf8');
+  for (const lbl of ['Vehicle history', 'Damage and repair', 'Condition from photos']) {
+    if (pageSrc.includes("t('" + lbl + "')")) errs.push('result-check: стара вісь v3 знову на екрані: ' + lbl);
+  }
   for (const lbl of ['Vehicle history', 'Mileage', 'Damage and repair', 'Condition from photos']) {
-    if (!pageSrc.includes("'" + lbl + "'")) errs.push('result-check: мітка осі відсутня: ' + lbl);
     if (!ruDict.includes("'" + lbl + "'")) errs.push('ru.js: нема перекладу мітки ' + lbl);
     if (!enDict.includes("'" + lbl + "'")) errs.push('en.js: нема перекладу мітки ' + lbl);
   }

@@ -78,7 +78,7 @@ const VALID = {
   /* екран на v2 із фолбеком на легасі для старих звітів, підпис на місці */
   if (!page.includes('D.score_v2_preview')) errs.push('result-check.html: екран не читає score_v2_preview');
   if (!page.includes("typeof vd.score === 'number'")) errs.push('result-check.html: зник фолбек на легасі оцінку');
-  if (!page.includes('Our assessment of the car based on the data we could verify.')) errs.push('result-check.html: нема пояснення оцінки в tooltip');
+  if (!page.includes('An assessment of this specific car based on confirmed data about its history, condition, mileage and other available facts.')) errs.push('result-check.html: нема пояснення оцінки в панелі');
   for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
     const dict = fs.readFileSync(d, 'utf8');
     for (const k of ['Read the full reasoning', 'Questions for the seller', 'What we could not verify', 'Our assessment of the car based on the data we could verify.']) {

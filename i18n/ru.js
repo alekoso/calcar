@@ -247,6 +247,7 @@ window.CALCAR_DICTS.ru = {
   'Interior condition from photos': 'Салон по фото',
   'Mileage decreased between records': 'Пробег уменьшался между записями',
   'Faults disclosed by the seller': 'Неисправности со слов продавца',
+  'An assessment of this specific car based on confirmed data about its history, condition, mileage and other available facts.': 'Оценка конкретного автомобиля по подтверждённым данным о его истории, состоянии, пробеге и другим доступным фактам.',
   'Number of owners': 'Количество владельцев',
   'Vehicle age': 'Возраст автомобиля',
   'Not enough data to score': 'Недостаточно данных для оценки',

@@ -346,7 +346,7 @@ const REPORTS = [
     if (page.includes('id="chatTopBtn"')) errs.push('верхня кнопка чату повернулась');
     if (page.includes('id="askAi"')) errs.push('generic-кнопка чату у фінальних діях повернулась');
     if (!page.includes("id=\"pdChatBtn\"") || !page.includes('calcarOpenChat')) errs.push('контекстний вхід у помічника зник разом із рештою');
-    if (!page.includes('Our assessment of the car based on the data we could verify.')) errs.push('нема пояснення Оцінки CalCar у панелі');
+    if (!page.includes('An assessment of this specific car based on confirmed data about its history, condition, mileage and other available facts.')) errs.push('нема пояснення Оцінки CalCar у панелі');
     if (/score-shield[^>]*title=/.test(page)) errs.push('щит досі з browser-title');
     if (page.includes("t('після перевірок')")) errs.push('grade-бейдж біля оцінки лишився');
     if (page.includes('id="vHint"')) errs.push('рядок-підпис під оцінкою лишився');

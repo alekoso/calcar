@@ -247,6 +247,7 @@ window.CALCAR_DICTS.ua = {
   'Interior condition from photos': 'Салон за фото',
   'Mileage decreased between records': 'Пробіг зменшувався між записами',
   'Faults disclosed by the seller': 'Несправності зі слів продавця',
+  'An assessment of this specific car based on confirmed data about its history, condition, mileage and other available facts.': 'Оцінка конкретного автомобіля за підтвердженими даними про його історію, стан, пробіг та інші доступні факти.',
   'Number of owners': 'Кількість власників',
   'Vehicle age': 'Вік автомобіля',
   'Not enough data to score': 'Недостатньо даних для оцінки',
