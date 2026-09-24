@@ -21,6 +21,7 @@ const PUBLIC_TOP = [
   'checklist', 'equipment_v2', 'equipment', 'body_wrap', 'data_notes',
   'presentation_damage', 'historical_visual',
   'score_breakdown', 'score_breakdown_v2', 'score_v2_preview', 'active_score_version',
+  'confidence',
   'translations',
 ];
 /* _meta: лише те, що потрібно сторінці звіту для показу */

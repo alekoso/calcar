@@ -5,7 +5,9 @@ import { mainResponseFormat, schemaProse } from './check-schema.js';
 import { resolveLocale, languageDirective, errText } from './locale.js';
 import { computeScoreV3, resolveVehicleAge } from './score-v3.js';
 /* Score v4: тінь за замовчуванням, активна лише через CALCAR_SCORE_VERSION=v4 */
-import { computeScoreV4, resolvePowertrainClass, mileageNormKmYear, SCORE_CONFIG_V4 } from './score-v4.js';
+import { computeScoreV4, resolvePowertrainClass, mileageNormKmYear, SCORE_CONFIG_V4, validateDisclosures } from './score-v4.js';
+/* повнота перевірки (Confidence v1): знімок у момент Check, Score не змінює */
+import { buildConfidenceInput, computeConfidenceV1, CONFIDENCE_CONFIG_V1 } from './confidence.js';
 import {
   DAMAGE_DEPTH_LEVELS, INNER_EXTENT_LEVELS, innerDeformationState,
   FASCIA_STATUSES, OUTER_EXTENT_LEVELS, resolveDamageDepth,
@@ -622,7 +624,8 @@ export async function readSnapshots(vin, currentUrl) {
     });
     if (!r.ok) {
       console.log('[vehicle-memory]', JSON.stringify({ op: 'read_snapshots', status: r.status, vin }));
-      return [];
+      /* збій читання відрізняється від "записів нема": ознака для повноти перевірки */
+      return Object.assign([], { lookup_failed: true });
     }
     const rows = await r.json();
     /* одне джерело рахується один раз: дедуплікація за нормалізованим URL */
@@ -639,7 +642,7 @@ export async function readSnapshots(vin, currentUrl) {
     return out;
   } catch (e) {
     console.log('[vehicle-memory]', JSON.stringify({ op: 'read_snapshots', error: String((e && e.message) || e).slice(0, 120), vin }));
-    return [];
+    return Object.assign([], { lookup_failed: true });
   }
 }
 
@@ -951,6 +954,9 @@ export function extractHistoryFacts(text) {
     past_listings,
     past_mileage_points,
     mileage_points,
+    /* держреєстр площадки відповів явно "інформація відсутня": відповідь
+       структурованого джерела, а не збій (для повноти перевірки) */
+    registry_answered_empty: /Відсутня інформація із офіційних відкритих даних/i.test(t),
     /* відмітка площадки про невідповідність пробігу: до появи реального
        зразка тексту завжди false (D14) */
     mileage_mismatch_flag: false,
@@ -3102,7 +3108,8 @@ async function runCheck(req, res, job) {
        Збирається ДО виклику моделі, бо висновок пишеться в тому ж виклику.
        Знімки рову даних читаємо один раз і перевикористовуємо у скорингу */
     let snaps = [];
-    try { snaps = await readSnapshots(listing.vin, url); } catch (e) { console.log('[check] snapshots read failed:', e.message); }
+    let snapsLookup = listing.vin ? 'ok' : 'no_vin';
+    try { snaps = await readSnapshots(listing.vin, url); if (snaps && snaps.lookup_failed) snapsLookup = 'failed'; } catch (e) { snapsLookup = 'failed'; console.log('[check] snapshots read failed:', e.message); }
     let decisionContext = null;
     try {
       const ptClass = resolvePowertrainClass({ nhtsa, fuel: null });
@@ -3485,6 +3492,28 @@ async function runCheck(req, res, job) {
       } catch (e) {
         console.log('[score-v4]', JSON.stringify({ op: 'compute', error: String((e && e.message) || e).slice(0, 160), vin: listing.vin || null }));
         breakdownV4 = { score_version: 'v4', config_tag: SCORE_CONFIG_V4.CONFIG_TAG, score_available: false, score_eligible: false, score_unavailable_reason: 'compute_error', final: null };
+      }
+      /* ---- повнота перевірки: знімок у момент Check. Читає вже зібрані
+         входи і breakdown v4, сам Score не змінює ---- */
+      try {
+        let cvC = cvFeed || null;
+        if (!cvC && cvShadow) { try { cvC = await Promise.race([cvShadow, new Promise(r => setTimeout(() => r(null), 500))]); } catch (e) { cvC = null; } }
+        parsed.confidence = computeConfidenceV1(buildConfidenceInput({
+          now: new Date().toISOString(),
+          listing: { vin: listing.vin, country: listing.country, make: listing.make, odometer_km: listing.odometer_km, listing_equipment: listing.listing_equipment },
+          hf, nhtsa, auctionSearch,
+          auctionRecordExists: coverageInputs.auction_record_exists === true,
+          hvPresent: !!parsed.historical_visual,
+          snaps, snapsLookup,
+          cv: cvC && cvC.status === 'ok' ? cvC.current_visual : null, cvStatus: cvC ? cvC.status : 'absent',
+          v4: breakdownV4, ageMonths: vehicleV3.age_months,
+          photosCount: coverageInputs.photos_count,
+          disclosuresCount: validateDisclosures(parsed.seller_disclosures, listing.text || '').ok.length,
+        }));
+        console.log('[confidence]', JSON.stringify({ v: 'v1', overall: parsed.confidence.overall_internal, caps: parsed.confidence.caps_applied.filter(c => c.binding).map(c => c.name), vin: listing.vin || null }));
+      } catch (e) {
+        console.log('[confidence]', JSON.stringify({ op: 'compute', error: String((e && e.message) || e).slice(0, 160), vin: listing.vin || null }));
+        parsed.confidence = { confidence_version: 'v1', config_tag: CONFIDENCE_CONFIG_V1.CONFIG_TAG, overall_internal: null, text_key: null, domains: {}, caps_applied: [], unavailable_reason: 'compute_error' };
       }
       const breakdown = SCORE_VERSION === 'v4' ? breakdownV4 : breakdownV3;
       const shadow = SCORE_VERSION === 'v4' ? breakdownV3 : breakdownV4;
