@@ -20,7 +20,7 @@
 import { resolveAccidentEvents, sanitizeFindingsV3, zoneClasses } from './score-v3.js';
 
 export const SCORE_CONFIG_V4 = {
-  CONFIG_TAG: 'v4-shadow-2026-09-24',
+  CONFIG_TAG: 'v4-shadow-2026-09-24-age',
   STARTING_SCORE: 10,
   ACCIDENT: { light: 0.4, medium: 1.2, heavy: 2.5, total: 5.0, unknown: 1.5, unrepaired_seller: 2.5, earlier_events: 1.0, flood: 2.5, fire: 3.0 },
   BODY: { dent: 0.5, corrosion: 0.6, headlight: 0.4, windshield: 0.3, broken_element: 0.3, missing_part: 0.3, wheel: 0.15, wheel_max: 0.3 },
@@ -28,6 +28,8 @@ export const SCORE_CONFIG_V4 = {
   MILEAGE_NORM_KM_YEAR: { petrol: 12000, diesel: 18000, hev: 12000, phev: 15000, bev: 16000, unknown: 14000 },
   INTENSITY_CURVE: [[1.2, 0], [1.5, 0.3], [2.0, 0.8], [3.0, 1.4], [5.0, 2.2], [8.0, 3.0], [12.0, 4.0]],
   MIN_AGE_MONTHS: 12,
+  /* вік: 0.1 за кожен рік канонічного age_months, без капа, пропорційно і до року */
+  AGE_PER_YEAR: 0.1,
   ROLLBACK: { threshold_km: 30000, tiers: [[60000, 1.0], [120000, 2.0], [Infinity, 3.0]], platform_flag: 0.8, same_day_ms: 36 * 3600 * 1000, dedupe_km: 1000 },
   SELLER: {
     vehicle_not_running_or_unit_replacement: 5.0, major_powertrain_symptom: 3.0, generic_powertrain_warning: 1.0,
@@ -405,6 +407,19 @@ function intensityInput(inp, cfg) {
   return { items, available: true, status: amount > 0 ? 'applied' : 'clean', detail };
 }
 
+/* ---------- 7. вік автомобіля ----------
+   age_penalty = age_months / 12 * 0.1 з канонічного age_months (той самий,
+   що в інтенсивності); без капа, незалежно від інтенсивності; вік
+   невідомий = unavailable, 0 */
+function ageInput(inp, cfg) {
+  const months = num(inp.vehicle && inp.vehicle.age_months);
+  if (months === null || months < 0) return { items: [], available: false, status: 'unavailable', detail: null };
+  const amount = round2(months / 12 * cfg.AGE_PER_YEAR);
+  const detail = { age_months: months, age_years: round2(months / 12), age_source: (inp.vehicle && inp.vehicle.age_source) || null };
+  const items = amount > 0 ? [{ key: 'input7:age', input: 'vehicle_age', amount, label_key: 'Vehicle age', params: detail, evidence: [] }] : [];
+  return { items, available: true, status: amount > 0 ? 'applied' : 'clean', detail };
+}
+
 /* ---------- 5. відкат пробігу ---------- */
 export function normalizeMileagePoints(points, cfg = SCORE_CONFIG_V4) {
   const out = [];
@@ -608,6 +623,7 @@ export function computeScoreV4(input, cfg = SCORE_CONFIG_V4) {
   const acc = accidentInput({ ...inp, findings, disclosures }, cfg);
   const cur = currentConditionInputs({ currentVisual: inp.currentVisual, cvStatus: ev.cv_status }, cfg);
   const inten = intensityInput(inp, cfg);
+  const age = ageInput(inp, cfg);
   const roll = rollbackInput({ mileagePoints: inp.mileagePoints, platformMileageFlag: inp.platformMileageFlag }, cfg);
   const sel = sellerInput(disclosures, cfg);
 
@@ -623,7 +639,7 @@ export function computeScoreV4(input, cfg = SCORE_CONFIG_V4) {
     }
   }
 
-  const items = [...acc.items, ...cur.body.items, ...cur.interior.items, ...inten.items, ...roll.items, ...sellerItems]
+  const items = [...acc.items, ...cur.body.items, ...cur.interior.items, ...inten.items, ...age.items, ...roll.items, ...sellerItems]
     .map(i => ({ ...i, amount: round2(i.amount) }));
   const rawSum = round2(items.reduce((s, i) => s + i.amount, 0));
   const raw = round2(cfg.STARTING_SCORE - rawSum);
@@ -639,6 +655,7 @@ export function computeScoreV4(input, cfg = SCORE_CONFIG_V4) {
     body_condition: state(cur.body.available, cur.body.items, cur.body.status),
     interior_condition: state(cur.interior.available, cur.interior.items, cur.interior.status),
     mileage_intensity: state(inten.available, inten.items, inten.status),
+    vehicle_age: state(age.available, age.items, age.status),
     mileage_rollback: state(roll.available, roll.items, roll.status),
     seller_disclosures: state(!!(inp.listingText && String(inp.listingText).trim()), sellerItems),
   };
@@ -661,6 +678,7 @@ export function computeScoreV4(input, cfg = SCORE_CONFIG_V4) {
     events: acc.events,
     mileage_points: roll.points,
     mileage_intensity: inten.detail,
+    vehicle_age: age.detail,
     availability: {
       hv: !!inp.historicalVisual, auction_record: ev.auction_record_exists === true, registry: ev.registry_present === true,
       cv_exterior: cur.body.available, cv_interior: cur.interior.available, cv_status: ev.cv_status || null,

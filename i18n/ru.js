@@ -212,6 +212,7 @@ window.CALCAR_DICTS.ru = {
   'Search reports by name…': 'Поиск отчета по названию…',
   'You already checked this car': 'Ты уже проверял это авто',
   'Auction data': 'Данные аукциона',
+  'Vehicle age': 'Возраст автомобиля',
   'Not enough data to score': 'Недостаточно данных для оценки',
   'What to ask before viewing': 'Что спросить до осмотра',
   'Confirmed': 'Подтверждено',

@@ -185,14 +185,32 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     eq(intensityPenalty(1.19), 0, '1.19'); eq(intensityPenalty(0.5), 0, 'нижче норми'); eq(intensityPenalty(20), 4, '20'); eq(intensityPenalty(1.35), 0.15, 'інтерполяція 1.35'); eq(intensityPenalty(10), 3.5, 'інтерполяція 10');
     const veh = { odometer_km: 180000, age_months: 60, powertrain_class: 'petrol' };   /* 36 000 км/рік, ratio 3.0 */
     const r = run({ vehicle: veh });
-    eq(sum(r), 1.4, 'ratio 3.0 = 1.4'); eq(r.mileage_intensity.ratio, 3, 'ratio');
+    eq(r.items.find(i => i.key === 'input4:intensity').amount, 1.4, 'ratio 3.0 = 1.4'); eq(r.mileage_intensity.ratio, 3, 'ratio');
     const swap = run({ vehicle: veh, listingText: 'Стоит контрактный мотор.', sellerDisclosures: [{ category: 'engine_swap_installed', unit: 'engine', quote: 'контрактный мотор', negated: false, vague: false, seller_favor: true }] });
-    eq(sum(swap), 1.4, 'свап не вимикає інтенсивність'); ok(swap.unresolved.some(u => u.key === 'engine_swap_claimed'), 'свап в unresolved');
+    eq(swap.items.find(i => i.key === 'input4:intensity').amount, 1.4, 'свап не вимикає інтенсивність'); ok(swap.unresolved.some(u => u.key === 'engine_swap_claimed'), 'свап в unresolved');
     eq(run({ vehicle: { ...veh, age_months: 6 } }).inputs.mileage_intensity.status, 'unavailable', 'молодше року');
     eq(resolvePowertrainClass({ nhtsa: { ElectrificationLevel: 'PHEV (Plug-in Hybrid Electric Vehicle)', FuelTypePrimary: 'Gasoline' } }), 'phev', 'PHEV');
     eq(resolvePowertrainClass({ nhtsa: { FuelTypePrimary: 'Gasoline' }, fuel: 'hybrid' }), 'petrol', 'NHTSA пріоритетніше');
     eq(resolvePowertrainClass({ fuel: 'hybrid' }), 'unknown', 'hybrid без рівня = unknown');
     eq(V4.mileageNormKmYear('unknown'), 14000, 'норма unknown'); eq(V4.mileageNormKmYear('phev'), 15000, 'норма phev');
+  }
+
+  /* ===== 9б. вхід 7: вік ===== */
+  {
+    const ageOf = m => run({ vehicle: { odometer_km: 1000, age_months: m, powertrain_class: 'petrol' } });
+    for (const [m, pen] of [[6, 0.05], [12, 0.1], [60, 0.5], [96, 0.8], [120, 1.0], [240, 2.0]]) {
+      const r = ageOf(m);
+      const it = r.items.find(i => i.key === 'input7:age');
+      eq(it && it.amount, pen, 'вік ' + m + ' міс.'); eq(it && it.label_key, 'Vehicle age', 'label віку');
+      eq(r.inputs.vehicle_age.status, 'applied', 'статус віку ' + m);
+    }
+    eq(ageOf(6).items.length, 1, 'молодше року: лише вік, інтенсивність unavailable');
+    eq(ageOf(6).inputs.mileage_intensity.status, 'unavailable', 'інтенсивність до року unavailable');
+    const noAge = run({ vehicle: { odometer_km: 1000, age_months: null, powertrain_class: 'petrol' } });
+    eq(noAge.inputs.vehicle_age.status, 'unavailable', 'вік невідомий = unavailable'); eq(sum(noAge), 0, 'вік невідомий = 0');
+    const both = run({ vehicle: { odometer_km: 180000, age_months: 60, powertrain_class: 'petrol' } });
+    ok(near(sum(both), 1.9, 1.9), 'інтенсивність 1.4 + вік 0.5 незалежно: ' + sum(both)); eq(both.final, 8.1, 'final 8.1');
+    eq(run({ vehicle: { odometer_km: 1000, age_months: 480, powertrain_class: 'petrol' } }).items.find(i => i.key === 'input7:age').amount, 4, '40 років = 4.0, без капа');
   }
 
   /* ===== 10. вхід 5: відкат ===== */
@@ -253,7 +271,7 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
   /* ===== 12. незмінний config_tag ===== */
   {
     const hash = crypto.createHash('md5').update(JSON.stringify(C)).digest('hex');
-    const EXPECTED = '5bc740400adc5bd231164eee5880c91d';
+    const EXPECTED = '7b4dc41afa12a48b2cff8b59e82afd2b';
     if (hash !== EXPECTED) errs.push('SCORE_CONFIG_V4 змінився (md5 ' + hash + '), онови CONFIG_TAG і хеш у тесті');
   }
 
