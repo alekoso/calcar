@@ -134,6 +134,14 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     eq(tl.trusted_year, 2024, 'trusted year лота'); eq(ty.events.length, 2, 'дві події за зонами'); ok(ty.items.some(i => i.key === 'accident_earlier_events'), 'відмітка 2021 = рання');
   }
 
+  /* запис площадки без якоря + єдина LLM-група = одна подія */
+  {
+    const r = run({ accidentRecord: { recorded: true, note: 'Зафіксовано ДТП' }, findings: [{ type: 'MAJOR_REPAIR_UNVERIFIED', event_id: 'current_rear_collision', evidence: [{ source: 'current_photos', ref: 'photo_2', description: 'розбите заднє скло і кришка багажника' }] }] });
+    eq(r.events.length, 1, 'запис площадки і LLM-група без якоря мали злитись'); eq(itemsOf(r, 'accident_history').length, 1, 'одна аварійна строка'); eq(sum(r), 1.5, 'одна подія 1.5, без ранньої');
+    const r2 = run({ accidentRecord: { recorded: true, note: 'ДТП в 2019 році' }, findings: [{ type: 'AIRBAGS_DEPLOYED', event_id: 'accident_2023', evidence: [{ source: 'registry', ref: 'reg', description: 'подушки 2023' }] }] });
+    eq(r2.events.length, 2, 'різні роки не зливаються');
+  }
+
   /* ===== 6. дублікати одного події ===== */
   {
     const r = run({ auctionMeta: lot({ primary_damage: 'FRONT END', airbags: { deployed: true, raw: 'Driver' } }), historicalVisual: hv({ srs_visual_status: 'deployed_visible', airbags_visible_parts: ['driver'] }),
@@ -159,6 +167,8 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     eq(sum(run({ currentVisual: cv([cvf('rear', 'broken_component', { component: 'other' })]) })), 0, 'зламаний елемент без компонента (старий кеш) не рахується');
     eq(sum(run({ currentVisual: cv([cvf('rear', 'missing_component', { component: 'other' })]) })), 0.3, 'відсутня деталь без компонента рахується');
     eq(sum(run({ currentVisual: cv([cvf('front', 'scratch_scuff')]) })), 0, 'подряпина = чек-лист');
+    eq(sum(run({ currentVisual: cv([cvf('front', 'wear', { component: 'headlight' })]) })), 0.4, 'матова фара (wear + headlight) = 0.4');
+    eq(sum(run({ currentVisual: cv([cvf('rear', 'broken_component', { component: 'panel', severity: 'severe' })]) })), 0.5, 'зімʼята панель як broken_component = вмʼятина 0.5');
     eq(itemsOf(run({ currentVisual: cv([cvf('front', 'missing_component', { component: 'bumper', severity: 'severe' }), cvf('engine_bay', 'missing_component', { component: 'other', severity: 'severe', photo: 9 })]) }), 'body_condition').length, 1, 'відсутній передок: front + engine_bay = одна строка');
     /* HV-пошкодження без CV не дає поточного штрафу; ДТП + CV-вмʼятина в зоні = обидві */
     const hOnly = run({ auctionMeta: lot(), historicalVisual: hv(), currentVisual: cv([]) });
@@ -175,6 +185,8 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     const r = run({ currentVisual: cv([cvf('driver_area', 'wear', { component: 'seat', photo: 1 }), cvf('front_seats', 'wear', { component: 'seat', photo: 2 }), cvf('driver_area', 'wear', { component: 'steering_wheel', photo: 3 }), cvf('rear_seats', 'tear', { component: 'seat' })]) });
     eq(itemsOf(r, 'interior_condition').length, 3, 'знос водійського один раз + кермо + обивка');
     ok(near(sum(r), 0.85, 0.85), 'салон 0.25 + 0.2 + 0.4: ' + sum(r));
+    const pass = run({ currentVisual: cv([cvf('front_passenger', 'wear', { component: 'seat', photo: 21, sign: 'потертість валика пасажирського сидіння' }), cvf('front_seats', 'wear', { component: 'seat', photo: 21, sign: 'потертість валика пасажирського сидіння' })]) });
+    eq(sum(pass), 0, 'пасажирське сидіння у двох зонах не є зносом водійського');
     const ns = run({ currentVisual: cv([], { zones: { sufficient: ['front', 'rear'], partial: [], not_visible: ['driver_area', 'front_seats'] } }) });
     eq(ns.inputs.interior_condition.status, 'unavailable', 'салон не показаний'); ok(ns.unresolved.some(u => u.key === 'interior_not_shown'), 'unresolved interior_not_shown');
   }
@@ -233,6 +245,7 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     eq(sum(rb([p('2023-01-01', 190000, 'platform_history'), p('2024-01-01', 130000, 'vehicle_memory'), p('2025-01-01', 135000, 'current')])), 2, '60 000 = 2.0');
     eq(rb([p('2025-01-01', 170000, 'current')]).inputs.mileage_rollback.status, 'unavailable', 'одна точка = unavailable');
     eq(sum(rb([p('2024-01-01', 170000, 'current'), p('2025-01-01', 175087, 'dashboard')])), 0, 'приладка більше = 0');
+    eq(sum(rb([p('2025-01-04', 510000, 'platform_history'), p('2026-09-24', 405000, 'platform_history'), p('2026-09-24', 405000, 'current')])), 0, 'рядок площадки про поточне оголошення + саме оголошення не є двома сімействами');
   }
 
   /* ===== 11. вхід 6: продавець ===== */

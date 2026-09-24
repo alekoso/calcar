@@ -3411,7 +3411,9 @@ async function runCheck(req, res, job) {
         odometer_km: typeof listing.odometer_km === 'number' ? listing.odometer_km : null,
         age_months: vehAge.age_months,
         age_source: vehAge.age_source,
-        powertrain: (typeof parsed?.vehicle?.fuel === 'string' ? parsed.vehicle.fuel : null),
+        /* той самий клас силової установки, що в Score v4: шкала шапки
+           (вісь Пробіг v3) і штраф інтенсивності v4 показують одну норму */
+        powertrain: resolvePowertrainClass({ nhtsa, fuel: parsed?.vehicle?.fuel || null }),
       };
       const breakdownV3 = computeScoreV3({
         findings,

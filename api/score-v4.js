@@ -202,11 +202,28 @@ function accidentInput(inp, cfg) {
       normalized_event_id: ev.normalized_event_id, anchored, substantive,
       source_event_ids: [...new Set(ev.source_event_ids || [])], merge_basis: [...new Set(ev.merge_basis || [])],
       v4_category: category, category_basis: basis, trusted_year: trustedYear,
+      /* рік резолвера (з event_id чи описів): лише для сумісності при злитті, не хронологія */
+      resolver_year: ev.year === undefined ? null : ev.year,
       repair_status: repair, airbags: !!(ev.signals && ev.signals.airbags) || !!(h && h.srs_visual_status === 'deployed_visible'),
       airbags_visible_parts: h && Array.isArray(h.airbags_visible_parts) ? h.airbags_visible_parts : [],
       zone_classes: [...zc], latest: false, unrepaired_signs: false, fire: false,
       evidence: (ev.evidence || []).slice(0, 10),
     });
+  }
+
+  /* без якоря запис площадки і ЄДИНА LLM-група ДТП сумісного року це одна
+     подія (резолвер v3 привʼязує запис лише до якоря) */
+  if (!events.some(e => e.anchored)) {
+    const platform = events.filter(e => String(e.normalized_event_id).startsWith('platform:'));
+    const others = events.filter(e => !String(e.normalized_event_id).startsWith('platform:'));
+    const oy = others.length === 1 ? (others[0].trusted_year !== null ? others[0].trusted_year : others[0].resolver_year) : null;
+    if (platform.length === 1 && others.length === 1 && (platform[0].trusted_year === null || oy === null || platform[0].trusted_year === oy)) {
+      const host = others[0];
+      host.merge_basis.push('platform_record_attached');
+      host.evidence.push(...platform[0].evidence);
+      if (host.trusted_year === null) host.trusted_year = platform[0].trusted_year;
+      events.splice(events.indexOf(platform[0]), 1);
+    }
   }
 
   /* D2 поза резолвером: лот є, кадри прочитані, пошкоджень не видно,
@@ -305,9 +322,12 @@ export function mapBodyFinding(f) {
   if (!isMaterial(f) || !EXTERIOR_ZONES.has(f.zone)) return null;
   const c = f.component || 'other';
   const k = f.kind;
-  if (k === 'dent' || (k === 'other_visible_damage' && c === 'panel')) return 'dent';
+  /* "зімʼята кришка багажника" Vision позначає як broken_component + panel:
+     це деформація панелі, не зламаний навісний елемент */
+  if (k === 'dent' || ((k === 'other_visible_damage' || k === 'broken_component') && c === 'panel')) return 'dent';
   if (k === 'corrosion') return 'corrosion';
-  if ((k === 'crack' || k === 'other_visible_damage') && (c === 'headlight' || c === 'taillight')) return 'headlight';
+  /* запотіла або матова фара приходить як wear + headlight */
+  if ((k === 'crack' || k === 'other_visible_damage' || k === 'wear') && (c === 'headlight' || c === 'taillight')) return 'headlight';
   if ((k === 'crack' || k === 'chip') && c === 'windshield') return 'windshield';
   if ((k === 'broken_component' || k === 'plastic_damage' || k === 'crack') && ['bumper', 'mirror', 'grille', 'trim', 'glass_other'].includes(c)) return 'broken_element';
   if (k === 'missing_component') return 'missing_part';
@@ -337,7 +357,12 @@ function currentConditionInputs(inp, cfg) {
   if (!out.interior.available) out.unresolved.push({ key: 'interior_not_shown', input: 'interior_condition', note_key: 'Interior not shown on listing photos' });
   const byKey = new Map();
   const wheels = new Map();
-  for (const f of Array.isArray(cv.condition_findings) ? cv.condition_findings : []) {
+  const all = Array.isArray(cv.condition_findings) ? cv.condition_findings : [];
+  /* знос сидіння, який Vision поклав і в front_seats, і в front_passenger
+     (той самий кадр і ознака), це пасажирське сидіння, не водійське */
+  const passengerDup = new Set(all.filter(f => f.zone === 'front_passenger').map(f => f.photo + '|' + f.sign));
+  for (const f of all) {
+    if (f.zone === 'front_seats' && f.kind === 'wear' && passengerDup.has(f.photo + '|' + f.sign)) { out.dropped++; continue; }
     const bt = mapBodyFinding(f);
     if (bt === 'wheel') {
       const pos = WHEEL_POSITIONS.includes(f.wheel_position) ? f.wheel_position : 'unknown';
@@ -442,7 +467,13 @@ export function normalizeMileagePoints(points, cfg = SCORE_CONFIG_V4) {
   const dedup = [];
   for (const p of out) {
     const same = dedup.find(q => Math.abs(q.t - p.t) <= cfg.ROLLBACK.same_day_ms && Math.abs(q.km - p.km) <= cfg.ROLLBACK.dedupe_km);
-    if (same) { if (!same.families.includes(p.family)) same.families.push(p.family); continue; }
+    if (same) {
+      /* рядок площадки про поточне оголошення і саме оголошення це одне
+         джерело: разом вони не дають "два незалежні сімейства" */
+      const sameSource = (a, b) => (a === 'current' && b === 'platform_history') || (a === 'platform_history' && b === 'current');
+      if (!same.families.includes(p.family) && !same.families.some(f => sameSource(f, p.family))) same.families.push(p.family);
+      continue;
+    }
     dedup.push({ ...p, families: [p.family] });
   }
   return dedup;
