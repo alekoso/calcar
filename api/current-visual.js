@@ -178,7 +178,8 @@ export function frameContent(frames, detail = 'high') {
   const out = [{ type: 'text', text: 'КАДРИ ОГОЛОШЕННЯ: ' + frames.length + ' шт. Кожен підписаний [gallery_index=N]; посилайся лише на ці числа.' }];
   for (const f of frames) {
     out.push({ type: 'text', text: '[gallery_index=' + f.gallery_index + ']' });
-    out.push({ type: 'image_url', image_url: { url: f.url, detail: detail === 'mixed' ? (f.high ? 'high' : 'low') : detail } });
+    /* send_url: байти кадру, завантажені сервером (vision-reliability); інакше посилання */
+    out.push({ type: 'image_url', image_url: { url: f.send_url || f.url, detail: detail === 'mixed' ? (f.high ? 'high' : 'low') : detail } });
   }
   return out;
 }

@@ -8,6 +8,8 @@ import { computeScoreV3, resolveVehicleAge } from './score-v3.js';
 import { computeScoreV4, resolvePowertrainClass, mileageNormKmYear, SCORE_CONFIG_V4, validateDisclosures } from './score-v4.js';
 /* повнота перевірки (Confidence v1): знімок у момент Check, Score не змінює */
 import { buildConfidenceInput, computeConfidenceV1, CONFIDENCE_CONFIG_V1 } from './confidence.js';
+/* надійність Current Vision: передзавантаження кадрів, обмежений ретрай, gate фіналізації */
+import { prefetchFrames, withVisionRetry, visionGate } from './vision-reliability.js';
 import {
   DAMAGE_DEPTH_LEVELS, INNER_EXTENT_LEVELS, innerDeformationState,
   FASCIA_STATUSES, OUTER_EXTENT_LEVELS, resolveDamageDepth,
@@ -2648,20 +2650,37 @@ async function runCheck(req, res, job) {
         const highGallery = new Set(photoIdx.filter((gi, pos) => highSet.has(pos)));
         const frames0 = normalizeFrames(photoIdx.map(gi => ({ gallery_index: gi, url: listing.photos[gi] })));
         const plan = frameDetailPlan(frames0, typesByIndex, highGallery);
-        const body = {
-          model: process.env.OPENAI_MODEL || 'gpt-5.6-terra', max_completion_tokens: 12000, reasoning_effort: 'low',
-          response_format: currentVisualResponseFormat(),
-          messages: [{ role: 'system', content: CURRENT_VISUAL_RULES }, { role: 'user', content: frameContent(plan.frames, 'mixed') }],
-        };
-        const d = await callModel(body, 95000);
+        /* придатних кадрів нема: це не збій конвеєра, а відсутність входу */
+        if (!plan.frames.length) return { status: 'not_applicable', reason: 'no_usable_photos', ms: Date.now() - tCv, version: CURRENT_VISUAL_VERSION, photos: { total: 0, high: 0, low: 0 } };
+        /* надійність: кадри завантажує сервер (таймаут на кадр, один повтор),
+           битий кадр виключається лише сам, у модель ідуть байти, а не
+           посилання на CDN площадки */
+        const tPre = Date.now();
+        const pre = await prefetchFrames(plan.frames);
+        const sent = pre.frames;
+        const transport = { mode: pre.transport, frames_planned: plan.frames.length, frames_sent: sent.length, dropped: pre.dropped, bytes: pre.bytes, ms: Date.now() - tPre };
+        if (pre.dropped.length) console.log('[current-vision]', JSON.stringify({ op: 'prefetch', dropped: pre.dropped.length, sent: sent.length, planned: plan.frames.length, vin: listing.vin || null }));
+        let body = null, d = null, raw = null;
+        const run = await withVisionRetry(async () => {
+          body = {
+            model: process.env.OPENAI_MODEL || 'gpt-5.6-terra', max_completion_tokens: 12000, reasoning_effort: 'low',
+            response_format: currentVisualResponseFormat(),
+            messages: [{ role: 'system', content: CURRENT_VISUAL_RULES }, { role: 'user', content: frameContent(sent, 'mixed') }],
+          };
+          d = await callModel(body, Math.max(30000, Math.min(95000, 262000 - (Date.now() - tRun))));
+          if (!d || d.error) return { status: 'failed', error: String((d && d.error && (d.error.message || d.error.code)) || 'no response').slice(0, 160) };
+          try { raw = JSON.parse(String(d.choices?.[0]?.message?.content || '')); } catch (e) { raw = null; return { status: 'failed', error: 'invalid_json' }; }
+          return { status: 'ok' };
+        }, { budgetLeft: () => 270000 - (Date.now() - tRun) });
         const ms = Date.now() - tCv;
         const base = { ms, ai: aiUsage(d, body), version: CURRENT_VISUAL_VERSION, fingerprint: frameSetFingerprint(plan.frames),
           detail_plan: { source: plan.source, high: plan.high, low: plan.low }, photos: { total: plan.frames.length, high: plan.high.length, low: plan.low.length },
-          frames: plan.frames.map(f => ({ gallery_index: f.gallery_index, photo_identity: f.identity, high: f.high, type: f.type })) };
-        if (!d || d.error) return { status: 'failed', error: String((d && d.error && d.error.message) || 'no response').slice(0, 160), ...base };
-        let raw = null;
-        try { raw = JSON.parse(String(d.choices?.[0]?.message?.content || '')); } catch (e) { return { status: 'failed', error: 'invalid_json', ...base }; }
-        const { current_visual, stats } = gateCurrentVisual(raw, plan.frames);
+          frames: plan.frames.map(f => ({ gallery_index: f.gallery_index, photo_identity: f.identity, high: f.high, type: f.type })),
+          attempts: run.attempts, transport };
+        if (run.attempts.length > 1 || run.status !== 'ok') console.log('[current-vision]', JSON.stringify({ op: 'retry', status: run.status, attempts: run.attempts.map(a => a.status + (a.error ? ':' + a.error.slice(0, 40) : '')), vin: listing.vin || null }));
+        if (run.status !== 'ok') return { status: 'failed', error: run.error || 'failed', ...base };
+        /* знахідки можуть посилатися лише на кадри, які модель реально бачила */
+        const { current_visual, stats } = gateCurrentVisual(raw, sent);
         let odo = odometerDiscrepancy(current_visual, listing.odometer_km);
         let verify = null;
         /* УМОВНА перевірка одометра: лише коли з'явився кандидат на
@@ -3326,6 +3345,24 @@ async function runCheck(req, res, job) {
       } catch (e) { console.log('[check] hv cache write failed:', e.message); }
     }
 
+    /* ---- gate: Current Vision це критичний вхід Score v4 ----
+       Є придатні кадри і Vision очікувався: чекаємо його термінальний
+       результат (ретраї вже всередині). Технічний збій НЕ перетворюється на
+       бал без кузова і салону: звіт не фіналізується, людина отримує
+       зрозумілу помилку і може повторити перевірку */
+    let cvTerminal = cvFeed || null;
+    if (!cvTerminal && cvShadow) {
+      try {
+        cvTerminal = await Promise.race([cvShadow, new Promise(r => setTimeout(() => r({ status: 'timeout', error: 'vision_wait_budget' }), Math.max(1000, 268000 - (Date.now() - tRun))))]);
+      } catch (e) { cvTerminal = { status: 'failed', error: String((e && e.message) || e).slice(0, 120) }; }
+    }
+    const vGate = visionGate({ usablePhotos: photoUrls.length, expected: !!cvShadow, status: cvTerminal ? cvTerminal.status : null });
+    if (!vGate.finalize) {
+      console.log('[check]', JSON.stringify({ op: 'vision_gate', reason: vGate.reason, status: cvTerminal && cvTerminal.status, error: cvTerminal && cvTerminal.error ? String(cvTerminal.error).slice(0, 120) : null,
+        attempts: cvTerminal && Array.isArray(cvTerminal.attempts) ? cvTerminal.attempts.length : 0, photos: photoUrls.length, vin: listing.vin || null }));
+      return res.status(503).json({ error: errText(lang, 'vision_failed') });
+    }
+
     /* ---- CalCar Score: модель класифікувала знахідки, код визначає
        доступність джерел із фактів пайплайна, формула рахує. Рахуються
        ОБИДВІ версії: активна (SCORE_VERSION) їде в score_breakdown_v2
@@ -3446,10 +3483,8 @@ async function runCheck(req, res, job) {
          основного виклику, evidence для gate ---- */
       let breakdownV4 = null;
       try {
-        let cvFinal = cvFeed || null;
-        if (!cvFinal && cvShadow) {
-          try { cvFinal = await Promise.race([cvShadow, new Promise(r => setTimeout(() => r(null), 2500))]); } catch (e) { cvFinal = null; }
-        }
+        /* той самий термінальний результат, що пройшов gate */
+        const cvFinal = cvTerminal;
         const cvOk = !!(cvFinal && cvFinal.status === 'ok' && cvFinal.current_visual);
         const cvZones = cvOk ? (cvFinal.current_visual.zones || {}) : {};
         const cvSufficient = Object.values(cvZones).filter(z => z && z.visibility === 'sufficient').length;
@@ -3496,8 +3531,7 @@ async function runCheck(req, res, job) {
       /* ---- повнота перевірки: знімок у момент Check. Читає вже зібрані
          входи і breakdown v4, сам Score не змінює ---- */
       try {
-        let cvC = cvFeed || null;
-        if (!cvC && cvShadow) { try { cvC = await Promise.race([cvShadow, new Promise(r => setTimeout(() => r(null), 500))]); } catch (e) { cvC = null; } }
+        const cvC = cvTerminal;
         parsed.confidence = computeConfidenceV1(buildConfidenceInput({
           now: new Date().toISOString(),
           listing: { vin: listing.vin, country: listing.country, make: listing.make, odometer_km: listing.odometer_km, listing_equipment: listing.listing_equipment },

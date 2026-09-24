@@ -347,7 +347,7 @@ const errs = [];
   if (/current_visual_shadow/.test(fs.readFileSync('api/share.js', 'utf8'))) errs.push('shadow Vision потрапив у публічний allowlist');
   if (/current_visual_shadow|cvShadow/.test(fs.readFileSync('api/score-v3.js', 'utf8')) || /current_visual_shadow/.test(fs.readFileSync('result-check.html', 'utf8')) || /current_visual_shadow/.test(fs.readFileSync('api/vehicle-memory.js', 'utf8'))) errs.push('shadow Vision використовується Score/UI/Vehicle Memory');
   if (!/odometerDiscrepancy\(current_visual, listing\.odometer_km\)/.test(check)) errs.push('нема детермінованого порівняння одометра з пробігом оголошення');
-  if (/odometer_km/.test(CV.CURRENT_VISUAL_RULES) || /listing\.odometer_km/.test(check.slice(iStart, check.indexOf('const d = await callModel(body, 95000)')))) errs.push('пробіг оголошення потрапляє у Vision: одометр має читатись незалежно');
+  if (/odometer_km/.test(CV.CURRENT_VISUAL_RULES) || /listing\.odometer_km/.test(check.slice(iStart, check.indexOf('d = await callModel(body, Math.max(30000')))) errs.push('пробіг оголошення потрапляє у Vision: одометр має читатись незалежно');
   /* v1 helpers: план деталізації, порівняння одометра, телеметрія */
   const fr2 = CV.normalizeFrames([{ gallery_index: 0, url: a }, { gallery_index: 5, url: d }]);
   const plan = CV.frameDetailPlan(fr2, { 0: 'front', 5: 'dashboard' }, new Set());

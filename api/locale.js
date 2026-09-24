@@ -76,6 +76,11 @@ const ERRORS = {
     ua: 'AI недоступний, спробуй ще раз',
     ru: 'AI недоступен, попробуй ещё раз',
   },
+  vision_failed: {
+    en: 'We could not analyze the listing photos this time. Try again in a minute',
+    ua: 'Цього разу не вдалося проаналізувати фото оголошення. Спробуй ще раз за хвилину',
+    ru: 'В этот раз не удалось проанализировать фото объявления. Попробуй ещё раз через минуту',
+  },
   check_timeout: {
     en: 'The analysis did not finish in time. Try again, the second run is usually faster',
     ua: 'Аналіз не встиг завершитись. Спробуй ще раз, зазвичай з другої спроби швидше',
