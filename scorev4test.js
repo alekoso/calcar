@@ -198,19 +198,20 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
   /* ===== 9б. вхід 7: вік ===== */
   {
     const ageOf = m => run({ vehicle: { odometer_km: 1000, age_months: m, powertrain_class: 'petrol' } });
-    for (const [m, pen] of [[6, 0.05], [12, 0.1], [60, 0.5], [96, 0.8], [120, 1.0], [240, 2.0]]) {
+    for (const [m, pen] of [[12, 0.1], [36, 0.2], [60, 0.3], [96, 0.45], [120, 0.55], [180, 0.8], [240, 1.05]]) {
       const r = ageOf(m);
       const it = r.items.find(i => i.key === 'input7:age');
       eq(it && it.amount, pen, 'вік ' + m + ' міс.'); eq(it && it.label_key, 'Vehicle age', 'label віку');
       eq(r.inputs.vehicle_age.status, 'applied', 'статус віку ' + m);
     }
-    eq(ageOf(6).items.length, 1, 'молодше року: лише вік, інтенсивність unavailable');
+    eq(ageOf(6).items.length, 0, 'молодше року: вік 0'); eq(ageOf(6).inputs.vehicle_age.status, 'clean', 'молодше року: вік clean');
+    eq(ageOf(11).items.length, 0, '11 місяців: 0'); eq(ageOf(18).items.find(i => i.key === 'input7:age').amount, 0.13, '18 місяців: точний вік без округлення до років (0.1 + 0.5 * 0.05)');
     eq(ageOf(6).inputs.mileage_intensity.status, 'unavailable', 'інтенсивність до року unavailable');
     const noAge = run({ vehicle: { odometer_km: 1000, age_months: null, powertrain_class: 'petrol' } });
     eq(noAge.inputs.vehicle_age.status, 'unavailable', 'вік невідомий = unavailable'); eq(sum(noAge), 0, 'вік невідомий = 0');
     const both = run({ vehicle: { odometer_km: 180000, age_months: 60, powertrain_class: 'petrol' } });
-    ok(near(sum(both), 1.9, 1.9), 'інтенсивність 1.4 + вік 0.5 незалежно: ' + sum(both)); eq(both.final, 8.1, 'final 8.1');
-    eq(run({ vehicle: { odometer_km: 1000, age_months: 480, powertrain_class: 'petrol' } }).items.find(i => i.key === 'input7:age').amount, 4, '40 років = 4.0, без капа');
+    ok(near(sum(both), 1.7, 1.7), 'інтенсивність 1.4 + вік 0.3 незалежно: ' + sum(both)); eq(both.final, 8.3, 'final 8.3');
+    eq(run({ vehicle: { odometer_km: 1000, age_months: 480, powertrain_class: 'petrol' } }).items.find(i => i.key === 'input7:age').amount, 2.05, '40 років = 2.05, без капа');
   }
 
   /* ===== 10. вхід 5: відкат ===== */
@@ -271,7 +272,7 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
   /* ===== 12. незмінний config_tag ===== */
   {
     const hash = crypto.createHash('md5').update(JSON.stringify(C)).digest('hex');
-    const EXPECTED = '7b4dc41afa12a48b2cff8b59e82afd2b';
+    const EXPECTED = '59640c04075132fa30f7d159c665ad36';
     if (hash !== EXPECTED) errs.push('SCORE_CONFIG_V4 змінився (md5 ' + hash + '), онови CONFIG_TAG і хеш у тесті');
   }
 

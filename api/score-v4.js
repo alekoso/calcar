@@ -20,7 +20,7 @@
 import { resolveAccidentEvents, sanitizeFindingsV3, zoneClasses } from './score-v3.js';
 
 export const SCORE_CONFIG_V4 = {
-  CONFIG_TAG: 'v4-shadow-2026-09-24-age',
+  CONFIG_TAG: 'v4-shadow-2026-09-24-age2',
   STARTING_SCORE: 10,
   ACCIDENT: { light: 0.4, medium: 1.2, heavy: 2.5, total: 5.0, unknown: 1.5, unrepaired_seller: 2.5, earlier_events: 1.0, flood: 2.5, fire: 3.0 },
   BODY: { dent: 0.5, corrosion: 0.6, headlight: 0.4, windshield: 0.3, broken_element: 0.3, missing_part: 0.3, wheel: 0.15, wheel_max: 0.3 },
@@ -28,8 +28,9 @@ export const SCORE_CONFIG_V4 = {
   MILEAGE_NORM_KM_YEAR: { petrol: 12000, diesel: 18000, hev: 12000, phev: 15000, bev: 16000, unknown: 14000 },
   INTENSITY_CURVE: [[1.2, 0], [1.5, 0.3], [2.0, 0.8], [3.0, 1.4], [5.0, 2.2], [8.0, 3.0], [12.0, 4.0]],
   MIN_AGE_MONTHS: 12,
-  /* вік: 0.1 за кожен рік канонічного age_months, без капа, пропорційно і до року */
-  AGE_PER_YEAR: 0.1,
+  /* вік: до року 0, далі 0.1 + (роки - 1) * 0.05 від точного age_months,
+     без капа (лінійні 0.1 за рік у тіні домінували над реальними знахідками) */
+  AGE: { first_year: 0.1, per_extra_year: 0.05 },
   ROLLBACK: { threshold_km: 30000, tiers: [[60000, 1.0], [120000, 2.0], [Infinity, 3.0]], platform_flag: 0.8, same_day_ms: 36 * 3600 * 1000, dedupe_km: 1000 },
   SELLER: {
     vehicle_not_running_or_unit_replacement: 5.0, major_powertrain_symptom: 3.0, generic_powertrain_warning: 1.0,
@@ -408,13 +409,15 @@ function intensityInput(inp, cfg) {
 }
 
 /* ---------- 7. вік автомобіля ----------
-   age_penalty = age_months / 12 * 0.1 з канонічного age_months (той самий,
-   що в інтенсивності); без капа, незалежно від інтенсивності; вік
-   невідомий = unavailable, 0 */
+   age_years < 1: 0; інакше 0.1 + (age_years - 1) * 0.05, де
+   age_years = age_months / 12 без округлення до цілих років; той самий
+   канонічний age_months, що в інтенсивності; без капа, незалежно від
+   інтенсивності; вік невідомий = unavailable, 0 */
 function ageInput(inp, cfg) {
   const months = num(inp.vehicle && inp.vehicle.age_months);
   if (months === null || months < 0) return { items: [], available: false, status: 'unavailable', detail: null };
-  const amount = round2(months / 12 * cfg.AGE_PER_YEAR);
+  const years = months / 12;
+  const amount = years < 1 ? 0 : round2(cfg.AGE.first_year + (years - 1) * cfg.AGE.per_extra_year);
   const detail = { age_months: months, age_years: round2(months / 12), age_source: (inp.vehicle && inp.vehicle.age_source) || null };
   const items = amount > 0 ? [{ key: 'input7:age', input: 'vehicle_age', amount, label_key: 'Vehicle age', params: detail, evidence: [] }] : [];
   return { items, available: true, status: amount > 0 ? 'applied' : 'clean', detail };
