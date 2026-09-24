@@ -721,7 +721,8 @@ const THIN = {
   if (!/COMPATIBILITY/.test(checkSrc)) errs.push('check.js: compatibility alias не задокументований');
   if (!/score_breakdown_shadow/.test(checkSrc)) errs.push('check.js: тіньова версія не зберігається');
   if (!/computeScoreV3/.test(checkSrc)) errs.push('check.js: v3 не викликається');
-  if (!/computeScore\(/.test(checkSrc)) errs.push('check.js: v2 більше не рахується (мала лишитись)');
+  if (!/computeScoreV4\(/.test(checkSrc)) errs.push('check.js: тінь v4 не рахується');
+  if (/computeScore\(findings, coverageInputs\)/.test(checkSrc)) errs.push('check.js: v2 досі рахується, тіньовий слот належить v4');
   if (!fs.existsSync('api/score.js')) errs.push('api/score.js видалений: v2 мала жити поруч');
   const chatSrc = fs.readFileSync('api/chat.js', 'utf8');
   if (!/delete c\.score_breakdown_shadow/.test(chatSrc)) errs.push('chat.js: тіньовий breakdown не вирізається з контексту чату');

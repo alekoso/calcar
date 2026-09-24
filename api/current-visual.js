@@ -33,6 +33,12 @@ export const VISIBILITY = ['sufficient', 'partial', 'not_visible'];
 export const FINDING_KINDS = ['scratch_scuff', 'chip', 'dent', 'crack', 'broken_component', 'missing_component', 'panel_gap_alignment', 'paint_mismatch', 'repaint_sign',
   'wheel_damage', 'tire_issue', 'corrosion', 'wear', 'tear', 'plastic_damage', 'trim_damage', 'stain', 'headliner_damage', 'other_visible_damage'];
 export const SEVERITY = ['minor', 'moderate', 'severe'];
+/* компонент знахідки (аддитивно для Score v4): зона front не відрізняє фару
+   від бампера, driver_area не відрізняє кермо від сидіння. Старі записи
+   кешу без поля читаються як other */
+export const COMPONENTS = ['panel', 'bumper', 'headlight', 'taillight', 'windshield', 'glass_other', 'mirror', 'grille', 'trim', 'wheel', 'tire', 'underbody_part',
+  'seat', 'steering_wheel', 'door_card', 'dashboard', 'headliner', 'pedal', 'other'];
+export const WHEEL_POSITIONS = ['front_left', 'front_right', 'rear_left', 'rear_right'];
 export const CONFIDENCE = ['high', 'medium', 'low'];
 export const EQUIPMENT_CATEGORIES = ['audio', 'roof', 'display', 'seats', 'climate', 'driver_assist', 'camera_parking', 'interior_trim', 'lighting', 'wheels', 'other'];
 export const MOD_BASIS = ['brand_readable', 'aftermarket_look', 'non_standard_fitment', 'visible_alteration', 'unclear'];
@@ -72,6 +78,8 @@ const GI = S('integer', 'gallery_index кадру з підпису [gallery_ind
 const FINDING = OBJ({
   kind: E(FINDING_KINDS),
   severity: E(SEVERITY),
+  component: E(COMPONENTS),
+  wheel_position: { type: ['string', 'null'], enum: [...WHEEL_POSITIONS, null] },
   sign: S('string', 'конкретна видима ознака на цьому кадрі'),
   gallery_index: GI,
   confidence: E(CONFIDENCE),
@@ -144,6 +152,8 @@ export const CURRENT_VISUAL_RULES = `Ти автомобільний огляд�
 - partial: видно частково, дрібні дефекти можна пропустити;
 - not_visible: на кадрах зони немає.
 frames: gallery_index кадрів, де зона видна. Зона sufficient з порожнім findings означає лише "на доступному зображенні помітної проблеми не знайдено", і НІКОЛИ: "заводська фарба", "ремонту не було", "прихованих пошкоджень немає".
+
+КОМПОНЕНТ ЗНАХІДКИ (component, обовʼязково для КОЖНОЇ знахідки): panel (кузовна панель: капот, крило, двері, крило, кришка багажника, дах), bumper, headlight, taillight, windshield (лобове скло), glass_other (інше скло), mirror, grille, trim (накладка, молдинг), wheel (диск), tire, underbody_part (елемент днища, вихлоп), seat, steering_wheel, door_card, dashboard, headliner, pedal, other (не можеш віднести). wheel_position: для знахідок на диску чи шині позиція колеса front_left | front_right | rear_left | rear_right, якщо її видно з кадру однозначно, інакше null; для решти знахідок null.
 
 ЩО ШУКАТИ ЗЗОВНІ (лише те, що справді видно): подряпини і потертості, сколи, вмʼятини, тріщини, зламані чи відсутні деталі, явно нерівний зазор чи посадка панелі, явний різнотон фарби, ознаки перефарбування чи дефекти покриття ЛИШЕ коли зображення реально це показує (шагрень, напил, маскувальні межі, сліди полірування), пошкодження дисків (бордюрні потертості, згини), очевидні проблеми шин (лише коли справді видно: знос до індикатора, тріщини, грижа), корозія (кузов, днище, вихлоп, кріплення, підрамники), видимі проблеми днища (течі, пошкоджені захисти, зірвані кріплення), видимі проблеми моторного відсіку (течі, пошкодження, відсутні деталі, кустарні переробки), інші очевидні пошкодження. Механічні діагнози по фото заборонені.
 Різнотон і перефарбування: відблиск, різне освітлення чи кут зйомки НЕ є ознакою. Якщо єдине, що ти бачиш, це "виглядає інакше через світло", знахідку не створюй або став confidence low.
@@ -243,7 +253,9 @@ export function gateCurrentVisual(raw, frames) {
       if (PAINT_KINDS.has(f.kind) && SOFT_SIGN_RE.test(f.sign) && confidence !== 'low') { confidence = 'low'; stats.downgraded_soft_paint++; }
       const severity = SEVERITY.includes(f.severity) ? f.severity : 'minor';
       const material = severity !== 'minor' && confidence !== 'low';
-      findings.push({ kind: f.kind, severity, sign: str(f.sign).slice(0, 240), ...rf, confidence, material });
+      const component = COMPONENTS.includes(f.component) ? f.component : 'other';
+      const wheel_position = WHEEL_POSITIONS.includes(f.wheel_position) ? f.wheel_position : null;
+      findings.push({ kind: f.kind, severity, component, wheel_position, sign: str(f.sign).slice(0, 240), ...rf, confidence, material });
       stats.findings++; if (material) stats.material_findings++;
     }
     let visibility = VISIBILITY.includes(zi.visibility) ? zi.visibility : 'not_visible';
@@ -348,6 +360,8 @@ ${COMMON_HEAD}
 
 ЗОНИ (12): front, rear, left_front, left_side, left_rear, right_front, right_side, right_rear, roof, wheels, engine_bay, underbody. ${ZONE_SEMANTICS}
 
+КОМПОНЕНТ ЗНАХІДКИ (component, обовʼязково для КОЖНОЇ знахідки): panel (кузовна панель: капот, крило, двері, крило, кришка багажника, дах), bumper, headlight, taillight, windshield (лобове скло), glass_other (інше скло), mirror, grille, trim (накладка, молдинг), wheel (диск), tire, underbody_part (елемент днища, вихлоп), seat, steering_wheel, door_card, dashboard, headliner, pedal, other (не можеш віднести). wheel_position: для знахідок на диску чи шині позиція колеса front_left | front_right | rear_left | rear_right, якщо її видно з кадру однозначно, інакше null; для решти знахідок null.
+
 ЩО ШУКАТИ (лише те, що справді видно): подряпини і потертості, сколи, вмʼятини, тріщини, зламані чи відсутні деталі, явно нерівний зазор чи посадка панелі, явний різнотон фарби, ознаки перефарбування чи дефекти покриття ЛИШЕ коли зображення реально це показує (шагрень, напил, маскувальні межі, сліди полірування), пошкодження дисків (бордюрні потертості, згини), очевидні проблеми шин (знос до індикатора, тріщини, грижа), корозія (кузов, днище, вихлоп, кріплення, підрамники), видимі проблеми днища (течі, пошкоджені захисти, зірвані кріплення), видимі проблеми моторного відсіку (течі, пошкодження, відсутні деталі, кустарні переробки), інші очевидні пошкодження. Різнотон і перефарбування: відблиск, різне освітлення чи кут зйомки НЕ є ознакою; якщо єдине, що ти бачиш, це "виглядає інакше через світло", знахідку не створюй або став confidence low. Механічні діагнози по фото заборонені.
 
 ЗОВНІШНІ МОДИФІКАЦІЇ (modification_candidates): спойлери, обвіси, сплітери, дифузори, нестандартний випуск, диски незаводського вигляду (бренд лише якщо читабельний), плівка, помітно занижена посадка, карбонові деталі, нештатні елементи у моторному відсіку (впуск, блоу-офф тощо, бренд лише читабельний). basis: brand_readable (читабельний бренд), visible_alteration (видно сліди переробки чи нештатне кріплення), non_standard_fitment, aftermarket_look (лише вигляд), unclear. Якщо неможливо відрізнити від заводського виконання, basis unclear і confidence low. Вартість не пиши.`,
@@ -357,6 +371,8 @@ ${COMMON_HEAD}
 ${COMMON_HEAD}
 
 ЗОНИ (8): driver_area, front_passenger, front_seats, rear_seats, dashboard, center_console, doors, trunk. ${ZONE_SEMANTICS}
+
+КОМПОНЕНТ ЗНАХІДКИ (component, обовʼязково для КОЖНОЇ знахідки): panel (кузовна панель: капот, крило, двері, крило, кришка багажника, дах), bumper, headlight, taillight, windshield (лобове скло), glass_other (інше скло), mirror, grille, trim (накладка, молдинг), wheel (диск), tire, underbody_part (елемент днища, вихлоп), seat, steering_wheel, door_card, dashboard, headliner, pedal, other (не можеш віднести). wheel_position: для знахідок на диску чи шині позиція колеса front_left | front_right | rear_left | rear_right, якщо її видно з кадру однозначно, інакше null; для решти знахідок null.
 
 СТАН: помітний знос керма (полірована шкіра, протертості), знос/тріщини/розриви сидінь, пошкодження пластику, дверних карт і накладок, помітні плями, пошкодження стелі, зламані чи відсутні елементи, інші очевидні візуальні проблеми. Дуже виражений знос фіксуй як факт (kind wear), але НЕ роби висновків про реальний пробіг.
 
@@ -644,7 +660,7 @@ export function compactCurrentVisual(cv) {
   for (const [zone, z] of zones) {
     for (const f of z.findings || []) {
       if (!f.material) continue;
-      findings.push({ zone, kind: f.kind, severity: f.severity, photo: f.gallery_index + 1, sign: f.sign, confidence: f.confidence });
+      findings.push({ zone, kind: f.kind, severity: f.severity, component: f.component || 'other', wheel_position: f.wheel_position || null, photo: f.gallery_index + 1, sign: f.sign, confidence: f.confidence });
     }
   }
   const equipment = (cv.equipment_visual || []).map(e => ({ concept: e.concept, name: e.normalized_name, photo: e.gallery_index + 1, sign: e.sign, confidence: e.confidence }));

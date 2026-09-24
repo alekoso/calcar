@@ -78,8 +78,9 @@ const ui = fs.readFileSync('result-check.html', 'utf8');
      лише там, де промпт формат поля не задає; правила промпту в схемі не
      дублюються (сторож проти повторного розростання) */
   const schemaHv = JSON.stringify(SCH.buildMainSchema({ hvProvided: true })), schemaCold = JSON.stringify(SCH.buildMainSchema({ hvProvided: false }));
-  if (schemaHv.length > 8200) errs.push('схема (hv готовий) знову розрослась: ' + schemaHv.length + ' байт');
-  if (schemaCold.length > 11000) errs.push('схема (холодний варіант) знову розрослась: ' + schemaCold.length + ' байт');
+  /* +seller_disclosures і три HV-поля Score v4 (затверджений аддитивний блок) */
+  if (schemaHv.length > 9000) errs.push('схема (hv готовий) знову розрослась: ' + schemaHv.length + ' байт');
+  if (schemaCold.length > 12000) errs.push('схема (холодний варіант) знову розрослась: ' + schemaCold.length + ' байт');
   const descs = (schemaCold.match(/"description":"([^"]*)"/g) || []).map(x => x.slice(15, -1));
   if (descs.length > 30) errs.push('забагато description у схемі: ' + descs.length);
   for (const d of descs) if (d.length > 120) errs.push('довгий description у схемі: ' + d.slice(0, 60));

@@ -2,9 +2,10 @@ export const config = { maxDuration: 300 };
 
 import crypto from 'crypto';
 import { mainResponseFormat, schemaProse } from './check-schema.js';
-import { computeScore } from './score.js';
 import { resolveLocale, languageDirective, errText } from './locale.js';
-import { computeScoreV3, resolveVehicleAge, SCORE_DIMENSIONS_CONFIG } from './score-v3.js';
+import { computeScoreV3, resolveVehicleAge } from './score-v3.js';
+/* Score v4: тінь за замовчуванням, активна лише через CALCAR_SCORE_VERSION=v4 */
+import { computeScoreV4, resolvePowertrainClass, mileageNormKmYear, SCORE_CONFIG_V4 } from './score-v4.js';
 import {
   DAMAGE_DEPTH_LEVELS, INNER_EXTENT_LEVELS, innerDeformationState,
   FASCIA_STATUSES, OUTER_EXTENT_LEVELS, resolveDamageDepth,
@@ -30,7 +31,7 @@ export { HISTORICAL_VISUAL_VERSION, photoIdentity, photoSetFingerprint, listingF
 
 /* активна версія CalCar Score: перемикається конфігурацією без деплою коду.
    Rollback на v2 = env CALCAR_SCORE_VERSION=v2, НЕ revert коміту */
-const SCORE_VERSION = process.env.CALCAR_SCORE_VERSION === 'v2' ? 'v2' : 'v3';
+const SCORE_VERSION = process.env.CALCAR_SCORE_VERSION === 'v4' ? 'v4' : 'v3';
 import { makeToken, reportSlug, slugify } from './share.js';
 import { findAuctionRecord, shouldRecheck, discoverVinCandidates, photoHasProvenance, fetchHistoricalPhotos, extractLotMeta, verifyLotIdentity, zenrowsFetch, odometerToKm, PARSER_VERSION, EVENT_VERSION,
   admitAuctionRecord, applyAdmission, storedAuctionAdmission, auctionEventEligible } from './auction.js';
@@ -921,6 +922,20 @@ export function extractHistoryFacts(text) {
   const past_listings = new Set(
     [...t.matchAll(/(\d{2}\.\d{2}\.\d{2})\s+Продавалось на AUTO\.RIA/g)].map(m => m[1])
   ).size;
+  /* датовані точки пробігу площадки для входу 5 Score v4: dd.mm.yy ->
+     ISO, "144 тис. км" -> 144000. Кількість (past_mileage_points) лишається
+     для coverage v3 */
+  const mileage_points = [];
+  const toIso = d => { const m = /^(\d{2})\.(\d{2})\.(\d{2})$/.exec(d); return m ? '20' + m[3] + '-' + m[2] + '-' + m[1] : null; };
+  const toKm = (n, thousands) => { const v = parseInt(n, 10); return isFinite(v) ? (thousands ? v * 1000 : v) : null; };
+  for (const m of t.matchAll(/(\d{2}\.\d{2}\.\d{2})\s+Продавалось на AUTO\.RIA\s+Продавець вказав пробіг\s*(\d+)(\s*тис)?/g)) {
+    const date = toIso(m[1]), km = toKm(m[2], !!m[3]);
+    if (date && km !== null) mileage_points.push({ date, km, source: 'past_listing', family: 'platform_history' });
+  }
+  for (const m of t.matchAll(/(\d{2}\.\d{2}\.\d{2})\s+Зафіксовано пробіг\s*(\d+)(\s*тис)?/g)) {
+    const date = toIso(m[1]), km = toKm(m[2], !!m[3]);
+    if (date && km !== null) mileage_points.push({ date, km, source: 'registry', family: 'platform_history' });
+  }
   const past_mileage_points = new Set([
     ...[...t.matchAll(/(\d{2}\.\d{2}\.\d{2})\s+Продавалось на AUTO\.RIA\s+Продавець вказав пробіг\s*(\d+)/g)].map(m => m[1] + '|' + m[2]),
     ...[...t.matchAll(/(\d{2}\.\d{2}\.\d{2})\s+Зафіксовано пробіг\s*(\d+)/g)].map(m => m[1] + '|' + m[2]),
@@ -934,6 +949,10 @@ export function extractHistoryFacts(text) {
     owner_events: parseOwnerEvents(t),
     past_listings,
     past_mileage_points,
+    mileage_points,
+    /* відмітка площадки про невідповідність пробігу: до появи реального
+       зразка тексту завжди false (D14) */
+    mileage_mismatch_flag: false,
     accident_recorded,
     accident_note,
     us_import_record: /Пригнано з США|Ввезено з США|Пригнано зі США/i.test(t),
@@ -1013,15 +1032,16 @@ export function buildMileageContext(input = {}) {
     out.annual_km = null; out.reference_km_year = null; out.usage_ratio = null; out.band = 'unknown';
     return out;
   }
-  const ref = SCORE_DIMENSIONS_CONFIG.MILEAGE_REF_KM_YEAR;
+  /* норми класу силової установки спільні зі Score v4 (одна цифра у
+     шапці і в штрафі інтенсивності) */
   const pt = String(input.powertrain || '').toLowerCase();
-  const reference = ref[pt] || ref.unknown;
+  const reference = mileageNormKmYear(pt);
   const annual = odo / (months / 12);
   const ratio = annual / reference;
   out.annual_km = Math.round(annual);
   out.monthly_km = Math.round(annual / 12 / 50) * 50;
   out.reference_km_year = reference;
-  out.powertrain_class = ref[pt] ? pt : 'unknown';
+  out.powertrain_class = SCORE_CONFIG_V4.MILEAGE_NORM_KM_YEAR[pt] ? pt : 'unknown';
   out.usage_ratio = Math.round(ratio * 100) / 100;
   out.band = (MILEAGE_BANDS.find(b => ratio <= b[1]) || MILEAGE_BANDS[MILEAGE_BANDS.length - 1])[0];
   return out;
@@ -1445,6 +1465,12 @@ export function sanitizeHistoricalVisual(hvRaw, photosSent) {
     /* опціональна деталізація: лише для deployed_visible і лише з переліку */
     airbags_visible_parts: (hv.srs_visual_status === 'deployed_visible' && Array.isArray(hv.airbags_visible_parts))
       ? hv.airbags_visible_parts.filter(x => ['driver', 'passenger', 'curtain', 'knee', 'seat'].includes(x)).slice(0, 5) : [],
+    /* аддитивні ознаки Score v4 (тотал): старий кеш без полів = порожньо/false,
+       версія екстрактора НЕ піднімається (кеш не інвалідується) */
+    load_bearing_members: (hv.load_bearing_structure_deformation_visible === true && Array.isArray(hv.load_bearing_members))
+      ? hv.load_bearing_members.filter(x => ['frame_rail', 'strut_tower', 'pillar', 'sill', 'floor', 'firewall'].includes(x)).slice(0, 6) : [],
+    vehicle_disassembled_visible: hv.vehicle_disassembled_visible === true,
+    fire_traces_visible: hv.fire_traces_visible === true,
     /* доказовий стандарт: кадр і ознака для кожного підтвердженого сигналу,
        статус кожного сигналу і перелік знижених до indeterminate */
     signal_evidence: gate.signal_evidence,
@@ -1473,6 +1499,8 @@ export const HV_MATERIAL_FIELDS = [
   'damage_depth', 'inner_component_deformation_visible', 'inner_component_damage_extent',
   'load_bearing_structure_deformation_visible', 'wheel_displacement_visible', 'cabin_intrusion_visible',
   'structural_visual_status', 'srs_visual_status', 'cosmetic_only', 'possible_structural_damage',
+  /* аддитивні тотал-ознаки Score v4: теж голосуються, щоб один outlier не дав тотал */
+  'load_bearing_members', 'vehicle_disassembled_visible', 'fire_traces_visible',
 ];
 /* enum-поля, для яких тристороння незгода дає чесне "невідомо" */
 const HV_INDETERMINATE = {
@@ -1481,9 +1509,10 @@ const HV_INDETERMINATE = {
   srs_visual_status: 'indeterminate',
 };
 /* матеріальний підпис читання: лише те, що здатне змінити moderate/severe */
+const HV_MATERIAL_DEFAULTS = { load_bearing_members: [], vehicle_disassembled_visible: false, fire_traces_visible: false };
 export function hvMaterial(hv) {
   const o = {};
-  for (const f of HV_MATERIAL_FIELDS) o[f] = hv ? hv[f] : undefined;
+  for (const f of HV_MATERIAL_FIELDS) o[f] = hv ? (hv[f] === undefined && f in HV_MATERIAL_DEFAULTS ? HV_MATERIAL_DEFAULTS[f] : hv[f]) : undefined;
   o.multiple_zones = !!(hv && Array.isArray(hv.visible_damage_zones) && hv.visible_damage_zones.length >= 2);
   return o;
 }
@@ -2179,6 +2208,14 @@ ${cvProvided ? `- signals.current_visual_flawless: рахуй ЛИШЕ за CURR
 - "signals": {"seller_claims_us_import": true лише при ЯВНІЙ заяві продавця про пригін зі США ("пригнана зі США", "авто з Америки"). Непевність = false}.
 - Аукціонні маркування на фото (наліпки, штрих-коди Copart/IAAI, run-номер на лобовому) знахідкою НЕ є і в score_facts не потрапляють. Тригером застосовності аукціону вони НЕ є і на стелю не впливають.
 - Якщо знахідок нема, findings це порожній масив.
+
+"seller_disclosures": НЕСПРАВНОСТІ, ЯКІ ПРОДАВЕЦЬ РОЗКРИВ САМ (службовий блок для коду, на текст звіту не впливає; числовий штраф призначає код). Принцип: заява проти власного інтересу це факт, заява на свою користь це ніщо. Витягуй ЛИШЕ з тексту оголошення (опис продавця), НЕ з фото і НЕ з припущень.
+- "quote": ДОСЛІВНА цитата з тексту оголошення (без правок, без перекладу, до 300 символів). Код перевіряє, що цитата справді є в тексті: вигадана чи перефразована цитата відкидається разом із записом.
+- "category" СТРОГО з переліку: vehicle_not_running_or_unit_replacement (не заводиться, двигун або коробка під заміну, капремонт двигуна, на запчастини); major_powertrain_symptom (димить, перегрівається, сильний стук двигуна, коробка буксує, сильно пинається, не працює повний привід); generic_powertrain_warning (горить Check Engine, помилка двигуна без конкретного тяжкого симптому); localized_powertrain_issue (теча масла, теча антифризу, пітніє сальник, шумить помпа); chassis_brakes_steering (стукає підвіска, люфт кермового, тягне вбік, потрібен ремонт ходової); body_work_needed (потребує фарбування елемента, помʼяте крило, тріснуте лобове, ремонт бампера); electrics_comfort (кондиціонер, мультимедіа, камера, дрібна електрика); consumables (колодки, диски, масло, гума, акумулятор); srs_not_restored (ЛИШЕ явно: подушки не відновлені, подушок нема, стоять муляжі, заявлений обманка чи емулятор); srs_warning_generic (горить Airbag, помилка SRS без доказу відсутності подушок); accident_unrepaired (продавець прямо пише, що авто після ДТП не відновлене); engine_swap_installed (стоїть контрактний чи інший двигун: заява на свою користь, лише факт); flood_or_fire (продавець прямо пише, що авто топилось або горіло).
+- "unit": вузол, якого стосується заява: engine | transmission | drivetrain | chassis | body | electrics | srs | consumables | vehicle (vehicle лише для "не заводиться", "на запчастини" та інших заяв про машину цілком).
+- "zone": для кузовних заяв сторона чи частина: front | rear | left | right | roof | glass | interior; інакше null.
+- "negated": true, якщо заява заперечує проблему ("не димить", "без течей", "помилок нема"). "vague": true для розпливчастого ("є нюанси", "треба вкласти"). "seller_favor": true для заяв на свою користь ("все обслужено", "двигун замінений на контрактний"). Такі записи все одно наводь із цитатою: код дасть їм нуль, але висновок їх бачитиме.
+- Кожна окрема проблема окремим записом; те саме твердження двічі не дублюй. Нема заяв про несправності: порожній масив.
 
 
 ПОСИЛАННЯ НА КАДРИ В ТЕКСТАХ: номер кадру згадуй ЛИШЕ коли конкретна знахідка стосується конкретного зображення і номер допомагає користувачу її перевірити ("на кадрі горить індикатор тиску в шинах"). Для АГРЕГОВАНИХ висновків ("на доступних фото панелі і зазори виглядають рівно") СПИСКИ використаних кадрів не перелічуй ВЗАГАЛІ, скільки б їх не було: вони лишаються у внутрішньому evidence. Максимум один-два кадри на одну конкретну знахідку.
@@ -3067,9 +3104,7 @@ async function runCheck(req, res, job) {
     try { snaps = await readSnapshots(listing.vin, url); } catch (e) { console.log('[check] snapshots read failed:', e.message); }
     let decisionContext = null;
     try {
-      const FUEL_NHTSA = { gasoline: 'petrol', diesel: 'diesel', electric: 'electric' };
-      const fuelRaw = String((nhtsa && nhtsa.FuelTypePrimary) || '').toLowerCase();
-      const ptGuess = Object.keys(FUEL_NHTSA).find(k => fuelRaw.includes(k));
+      const ptClass = resolvePowertrainClass({ nhtsa, fuel: null });
       /* історичні точки пробігу: наш рів даних плюс одометр знайденого лота */
       const points = snaps.filter(r => typeof r.odometer_km === 'number' && r.odometer_km > 0)
         .map(r => ({ km: r.odometer_km, date: r.created_at, source: 'past_listing' }));
@@ -3083,7 +3118,7 @@ async function runCheck(req, res, job) {
         odometer_km: listing.odometer_km,
         age_months: ageCtx.age_months,
         age_source: ageCtx.age_source,
-        powertrain: ptGuess ? FUEL_NHTSA[ptGuess] : null,
+        powertrain: ptClass,
         historical_points: points,
       });
       const buyer = sanitizeBuyerContext(req.body && req.body.buyer_context);
@@ -3352,8 +3387,6 @@ async function runCheck(req, res, job) {
         && !coverageInputs.auction_record_exists
         && !(coverageInputs.auction_us_signal && coverageInputs.auction_checked);
       const findings = Array.isArray(parsed?.score_facts?.findings) ? parsed.score_facts.findings : [];
-      const breakdownV2 = computeScore(findings, coverageInputs);
-      breakdownV2.score_version = 'v2';
       /* structured-входи v3: metadata точного лота, візуал архівних кадрів,
          запис площадки про ДТП. Все детерміноване, без слова моделі */
       const auctionMetaV3 = coverageInputs.auction_record_exists ? {
@@ -3396,8 +3429,59 @@ async function runCheck(req, res, job) {
           ? { recorded: true, note: hf.accident_note || null }
           : null,
       });
-      const breakdown = SCORE_VERSION === 'v2' ? breakdownV2 : breakdownV3;
-      const shadow = SCORE_VERSION === 'v2' ? breakdownV3 : breakdownV2;
+      /* ---- Score v4 (тінь): шість затверджених входів, eligibility gate.
+         Вхід збирається з того, що вже є в пайплайні: v3-знахідки і HV,
+         канонічний Current Vision, точки пробігу (архів CalCar, площадка,
+         лот, приборка, поточне оголошення), признання продавця з
+         основного виклику, evidence для gate ---- */
+      let breakdownV4 = null;
+      try {
+        let cvFinal = cvFeed || null;
+        if (!cvFinal && cvShadow) {
+          try { cvFinal = await Promise.race([cvShadow, new Promise(r => setTimeout(() => r(null), 2500))]); } catch (e) { cvFinal = null; }
+        }
+        const cvOk = !!(cvFinal && cvFinal.status === 'ok' && cvFinal.current_visual);
+        const cvZones = cvOk ? (cvFinal.current_visual.zones || {}) : {};
+        const cvSufficient = Object.values(cvZones).filter(z => z && z.visibility === 'sufficient').length;
+        const nowIso = new Date().toISOString().slice(0, 10);
+        const mileagePoints = [
+          ...snaps.filter(r => typeof r.odometer_km === 'number' && r.odometer_km > 0 && r.created_at)
+            .map(r => ({ km: r.odometer_km, date: String(r.created_at).slice(0, 10), source: 'archive', family: 'vehicle_memory' })),
+          ...(Array.isArray(hf.mileage_points) ? hf.mileage_points : []),
+        ];
+        if (auctionSearch && auctionSearch.status === 'found' && auctionSearch.odometer && auctionSearch.odometer.value != null && auctionSearch.sale_date) {
+          mileagePoints.push({ km: auctionSearch.odometer.value, unit: auctionSearch.odometer.unit, status: auctionSearch.odometer.status || 'unknown', date: auctionSearch.sale_date, source: 'auction', family: 'auction' });
+        }
+        if (typeof listing.odometer_km === 'number' && listing.odometer_km > 0) mileagePoints.push({ km: listing.odometer_km, date: nowIso, source: 'listing', family: 'current' });
+        const cvOdo = cvOk && cvFinal.current_visual.dashboard ? cvFinal.current_visual.dashboard.odometer_reading : null;
+        if (cvOdo && cvOdo.value > 0 && (cvOdo.unit === 'km' || cvOdo.unit === 'mi')) mileagePoints.push({ km: cvOdo.value, unit: cvOdo.unit, date: nowIso, source: 'dashboard', family: 'dashboard' });
+        breakdownV4 = computeScoreV4({
+          findings,
+          auctionMeta: auctionMetaV3,
+          historicalVisual: parsed.historical_visual || null,
+          accidentRecord: hf.accident_recorded === true ? { recorded: true, note: hf.accident_note || null } : null,
+          auctionChecked: !!(auctionSearch && auctionSearch.status),
+          currentVisual: cvOk ? compactCurrentVisual(cvFinal.current_visual) : null,
+          vehicle: { odometer_km: vehicleV3.odometer_km, age_months: vehicleV3.age_months, age_source: vehicleV3.age_source,
+            powertrain_class: resolvePowertrainClass({ nhtsa, fuel: parsed?.vehicle?.fuel || null }) },
+          mileagePoints,
+          platformMileageFlag: hf.mileage_mismatch_flag === true,
+          sellerDisclosures: Array.isArray(parsed.seller_disclosures) ? parsed.seller_disclosures : [],
+          listingText: listing.text || '',
+          evidence: {
+            identity_confirmed: coverageInputs.identity_confirmed, basics_known: coverageInputs.basics_known,
+            photos_count: coverageInputs.photos_count, seller_text_chars: String(listing.seller_text || '').trim().length,
+            auction_record_exists: coverageInputs.auction_record_exists, registry_present: hf.registry_present === true,
+            historical_listings_count: coverageInputs.historical_listings_count,
+            cv_status: cvFinal ? cvFinal.status : 'absent', cv_zones_sufficient: cvSufficient, listing_vin: listing.vin || null,
+          },
+        });
+      } catch (e) {
+        console.log('[score-v4]', JSON.stringify({ op: 'compute', error: String((e && e.message) || e).slice(0, 160), vin: listing.vin || null }));
+        breakdownV4 = { score_version: 'v4', config_tag: SCORE_CONFIG_V4.CONFIG_TAG, score_available: false, score_eligible: false, score_unavailable_reason: 'compute_error', final: null };
+      }
+      const breakdown = SCORE_VERSION === 'v4' ? breakdownV4 : breakdownV3;
+      const shadow = SCORE_VERSION === 'v4' ? breakdownV3 : breakdownV4;
       /* економіка ретривала: ціна одного Check з аукціонним пошуком.
          Прямий fetch безкоштовний, платний провайдер підставить свою ціну */
       breakdown.retrieval_provider = auctionSearch ? (auctionSearch.cache === 'hit' ? 'cache' : 'direct_fetch') : null;

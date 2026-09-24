@@ -9,6 +9,8 @@
    historical_visual: null, коли канонічний розбір уже є (код підставляє
    його), інакше повний обʼєкт. */
 
+import { SELLER_CATEGORIES, SELLER_UNITS, SELLER_ZONES } from './score-v4.js';
+
 const S = (type, description, extra = {}) => ({ type, ...(description ? { description } : {}), ...extra });
 const NS = (description, extra = {}) => ({ type: ['string', 'null'], ...(description ? { description } : {}), ...extra });
 const E = (values, description) => ({ type: 'string', enum: values, ...(description ? { description } : {}) });
@@ -38,6 +40,11 @@ export const HISTORICAL_VISUAL_OBJECT = OBJ({
   structural_visual_status: E(['no_obvious_severe_signs', 'possible', 'visible_damage', 'indeterminate']),
   srs_visual_status: E(['deployed_visible', 'no_deployment_visible', 'not_visible', 'indeterminate']),
   airbags_visible_parts: ARR(E(['driver', 'passenger', 'curtain', 'knee', 'seat'])),
+  /* аддитивні поля Score v4 (тотал-ознаки): відсутність у старому кеші
+     читається як порожньо або false */
+  load_bearing_members: ARR(E(['frame_rail', 'strut_tower', 'pillar', 'sill', 'floor', 'firewall'])),
+  vehicle_disassembled_visible: S('boolean'),
+  fire_traces_visible: S('boolean'),
   signal_evidence: ARR(OBJ({ signal: S('string'), frame: S('string', 'auction_photo_N'), sign: S('string') })),
   summary: S('string'),
   evidence: ARR(OBJ({ source: S('string', 'us_auction'), ref: S('string', 'auction_photo_N'), description: S('string') })),
@@ -132,6 +139,15 @@ export function buildMainSchema({ hvProvided = false } = {}) {
       value_context: NS('null без price_context'),
       missing_but_important: ARR(S('string')),
     }),
+    seller_disclosures: ARR(OBJ({
+      category: E(SELLER_CATEGORIES),
+      unit: E(SELLER_UNITS),
+      zone: NE(SELLER_ZONES),
+      quote: S('string', 'дослівна цитата з тексту оголошення'),
+      negated: S('boolean'),
+      vague: S('boolean'),
+      seller_favor: S('boolean'),
+    })),
     score_facts: OBJ({
       findings: ARR(OBJ({
         type: E(SCORE_FACT_TYPES),

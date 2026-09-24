@@ -139,7 +139,7 @@ const EPS = 1e-9;
 
 /* та сама строга валідація, що у v2: без валідного evidence і event_id
    знахідка на бал не впливає */
-function sanitizeFindingsV3(findings) {
+export function sanitizeFindingsV3(findings) {
   const ok = [];
   let dropped = 0;
   for (const f of Array.isArray(findings) ? findings : []) {
@@ -183,7 +183,7 @@ const ZONE_PATTERNS = [
   { key: 'right', re: /прав|right/i },
   { key: 'roof', re: /дах|крыш|roof/i },
 ];
-const zoneClasses = text => {
+export const zoneClasses = text => {
   const s = new Set();
   for (const z of ZONE_PATTERNS) if (z.re.test(String(text || ''))) s.add(z.key);
   return s;
