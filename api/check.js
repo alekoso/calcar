@@ -18,6 +18,7 @@ import {
 } from './visual-signals.js';
 import { hasHistoricalPhotoEvidence, stripUnbackedPhotoClaims } from './historical-claims.js';
 import { parseOwnerEvents, annotateOwnerOrdinals } from './history-owners.js';
+import { validGeneration, validEngineCode } from './youtube.js';
 import {
   photoIdentity, photoSetFingerprint, listingFingerprint, snapshotRow, listingKey, dedupePhotoVariants,
   readVehicle, upsertVehicle, observeListing, patchSnapshotClaims, preservePhotos, snapshotHasPhotos, readListingPhotoFingerprints,
@@ -3842,6 +3843,16 @@ async function runCheck(req, res, job) {
         : null,
       auction_search: auctionSearch,
       history_facts: listing.history_facts || null,
+      /* структурна ідентичність МОДЕЛІ (не VIN): покоління з площадки і код
+         двигуна з декодера NHTSA, обидва лише коли справді відомі. Потрібна
+         необовʼязковим збагаченням на зразок відео про модель (api/youtube.js);
+         на Score, рішення і Vehicle Memory не впливає */
+      model_identity: {
+        make: listing.make || (nhtsa && nhtsa.Make) || null,
+        model: listing.model || (nhtsa && nhtsa.Model) || null,
+        generation: validGeneration(listing.generation),
+        engine_code: validEngineCode(nhtsa && nhtsa.EngineModel),
+      },
       /* паспорт джерела для інтерфейсу: без посилань назовні */
       auction_meta: auctionSearch && auctionSearch.status === 'found'
         ? { house: auctionSearch.house || null, date: auctionSearch.sale_date || null }

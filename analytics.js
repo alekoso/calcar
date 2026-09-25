@@ -31,7 +31,9 @@
   var PUB = (window.CALCAR_PUBLIC && window.CALCAR_PUBLIC.analytics) || {};
   var AID_KEY = 'calcar_aid', UTM_KEY = 'calcar_utm', UID_KEY = 'calcar_uid';
   var EVENTS = ['landing_view', 'analysis_started', 'analysis_completed', 'report_viewed', 'report_shared',
-    'assistant_opened', 'memory_opened', 'memory_saved', 'deep_check_clicked'];
+    'assistant_opened', 'memory_opened', 'memory_saved', 'deep_check_clicked',
+    /* необовʼязковий блок відео про модель у звіті Check */
+    'youtube_block_viewed', 'youtube_video_opened', 'youtube_show_more', 'youtube_opened_external'];
   /* ключі, які можуть нести приватний текст: відкидаються завжди */
   var DENY = /text|message|memory|description|seller|prompt|content|email|phone|token|password|card|payment|query|url|title|note/i;
   var ALLOW_URL_KEYS = /^(page|product)$/;

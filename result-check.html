@@ -776,6 +776,39 @@
   .eq-chips{gap:8px 12px}
   .eq-chips{margin-top:2px}
 
+  /* відео про модель: необовʼязкове збагачення, вантажиться після звіту.
+     Картки тієї самої мови, що й решта звіту: білий фон, тонка лінія,
+     той самий радіус. Мініатюра 16:9, iframe тільки після кліку */
+  .yt-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .yt-card{display:flex;flex-direction:column;gap:8px;padding:0;border:1px solid var(--line);border-radius:12px;background:var(--card);overflow:hidden;cursor:pointer;text-align:left;font:inherit;color:inherit;transition:border-color .15s,box-shadow .15s}
+  .yt-card:hover{border-color:var(--line-strong);box-shadow:0 6px 18px rgba(20,22,25,.07)}
+  /* display класу перебиває атрибут hidden: без цього відразу видно всі шість */
+  .yt-card[hidden],.yt-more[hidden]{display:none}
+  .yt-card:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  .yt-th{position:relative;aspect-ratio:16/9;background:var(--surface-2);overflow:hidden}
+  .yt-th img{width:100%;height:100%;object-fit:cover;display:block}
+  .yt-play{position:absolute;left:50%;top:50%;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;background:rgba(20,22,25,.72);display:flex;align-items:center;justify-content:center}
+  .yt-play::after{content:"";border:8px solid transparent;border-left-color:#fff;border-right-width:0;margin-left:4px}
+  .yt-dur{position:absolute;right:6px;bottom:6px;padding:1px 5px;border-radius:5px;background:rgba(20,22,25,.82);color:#fff;font-size:11.5px;font-variant-numeric:tabular-nums}
+  .yt-t{padding:0 12px;font-size:13.5px;font-weight:600;line-height:1.35;color:var(--ink);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .yt-meta{padding:0 12px 12px;font-size:12px;color:var(--muted);display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+  .yt-more{margin-top:12px;height:34px;padding:0 14px;border:1px solid var(--line-strong);border-radius:10px;background:var(--card);color:var(--ink);font-size:13px;font-weight:600;font-family:inherit;cursor:pointer}
+  .yt-more:hover{background:var(--surface-2)}
+  /* плеєр у модалці: звіт лишається під нею, прокрутка повертається на місце */
+  .ytm-ov{position:fixed;inset:0;background:rgba(10,18,28,.88);z-index:200;display:none}
+  .ytm-ov.open{display:block}
+  .ytm{position:fixed;inset:0;z-index:201;display:none;align-items:center;justify-content:center;padding:20px}
+  .ytm.open{display:flex}
+  .ytm-box{width:min(960px,100%);max-height:92vh;display:flex;flex-direction:column;gap:10px}
+  .ytm-head{display:flex;align-items:flex-start;gap:12px;color:#fff}
+  .ytm-t{flex:1;font-size:15px;font-weight:600;line-height:1.35}
+  .ytm-x{flex:0 0 auto;width:32px;height:32px;border-radius:50%;border:1px solid rgba(255,255,255,.35);background:none;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer}
+  .ytm-x:focus-visible,.ytm-link:focus-visible{outline:2px solid #fff;outline-offset:2px}
+  .ytm-frame{position:relative;aspect-ratio:16/9;width:100%;background:#000;border-radius:12px;overflow:hidden}
+  .ytm-frame iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+  .ytm-link{align-self:flex-start;font-size:12.5px;color:#fff;opacity:.85}
+  @media(max-width:900px){.yt-grid{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:620px){.yt-grid{grid-template-columns:1fr}.ytm{padding:12px}}
   /* переклад звіту */
   /* стани сторінки: скелетон до готовності даних, звіт одним перемиканням */
   /* progress:start ---- багатоетапний індикатор аналізу. Спільний компонент
@@ -1204,6 +1237,18 @@
     <div class="card-body"><div id="issuesList"></div></div>
   </div>
 
+
+  <!-- відео про модель: необовʼязковий блок, зʼявляється лише з результатами -->
+  <div class="card" id="ytCard" style="display:none">
+    <div class="card-head">
+      <h2>Videos about this model</h2>
+    </div>
+    <div class="card-body">
+      <div class="yt-grid" id="ytGrid"></div>
+      <button class="yt-more" id="ytMore" type="button" hidden>Show more</button>
+    </div>
+  </div>
+
   <!-- питання продавцю -->
   <div class="card" id="qCard" style="display:none">
     <div class="card-head">
@@ -1252,6 +1297,14 @@
 <!-- оригінальний опис продавця: шухляда праворуч, на телефоні шторка знизу.
      Текст третьої сторони; у session replay прихований -->
 <div class="ss-ov" id="sellerOverlay"></div>
+<div class="ytm-ov" id="ytOv"></div>
+<div class="ytm" id="ytModal" role="dialog" aria-modal="true" aria-labelledby="ytmTitle" tabindex="-1" aria-hidden="true">
+  <div class="ytm-box">
+    <div class="ytm-head"><span class="ytm-t" id="ytmTitle"></span><button class="ytm-x" id="ytmClose" type="button" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div>
+    <div class="ytm-frame" id="ytmFrame"></div>
+    <a class="ytm-link" id="ytmLink" href="#" target="_blank" rel="noopener">Open on YouTube</a>
+  </div>
+</div>
 <div class="ss-panel" id="sellerSheet" role="dialog" aria-modal="true" aria-labelledby="sellerTitle" tabindex="-1" aria-hidden="true">
   <div class="ss-grab" aria-hidden="true"></div>
   <div class="ss-head">
@@ -1619,7 +1672,127 @@ function boot(){
   /* дані відрендерені повністю: показуємо звіт одним перемиканням.
      До цього людина бачить скелетон, а не порожній шаблон */
   document.body.classList.add('report-ready');
+  /* відео про модель уже ПІСЛЯ готового звіту і без await: повільний або
+     мертвий YouTube не затримує і не ламає звіт */
+  try { videosInit(DATA); } catch (e) {}
 }
+
+/* ---------- відео про модель ----------
+   Необовʼязкове збагачення: запит іде після рендера звіту, помилка чи
+   порожній список просто лишають блок схованим. Дані звіту не змінюються */
+const YT_INITIAL = 3, YT_MAX = 6;
+function ytDuration(sec) {
+  if (typeof sec !== 'number' || !isFinite(sec) || sec <= 0) return '';
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s2 = Math.round(sec % 60);
+  return (h ? h + ':' + String(m).padStart(2, '0') : String(m)) + ':' + String(s2).padStart(2, '0');
+}
+/* ідентичність МОДЕЛІ зі звіту: нормалізована назва плюс покоління і код
+   двигуна, які дав структурний декодер. Сирий заголовок оголошення не
+   використовуємо */
+function ytIdentityParams(D) {
+  const mi = (M && M.model_identity) || {};
+  const p = new URLSearchParams();
+  const title = clean((D.vehicle || {}).title || '');
+  if (title) p.set('title', title);
+  if (mi.make) p.set('make', mi.make);
+  if (mi.model) p.set('model', mi.model);
+  if (mi.generation) p.set('generation', mi.generation);
+  if (mi.engine_code) p.set('engine_code', mi.engine_code);
+  p.set('lang', window.calcarLang());
+  return (title || mi.make) ? p : null;
+}
+async function videosInit(D) {
+  const card = $('ytCard'), grid = $('ytGrid'), moreBtn = $('ytMore');
+  if (!card || !grid) return;
+  const params = ytIdentityParams(D);
+  if (!params) return;
+  let videos = [];
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 9000);
+    const r = await fetch('/api/youtube?' + params.toString(), { signal: ctl.signal });
+    clearTimeout(t);
+    if (!r.ok) return;
+    const j = await r.json().catch(() => ({}));
+    videos = Array.isArray(j.videos) ? j.videos.slice(0, YT_MAX) : [];
+  } catch (e) { return; }
+  if (!videos.length) return;
+  const cardHtml = (v, i) => '<button class="yt-card" type="button" data-yt="' + esc(v.id) + '" data-i="' + i + '"'
+    + (i >= YT_INITIAL ? ' hidden' : '') + '>'
+    + '<span class="yt-th">' + (v.thumb ? '<img loading="lazy" src="' + esc(v.thumb) + '" alt="">' : '')
+    + '<span class="yt-play"></span>'
+    + (ytDuration(v.duration_s) ? '<span class="yt-dur">' + esc(ytDuration(v.duration_s)) + '</span>' : '') + '</span>'
+    + '<span class="yt-t">' + esc(v.title) + '</span>'
+    + '<span class="yt-meta">' + esc(v.channel || '') + '</span></button>';
+  grid.innerHTML = videos.map(cardHtml).join('');
+  card.style.display = '';
+  if (window.calcar) window.calcar.track('youtube_block_viewed', { product: 'check', count: videos.length });
+  if (videos.length > YT_INITIAL) {
+    moreBtn.hidden = false;
+    moreBtn.textContent = t('Show more');
+    moreBtn.onclick = () => {
+      const open = moreBtn.dataset.open === '1';
+      grid.querySelectorAll('.yt-card').forEach((el, i) => { el.hidden = open && i >= YT_INITIAL; });
+      moreBtn.dataset.open = open ? '' : '1';
+      moreBtn.textContent = open ? t('Show more') : t('Show less');
+      if (!open && window.calcar) window.calcar.track('youtube_show_more', { product: 'check' });
+    };
+  }
+  /* один обробник на сітку: повторний виклик не подвоює відкриття */
+  grid.onclick = e => {
+    const b = e.target.closest ? e.target.closest('.yt-card') : null;
+    if (!b) return;
+    const v = videos[parseInt(b.dataset.i, 10)];
+    if (v) ytOpen(v, b);
+  };
+}
+/* плеєр вантажиться ЛИШЕ після кліку і лише в режимі без кукі YouTube */
+(function () {
+  const modal = $('ytModal'), ov = $('ytOv'), frame = $('ytmFrame'), titleEl = $('ytmTitle'),
+    link = $('ytmLink'), closeBtn = $('ytmClose');
+  if (!modal) return;
+  let lastTrig = null;
+  window.ytOpen = function (v, trig) {
+    lastTrig = trig || null;
+    titleEl.textContent = clean(v.title);
+    link.href = 'https://www.youtube.com/watch?v=' + encodeURIComponent(v.id);
+    link.textContent = t('Open on YouTube');
+    const fr = document.createElement('iframe');
+    fr.src = 'https://www.youtube-nocookie.com/embed/' + encodeURIComponent(v.id) + '?autoplay=1&rel=0';
+    fr.title = clean(v.title);
+    fr.allow = 'accelerometer; autoplay; encrypted-media; picture-in-picture; fullscreen';
+    fr.allowFullscreen = true;
+    frame.innerHTML = '';
+    frame.appendChild(fr);
+    modal.classList.add('open'); ov.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+    document.documentElement.style.overflow = 'hidden';
+    setTimeout(() => closeBtn.focus(), 30);
+    if (window.calcar) window.calcar.track('youtube_video_opened', { product: 'check' });
+  };
+  function close() {
+    if (!modal.classList.contains('open')) return;
+    modal.classList.remove('open'); ov.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+    /* плеєр вивантажуємо: жодного фонового відтворення і мережі */
+    frame.innerHTML = '';
+    document.documentElement.style.overflow = '';
+    /* звіт лишається рівно там, де був: фокус повертається на картку */
+    if (lastTrig) lastTrig.focus();
+  }
+  closeBtn.addEventListener('click', close);
+  ov.addEventListener('click', close);
+  link.addEventListener('click', () => { if (window.calcar) window.calcar.track('youtube_opened_external', { product: 'check' }); });
+  modal.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+    if (e.key === 'Tab') {
+      const items = [closeBtn, link];
+      const i = items.indexOf(document.activeElement);
+      e.preventDefault();
+      items[(i + (e.shiftKey ? items.length - 1 : 1) + items.length) % items.length].focus();
+    }
+  });
+})();
 
 function boot2(D){
 

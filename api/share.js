@@ -28,7 +28,7 @@ const PUBLIC_TOP = [
 const PUBLIC_META = [
   'kind', 'lang', 'url', 'domain', 'country', 'vin', 'plate', 'price', 'currency',
   'odometer_km', 'photos', 'auction_url', 'auction_photos', 'auction_photos_provenance',
-  'auction_meta', 'photo_map', 'price_context', 'analyzed_at',
+  'auction_meta', 'photo_map', 'price_context', 'analyzed_at', 'model_identity',
   'share_token', 'share_slug', 'historical_visual_cache',
 ];
 /* auction_search: сторінці потрібні лише статус і адреса лота */
