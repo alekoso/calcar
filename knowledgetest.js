@@ -194,6 +194,11 @@ if (fns.some(x => !x)) {
   const seedSrc = fs.readFileSync('knowledge-seed.js', 'utf8');
   if (!seedSrc.includes('fct.evidence_excerpt) continue')) errs.push('seed пише факт без excerpt-підстави');
   if (!seedSrc.includes('ЗАБОРОНЕНО додавати факти з власної памʼяті')) errs.push('seed дозволяє LLM відповідати з памʼяті');
+  /* Equipment v1: канонічний каталог обладнання це Model Intelligence (міграція 027) */
+  if (/model_option_catalog\?/.test(seedSrc)) errs.push('seed знову пише model_option_catalog: канонічний каталог обладнання це MI');
+  for (const f of fs.readdirSync('api').filter(x => x.endsWith('.js'))) {
+    if (fs.readFileSync('api/' + f, 'utf8').includes('model_option_catalog')) errs.push('api/' + f + ' читає model_option_catalog замість каталогу MI');
+  }
 }
 
 if (errs.length) { console.log('FAILED:', errs); process.exit(1); }

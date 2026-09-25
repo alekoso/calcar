@@ -20,6 +20,7 @@ cat data/mi/reference/*.sql | psql -v ON_ERROR_STOP=1 -d "$TARGET_DB"
 | `101_entities_tesla.sql` | граф сутностей Tesla Model S P85D MY2015 |
 | `102_entities_porsche.sql` | граф сутностей Porsche Cayenne GTS 958.1 MY2013 |
 | `110_sources.sql` | 198 джерел із реєстрів трьох карток |
+| `114_equipment_bmw_530i.sql` | Equipment v1: 21 позиція обладнання BMW 530i xDrive US MY2018 з офіційного прайсу (S-G-OFF-02), пакети на VMY, аліаси, візуальні ознаки; наявні сутності бере за природними ключами (`pg_temp.adopt`), тому заливається і окремо поверх продакшн-каталогу; потребує міграції 027 |
 | `120_candidates_bmw.sql` | 115 кандидатів зі 103 атомів |
 | `121_candidates_tesla.sql` | 67 кандидатів із 49 атомів |
 | `122_candidates_porsche.sql` | 54 кандидати з 42 атомів |

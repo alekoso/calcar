@@ -154,9 +154,11 @@ Destructive-міграції, перезапис даних, небезпечн�
   проблеми). Типові слабкі місця моделі і generic-ризики сюди не пишуться.
 - `observation_coverage`: чесний знаменник (visual завжди partial;
   повний перегляд галереї це окремий `gallery_complete`).
-- `model_option_catalog` / `model_issue_catalog`: каталоги моделей, заповнює
-  лише `knowledge-seed.js` (запуск руками), кожен факт із source_url і
-  evidence_excerpt.
+- `model_issue_catalog`: каталог болячок моделей, заповнює лише
+  `knowledge-seed.js` (запуск руками), кожен факт із source_url і
+  evidence_excerpt. `model_option_catalog` виведено з ужитку (Equipment v1):
+  канонічний каталог обладнання це Model Intelligence (`mi.equipment_item`,
+  `mi.equipment_availability`, міграція 027); таблиця лишається порожньою.
 - `derived_option_stats` / `derived_issue_stats`: rebuildable кеш,
   перераховує `knowledge-recompute.js` (руками/розкладом, НЕ з Check);
   частоти по унікальних VIN.

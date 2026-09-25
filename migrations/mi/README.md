@@ -121,6 +121,9 @@ MI_TEST_DB_URL=postgres://localhost/calcar_mi_test node mibackloadtest.js
 Аудит часткової ідентичності і пропозиція поправки:
 `docs/model-intelligence/partial-identity-audit.md`, реалізація:
 `docs/model-intelligence/partial-identity.md`.
+Обладнання конкретного авто (кандидати каталогу, міграція 027): аудит
+`docs/model-intelligence/equipment-availability-audit.md`, реалізація
+`docs/model-intelligence/equipment-v1.md`.
 
 ## Що свідомо лишилось поза Phase 4
 

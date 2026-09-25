@@ -44,6 +44,7 @@ import { findAuctionRecord, shouldRecheck, discoverVinCandidates, photoHasProven
 /* Model Intelligence: тінь. Вмикається лише серверним MI_SHADOW_ENABLED,
    працює у фоні ПІСЛЯ запису готового звіту і у звіт нічого не додає */
 import { runMiShadow } from './mi-shadow.js';
+import { fetchMiEquipmentCandidates, candidatePromptBlock, visionHintBlock, supplementVisionEquipment, applyMiEquipment, equipmentMemoryObservations, recordMiEquipment } from './mi-equipment.js';
 
 /* ============================================================
    CalCar Check, рушій v1: посилання на оголошення -> звіт.
@@ -2642,6 +2643,13 @@ async function runCheck(req, res, job) {
     const cvOdoVerify = !!(benchAllowed && req.body && req.body.cv_odo_verify === true);
     /* скільки основний виклик готовий чекати канонічний розбір */
     const CV_FEED_MAX_WAIT_MS = 45000;
+    /* Equipment v1: кандидати обладнання з каталогу MI для цього VIN.
+       Запит стартує, щойно Vehicle Memory знає авто (після декоду); Vision
+       чекає його не довше MI_EQ_VISION_WAIT_MS від власного старту і без
+       нього працює як раніше. Кандидат це доступність, а не наявність */
+    let miEqResolve = null;
+    const miEqReady = new Promise(r => { miEqResolve = r; });
+    const MI_EQ_VISION_WAIT_MS = 3000;
     let cvShadow = null;
     const tCv = Date.now();
     if (cvMode === 'shadow') {
@@ -2661,12 +2669,16 @@ async function runCheck(req, res, job) {
         const sent = pre.frames;
         const transport = { mode: pre.transport, frames_planned: plan.frames.length, frames_sent: sent.length, dropped: pre.dropped, bytes: pre.bytes, ms: Date.now() - tPre };
         if (pre.dropped.length) console.log('[current-vision]', JSON.stringify({ op: 'prefetch', dropped: pre.dropped.length, sent: sent.length, planned: plan.frames.length, vin: listing.vin || null }));
+        /* цільовий пошук: лише позиції з однозначною візуальною ознакою,
+           повний прохід по кадрах не скорочується */
+        const miEqForVision = await Promise.race([miEqReady, new Promise(r => setTimeout(() => r(null), Math.max(0, MI_EQ_VISION_WAIT_MS - (Date.now() - tCv))))]);
+        const miVisionHint = miEqForVision && miEqForVision.ok ? visionHintBlock(miEqForVision.candidates) : null;
         let body = null, d = null, raw = null;
         const run = await withVisionRetry(async () => {
           body = {
             model: process.env.OPENAI_MODEL || 'gpt-5.6-terra', max_completion_tokens: 12000, reasoning_effort: 'low',
             response_format: currentVisualResponseFormat(),
-            messages: [{ role: 'system', content: CURRENT_VISUAL_RULES }, { role: 'user', content: frameContent(sent, 'mixed') }],
+            messages: [{ role: 'system', content: CURRENT_VISUAL_RULES }, { role: 'user', content: miVisionHint ? [{ type: 'text', text: miVisionHint }, ...frameContent(sent, 'mixed')] : frameContent(sent, 'mixed') }],
           };
           d = await callModel(body, Math.max(30000, Math.min(95000, 262000 - (Date.now() - tRun))));
           if (!d || d.error) return { status: 'failed', error: String((d && d.error && (d.error.message || d.error.code)) || 'no response').slice(0, 160) };
@@ -2677,7 +2689,7 @@ async function runCheck(req, res, job) {
         const base = { ms, ai: aiUsage(d, body), version: CURRENT_VISUAL_VERSION, fingerprint: frameSetFingerprint(plan.frames),
           detail_plan: { source: plan.source, high: plan.high, low: plan.low }, photos: { total: plan.frames.length, high: plan.high.length, low: plan.low.length },
           frames: plan.frames.map(f => ({ gallery_index: f.gallery_index, photo_identity: f.identity, high: f.high, type: f.type })),
-          attempts: run.attempts, transport };
+          attempts: run.attempts, transport, mi_equipment_hint: !!miVisionHint };
         if (run.attempts.length > 1 || run.status !== 'ok') console.log('[current-vision]', JSON.stringify({ op: 'retry', status: run.status, attempts: run.attempts.map(a => a.status + (a.error ? ':' + a.error.slice(0, 40) : '')), vin: listing.vin || null }));
         if (run.status !== 'ok') return { status: 'failed', error: run.error || 'failed', ...base };
         /* знахідки можуть посилатися лише на кадри, які модель реально бачила */
@@ -2770,6 +2782,10 @@ async function runCheck(req, res, job) {
       upsertVehicle(listing.vin, { snapshots_count: ((vehicleRow && vehicleRow.snapshots_count) || 0) + 1, updated_at: nowIso }).catch(() => {});
     }
     console.log('[vehicle-memory]', JSON.stringify({ vin: listing.vin || null, vehicle_id: observation.vehicle_id, listing_id: observation.listing_id, listing_created: observation.listing_created, attached: observation.attached, snapshot: snapshot.status, snapshot_id: snapshot.id }));
+    /* Equipment v1: авто вже в памʼяті, каталог може розвʼязати ідентичність */
+    const miEqPromise = (listing.vin ? fetchMiEquipmentCandidates(listing.vin) : Promise.resolve({ ok: false, reason: 'no_vin', candidates: [], ms: 0 }))
+      .catch(e => ({ ok: false, reason: 'error', candidates: [], ms: 0, error: String((e && e.message) || e).slice(0, 120) }));
+    miEqPromise.then(miEqResolve);
     /* кадри оголошення: паралельно з рештою пайплайна; для нового стану
        оголошення завжди, для dedup лише коли знімок ще без кадрів (створений
        до появи Photo Assets): досохраняємо один раз */
@@ -3231,6 +3247,12 @@ async function runCheck(req, res, job) {
            ...auctionPhotos.map((u, i) => img(u, !hvFrames || hvFrames.has(i + 1) ? 'high' : 'low'))]
         : []),
     ];
+    /* Equipment v1: що саме шукати у даних VIN і оголошення. Запит до
+       каталогу стартував ще на етапі памʼяті і зазвичай давно готовий */
+    const miEq = await Promise.race([miEqPromise, new Promise(r => setTimeout(() => r({ ok: false, reason: 'timeout_main', candidates: [], ms: 0 }), 1500))]);
+    const miEqBlock = miEq.ok ? candidatePromptBlock(miEq.candidates) : null;
+    if (miEqBlock) content.splice(1, 0, { type: 'text', text: miEqBlock });
+    mark('mi_equipment', miEq.ms || 0, miEq.ok ? 'executed' : 'skipped', { reason: miEq.reason || null, candidates: (miEq.candidates || []).length });
     let mainSystem = mainMsg.system;
     const mainPayload = mainPayloadBreakdown(mainSystem, content, {
       current: mainPhotoPositions.length, current_high: cvFeed ? Math.min(4, mainPhotoPositions.length) : photoUrls.filter((_, i) => highSet.has(i)).length, gallery_total: listing.photos.length,
@@ -3731,8 +3753,11 @@ async function runCheck(req, res, job) {
            зобовʼязана переказувати кожен підтверджений кадрами факт:
            раніше з восьми понять у звіт доходило три */
         const merged = mergeCanonicalEquipment(gated.items, cvFeed.current_visual, lang);
-        parsed.equipment_v2 = merged.items;
-        eqCanonical = { applied: true, concepts: cvConcepts.length, dropped_visual_evidence: gated.dropped, merge: merged.stats };
+        /* Equipment v1: знахідки Vision поза словником понять, що збігаються
+           з кандидатом каталогу, вносяться під офіційною назвою */
+        const miSup = supplementVisionEquipment(merged.items, cvFeed.current_visual, miEq.ok ? miEq.candidates : []);
+        parsed.equipment_v2 = miSup.items;
+        eqCanonical = { applied: true, concepts: cvConcepts.length, dropped_visual_evidence: gated.dropped, merge: merged.stats, mi_inserted: miSup.stats.inserted };
       }
       parsed.equipment_v2 = sanitizeEquipment(parsed.equipment_v2, /(^|\.)auto\.ria\.com$/.test(listing.domain || '') ? 'autoria' : (listing.domain || null));
       const claims = selectEquipmentClaims(parsed.equipment_v2);
@@ -3778,6 +3803,14 @@ async function runCheck(req, res, job) {
     } catch (e) {
       eqVerifier = { status: 'skipped', reason: 'error' };
       console.log('[equipment] верифікатор впав, пропущено:', e.message);
+    }
+    /* Equipment v1: позначка каталогу MI. Цінність з каталогу отримують лише
+       пункти з доказом про це авто; рівень доказу каталог не змінює */
+    let miEqApplied = null;
+    try {
+      if (miEq.ok && miEq.candidates.length) miEqApplied = applyMiEquipment(parsed.equipment_v2, miEq.candidates).stats;
+    } catch (e) {
+      console.log('[mi-equipment]', JSON.stringify({ op: 'apply', error: String((e && e.message) || e).slice(0, 120) }));
     }
     console.log('[equipment]', JSON.stringify({ items: (parsed.equipment_v2 || []).length, verifier: eqVerifier }));
     mark('equipment_verifier', eqVerifier.ms || 0, eqVerifier.status === 'done' ? 'executed' : 'skipped',
@@ -3882,11 +3915,27 @@ async function runCheck(req, res, job) {
       /* Current Vision v1 у shadow: аудит і телеметрія, не для UI/Score */
       current_visual_shadow: cvShadowResult,
     };
+    /* Equipment v1: телеметрія, не для UI і не для Score */
+    parsed._meta.mi_equipment = {
+      status: miEq.ok ? 'ok' : 'skipped', reason: miEq.reason || null, identity_precision: miEq.identity_precision || null,
+      candidates: (miEq.candidates || []).length, prompt_block: !!miEqBlock, vision_hint: !!(cvFeed && cvFeed.mi_equipment_hint),
+      vision_inserted: (eqCanonical && eqCanonical.mi_inserted) || 0,
+      matched: miEqApplied ? miEqApplied.matched : 0, confirmed: miEqApplied ? miEqApplied.confirmed : 0,
+      confirmed_high_value: miEqApplied ? miEqApplied.confirmed_high_value : 0, confirmed_keys: miEqApplied ? miEqApplied.keys : [],
+      ms: miEq.ms || 0,
+    };
     mark('persistence', Date.now() - tPers, photoPreservation && photoPreservation.listing === 'pending' ? 'pending' : 'executed');
     if (snapshot.id) patchSnapshotClaims(snapshot.id, parsed).catch(() => {});
     /* шар знань: спостереження цього Check. Ніколи не ламає відповідь.
        Результат кроку йде в _meta.knowledge як діагностика */
     const tKn = Date.now();
+    /* Equipment v1: у Vehicle Memory лише підтверджені доказом про це авто
+       пункти каталогу; доступність не пишеться ніколи. Паралельно з шаром
+       знань, збій логується у модулі і Check не ламає */
+    const miEqMemoryPromise = (listing.vin && miEqApplied && miEqApplied.confirmed)
+      ? recordMiEquipment(listing.vin, equipmentMemoryObservations(parsed.equipment_v2, { snapshotId: snapshot.id, token: job && job.token, observedAt: nowIso }))
+          .catch(e => ({ ok: false, reason: 'error', error: String((e && e.message) || e).slice(0, 120) }))
+      : Promise.resolve(null);
     try {
       const kn = await writeKnowledge(parsed, listing, snapshot.id, parsed._meta);
       console.log('[knowledge]', kn);
@@ -3895,6 +3944,8 @@ async function runCheck(req, res, job) {
       console.log('[knowledge] хук впав, Check не зачеплений:', e.message);
       parsed._meta.knowledge = 'hook_error: ' + String(e.message).slice(0, 120);
     }
+    const miEqMemory = await miEqMemoryPromise;
+    if (miEqMemory) parsed._meta.mi_equipment.memory = { ok: !!miEqMemory.ok, reason: miEqMemory.reason || null, written: miEqMemory.written || 0, skipped: miEqMemory.skipped || 0, rejected: miEqMemory.rejected || 0 };
     mark('knowledge', Date.now() - tKn, 'executed');
     timings.total_ms = Date.now() - tRun;
 

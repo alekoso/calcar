@@ -111,7 +111,7 @@ try {
   for (const m of UPS) run(['-f', path.join(DIR, m)], '');
   const files = fs.readdirSync(DATA).filter(f => f.endsWith('.sql')).sort();
   exec(files.map(f => fs.readFileSync(path.join(DATA, f), 'utf8')).join('\n'));
-  for (const f of ['020_identity_fixtures', '022_catalog_identities']) run(['-f', path.join(FIX, f + '.sql')], '');
+  for (const f of ['020_identity_fixtures', '022_catalog_identities', '050_check_ingest']) run(['-f', path.join(FIX, f + '.sql')], '');
   exec(HELPERS_SQL);
   exec(`do $$ declare y record; p mi.pack_purpose; begin
           for y in select subject_id from mi.version_market_year order by subject_id loop
@@ -706,6 +706,141 @@ t(47, 'слабке заводське припущення про іншу ро
   ${A(`exists (select 1 from jsonb_array_elements(mi.eval_claim(mi_test.claim('M-009'), ${TESLA})->'predicates') pr
                where pr->>'dimension' = 'component_family' and pr->>'result' = 'ASSUMED_NO_MATCH' and pr->>'basis' = 'assumed_factory')`,
        'a weak factory assumption was turned into a confirmed exclusion')}`);
+
+/* ---- Equipment v1: кандидати обладнання (міграція 027, 114_equipment_bmw_530i.sql) ----
+   Доступність не є наявністю: кандидат каже лише, що опцію можна було
+   замовити на цій версії x ринку x році. */
+
+const EQ_VIN = 'WBAJA7C5XJG0S0901';
+const EQ_SEED = `perform mi_test.seed_check('${EQ_VIN}', 'BMW', '530i', 'xDrive', null, 2018, 'autoscout', 'US', 30000, 90000, 'copart', 'LOT-E1', date '2025-10-01');`;
+const cand = (ident, key) => `(select c from jsonb_array_elements(mi.equipment_candidates(${ident})) c where c->>'equipment_key' = '${key}')`;
+
+t(48, 'кандидати BMW 530i xDrive US MY2018: склад, пакети, вимоги, джерело, порядок', `
+  declare cc jsonb;
+  begin
+  cc := mi.equipment_candidates(${X});
+  ${A(`jsonb_array_length(cc) = 21`, 'the MY2018 slice does not give exactly 21 candidates')}
+  ${A(`not exists (select 1 from jsonb_array_elements(cc) e where e->>'brand' <> 'BMW' or e->>'scope' <> 'exact' or e->>'applicability' <> 'applicable')`, 'an exact identity gave a foreign, partial or conditional candidate')}
+  ${A(`not exists (select 1 from jsonb_array_elements(cc) e where e->>'availability' not in ('standard', 'optional', 'in_package'))`, 'an unavailable item became a candidate')}
+  ${A(`${cand(X, 'head_up_display')}->>'availability' = 'optional' and ${cand(X, 'head_up_display')}->>'oem_code' = '610'
+       and ${cand(X, 'head_up_display')}->'packages'->0->>'oem_code' = 'ZDA'`, 'HUD 610 is not optional with the ZDA package context')}
+  ${A(`${cand(X, 'active_driving_assistant_plus')}->>'availability' = 'in_package'
+       and ${cand(X, 'active_driving_assistant_plus')}->'packages'->0->>'oem_code' = 'ZDB'`, 'Active Driving Assistant Plus is not tied to ZDB')}
+  ${A(`${cand(X, 'bowers_wilkins_diamond_surround_sound')}->'requires'->0->>'oem_code' = 'ZPX'`, 'B&W does not require ZPX')}
+  ${A(`${cand(X, 'driving_assistance_plus_package')}->'requires'->0->>'oem_code' = 'ZDA'`, 'ZDB does not require ZDA')}
+  ${A(`(select count(*) from jsonb_array_elements(${cand(X, 'surround_view_3d')}->'packages')) = 2`, 'Surround View is not in both ZPK and ZPX')}
+  ${A(`not exists (select 1 from jsonb_array_elements(cc) e where e->'sources'->0->>'url' not like '%T0266788EN_US/391871')`, 'a candidate lost the pricing guide source')}
+  ${A(`(select string_agg(e->>'value_tier', ',' order by ord) from jsonb_array_elements(cc) with ordinality x(e, ord))
+       ~ '^(high_value,)+(notable,)*notable$'`, 'candidates are not ordered high_value first')}
+  ${A(`${cand(X, 'head_up_display')}->'visual_cues'->0->>'specificity' = 'definitive'`, 'the HUD visual cue is not definitive')}
+  ${A(`not exists (select 1 from jsonb_array_elements(cc) e, jsonb_array_elements(coalesce(e->'aliases', '[]'::jsonb)) a where upper(a->>'alias') in (select upper(x->>'oem_code') from jsonb_array_elements(cc) x))`, 'a bare OEM code became a search alias')}
+  ${A(`jsonb_array_length(mi.compile_pack(${X}, 'report')->'pack'->'equipment_candidates') = 21`, 'the compiled pack does not expose equipment_candidates')}
+  end;`);
+
+t(49, 'чужий рік, версія, ринок чи бренд: кандидатів немає (KNOWN contradiction -> NO_MATCH)', `
+  ${A(`jsonb_array_length(mi.equipment_candidates(${X20})) = 0`, 'MY2020 got MY2018 availability')}
+  ${A(`jsonb_array_length(mi.equipment_candidates(mi_test.partial_of('530I_XDRIVE', 2016, 'US'))) = 0`, 'a year outside the version got candidates')}
+  ${A(`jsonb_array_length(mi.equipment_candidates(mi_test.partial_of('530I_XDRIVE', 2018, 'DE'))) = 0`, 'a foreign market got US availability')}
+  ${A(`jsonb_array_length(mi.equipment_candidates(${RWD})) = 0`, 'the rear wheel drive 530i got 530i xDrive availability')}
+  ${A(`jsonb_array_length(mi.equipment_candidates(${M550})) = 0`, 'the M550i got 530i xDrive availability')}
+  ${A(`jsonb_array_length(mi.equipment_candidates(${M3})) = 0
+       and not exists (select 1 from jsonb_array_elements(mi.equipment_candidates(${TUC})) e where e->>'brand' <> 'Hyundai')`, 'another brand got BMW candidates')}
+  ${A(`jsonb_array_length(mi.equipment_candidates(jsonb_build_object('brand', (select subject_id from mi.brand where name = 'BMW')))) = 0`, 'a brand alone gave candidates')}`);
+
+t(50, 'невідомі виміри лишаються умовними, відома дата поза вікном виключає', `
+  declare u jsonb; y jsonb; av bigint;
+  begin
+  u := mi.equipment_candidates(mi_test.partial_of('530I_XDRIVE', null, 'US'));
+  ${A(`jsonb_array_length(u) = 21 and not exists (select 1 from jsonb_array_elements(u) e where e->>'scope' <> 'candidate' or e->>'applicability' <> 'conditional')`,
+       'unknown model year did not keep MY2018 availability conditional')}
+  y := mi.equipment_candidates(mi_test.partial_of('530I_XDRIVE', 2018, null));
+  ${A(`jsonb_array_length(y) = 21 and not exists (select 1 from jsonb_array_elements(y) e where e->>'applicability' <> 'applicable')`,
+       'a single candidate VMY did not make availability applicable')}
+  select a.id into av from mi.equipment_availability a join mi.equipment_item i on i.subject_id = a.item_id
+   where i.equipment_key = 'night_vision_pedestrian_detection';
+  update mi.equipment_availability set sop_from = date '2017-11-01', sop_from_kind = 'known' where id = av;
+  ${A(`${cand(`${X} - 'production_date'`, 'night_vision_pedestrian_detection')}->>'applicability' = 'conditional'`, 'an unknown production date against a known window is not conditional')}
+  ${A(`${cand(`${X} || '{"production_date": "2017-09-15"}'::jsonb`, 'night_vision_pedestrian_detection')} is null`, 'a production date before the window kept the candidate')}
+  ${A(`${cand(`${X} || '{"production_date": "2017-12-01"}'::jsonb`, 'night_vision_pedestrian_detection')}->>'applicability' = 'applicable'`, 'a production date inside the window is not applicable')}
+  update mi.equipment_availability set availability = 'not_available' where id = av;
+  ${A(`${cand(X, 'night_vision_pedestrian_detection')} is null`, 'not_available was returned as a candidate')}
+  end;`);
+
+t(51, 'OPTIONAL не стає INSTALLED без доказу: наявність у памʼяті не зʼявляється від самих кандидатів', `
+  declare r jsonb;
+  begin
+  ${EQ_SEED}
+  r := mi.equipment_candidates_for_vin('${EQ_VIN}');
+  ${A(`(r->>'available')::boolean and r->>'identity_precision' = 'exact' and jsonb_array_length(r->'candidates') = 21`, 'the VIN did not resolve to the exact MY2018 candidates')}
+  ${A(`not exists (select 1 from jsonb_array_elements(r->'candidates') e where e ? 'identity')`, 'a candidate claims to be installed without evidence')}
+  ${A(`not exists (select 1 from public.vehicle_identity_observation where vin = '${EQ_VIN}' and dimension like 'equipment%')`, 'availability was written to Vehicle Memory as VIN evidence')}
+  ${A(`jsonb_array_length(coalesce(mi.identity_json(mi.resolve_from_memory('${EQ_VIN}'))->'equipment', '[]'::jsonb)) = 0`, 'the identity gained equipment from availability')}
+  end;`);
+
+t(52, 'підтверджене обладнання пишеться у Vehicle Memory і повертається з неї, кілька предметів разом', `
+  declare w jsonb; r jsonb; again jsonb;
+  begin
+  ${EQ_SEED}
+  w := mi.record_equipment('${EQ_VIN}', '[
+     {"vm_ref": "bmw:head_up_display", "source_kind": "current_vision", "provenance_root": "snapshot:s1", "confidence": "high"},
+     {"vm_ref": "BMW:front_ventilated_seats", "source_kind": "build_sheet", "provenance_root": "vin:${EQ_VIN}"},
+     {"vm_ref": "bmw:no_such_item", "source_kind": "current_vision", "provenance_root": "snapshot:s1"},
+     {"vm_ref": "bmw:harman_kardon_surround_sound", "source_kind": "listing", "provenance_root": "snapshot:s1"},
+     {"vm_ref": "bmw:night_vision_pedestrian_detection", "source_kind": "current_vision", "provenance_root": ""}]'::jsonb);
+  ${A(`(w->>'written')::int = 2 and (w->>'rejected')::int = 3`, 'the write path accepted an unknown item, a weak source or a rootless observation')}
+  again := mi.record_equipment('${EQ_VIN}', '[{"vm_ref": "bmw:head_up_display", "source_kind": "current_vision", "provenance_root": "snapshot:s1"}]'::jsonb);
+  ${A(`(again->>'written')::int = 0 and (again->>'skipped')::int = 1`, 'a repeated observation was written twice')}
+  ${A(`not exists (select 1 from public.vehicle_identity_observation where vin = '${EQ_VIN}' and dimension = 'equipment_absent')`, 'the write path produced an absence')}
+  r := mi.equipment_candidates_for_vin('${EQ_VIN}');
+  ${A(`(select e->'identity' from jsonb_array_elements(r->'candidates') e where e->>'equipment_key' = 'head_up_display') = '{"present": true, "status": "confirmed"}'::jsonb`, 'the HUD did not come back from Vehicle Memory as confirmed')}
+  ${A(`(select e->'identity' from jsonb_array_elements(r->'candidates') e where e->>'equipment_key' = 'front_ventilated_seats') = '{"present": true, "status": "confirmed"}'::jsonb`, 'a second item collapsed into the first one in the resolver')}
+  ${A(`(select count(*) from jsonb_array_elements(r->'candidates') e where e ? 'identity') = 2`, 'an item without evidence came back as installed')}
+  ${A(`(select count(*) from mi_vm.resolved_identity_dimension d where d.identity_id = (r->>'identity_id')::bigint
+          and d.dimension = 'equipment_present' and d.slot = 'current' and d.resolution_status = 'confirmed') = 2`, 'the resolver did not keep two confirmed equipment rows in the current slot')}
+  end;`);
+
+t(53, 'підтверджена відсутність виключає кандидата, невирішена лишає його', `
+  declare i bigint;
+  begin
+  i := (select subject_id from mi.equipment_item where equipment_key = 'head_up_display');
+  ${A(`${cand(`jsonb_set(${X}, '{equipment}', jsonb_build_array(jsonb_build_object('item', i, 'present', false, 'slot', 'current', 'status', 'confirmed')))`, 'head_up_display')} is null`, 'a confirmed absence kept the candidate')}
+  end;`);
+
+t(54, 'бренд без класифікованого обладнання і авто без декоду: чесна відмова без запису у памʼять', `
+  declare r jsonb;
+  begin
+  perform mi_test.seed_check('WP1AD2A2XDL0S0903', 'Porsche', 'Cayenne', 'GTS', 'GTS', 2013, 'mobile', 'US', 32000, 140000, null, null, null);
+  r := mi.equipment_candidates_for_vin('WP1AD2A2XDL0S0903');
+  ${A(`r->>'reason' = 'no_equipment_catalog' and not (r->>'available')::boolean and jsonb_array_length(r->'candidates') = 0`, 'a brand without classified equipment did not refuse')}
+  ${A(`not exists (select 1 from public.vehicle_identity_observation where vin = 'WP1AD2A2XDL0S0903')`, 'the refusal still ran the Vehicle Memory bridge')}
+  ${A(`mi.equipment_candidates_for_vin('WBANOTDECODED0999')->>'reason' = 'vehicle_not_decoded'`, 'an undecoded VIN did not refuse')}
+  ${A(`mi.equipment_candidates_for_vin('short')->>'reason' = 'no_vin'`, 'a short VIN did not refuse')}
+  end;`);
+
+t(55, 'входи для продукту: лише службова роль, security definer, фіксований search_path', `
+  ${A(`(select bool_and(p.prosecdef and array_to_string(p.proconfig, ',') like 'search_path=pg_catalog, mi, mi_vm, public%'
+               and not exists (select 1 from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a where a.grantee = 0 and a.privilege_type = 'EXECUTE'))
+          from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+         where n.nspname = 'public' and p.proname in ('mi_equipment_candidates', 'mi_record_equipment')
+        having count(*) = 2)`, 'a product entry is missing, not a security definer or executable by public')}`);
+
+t(56, 'пакет на VMY: лише пакет того самого бренду, інакше запис відхиляється', `
+  declare ok boolean := false;
+  begin
+  begin
+    update mi.equipment_availability set package_ids = array[(select subject_id from mi.equipment_item where equipment_key = 'head_up_display')]
+     where item_id = (select subject_id from mi.equipment_item where equipment_key = 'front_ventilated_seats');
+  exception when others then ok := sqlerrm like '%package_ids must reference package items%';
+  end;
+  ${A(`ok`, 'a non-package item was accepted as a package')}
+  ok := false;
+  begin
+    update mi.equipment_availability set package_ids = array[(select subject_id from mi.equipment_item where equipment_key = 'sport_chrono')]
+     where item_id = (select subject_id from mi.equipment_item where equipment_key = 'front_ventilated_seats');
+  exception when others then ok := sqlerrm like '%package_ids must reference package items%';
+  end;
+  ${A(`ok`, 'a package of another brand was accepted')}
+  end;`);
 
 /* ---- Підсумок ---- */
 

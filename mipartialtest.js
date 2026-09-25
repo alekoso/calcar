@@ -48,7 +48,7 @@ const LEGACY = ['001_schemas_enums_lookups', '002_subjects_hierarchy_source',
 const AMEND = ['020_bridge_decoded_year', '021_anchor_family_equipment',
   '022_partial_identity', '023_report_version_inference',
   '024_safeupdate_temp_clear', '025_decoder_model_year_plausibility',
-  '026_applicability_known_contradiction'];
+  '026_applicability_known_contradiction', '027_equipment_candidates'];
 
 function run(args, sql) {
   return execFileSync(PSQL, ['-X', '-q', '-v', 'ON_ERROR_STOP=1', '-d', DB, ...args],
@@ -185,7 +185,11 @@ try {
   run(['-f', path.join(FIX, '000_test_prelude.sql')], '');
   for (const f of PRODUCT_SCHEMA) run(['-f', path.join(__dirname, f)], '');
   for (const m of LEGACY) run(['-f', path.join(DIR, m + '.up.sql')], '');
-  const files = fs.readdirSync(DATA).filter(f => f.endsWith('.sql')).sort();
+  /* Зріз обладнання (114) потребує схеми міграції 027, тому легасі-фаза
+     заливає корпус без нього, а сам зріз іде після AMEND окремим сеансом
+     з помічниками завантаження: так само, як у продакшні. */
+  const EQUIPMENT_SLICE = ['114_equipment_bmw_530i.sql'];
+  const files = fs.readdirSync(DATA).filter(f => f.endsWith('.sql') && !EQUIPMENT_SLICE.includes(f)).sort();
   exec(files.map(f => fs.readFileSync(path.join(DATA, f), 'utf8')).join('\n'));
   for (const f of ['020_identity_fixtures', '021_golden_fixture', '030_raw_observations']) {
     run(['-f', path.join(FIX, f + '.sql')], '');
@@ -200,6 +204,14 @@ try {
   exec(SNAPSHOT_SQL);
   exec("select mi_test.take_exact_snapshot('legacy');");
   for (const m of AMEND) run(['-f', path.join(DIR, m + '.up.sql')], '');
+  exec(['000_loader.sql', ...EQUIPMENT_SLICE].map(f => fs.readFileSync(path.join(DATA, f), 'utf8')).join('\n'));
+  /* доступність обладнання інвалідує фрагмент свого VMY: перезбірка, як
+     вимагає контракт каталогу після будь-якої зміни */
+  exec(`do $$ declare f record; begin
+          for f in select vmy_id, purpose from mi.pack_fragment where not valid loop
+            perform mi.build_fragment(f.vmy_id, f.purpose);
+          end loop;
+        end $$;`);
   exec("select mi_test.take_exact_snapshot('current');");
   run(['-f', path.join(FIX, '050_check_ingest.sql')], '');
   run(['-f', path.join(FIX, '060_production_replay.sql')], '');
@@ -247,7 +259,16 @@ t(1, 'точні пакети не змінились нічим, крім сх�
       end if;
       continue;
     end if;
-    if mi_test.strip_basis(r.lp) <> mi_test.strip_basis(r.cp) then
+    -- Міграція 27 додає пакету ключ equipment_candidates (доступність
+    -- обладнання, рахується наживо). Решта пакета порівнюється як була;
+    -- сам ключ перевіряє тест 1b. Зріз обладнання (114) піднімає ревізію
+    -- свого VMY, тому фрагмент 530i xDrive US 2018 перезібрано і відбиток
+    -- у нього новий: це наслідок даних, а не компілятора, і вміст пакета
+    -- порівнюється повністю.
+    if r.label like 'catalog:530I_XDRIVE/US/2018:%' then
+      r.cp := jsonb_set(r.cp, '{pack_meta,fragment_fingerprint}', r.lp->'pack_meta'->'fragment_fingerprint');
+    end if;
+    if mi_test.strip_basis(r.lp) <> mi_test.strip_basis(r.cp - 'equipment_candidates') then
       if not (r.label like '%GTS/US/2013%' or r.label like '%porsche%') then
         bad := bad || r.label || ' pack; ';
       elsif not (array(select unnest(mi_test.pack_claims(r.lp)) except select unnest(mi_test.pack_claims(r.cp))) = array[p053]
@@ -269,6 +290,19 @@ t(1, 'точні пакети не змінились нічим, крім сх�
   ${A('n >= 44', 'the exact pack snapshot is smaller than the frozen corpus of Phase 7.3')}
   ${A("bad = ''", 'the exact path changed beyond the anchor fix')}
   end;`, 'на всіх точних пакетах змінилися лише basis родинного знання і PTV+ (APPLICABLE -> CONDITIONAL)');
+
+t('1b', 'ключ equipment_candidates: доступність зрізу 530i xDrive лише на своєму VMY', `
+  begin
+  ${A(`not exists (select 1 from mi_test.exact_snap where phase = 'legacy' and pack ? 'equipment_candidates')`, 'a legacy pack already had equipment candidates')}
+  ${A(`not exists (select 1 from mi_test.exact_snap where phase = 'current' and (pack->>'fragment_available')::boolean
+                    and jsonb_typeof(pack->'equipment_candidates') is distinct from 'array')`, 'a current pack does not expose equipment_candidates')}
+  ${A(`(select bool_and(jsonb_array_length(pack->'equipment_candidates') = 21) from mi_test.exact_snap
+         where phase = 'current' and label like 'catalog:530I_XDRIVE/US/2018:%' having count(*) = 4)`, 'the MY2018 packs do not carry the 21 candidates')}
+  ${A(`(select bool_and(jsonb_array_length(pack->'equipment_candidates') = 0) from mi_test.exact_snap
+         where phase = 'current' and label ~ '^catalog:530I_XDRIVE/US/20(17|19|20):' having count(*) = 12)`, 'another model year of the same version got MY2018 availability')}
+  ${A(`not exists (select 1 from mi_test.exact_snap s, jsonb_array_elements(s.pack->'equipment_candidates') e
+                    where s.phase = 'current' and e->>'availability' = 'not_available')`, 'a pack carries unavailable equipment')}
+  end;`);
 
 t(2, 'точний пакет не несе метаданих часткової ідентичності і читає фрагмент', `
   begin

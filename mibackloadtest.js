@@ -41,7 +41,7 @@ const UPS = ['001_schemas_enums_lookups', '002_subjects_hierarchy_source',
   '019_request_pack_hit', '020_bridge_decoded_year', '021_anchor_family_equipment',
   '022_partial_identity', '023_report_version_inference',
   '024_safeupdate_temp_clear', '025_decoder_model_year_plausibility',
-  '026_applicability_known_contradiction'];
+  '026_applicability_known_contradiction', '027_equipment_candidates'];
 
 /* Кількість матеріальних атомів кожної картки рахується з самого
    замороженого документа, а не задається константою: якщо картку колись

@@ -96,6 +96,41 @@ begin
   return v_id;
 end $$;
 
+-- ---------- Уже наявні сутності ----------
+
+-- Файл, що доповнює вже заповнений каталог (наприклад, продакшн, де
+-- попередня заливка давно прибрала свої помічники), бере наявні сутності
+-- за природними ключами і реєструє їх під ключем картки. Якщо ключ уже
+-- зареєстрований цією ж сесією, він мусить вказувати на той самий
+-- субʼєкт: розбіжність це помилка, а не тихе перевизначення.
+create or replace function mi_load.adopt(p_key text, p_subject_id bigint)
+returns bigint language plpgsql as $$
+declare v_id bigint;
+begin
+  if p_subject_id is null then raise exception 'adopt: % is not in the catalogue', p_key; end if;
+  select subject_id into v_id from mi_load.key_map where key = p_key;
+  if found then
+    if v_id <> p_subject_id then raise exception 'adopt: % already maps to another subject', p_key; end if;
+    return v_id;
+  end if;
+  insert into mi_load.key_map (key, subject_id) values (p_key, p_subject_id);
+  return p_subject_id;
+end $$;
+
+create or replace function mi_load.adopt_src(p_key text, p_source_id bigint)
+returns bigint language plpgsql as $$
+declare v_id bigint;
+begin
+  if p_source_id is null then raise exception 'adopt_src: % is not in the catalogue', p_key; end if;
+  select source_id into v_id from mi_load.source_map where key = p_key;
+  if found then
+    if v_id <> p_source_id then raise exception 'adopt_src: % already maps to another source', p_key; end if;
+    return v_id;
+  end if;
+  insert into mi_load.source_map (key, source_id) values (p_key, p_source_id);
+  return p_source_id;
+end $$;
+
 -- ---------- Кандидат ----------
 
 -- opts: subject_text, layer, value_kind, value, causal, propagation, note,

@@ -5,9 +5,17 @@
 
    Ланцюжок: пошук по зовнішніх джерелах -> завантаження знайдених сторінок ->
    LLM ВИТЯГУЄ структуровані candidate-факти ЛИШЕ з наданого тексту (не
-   відповідає з памʼяті) -> запис у model_option_catalog / model_issue_catalog
-   з повним provenance. Факт без source_url НЕ записується ніколи.
-   Каталоги заповнює лише цей скрипт: спостереження їх не редагують. */
+   відповідає з памʼяті) -> запис у model_issue_catalog з повним
+   provenance. Факт без source_url НЕ записується ніколи.
+   Каталоги заповнює лише цей скрипт: спостереження їх не редагують.
+
+   model_option_catalog ВИВЕДЕНО З УЖИТКУ (Equipment v1, 2026-09-25):
+   канонічний каталог обладнання це Model Intelligence (mi.equipment_item і
+   mi.equipment_availability, міграція 027), де кожен рядок доступності має
+   джерело виробника, а опція належить конкретній версії x ринку x року.
+   Check model_option_catalog не читав ніколи; seed у неї більше не пише.
+   Таблиця лишається у схемі (supabase-knowledge.sql) порожньою, щоб не
+   робити destructive-міграцію без рішення власника. */
 
 const ENV_BASE = process.env.SUPABASE_URL;
 const ENV_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -81,38 +89,15 @@ async function api(path, opts) {
   });
 }
 
-async function resolveOption(name, category) {
-  const norm = String(name || '').toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 80);
-  if (!norm) return null;
-  const got = await api('option_alias?alias_norm=eq.' + encodeURIComponent(norm) + '&select=option_id');
-  const found = await got.json().catch(() => []);
-  if (found.length) return found[0].option_id;
-  await api('option_dict?on_conflict=canonical_name', {
-    method: 'POST', headers: { prefer: 'resolution=ignore-duplicates' },
-    body: JSON.stringify([{ canonical_name: name.slice(0, 80), category: category || 'other' }]),
-  });
-  const re = await api('option_dict?canonical_name=eq.' + encodeURIComponent(name.slice(0, 80)) + '&select=option_id');
-  const rows = await re.json().catch(() => []);
-  if (!rows.length) return null;
-  await api('option_alias?on_conflict=alias_norm', {
-    method: 'POST', headers: { prefer: 'resolution=ignore-duplicates' },
-    body: JSON.stringify([{ alias_norm: norm, alias: name.slice(0, 80), lang: null, option_id: rows[0].option_id }]),
-  });
-  return rows[0].option_id;
-}
-
 async function seedModel(model) {
   const queries = {
-    options: [
-      model.make + ' ' + model.model + ' ' + model.generation + ' standard optional equipment list',
-      model.make + ' ' + model.model + ' ' + model.generation + ' options packages brochure',
-    ],
     issues: [
       model.make + ' ' + model.model + ' ' + model.generation + ' common problems reliability',
       model.make + ' ' + model.model + ' ' + model.generation + ' типичные проблемы болячки',
     ],
   };
-  for (const kind of ['options', 'issues']) {
+  /* лише болячки: обладнання живе в Model Intelligence (див. шапку) */
+  for (const kind of ['issues']) {
     for (const q of queries[kind]) {
       const urls = await searchWeb(q, 3);
       for (const url of urls) {
@@ -123,50 +108,26 @@ async function seedModel(model) {
           /* факт без source_url не записується: url тут завжди є за
              побудовою, excerpt обовʼязковий як підстава */
           if (!url || !fct || !fct.evidence_excerpt) continue;
-          if (kind === 'options') {
-            if (!fct.option_name) continue;
-            const optionId = await resolveOption(fct.option_name, fct.category);
-            if (!optionId) continue;
-            await api('model_option_catalog?on_conflict=make,model,generation,option_id,source_url', {
-              method: 'POST', headers: { prefer: 'resolution=ignore-duplicates' },
-              body: JSON.stringify([{
-                make: model.make, model: model.model, generation: model.generation,
-                option_id: optionId,
-                availability: fct.availability === 'standard' ? 'standard' : 'optional',
-                year_from: fct.year_from || null, year_to: fct.year_to || null,
-                markets: Array.isArray(fct.markets) ? fct.markets : [],
-                applies_to: fct.applies_to || {},
-                visual_markers: Array.isArray(fct.visual_markers) ? fct.visual_markers : [],
-                source_url: url, source_title: null,
-                source_type: /press/i.test(url) ? 'press_release' : /forum/i.test(url) ? 'forum' : 'other',
-                retrieved_at: new Date().toISOString(),
-                applicability: fct.applicability || null,
-                confidence: ['high', 'medium', 'low'].includes(fct.confidence) ? fct.confidence : 'low',
-                evidence_excerpt: String(fct.evidence_excerpt).slice(0, 300),
-              }]),
-            });
-          } else {
-            /* канонічний issue_key обовʼязковий: без нього запис каталогу
-               не створюється (NOT NULL у схемі) */
-            if (!fct.title || !fct.issue_key) continue;
-            await api('model_issue_catalog?on_conflict=make,model,generation,title,source_url', {
-              method: 'POST', headers: { prefer: 'resolution=ignore-duplicates' },
-              body: JSON.stringify([{
-                make: model.make, model: model.model, generation: model.generation,
-                issue_key: String(fct.issue_key).slice(0, 60),
-                title: String(fct.title).slice(0, 160),
-                detail: fct.detail ? String(fct.detail).slice(0, 500) : null,
-                applies_to: fct.applies_to || {},
-                year_from: fct.year_from || null, year_to: fct.year_to || null,
-                source_url: url, source_title: null,
-                source_type: /forum/i.test(url) ? 'forum' : /recall/i.test(url) ? 'recall' : 'other',
-                retrieved_at: new Date().toISOString(),
-                applicability: fct.applicability || null,
-                confidence: ['high', 'medium', 'low'].includes(fct.confidence) ? fct.confidence : 'low',
-                evidence_excerpt: String(fct.evidence_excerpt).slice(0, 300),
-              }]),
-            });
-          }
+          /* канонічний issue_key обовʼязковий: без нього запис каталогу
+             не створюється (NOT NULL у схемі) */
+          if (!fct.title || !fct.issue_key) continue;
+          await api('model_issue_catalog?on_conflict=make,model,generation,title,source_url', {
+            method: 'POST', headers: { prefer: 'resolution=ignore-duplicates' },
+            body: JSON.stringify([{
+              make: model.make, model: model.model, generation: model.generation,
+              issue_key: String(fct.issue_key).slice(0, 60),
+              title: String(fct.title).slice(0, 160),
+              detail: fct.detail ? String(fct.detail).slice(0, 500) : null,
+              applies_to: fct.applies_to || {},
+              year_from: fct.year_from || null, year_to: fct.year_to || null,
+              source_url: url, source_title: null,
+              source_type: /forum/i.test(url) ? 'forum' : /recall/i.test(url) ? 'recall' : 'other',
+              retrieved_at: new Date().toISOString(),
+              applicability: fct.applicability || null,
+              confidence: ['high', 'medium', 'low'].includes(fct.confidence) ? fct.confidence : 'low',
+              evidence_excerpt: String(fct.evidence_excerpt).slice(0, 300),
+            }]),
+          });
         }
         console.log('[seed]', model.make, model.model, kind, url.slice(0, 70));
       }
