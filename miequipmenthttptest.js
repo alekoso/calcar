@@ -17,9 +17,22 @@
 
      MI_HTTP_URL=https://<project>.supabase.co \
      MI_HTTP_SERVICE_KEY=<service_role key> \
-     [MI_HTTP_ANON_KEY=<anon key>] \
+     [MI_HTTP_ANON_KEY=<anon key, типово публічний ключ із config.js>] \
      [MI_HTTP_VIN=WVWZZZ7MZ6V009287] \
-     node miequipmenthttptest.js */
+     [MI_HTTP_POSITIVE_VIN=<VIN, що розвʼязується у 530i xDrive US MY2018>] \
+     [MI_HTTP_POSITIVE_N=21] \
+     [MI_HTTP_NEGATIVE_VIN=<VIN сумісного бренду, але іншої версії чи року>] \
+     [MI_HTTP_WRITE_VIN=<той самий позитивний VIN>] \
+     node miequipmenthttptest.js
+
+   Необовʼязкові гілки:
+     * MI_HTTP_POSITIVE_VIN: кандидатів рівно MI_HTTP_POSITIVE_N (21 для
+       зрізу 530i xDrive US MY2018), жоден не «встановлений» без доказу;
+     * MI_HTTP_NEGATIVE_VIN: кандидатів 0 і причина відмови;
+     * MI_HTTP_WRITE_VIN: справжній запис одного спостереження з фото,
+       повтор того самого нічого не дописує, після запису предмет
+       повертається як confirmed. Ця гілка ПИШЕ у Vehicle Memory, тому
+       лише на VIN, який потім прибирається (синтетичний рядок стенду). */
 
 const errs = [];
 let checks = 0;
@@ -27,8 +40,24 @@ const ok = (name, cond, detail) => { checks++; if (!cond) errs.push(name + (deta
 
 const URL_BASE = (process.env.MI_HTTP_URL || '').replace(/\/$/, '');
 const SERVICE = process.env.MI_HTTP_SERVICE_KEY || '';
-const ANON = process.env.MI_HTTP_ANON_KEY || '';
+/* Анонімний ключ публічний (його і так віддає браузеру config.js), тому
+   типово береться звідти і не копіюється руками: копія з інтерфейсу буває
+   замаскована крапками «•», і такий заголовок fetch не приймає. Значення
+   не друкується ніколи. */
+function configAnon() {
+  try {
+    const w = {};
+    require('vm').runInNewContext(require('fs').readFileSync(require('path').join(__dirname, 'config.js'), 'utf8'), { window: w });
+    return (w.CALCAR_SUPABASE && w.CALCAR_SUPABASE.anon) || '';
+  } catch (e) { return ''; }
+}
+const ANON = process.env.MI_HTTP_ANON_KEY || configAnon();
+const plainKey = k => /^[\x21-\x7e]+$/.test(k);
 const VIN = (process.env.MI_HTTP_VIN || 'WVWZZZ7MZ6V009287').toUpperCase();
+const POS = (process.env.MI_HTTP_POSITIVE_VIN || '').toUpperCase();
+const POS_N = parseInt(process.env.MI_HTTP_POSITIVE_N || '21', 10);
+const NEG = (process.env.MI_HTTP_NEGATIVE_VIN || '').toUpperCase();
+const WRITE = (process.env.MI_HTTP_WRITE_VIN || '').toUpperCase();
 
 if (!URL_BASE || !SERVICE) {
   console.log('miequipmenthttptest: ПРОПУЩЕНО, немає MI_HTTP_URL або MI_HTTP_SERVICE_KEY');
@@ -68,14 +97,57 @@ const brief = b => JSON.stringify(b || {}).slice(0, 200);
   ok('2. mi_record_equipment відповідає 200', w.status === 200, 'HTTP ' + w.status + ' ' + brief(w.body));
   ok('2b. рядок від listing відхилено, нічого не записано', w.body && w.body.written === 0 && w.body.rejected === 1, brief(w.body));
 
-  /* 3. анонімна роль доступу не має */
-  if (ANON) {
-    const a1 = await rpc(ANON, 'mi_equipment_candidates', { p_vin: VIN });
-    const a2 = await rpc(ANON, 'mi_record_equipment', { p_vin: VIN, p_observations: [] });
-    ok('3. anon не виконує mi_equipment_candidates', [401, 403, 404].includes(a1.status), 'HTTP ' + a1.status + ' ' + brief(a1.body));
-    ok('3b. anon не виконує mi_record_equipment', [401, 403, 404].includes(a2.status), 'HTTP ' + a2.status + ' ' + brief(a2.body));
+  /* 2c. позитивний шлях: сумісна ідентичність дає непорожній набір */
+  if (POS) {
+    const p = await rpc(SERVICE, 'mi_equipment_candidates', { p_vin: POS });
+    const n = p.body && Array.isArray(p.body.candidates) ? p.body.candidates.length : -1;
+    ok('2c. позитивний VIN: 200 і available', p.status === 200 && p.body.available === true, 'HTTP ' + p.status + ' ' + brief(p.body));
+    ok('2d. позитивний VIN: кандидатів ' + POS_N, n === POS_N, 'n=' + n);
+    ok('2e. позитивний VIN: лише BMW, без not_available', n > 0 && p.body.candidates.every(x => x.brand === 'BMW' && x.availability !== 'not_available'));
+    ok('2f. позитивний VIN: HUD 610 опційний з пакетом ZDA', n > 0 && p.body.candidates.some(x => x.equipment_key === 'head_up_display'
+      && x.oem_code === '610' && x.availability === 'optional' && (x.packages || []).some(k => k.oem_code === 'ZDA')));
+    console.log('   positive: HTTP ' + p.status + ' available=' + (p.body && p.body.available) + ' precision=' + (p.body && p.body.identity_precision)
+      + ' n=' + n + ' installed_without_evidence=' + (n > 0 ? p.body.candidates.filter(x => x.identity).length : 0));
+  }
+
+  /* 2g. негативний шлях: несумісна ідентичність кандидатів не має */
+  if (NEG) {
+    const q = await rpc(SERVICE, 'mi_equipment_candidates', { p_vin: NEG });
+    ok('2g. негативний VIN: 200, available false, 0 кандидатів', q.status === 200 && q.body.available === false
+      && Array.isArray(q.body.candidates) && q.body.candidates.length === 0, 'HTTP ' + q.status + ' ' + brief(q.body));
+    console.log('   negative: HTTP ' + q.status + ' available=' + (q.body && q.body.available) + ' reason=' + (q.body && q.body.reason)
+      + ' version=' + (q.body && q.body.identity_summary && q.body.identity_summary.version));
+  }
+
+  /* 2h. справжній запис і його ідемпотентність */
+  if (WRITE) {
+    const row = { vm_ref: 'bmw:head_up_display', source_kind: 'current_vision', provenance_root: 'http-test:' + WRITE, confidence: 'medium' };
+    const w1 = await rpc(SERVICE, 'mi_record_equipment', { p_vin: WRITE, p_observations: [row] });
+    const w2 = await rpc(SERVICE, 'mi_record_equipment', { p_vin: WRITE, p_observations: [row] });
+    ok('2h. запис: 200, written 1', w1.status === 200 && w1.body.written === 1, 'HTTP ' + w1.status + ' ' + brief(w1.body));
+    ok('2i. повтор: 200, skipped 1, written 0', w2.status === 200 && w2.body.written === 0 && w2.body.skipped === 1, 'HTTP ' + w2.status + ' ' + brief(w2.body));
+    const back = await rpc(SERVICE, 'mi_equipment_candidates', { p_vin: WRITE });
+    const hud = back.body && Array.isArray(back.body.candidates) ? back.body.candidates.find(x => x.equipment_key === 'head_up_display') : null;
+    ok('2j. після запису HUD повертається як confirmed, решта без змін', !!(hud && hud.identity && hud.identity.status === 'confirmed' && hud.identity.present === true)
+      && back.body.candidates.filter(x => x.identity).length === 1, brief(hud));
+    console.log('   write: first=' + brief(w1.body) + ' replay=' + brief(w2.body) + ' hud=' + JSON.stringify(hud && hud.identity));
+  }
+
+  /* 3. анонімна роль доступу не має: 401/403 саме з відмовою в правах 42501 */
+  if (ANON && !plainKey(ANON)) {
+    ok('3. анонімний ключ придатний для заголовка', false, 'ключ містить не-ASCII символи (замаскована копія?)');
+  } else if (ANON) {
+    for (const [name, args] of [['mi_equipment_candidates', { p_vin: VIN }], ['mi_record_equipment', { p_vin: VIN, p_observations: [] }]]) {
+      try {
+        const a = await rpc(ANON, name, args);
+        ok('3. anon не виконує ' + name, [401, 403].includes(a.status) && a.body && a.body.code === '42501', 'HTTP ' + a.status + ' ' + brief(a.body));
+        console.log('   anon ' + name + ': HTTP ' + a.status + ' ' + ((a.body && a.body.code) || ''));
+      } catch (e) {
+        ok('3. anon-виклик ' + name + ' виконано', false, String((e && e.message) || e).slice(0, 160));
+      }
+    }
   } else {
-    console.log('   note: MI_HTTP_ANON_KEY не заданий, перевірка заборони для anon пропущена');
+    console.log('   note: анонімного ключа немає (ні MI_HTTP_ANON_KEY, ні config.js), перевірка заборони для anon пропущена');
   }
 
   if (errs.length) {
