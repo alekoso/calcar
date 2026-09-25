@@ -3462,6 +3462,8 @@ async function runCheck(req, res, job) {
           listingText: listing.text || '',
           evidence: {
             identity_confirmed: coverageInputs.identity_confirmed, basics_known: coverageInputs.basics_known,
+            /* потрібен шлюзу: без VIN ідентичність спирається на факти оголошення */
+            mileage_known: coverageInputs.mileage_known,
             photos_count: coverageInputs.photos_count, seller_text_chars: String(listing.seller_text || '').trim().length,
             auction_record_exists: coverageInputs.auction_record_exists, registry_present: hf.registry_present === true,
             historical_listings_count: coverageInputs.historical_listings_count,

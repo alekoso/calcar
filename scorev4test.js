@@ -89,6 +89,11 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     /* мало кадрів або невідомий пробіг: оголошення ідентичністю не стає */
     eq(run({ evidence: { ...audi, photos_count: 5 } }).score_unavailable_reason, 'vehicle_identity_unconfirmed', 'мало кадрів без VIN: бал не видається');
     eq(run({ evidence: { ...audi, mileage_known: false } }).score_unavailable_reason, 'vehicle_identity_unconfirmed', 'невідомий пробіг без VIN: бал не видається');
+    /* входи шлюзу мусять доїжджати з пайплайна: без цього рядка бал
+       не видавався б навіть коли пробіг відомий */
+    const chk = fs.readFileSync('api/check.js', 'utf8');
+    ok(/mileage_known: coverageInputs\.mileage_known/.test(chk), 'check.js не передає mileage_known у Score v4');
+    ok(/photos_count: coverageInputs\.photos_count/.test(chk), 'check.js не передає photos_count у Score v4');
     const r6 = run({ findings: [{ type: 'VIN_IDENTITY_PROBLEM', event_id: 'vin_1', evidence: [{ source: 'current_photos', ref: 'photo_4', description: 'На табличці VIN WBAJE7C34HG000000, в оголошенні інший' }] }] });
     eq(r6.score_unavailable_reason, 'vehicle_identity_mismatch', 'VIN mismatch reason'); eq(r6.final, null, 'VIN mismatch без числа');
     const r7 = run({ findings: [{ type: 'VIN_IDENTITY_PROBLEM', event_id: 'vin_1', evidence: [{ source: 'current_photos', ref: 'photo_4', description: 'VIN ' + VIN + ' читається частково' }] }] });
