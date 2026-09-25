@@ -20,6 +20,7 @@
 
 import { CONCEPT_LABELS, canonicalEquipment } from './canonical-merge.js';
 import { equipmentConcept } from './current-visual.js';
+import { generationFromLabel } from './youtube.js';
 
 const MISSING_FUNCTION = new Set(['PGRST202', 'PGRST106', '42883', '3F000']);
 
@@ -97,8 +98,20 @@ export async function fetchMiEquipmentCandidates(vin, opts = {}) {
   const candidates = all.filter(c => c && c.equipment_key && SEARCH_TIERS.has(c.value_tier));
   return {
     ok: true, reason: candidates.length ? null : (b.reason || 'no_candidates'),
-    identity_precision: b.identity_precision || null, candidates, total: all.length, ms: r.ms,
+    identity_precision: b.identity_precision || null, identity_summary: b.identity_summary || null,
+    candidates, total: all.length, ms: r.ms,
   };
+}
+
+/* Код платформи, який Model Intelligence уже знає про це авто. Окремого
+   запиту під це не робимо: беремо назву розвʼязаної ідентичності з тієї
+   самої відповіді, що вже прийшла за комплектацією. Назва версії містить
+   код ("BMW 540i G30"), назва версії-ринку-року не містить, тому для
+   точної ідентичності тут чесно буде null. */
+export function miIdentityGeneration(miEq) {
+  const sum = miEq && miEq.identity_summary;
+  if (!sum || typeof sum !== 'object') return null;
+  return generationFromLabel(sum.version) || generationFromLabel(sum.vmy) || null;
 }
 
 /* ---------- Зіставлення назви з кандидатом ---------- */

@@ -31,14 +31,63 @@ export const INTENTS = ['review', 'problems', 'ownership'];
 
 const clean = s => String(s == null ? '' : s).replace(/\u2014/g, ',').replace(/\s+/g, ' ').trim();
 
-/* покоління з площадки буває сміттям ("Base", "Sedan"): беремо лише
-   код платформи виду G30, W205, 958.1, TL, F10 */
+/* покоління з площадки буває сміттям ("Base", "Sedan", "XSE", "AWD"):
+   беремо лише код платформи виду G30, W205, XV80, 958.1, TL, F10.
+
+   Форму коду проходять і короткі торгові позначення (версія, привід,
+   паливо, сімʼя двигунів), тому вони відсіюються переліком. Хибне
+   покоління гірше за відсутнє: сумнівне значення це null. */
+const NOT_GENERATION = new Set([
+  /* тип кузова і загальні слова */
+  'base', 'sedan', 'coupe', 'suv', 'auto', 'std', 'van', 'mpv', 'cuv',
+  /* привід */
+  'awd', 'fwd', 'rwd', '2wd', '4wd',
+  /* торгові версії, що вкладаються у 2-3 літери */
+  'xse', 'xle', 'xls', 'xlt', 'xlе', 'se', 'sel', 'sle', 'slt', 'le', 'ltz', 'lt',
+  'ls', 'ex', 'exl', 'lx', 'dx', 'gl', 'gls', 'gle', 'sv', 'sl', 'sr', 'srt',
+  'st', 'rs', 'gt', 'gts', 'ti', 'tsi', 'tdi', 'gdi', 'fsi', 'mpi', 'hdi', 'crd',
+  'ltd', 'prm', 'trd', 'amg', 'gti', 'gtd',
+]);
 export function validGeneration(raw) {
   const g = clean(raw).replace(/[«»"']/g, '');
   if (!g || g.length > 12) return null;
   if (!/^[A-Za-z]{0,3}\d{2,3}(?:\.\d)?[A-Za-z]?$|^[A-Z]{2,3}$/.test(g)) return null;
-  if (/^(base|sedan|coupe|suv|auto|std)$/i.test(g)) return null;
+  if (NOT_GENERATION.has(g.toLowerCase())) return null;
   return g.toUpperCase();
+}
+
+/* код платформи з готової назви ідентичності Model Intelligence
+   ("BMW 540i G30", "Porsche Cayenne GTS 958.1"). Беремо лише токени з
+   цифрами: чисто літерний код ("TL") у назві не відрізнити від бренда
+   ("BMW") чи сімʼї двигунів ("GDI"), а вгадувати тут не можна. */
+export function generationFromLabel(raw) {
+  const text = clean(raw);
+  if (!text) return null;
+  for (const tok of text.split(/[\s,/]+/)) {
+    if (!/\d/.test(tok)) continue;
+    if (!/^[A-Za-z]{0,3}\d{2,3}(?:\.\d)?$/.test(tok)) continue;
+    const g = validGeneration(tok);
+    if (g) return g;
+  }
+  return null;
+}
+
+/* Одне значення покоління зі сходинок джерел у порядку надійності:
+   поле площадки -> те, що вже знає Model Intelligence -> висновок
+   основного аналізу. Перше, що проходить перевірку форми, і виграє;
+   нічого не пройшло: null, бо хибне покоління гірше за відсутнє.
+   Другого поля покоління у звіті не існує, тут рахується канонічне. */
+export function resolveGeneration(sources) {
+  for (const src of Array.isArray(sources) ? sources : []) {
+    if (!src) continue;
+    const g = validGeneration(src.value);
+    if (!g) continue;
+    /* версія комплектації, переказана як покоління, не приймається навіть
+       у правильній формі: "XSE" біля trim "XSE" це trim */
+    if (src.notTrim && validGeneration(src.notTrim) === g) continue;
+    return { generation: g, source: src.source || null };
+  }
+  return { generation: null, source: null };
 }
 
 /* код двигуна лише зі структурного декодера (NHTSA EngineModel): вигадувати

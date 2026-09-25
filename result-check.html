@@ -1831,6 +1831,12 @@ function boot2(D){
   if (v.engine) spec.push([t('Engine'), clean(v.engine)]);
   if (v.transmission) spec.push([t('Gearbox'), clean(v.transmission)]);
   if (v.drive) spec.push([t('Drivetrain'), clean(v.drive)]);
+  /* покоління: ЛИШЕ канонічне значення з _meta.model_identity (там уже
+     зійшлися площадка, Model Intelligence і висновок аналізу). Свого поля
+     у vehicle сторінка не читає, щоб у звіті не було двох поколінь.
+     Невідоме просто не показуємо */
+  const genCode = (M.model_identity && M.model_identity.generation) || null;
+  if (genCode) spec.push([t('Generation'), clean(genCode)]);
   if (v.trim) spec.push([t('Trim'), clean(v.trim)]);
   const FUEL = { petrol: t('Petrol'), diesel: t('Diesel'), hybrid: t('Hybrid'), electric: t('Electric') };
   if (v.fuel && FUEL[v.fuel]) spec.push([t('Fuel'), FUEL[v.fuel]]);

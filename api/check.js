@@ -18,7 +18,7 @@ import {
 } from './visual-signals.js';
 import { hasHistoricalPhotoEvidence, stripUnbackedPhotoClaims } from './historical-claims.js';
 import { parseOwnerEvents, annotateOwnerOrdinals } from './history-owners.js';
-import { validGeneration, validEngineCode } from './youtube.js';
+import { validEngineCode, resolveGeneration } from './youtube.js';
 import {
   photoIdentity, photoSetFingerprint, listingFingerprint, snapshotRow, listingKey, dedupePhotoVariants,
   readVehicle, upsertVehicle, observeListing, patchSnapshotClaims, preservePhotos, snapshotHasPhotos, readListingPhotoFingerprints,
@@ -44,7 +44,7 @@ import { findAuctionRecord, shouldRecheck, discoverVinCandidates, photoHasProven
 /* Model Intelligence: тінь. Вмикається лише серверним MI_SHADOW_ENABLED,
    працює у фоні ПІСЛЯ запису готового звіту і у звіт нічого не додає */
 import { runMiShadow } from './mi-shadow.js';
-import { fetchMiEquipmentCandidates, candidatePromptBlock, visionHintBlock, supplementVisionEquipment, applyMiEquipment, equipmentMemoryObservations, recordMiEquipment } from './mi-equipment.js';
+import { fetchMiEquipmentCandidates, candidatePromptBlock, visionHintBlock, supplementVisionEquipment, applyMiEquipment, equipmentMemoryObservations, recordMiEquipment, miIdentityGeneration } from './mi-equipment.js';
 
 /* ============================================================
    CalCar Check, рушій v1: посилання на оголошення -> звіт.
@@ -2087,6 +2087,7 @@ const MAIN_RULES = (auction, decisionStyle, auctionMeta, { proseSchema = false, 
 ШАПКА = ФАКТИ. Усі поля "vehicle" це короткі технічні факти без коментарів, застережень і слів про відсутні дані:
 - "engine": "4.4 л бензин V8, 462 к.с." або "електро, 77 кВт·год". НІКОЛИ не пиши "довідково", "в декодуванні не вказано", "ймовірно". Невідоме = null, а не речення про невідомість.
 - "mileage_note": ЛИШЕ заявлене число одним коротким рядком: "129 000 км". Уся аналітика пробігу (хронологія, розбіжності) живе в discrepancies та history, НЕ в шапці.
+- "generation": КОД ПОКОЛІННЯ або платформи і більше нічого: "G30", "W205", "XV80", "958.1", "TL", "F10". Ставиш його ЛИШЕ коли марка, модель і рік однозначно дають покоління. НЕ пиши сюди версію комплектації ("XSE", "Limited", "Premium"), тип кузова, привід, паливо чи роки випуску. Сумніваєшся між двома поколіннями (рік на межі рестайлінгу) або код не знаєш: null. Хибне покоління гірше за відсутнє.
 
 ${cvProvided ? `"photo_findings": бери ГОТОВИМИ з CURRENT_VISUAL_EVIDENCE. condition_findings звідти це канонічні спостереження про нинішній стан: дай РІВНО ПО ОДНОМУ пункту на кожен елемент, У ТОМУ САМОМУ ПОРЯДКУ (status warn, а для severe bad), переказавши ознаку людською мовою і назвавши кадр. Не додавай нових дефектів від себе, не обʼєднуй кілька знахідок в один пункт і не спростовуй канонічні. Якщо condition_findings порожній, а покриття достатнє: ОДИН пункт "ok" ("на доступних фото явних слідів ремонту не видно") плюс МАКСИМУМ один "unknown" про найважливішу невидиму зону з zones.not_visible. Самостійно переглядати кадри у пошуках дефектів НЕ треба: контекстні кадри дані лише для загального розуміння авто.` : `"photo_findings": ЛИШЕ про НИНІШНІ фото з оголошення (не аукціонні: для них є auction.findings). СПОЧАТКУ те, що РЕАЛЬНО ПОМІЧЕНО: різниця відтінку фарби, шагрень, нерівні зазори, свіжий герметик, нештатні деталі, знос салону проти пробігу. Кожна знахідка = окремий пункт зі status warn або bad. Якщо підозрілого нічого немає: ОДИН пункт "ok" ("на доступних фото явних слідів ремонту не видно") плюс МАКСИМУМ один пункт "unknown" із найважливішим обмеженням (наприклад, немає фото салону). ЗАБОРОНЕНО три пункти поспіль про те, чого не видно.`}
 
@@ -3756,6 +3757,17 @@ async function runCheck(req, res, job) {
       Promise.all([photoPreservePromise, evidencePreservePromise]).then(([listingStats, evidenceStats]) => ({ listing: listingStats, evidence: evidenceStats })),
       new Promise(r => setTimeout(() => r({ listing: 'pending', evidence: 'pending' }), Math.max(1000, 285000 - (Date.now() - tRun)))),
     ]);
+    /* ПОКОЛІННЯ: одне канонічне значення зі сходинок джерел. Структурне
+       поле площадки буває версією комплектації ("XSE"), тому воно проходить
+       ту саму перевірку форми і додатково звіряється з trim. Model
+       Intelligence дає код лише тоді, коли вже знає цю версію. Остання
+       сходинка це висновок ОСНОВНОГО аналізу: окремого виклику під
+       покоління немає. Нічого не підтвердилось: порожньо */
+    const genResolved = resolveGeneration([
+      { value: listing.generation, source: 'listing', notTrim: parsed.vehicle && parsed.vehicle.trim },
+      { value: miIdentityGeneration(miEq), source: 'model_intelligence' },
+      { value: parsed.vehicle && parsed.vehicle.generation, source: 'analysis', notTrim: parsed.vehicle && parsed.vehicle.trim },
+    ]);
     parsed._meta = {
       kind: 'check',
       lang,
@@ -3794,14 +3806,15 @@ async function runCheck(req, res, job) {
         : null,
       auction_search: auctionSearch,
       history_facts: listing.history_facts || null,
-      /* структурна ідентичність МОДЕЛІ (не VIN): покоління з площадки і код
-         двигуна з декодера NHTSA, обидва лише коли справді відомі. Потрібна
+      /* структурна ідентичність МОДЕЛІ (не VIN): покоління і код двигуна з
+         декодера NHTSA, обидва лише коли справді відомі. Потрібна
          необовʼязковим збагаченням на зразок відео про модель (api/youtube.js);
          на Score, рішення і Vehicle Memory не впливає */
       model_identity: {
         make: listing.make || (nhtsa && nhtsa.Make) || null,
         model: listing.model || (nhtsa && nhtsa.Model) || null,
-        generation: validGeneration(listing.generation),
+        generation: genResolved.generation,
+        generation_source: genResolved.source,
         engine_code: validEngineCode(nhtsa && nhtsa.EngineModel),
       },
       /* паспорт джерела для інтерфейсу: без посилань назовні */

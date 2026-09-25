@@ -71,6 +71,7 @@ export function buildMainSchema({ hvProvided = false } = {}) {
       engine: NS(),
       transmission: NS(),
       drive: NS(),
+      generation: NS('код покоління або платформи (G30, W205, XV80, 958.1) лише коли надійно відомий; інакше null'),
       trim: NS(),
       mileage_note: NS(),
     }),

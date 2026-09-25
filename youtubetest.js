@@ -27,9 +27,26 @@ const vid = (id, title, extra = {}) => Object.assign({
   if (/\b(19|20)\d{2}\b/.test(m550.base)) errs.push('рік потрапив у пошуковий запит');
   /* сирий заголовок оголошення не використовуємо: беремо нормалізовану назву звіту */
   if (!/const title = clean\(\(D\.vehicle \|\| \{\}\)\.title \|\| ''\);/.test(page)) errs.push('сторінка бере ідентичність не з нормалізованої назви звіту');
-  /* покоління з площадки буває сміттям */
-  if (Y.validGeneration('Base') || Y.validGeneration('Sedan') || Y.validGeneration('повний привід')) errs.push('сміттєве покоління прийняте за код платформи');
-  for (const g of ['G30', 'W205', '958.1', 'TL', 'f10']) if (!Y.validGeneration(g)) errs.push('код платформи відкинуто: ' + g);
+  /* покоління з площадки буває сміттям: типом кузова, приводом, версією */
+  for (const g of ['Base', 'Sedan', 'повний привід', 'SUV', 'XSE', 'Limited', 'Premium', 'Hybrid', 'Automatic', 'AWD', 'GT', 'GTS', 'LE', 'SEL', '2015']) {
+    if (Y.validGeneration(g)) errs.push('сміттєве покоління прийняте за код платформи: ' + g + ' -> ' + Y.validGeneration(g));
+  }
+  for (const g of ['G30', 'G60', 'W205', 'W206', 'XV70', 'XV80', '958.1', 'TL', 'f10']) if (!Y.validGeneration(g)) errs.push('код платформи відкинуто: ' + g);
+  /* код платформи з готової назви ідентичності MI: лише токен із цифрами */
+  if (Y.generationFromLabel('BMW 540i G30') !== 'G30') errs.push('код платформи не взятий із назви версії MI');
+  if (Y.generationFromLabel('Porsche Cayenne GTS 958.1') !== '958.1') errs.push('фаза покоління втрачена з назви MI');
+  if (Y.generationFromLabel('BMW M550i xDrive US MY2018')) errs.push('назва версії-ринку-року не містить покоління, а щось знайдено');
+  if (Y.generationFromLabel('Toyota Camry XSE Hybrid') || Y.generationFromLabel('Hyundai Tucson TL 2.4 GDI')) errs.push('чисто літерний токен із назви прийнятий за покоління');
+  /* сходинки джерел: перше валідне значення, trim не стає поколінням */
+  const ladder = Y.resolveGeneration([
+    { value: 'XSE', source: 'listing', notTrim: 'XSE' },
+    { value: null, source: 'model_intelligence' },
+    { value: 'XV80', source: 'analysis', notTrim: 'XSE' },
+  ]);
+  if (ladder.generation !== 'XV80' || ladder.source !== 'analysis') errs.push('сходинки покоління: ' + JSON.stringify(ladder));
+  if (Y.resolveGeneration([{ value: 'G30', source: 'listing' }, { value: 'W205', source: 'analysis' }]).source !== 'listing') errs.push('поле площадки не має пріоритету');
+  if (Y.resolveGeneration([{ value: 'Sedan', source: 'listing' }]).generation !== null) errs.push('сміття пройшло сходинки');
+  if (Y.resolveGeneration([]).generation !== null || Y.resolveGeneration(null).generation !== null) errs.push('порожні сходинки не дають null');
   if (Y.buildIdentity({ title: 'Porsche Cayenne GTS 2013', generation: '958.1' }).base !== 'Porsche Cayenne GTS 958.1') errs.push('Cayenne: покоління не додане');
   /* двигун лише зі структурного декодера і лише валідний код */
   if (Y.validEngineCode('') || Y.validEngineCode('petrol') || Y.validEngineCode('2.0 l petrol plug-in hybrid')) errs.push('код двигуна вигаданий з тексту');
@@ -208,14 +225,25 @@ const vid = (id, title, extra = {}) => Object.assign({
   const sh = fs.readFileSync('api/share.js', 'utf8');
   if (!/'model_identity'/.test(sh.slice(sh.indexOf('const PUBLIC_META'), sh.indexOf('];', sh.indexOf('const PUBLIC_META'))))) errs.push('model_identity не дозволений у публічному звіті');
   const chk = fs.readFileSync('api/check.js', 'utf8');
-  if (!/model_identity: \{\n\s*make:[\s\S]{0,260}?generation: validGeneration\(listing\.generation\),\n\s*engine_code: validEngineCode\(nhtsa && nhtsa\.EngineModel\),/.test(chk)) errs.push('check.js не кладе структурну ідентичність моделі');
+  if (!/model_identity: \{\n\s*make:[\s\S]{0,300}?generation: genResolved\.generation,\n\s*generation_source: genResolved\.source,\n\s*engine_code: validEngineCode\(nhtsa && nhtsa\.EngineModel\),/.test(chk)) errs.push('check.js не кладе структурну ідентичність моделі');
+  /* сходинки джерел саме в тому порядку і без окремого виклику під покоління */
+  if (!/const genResolved = resolveGeneration\(\[\n\s*\{ value: listing\.generation, source: 'listing'[\s\S]{0,160}?source: 'model_intelligence' \},\n\s*\{ value: parsed\.vehicle && parsed\.vehicle\.generation, source: 'analysis'/.test(chk)) errs.push('порядок джерел покоління не той або резолвер не викликається');
+  if (/reasoning_effort[\s\S]{0,200}generation|generation[\s\S]{0,120}callModel\(/.test(chk)) errs.push('під покоління зʼявився окремий виклик моделі');
+  /* покоління живе в одному полі: другого у звіті нема */
+  const pageGen = page.slice(page.indexOf('function boot2('));
+  if (/v\.generation/.test(pageGen)) errs.push('сторінка читає друге поле покоління з vehicle');
+  if (!/const genCode = \(M\.model_identity && M\.model_identity\.generation\) \|\| null;/.test(pageGen)) errs.push('шапка не бере покоління з канонічного поля');
+  if (!/if \(genCode\) spec\.push\(\[t\('Generation'\), clean\(genCode\)\]\);/.test(pageGen)) errs.push('покоління не показується в картці авто');
+  /* схема шапки знає про покоління, і це рядок або null */
+  const sch = fs.readFileSync('api/check-schema.js', 'utf8');
+  if (!/generation: NS\(/.test(sch.slice(sch.indexOf('vehicle: OBJ('), sch.indexOf('auction: OBJ(')))) errs.push('покоління не описане у схемі шапки');
   /* Check не чекає на відео і не знає про них */
   if (/googleapis\.com\/youtube|YOUTUBE_API_KEY|youtube\.com/.test(chk)) errs.push('Check ходить у YouTube у своєму шляху');
-  if (!/import \{ validGeneration, validEngineCode \} from '\.\/youtube\.js';/.test(chk)) errs.push('check.js перевіряє покоління і двигун не тими самими функціями');
+  if (!/import \{ validEngineCode, resolveGeneration \} from '\.\/youtube\.js';/.test(chk)) errs.push('check.js перевіряє покоління і двигун не тими самими функціями');
   /* словники */
   for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
     const dict = fs.readFileSync(d, 'utf8');
-    for (const k of ['Videos about this model', 'Show more', 'Show less', 'Open on YouTube']) {
+    for (const k of ['Videos about this model', 'Show more', 'Show less', 'Open on YouTube', 'Generation']) {
       if (!dict.includes("'" + k + "':")) errs.push(d + ': нема ключа "' + k + '"');
     }
   }
