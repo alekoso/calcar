@@ -752,6 +752,26 @@
   .eq-chip.hv{border-color:transparent;background:linear-gradient(var(--card),var(--card)) padding-box,linear-gradient(135deg,#7C3AED 0%,#C026D3 50%,#E8A33D 100%) border-box}
   /* легенда до виділених дорогих опцій: та сама візуальна мова рамки */
   .sec-meta.hv-legend{border-color:transparent;background:linear-gradient(var(--card),var(--card)) padding-box,linear-gradient(135deg,#7C3AED 0%,#C026D3 50%,#E8A33D 100%) border-box}
+  @supports ((mask-composite:exclude) or (-webkit-mask-composite:xor)){
+    /* Рухома градієнтна обводка тих самих premium-опцій. Малюється окремим
+       шаром ::before у межах рамки (inset -1px + маска, яка лишає лише
+       рамку), тому геометрія, фон, padding і текст chip не змінюються і
+       нічого не зсувається. Обертається один кут --eq-ang: анімується лише
+       фон цього шару, решта звіту не перемальовується. Рух повільний
+       (12 с на оберт), без свічення і пульсації; hover лише трохи піднімає
+       видимість. Кольори ті самі, що в статичній рамці нижче/вище.
+       Браузер без mask-composite чи @property показує статичну рамку. */
+    .eq-chip.hv::after{
+      content:"";position:absolute;inset:-1px;border-radius:inherit;padding:1px;pointer-events:none;
+      background:conic-gradient(from var(--eq-ang,0deg),rgba(124,58,237,.18) 0deg,#7C3AED 60deg,#C026D3 130deg,#E8A33D 200deg,rgba(124,58,237,.18) 290deg,rgba(124,58,237,.18) 360deg);
+      -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;
+      mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude;
+      opacity:.75;transition:opacity .25s ease;animation:eq-hv-turn 12s linear infinite}
+    .eq-chip.hv:hover::after{opacity:1}
+  }
+  @property --eq-ang{syntax:"<angle>";initial-value:0deg;inherits:false}
+  @keyframes eq-hv-turn{to{--eq-ang:360deg}}
+  @media (prefers-reduced-motion:reduce){.eq-chip.hv::after{animation:none}}
   /* міжчипові відступи більші, щоб маркер не наїжджав на сусідів і рядки */
   .eq-chips{gap:8px 12px}
   .eq-chips{margin-top:2px}

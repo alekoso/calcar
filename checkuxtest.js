@@ -311,6 +311,43 @@ const page = fs.readFileSync('result-check.html', 'utf8');
     if (!/parsed\.history = annotateOwnerOrdinals\(parsed\.history, listing\.history_facts\)/.test(chk2)) errs.push('check.js не привʼязує номери власників з реєстру');
   }
 
+  /* ---------- 4. рухома рамка дорогих опцій ---------- */
+  {
+    const imp = fs.readFileSync('result.html', 'utf8');
+    const ring = (src, sel) => {
+      const i = src.indexOf(sel + '::after{');
+      return i < 0 ? null : src.slice(i, src.indexOf('}', i) + 1);
+    };
+    const check = (src, sel, hoverSel, where) => {
+      const r = ring(src, sel);
+      if (!r) { errs.push(where + ': нема рухомої рамки ' + sel); return; }
+      /* рамка і тільки рамка: геометрія chip не змінюється */
+      if (/(^|;)\s*(width|height|margin|inset:(?!-1px)|padding:(?!1px))/.test(r)) errs.push(where + ': рухома рамка змінює геометрію chip');
+      if (!/inset:-1px/.test(r) || !/padding:1px/.test(r) || !/border-radius:inherit/.test(r)) errs.push(where + ': рамка не по межі chip');
+      if (!/mask-composite:exclude/.test(r) || !/-webkit-mask-composite:xor/.test(r)) errs.push(where + ': без маски рамка заллє chip');
+      if (!/pointer-events:none/.test(r)) errs.push(where + ': шар рамки ловить кліки');
+      /* повільно і стримано: 8-12 с, без свічення і пульсації */
+      const dur = (/animation:eq-hv-turn (\d+)s linear infinite/.exec(r) || [])[1];
+      if (!dur || +dur < 8 || +dur > 12) errs.push(where + ': оберт не 8-12 с: ' + dur);
+      if (/box-shadow|filter:|blur|scale|pulse|alternate/.test(r)) errs.push(where + ': свічення або пульсація');
+      /* hover тільки помітність */
+      const h = src.slice(src.indexOf(hoverSel + '{'), src.indexOf('}', src.indexOf(hoverSel + '{')) + 1);
+      if (!/^[^{]*\{opacity:1\}$/.test(h)) errs.push(where + ': hover змінює не лише видимість: ' + h);
+      /* статична рамка лишається як фолбек і як стан reduced-motion */
+      if (!new RegExp('@supports \\(\\(mask-composite:exclude\\) or \\(-webkit-mask-composite:xor\\)\\)').test(src)) errs.push(where + ': рамка без @supports-запобіжника');
+      if (!src.includes('@media (prefers-reduced-motion:reduce){' + sel + '::after{animation:none}}')) errs.push(where + ': reduced-motion не зупиняє рух');
+      if (!/@property --eq-ang\{syntax:"<angle>";initial-value:0deg;inherits:false\}/.test(src)) errs.push(where + ': нема @property --eq-ang');
+    };
+    check(page, '.eq-chip.hv', '.eq-chip.hv:hover::after', 'Check');
+    check(imp, '.chip.gold', '.chip.gold:hover::after', 'Import');
+    /* анімується лише те, що вже позначене дорогим; звичайні опції і легенда статичні */
+    if (/\.eq-chip::(?:after|before)|\.eq-chips span:not\(\[class\]\)::(?:after|before)/.test(page)) errs.push('рухома рамка потрапила на звичайні опції');
+    if (/\.hv-legend::after/.test(page) || /\.hv-legend::after/.test(imp)) errs.push('легенда теж рухається');
+    if (!/\.eq-chip\.hv\{border-color:transparent;background:linear-gradient/.test(page)) errs.push('статична рамка дорогої опції зникла');
+    /* класифікації дорогих опцій не чіпали */
+    if (!/const hv = o\.value_tier === 'high_value';/.test(page)) errs.push('ознака дорогої опції більше не value_tier');
+  }
+
   /* словники */
   for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
     const s = fs.readFileSync(d, 'utf8');
