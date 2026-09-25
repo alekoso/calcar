@@ -3,7 +3,7 @@
    коли обрано цю мову. Згенеровано розворотом попередніх словників UA -> EN/RU. */
 window.CALCAR_DICTS = window.CALCAR_DICTS || {};
 window.CALCAR_DICTS.ru = {
-  'My CalCar AI': 'Мой CalCar AI',
+  'CalCar AI Chat': 'Чат CalCar AI',
   'CalCar AI': 'CalCar AI',
   'CalCar menu': 'Меню CalCar',
   'Language': 'Язык',
@@ -708,7 +708,7 @@ window.CALCAR_DICTS.ru = {
   'Other data points to a US auction history, but the record itself was not found in the checked archives': 'Другие данные указывают на аукционную историю в США, но саму запись в проверенных архивах найти не удалось',
   'Damage and repair': 'Повреждения и восстановление',
   'Condition from photos': 'Состояние по фото',
-  'Expensive options highlighted': 'Дорогие опции выделены',
+  'Expensive options': 'Дорогие опции',
   'Expensive option': 'Дорогая опция',
   'This option usually has a noticeable impact on the car price or on the cost of its repair or replacement.': 'Эта опция обычно заметно влияет на стоимость автомобиля или стоимость её ремонта или замены.',
   'Re-registration': 'Перерегистрация',
@@ -932,12 +932,13 @@ window.CALCAR_DICTS.ru = {
   'Check this car: {title}': 'Проверка авто: {title}',
   'The analysis did not finish in time. Try again, the second run is usually faster': 'Анализ не успел завершиться. Попробуй ещё раз, обычно со второй попытки быстрее',
   'New check': 'Новая проверка',
+  'How videos are selected': 'Как подобраны видео',
+  'CalCar looks for videos about this exact generation of the car, drops unrelated clips and keeps reviews, owner experience and problem breakdowns. If there are few good videos in the report language, the list is topped up with English ones.': 'CalCar ищет видео именно по поколению автомобиля, отсеивает нерелевантные ролики и отбирает обзоры, опыт владельцев и разборы проблем. Если качественных видео на языке отчёта мало, подборка дополняется англоязычными.',
   'Videos about this model': 'Видео об этой модели',
   'Show more': 'Показать ещё',
   'Show less': 'Скрыть',
   'Open on YouTube': 'Открыть на YouTube',
   'Average mileage': 'Средний пробег',
-  'Norm': 'Норма',
   'Average calculated from the vehicle age.': 'Среднее рассчитано по возрасту автомобиля.',
   'From the seller': 'От продавца',
   'Did this analysis help you decide?': 'Помог ли разбор принять решение?',

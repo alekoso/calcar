@@ -430,7 +430,7 @@
      метрика разом з іконкою це кнопка: наведення, фокус або тап відкривають
      шкалу інтенсивності. Шкала малюється з осі Пробіг звіту (mileage-intensity.js) */
   .mil-v{display:inline-flex;align-items:baseline;flex-wrap:wrap;column-gap:14px;row-gap:2px}
-  .mi-trig{display:inline-flex;align-items:center;gap:5px;border:none;background:none;padding:0;margin:0;font:inherit;font-size:.93em;font-weight:500;color:var(--muted);cursor:pointer;white-space:nowrap;border-radius:6px;text-decoration:underline dotted var(--line-strong);text-underline-offset:3px}
+  .mi-trig{display:inline-flex;align-items:center;gap:5px;border:none;background:none;padding:0;margin:0;font:inherit;font-size:.93em;font-weight:600;color:var(--ink-2);cursor:pointer;white-space:nowrap;border-radius:6px;text-decoration:underline dotted var(--line-strong);text-underline-offset:3px}
   .mi-trig:hover,.mi-trig[aria-expanded="true"]{color:var(--ink);text-decoration-color:var(--muted)}
   .mi-trig:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
   .mi-trig svg{width:14px;height:14px;flex:0 0 auto}
@@ -444,9 +444,6 @@
   .mi-mark{position:absolute;top:-4px;bottom:-4px;width:2px;margin-left:-1px;background:var(--ink);border-radius:1px}
   .mi-mark::before{content:"";position:absolute;left:50%;top:-6px;margin-left:-5px;border:5px solid transparent;border-top-color:var(--ink);border-bottom-width:0}
   .mi-scale{position:relative;display:flex;justify-content:space-between;gap:8px;font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
-  /* норма класу: тонка риска на шкалі і підпис під нею; поточне авто лишається чорною рискою з трикутником */
-  .mi-norm{position:absolute;top:-3px;bottom:-3px;width:0;border-left:1px solid var(--ink-2);opacity:.55}
-  .mi-norm-l{position:absolute;top:0;transform:translateX(-50%);white-space:nowrap;color:var(--ink-2)}
   .mi-note{display:block;margin-top:10px;font-size:12px;line-height:1.45;color:var(--muted)}
   /* ---- Оцінка CalCar + повнота перевірки: один компонент ----
      Візуально родич шкали пробігу: той самий радіус, лінія, тінь, типографіка
@@ -652,6 +649,7 @@
   .job-retry{display:inline-block;margin-left:8px;padding:6px 12px;border-radius:8px;background:var(--brand);color:var(--ink);font-weight:600;text-decoration:none}
   .hint{font-size:12.5px;color:var(--muted)}
   /* вторинні підписи шапок секцій: єдиний компонент, спокійна pill */
+  .sec-meta[hidden]{display:none}
   .sec-meta{margin-left:auto;display:inline-flex;align-items:center;padding:3px 10px;border:1px solid var(--line);border-radius:12px;background:var(--card);font-size:12.5px;font-weight:600;color:var(--text);white-space:nowrap}
   @media (max-width:760px){.sec-meta{white-space:normal}}
 
@@ -784,6 +782,13 @@
   .yt-dur{position:absolute;right:6px;bottom:6px;padding:1px 5px;border-radius:5px;background:rgba(20,22,25,.82);color:#fff;font-size:11.5px;font-variant-numeric:tabular-nums}
   .yt-t{padding:0 12px;font-size:13.5px;font-weight:600;line-height:1.35;color:var(--ink);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .yt-meta{padding:0 12px 12px;font-size:12px;color:var(--muted);display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+  /* підказка про добір відео: тихий контрол у шапці, працює і по тапу */
+  .yt-why{margin-left:auto;gap:6px;cursor:pointer;font-family:inherit;color:var(--muted);transition:color .15s,border-color .15s}
+  .yt-why:hover,.yt-why[aria-expanded="true"]{color:var(--ink);border-color:var(--line-strong)}
+  .yt-why:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  .yt-why svg{width:14px;height:14px;flex:0 0 auto}
+  .yt-why-pop{margin:0 20px 12px;padding:12px 14px;background:var(--surface-2);border-radius:10px;font-size:13px;line-height:1.5;color:var(--ink-2);max-width:70ch}
+  .yt-why-pop[hidden]{display:none}
   .yt-more{margin-top:12px;height:34px;padding:0 14px;border:1px solid var(--line-strong);border-radius:10px;background:var(--card);color:var(--ink);font-size:13px;font-weight:600;font-family:inherit;cursor:pointer}
   .yt-more:hover{background:var(--surface-2)}
   /* плеєр у модалці: звіт лишається під нею, прокрутка повертається на місце */
@@ -923,6 +928,8 @@
   .hgap{position:relative;min-height:18px;display:flex;align-items:center;padding:1px 0 1px 110px;color:var(--faint);font-size:12px}
   .hgap::before{content:'';position:absolute;left:var(--rail-x);top:0;bottom:0;width:2px;transform:translateX(-50%);background:var(--line-strong);border-radius:2px}
   .hnote{margin-top:12px}
+  /* одне підсумкове речення замість хронології: читається по центру картки */
+  .hist-solo{max-width:62ch;margin-inline:auto;text-align:center}
 
   /* фінальні дії */
   .final-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
@@ -1028,6 +1035,7 @@
 <script src="/chat.js"></script>
 <!-- шкала інтенсивності пробігу: лише презентація осі Пробіг звіту -->
 <script src="/mileage-intensity.js"></script>
+<script src="/equipment-value.js"></script>
 <script src="/vehicle-timeline.js"></script>
 </head>
 <body>
@@ -1042,7 +1050,7 @@
       <span class="prod" data-prod="Check" aria-hidden="true"></span>
     </div>
     <div class="header-right">
-      <button class="btn-ai" id="aiBtn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.7 4.6L18 9.3l-4.3 1.7L12 15.6l-1.7-4.6L6 9.3l4.3-1.7z"/><path d="M18.5 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></svg><span class="ai-full">My CalCar AI</span><span class="ai-short">CalCar AI</span></button>
+      <button class="btn-ai" id="aiBtn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.7 4.6L18 9.3l-4.3 1.7L12 15.6l-1.7-4.6L6 9.3l4.3-1.7z"/><path d="M18.5 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></svg><span class="ai-full">CalCar AI Chat</span><span class="ai-short">CalCar AI</span></button>
     </div>
   </div>
 </header>
@@ -1136,7 +1144,7 @@
   <div class="card" id="eqCard" style="display:none">
     <div class="card-head">
       <h2>Equipment</h2>
-      <span class="sec-meta hv-legend">Expensive options highlighted</span>
+      <span class="sec-meta hv-legend" id="eqLegend" hidden>Expensive options</span>
     </div>
     <div class="card-body"><div id="eqList"></div></div>
   </div>
@@ -1241,7 +1249,9 @@
   <div class="card" id="ytCard" style="display:none">
     <div class="card-head">
       <h2>Videos about this model</h2>
+      <button class="sec-meta yt-why" id="ytWhy" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="ytWhyPop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.6" r=".9" fill="currentColor" stroke="none"/></svg>How videos are selected</button>
     </div>
+    <div class="yt-why-pop" id="ytWhyPop" role="dialog" aria-labelledby="ytWhy" hidden>CalCar looks for videos about this exact generation of the car, drops unrelated clips and keeps reviews, owner experience and problem breakdowns. If there are few good videos in the report language, the list is topped up with English ones.</div>
     <div class="card-body">
       <div class="yt-grid" id="ytGrid"></div>
       <button class="yt-more" id="ytMore" type="button" hidden>Show more</button>
@@ -1267,7 +1277,6 @@
       <div id="chkList"></div>
       <div class="final-actions">
         <button class="btn-primary" id="shareBtn2" type="button" style="height:44px;display:none">Share</button>
-        <button class="btn-back" id="pdfBtn" type="button">Download PDF</button>
       </div>
     </div>
   </div>
@@ -1321,8 +1330,8 @@
 <div class="mi-pop" id="miPop" role="tooltip">
   <span class="mi-t">Average mileage</span>
   <span class="mi-val" id="miVal"></span>
-  <div class="mi-meter" aria-hidden="true"><div class="mi-bar" id="miBar"></div><div class="mi-norm" id="miNorm"></div><div class="mi-mark" id="miMark"></div></div>
-  <div class="mi-scale" id="miScale"><span aria-hidden="true">0</span><span class="mi-norm-l" id="miNormL"></span><span id="miUpper" aria-hidden="true"></span></div>
+  <div class="mi-meter" aria-hidden="true"><div class="mi-bar" id="miBar"></div><div class="mi-mark" id="miMark"></div></div>
+  <div class="mi-scale" id="miScale" aria-hidden="true"><span>0</span><span id="miUpper"></span></div>
   <span class="mi-note">Average calculated from the vehicle age.</span>
 </div>
 
@@ -1756,6 +1765,16 @@ async function videosInit(D) {
     if (v) ytOpen(v, b);
   };
 }
+/* підказка про добір відео: клік або тап, ESC і клік поза нею закривають */
+(function () {
+  const btn = $('ytWhy'), pop = $('ytWhyPop');
+  if (!btn || !pop) return;
+  const setOpen = on => { pop.hidden = !on; btn.setAttribute('aria-expanded', on ? 'true' : 'false'); };
+  btn.addEventListener('click', e => { e.stopPropagation(); setOpen(pop.hidden); });
+  document.addEventListener('click', e => { if (!pop.hidden && !pop.contains(e.target) && !btn.contains(e.target)) setOpen(false); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !pop.hidden) { setOpen(false); btn.focus(); } });
+})();
+
 /* плеєр вантажиться ЛИШЕ після кліку і лише в режимі без кукі YouTube */
 (function () {
   const modal = $('ytModal'), ov = $('ytOv'), frame = $('ytmFrame'), titleEl = $('ytmTitle'),
@@ -2070,7 +2089,9 @@ function boot2(D){
       const meta = (o.evidence || []).map(e => [e.ref ? humanRef(e.ref) : null, e.sign].filter(Boolean).join(': ')).filter(Boolean).join(' · ');
       /* premium-опція: та сама геометрія, інша лише рамка; tooltip каже
          про цінність, не про грошову вартість */
-      const hv = o.value_tier === 'high_value';
+      /* цінність: каталог MI по цьому авто головний, інакше загальний
+         список очевидно дорогого обладнання (equipment-value.js) */
+      const hv = CalCarEquipmentValue.isHighValue(o);
       /* пояснення, чому опція виділена; без грошових цифр, бо надійних
          цінових даних нема */
       const tip = hv
@@ -2095,6 +2116,9 @@ function boot2(D){
     const retro = eqV2.filter(o => o.retrofit).sort(byNotable);
     if (retro.length) eqHtml2 += '<div class="eq-group"><div class="eq-src">' + esc(t('Installed later / retrofit')) + '</div><div class="eq-chips">' + retro.map(chipHtml).join('') + '</div></div>';
     if (eqHtml2) { $('eqCard').style.display = ''; $('eqList').innerHTML = eqHtml2; }
+    /* підпис про дорогі опції показуємо ЛИШЕ коли хоч одна така є у звіті */
+    const anyHv = eqV2.some(o => CalCarEquipmentValue.isHighValue(o));
+    $('eqLegend').hidden = !anyHv;
   } else {
     const eq = D.equipment || {};
     const EQ_GROUPS = [
@@ -2117,6 +2141,13 @@ function boot2(D){
     /* канонічний порядок і тривалості рахує код (vehicle-timeline.js); номер
        власника лише зі структурованого реєстру оригінального звіту, не з перекладу */
     const hist = CalCarTimeline.normalize(D.history, window.calcarLang(), DATA && DATA.history);
+    /* єдиний рядок без дати це не хронологія, а підсумкове речення: у
+       колонці дат воно виглядає зсунутим, тому показуємо його по центру */
+    const solo = hist.length === 1 && !hist[0].date;
+    if (solo) {
+      $('histList').innerHTML = '<div class="dmg-note hist-solo">' + esc(hist[0].event) + '</div>'
+        + (D.history_note ? '<div class="dmg-note hnote hist-solo">' + esc(D.history_note) + '</div>' : '');
+    } else
     /* connector між подіями малюється ЗАВЖДИ (крім останньої), підпис
        інтервалу опційний: невідому дату не вигадуємо заради лінії */
     $('histList').innerHTML = hist.map((h, i) =>
@@ -2341,15 +2372,6 @@ function isAmongFirstChecks(rows, ids, n, truncated) {
     $('miVal').textContent = nf(mi.monthly_km) + ' ' + t('km/mo');
     /* одиниця вже є у значенні зверху: підписи шкали лише числа */
     $('miUpper').textContent = nf(mi.upper_km) + '+';
-    const normOk = typeof mi.norm_km === 'number' && typeof mi.norm_pct === 'number';
-    $('miNorm').style.display = normOk ? '' : 'none';
-    $('miNormL').style.display = normOk ? '' : 'none';
-    if (normOk) {
-      $('miNorm').style.left = Math.max(0, Math.min(100, mi.norm_pct)).toFixed(2) + '%';
-      $('miNormL').textContent = t('Norm') + ' ' + nf(mi.norm_km);
-      /* підпис не налазить на 0 і праву межу, риска стоїть точно */
-      $('miNormL').style.left = Math.max(22, Math.min(64, mi.norm_pct)).toFixed(2) + '%';
-    }
     const b = mi.bands, f = x => Math.max(0, Math.min(100, x)).toFixed(1) + '%';
     /* спокійно, звичайний діапазон класу лаймом, далі amber і червоний */
     $('miBar').style.background = 'linear-gradient(90deg,'
@@ -2654,14 +2676,10 @@ function shareSetup(){
   ['shareBtn', 'shareBtn2'].forEach(id => { const b = $(id); if (!b) return; if (can) { b.style.display = ''; b.addEventListener('click', shareReport); } });
 }
 
-/* ---------- фінальні дії ---------- */
-document.getElementById('pdfBtn').addEventListener('click', () => {
-  /* друк у PDF засобами браузера: назва файлу = назва авто */
-  const old = document.title;
-  document.title = 'CalCar Check ' + (DATA?.vehicle?.title || '');
-  window.print();
-  document.title = old;
-});
+/* ---------- фінальні дії ----------
+   Кнопки "Зберегти PDF" у звіті більше немає: споживчого сценарію під неї
+   нема. Сам друк нікуди не подівся (верстка @media print лишилась), і
+   генерація PDF в Import не чіпалась: знадобиться для white-label і B2B */
 /* CTA у кінці висновку: відкриває ТОЙ САМИЙ чат по цьому звіту, нового не
    створює. Авто вже є контекстом чату, пояснювати машину заново не треба */
 document.getElementById('pdChatBtn').addEventListener('click', () => {

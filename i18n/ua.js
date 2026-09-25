@@ -3,7 +3,7 @@
    коли обрано цю мову. Згенеровано розворотом попередніх словників UA -> EN/RU. */
 window.CALCAR_DICTS = window.CALCAR_DICTS || {};
 window.CALCAR_DICTS.ua = {
-  'My CalCar AI': 'Мій CalCar AI',
+  'CalCar AI Chat': 'Чат CalCar AI',
   'CalCar AI': 'CalCar AI',
   'CalCar menu': 'Меню CalCar',
   'Language': 'Мова',
@@ -708,7 +708,7 @@ window.CALCAR_DICTS.ua = {
   'Other data points to a US auction history, but the record itself was not found in the checked archives': 'Інші дані вказують на аукціонну історію в США, але сам запис у перевірених архівах знайти не вдалося',
   'Damage and repair': 'Пошкодження та відновлення',
   'Condition from photos': 'Стан за фото',
-  'Expensive options highlighted': 'Дорогі опції виділені',
+  'Expensive options': 'Дорогі опції',
   'Expensive option': 'Дорога опція',
   'This option usually has a noticeable impact on the car price or on the cost of its repair or replacement.': 'Ця опція зазвичай помітно впливає на вартість автомобіля або вартість її ремонту чи заміни.',
   'Re-registration': 'Перереєстрація',
@@ -932,12 +932,13 @@ window.CALCAR_DICTS.ua = {
   'Check this car: {title}': 'Перевірка авто: {title}',
   'The analysis did not finish in time. Try again, the second run is usually faster': 'Аналіз не встиг завершитись. Спробуй ще раз, зазвичай з другої спроби швидше',
   'New check': 'Нова перевірка',
+  'How videos are selected': 'Як підібрані відео',
+  'CalCar looks for videos about this exact generation of the car, drops unrelated clips and keeps reviews, owner experience and problem breakdowns. If there are few good videos in the report language, the list is topped up with English ones.': 'CalCar шукає відео саме за поколінням автомобіля, відсіює нерелевантні ролики і відбирає огляди, досвід власників і розбори проблем. Якщо якісних відео мовою звіту мало, добірка доповнюється англомовними.',
   'Videos about this model': 'Відео про цю модель',
   'Show more': 'Показати ще',
   'Show less': 'Згорнути',
   'Open on YouTube': 'Відкрити на YouTube',
   'Average mileage': 'Середній пробіг',
-  'Norm': 'Норма',
   'Average calculated from the vehicle age.': 'Середнє розраховано за віком автомобіля.',
   'From the seller': 'Від продавця',
   'Did this analysis help you decide?': 'Чи допоміг розбір ухвалити рішення?',

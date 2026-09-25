@@ -66,6 +66,18 @@ const eq = (a, b, m) => { if (a !== b) errs.push(m + ': ' + JSON.stringify(a) + 
   /* 5. VIN відсутній -> <= 39 */
   const r5 = run({ listing: { vin: null, country: 'UA', make: 'BMW', odometer_km: 150000, listing_equipment: ['x'] } });
   ok(r5.overall_internal <= 39, 'VIN absent <= 39: ' + r5.overall_internal);
+  /* без VIN бал за авто рахується (див. scorev4test), але впевненість низька,
+     а історія лишається НЕПІДТВЕРДЖЕНОЮ: жодних балів за "чисту історію" */
+  const rAudi = run({
+    listing: { vin: null, country: 'UA', make: 'Audi', model: 'A5', odometer_km: 60000, listing_equipment: ['x'] },
+    photosCount: 24, hf: { registry_present: false, past_listings: 0 }, nhtsa: null,
+    auctionSearch: null, auctionRecordExists: false, hvPresent: false,
+    snaps: [], v4: { mileage_points: [{ date: '2026-09-25', families: ['current'] }], vin_check: { mismatch: false } },
+  });
+  ok(rAudi.overall_internal <= 39, 'Audi без VIN: впевненість мала лишитись низькою: ' + rAudi.overall_internal);
+  ok(rAudi.domains.history.earned === 0, 'Audi без VIN: непідтверджена історія дала бали');
+  ok(rAudi.domains.photos.earned > 0, 'Audi без VIN: кадри мали дати покриття');
+  ok(rAudi.text_key === 'Data is limited', 'Audi без VIN: текст впевненості не про обмежені дані: ' + rAudi.text_key);
 
   /* 6. валідний європейський VIN і невдалий декод vPIC -> НЕ кап 39 */
   const r6 = run({ listing: { vin: 'WVWZZZ7MZ6V009287', country: 'UA', make: 'Volkswagen', odometer_km: 360000, listing_equipment: ['x'] }, nhtsa: null, hf: { registry_present: false, past_listings: 0 } });

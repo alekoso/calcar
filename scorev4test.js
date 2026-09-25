@@ -68,6 +68,27 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     eq(r4.score_eligible, true, 'rich visual eligible');
     const r5 = run({ evidence: { ...baseEv, identity_confirmed: false } });
     eq(r5.score_unavailable_reason, 'vehicle_identity_unconfirmed', 'identity reason');
+    /* ---- реальний випадок: Audi A5 2021 без VIN ----
+       Оголошення дає рік, модель, пробіг, багато кадрів, опис і комплектацію,
+       але VIN продавець не вказав, і історію ніхто не підтвердив. Бал МАЄ
+       бути: рахуємо за тим, що є. Історія лишається невідомою, а не чистою */
+    const audi = {
+      basics_known: true, mileage_known: true, photos_count: 24, seller_text_chars: 700,
+      identity_confirmed: false, registry_present: false, auction_record_exists: false,
+      historical_listings_count: 0, mileage_observation_count: 0,
+      cv_status: 'ok', cv_zones_sufficient: 8, listing_vin: null,
+    };
+    const rAudi = run({ evidence: audi, listingText: 'Audi A5 45 TFSI quattro, 60 000 км, один власник.' });
+    eq(rAudi.score_eligible, true, 'Audi A5 без VIN мала отримати бал');
+    ok(typeof rAudi.final === 'number' && rAudi.final > 0, 'Audi A5: число балу не пораховане');
+    eq(rAudi.eligibility.identity_source, 'listing_evidence', 'Audi A5: ідентичність мала спертись на оголошення');
+    eq(rAudi.eligibility.domains.history, false, 'Audi A5: історія мусить лишитись непідтвердженою');
+    /* відсутній VIN сам по собі не дає ані балів, ані чистої історії */
+    const rVin = run({ evidence: { ...audi, identity_confirmed: true, listing_vin: VIN } });
+    ok(rAudi.final <= rVin.final, 'без VIN бал не може бути вищим, ніж із підтвердженою ідентичністю');
+    /* мало кадрів або невідомий пробіг: оголошення ідентичністю не стає */
+    eq(run({ evidence: { ...audi, photos_count: 5 } }).score_unavailable_reason, 'vehicle_identity_unconfirmed', 'мало кадрів без VIN: бал не видається');
+    eq(run({ evidence: { ...audi, mileage_known: false } }).score_unavailable_reason, 'vehicle_identity_unconfirmed', 'невідомий пробіг без VIN: бал не видається');
     const r6 = run({ findings: [{ type: 'VIN_IDENTITY_PROBLEM', event_id: 'vin_1', evidence: [{ source: 'current_photos', ref: 'photo_4', description: 'На табличці VIN WBAJE7C34HG000000, в оголошенні інший' }] }] });
     eq(r6.score_unavailable_reason, 'vehicle_identity_mismatch', 'VIN mismatch reason'); eq(r6.final, null, 'VIN mismatch без числа');
     const r7 = run({ findings: [{ type: 'VIN_IDENTITY_PROBLEM', event_id: 'vin_1', evidence: [{ source: 'current_photos', ref: 'photo_4', description: 'VIN ' + VIN + ' читається частково' }] }] });
@@ -314,7 +335,9 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
   /* ===== 12. незмінний config_tag ===== */
   {
     const hash = crypto.createHash('md5').update(JSON.stringify(C)).digest('hex');
-    const EXPECTED = '8813cf075a0467bf0295500543ed97cf';
+    /* 2026-09-25: у ELIGIBILITY додано listing_identity_photos, тег піднятий
+       до v4-prod-2026-09-25. Формула балу не змінювалась */
+    const EXPECTED = 'deff34915c447031c29e744495c60965';
     if (hash !== EXPECTED) errs.push('SCORE_CONFIG_V4 змінився (md5 ' + hash + '), онови CONFIG_TAG і хеш у тесті');
   }
 

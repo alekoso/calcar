@@ -61,7 +61,14 @@ const page = fs.readFileSync('result-check.html', 'utf8');
   if (!/addEventListener\('focusin'/.test(page)) errs.push('шкала не відкривається з клавіатури');
   /* це шкала вимірювання, а не повзунок */
   if (/type="range"|mi-thumb|role="slider"/.test(page)) errs.push('шкала стала повзунком');
-  if (!/<span aria-hidden="true">0<\/span><span class="mi-norm-l" id="miNormL"><\/span><span id="miUpper" aria-hidden="true"><\/span>/.test(page)) errs.push('шкала без числових меж і підпису норми');
+  if (!/<span>0<\/span><span id="miUpper"><\/span>/.test(page)) errs.push('шкала без числових меж');
+  /* норму зі шкали прибрали: лишаються нинішнє значення, маркер і градієнт */
+  if (/mi-norm|miNorm|t\('Norm'\)/.test(page)) errs.push('позначка норми повернулась на шкалу');
+  if (!/\$\('miMark'\)\.style\.left = f\(mi\.marker_pct\)/.test(page)) errs.push('маркер поточного авто зник зі шкали');
+  /* вторинне значення читабельне, а не блякле */
+  const trig = (/\n\s*\.mi-trig\{([^}]*)\}/.exec(page) || [])[1] || '';
+  if (!/color:var\(--ink-2\)/.test(trig) || /color:var\(--faint\)/.test(trig)) errs.push('рядок км/міс лишився блідим');
+  if (!/font-weight:600/.test(trig)) errs.push('рядок км/міс без ваги, виглядає вимкненим');
 
   /* ---------- 1б. норма класу на шкалі ---------- */
   {
@@ -86,9 +93,7 @@ const page = fs.readFileSync('result-check.html', 'utf8');
     /* одиниця лише у значенні зверху: 0, норма і права межа без км/міс */
     const fillSrc = page.slice(page.indexOf('function fill(mi) {'), page.indexOf('function open(btn, pin)'));
     if (!/\$\('miUpper'\)\.textContent = nf\(mi\.upper_km\) \+ '\+';/.test(fillSrc)) errs.push('права межа шкали з одиницею або без "+"');
-    if (!/\$\('miNormL'\)\.textContent = t\('Norm'\) \+ ' ' \+ nf\(mi\.norm_km\);/.test(fillSrc)) errs.push('підпис норми не "Норма N"');
     if ((fillSrc.match(/km\/mo/g) || []).length !== 1) errs.push('км/міс повторюється на підписах шкали');
-    if (!/\$\('miNorm'\)\.style\.left = [^;]*mi\.norm_pct/.test(fillSrc)) errs.push('риска норми стоїть не за norm_pct');
     if (/Upper limit|Верхн|Мало|Много|Багато|>Good<|>Bad</.test(page.slice(page.indexOf('id="miPop"'), page.indexOf('id="miPop"') + 900))) errs.push('у шкалі зʼявились зайві підписи');
   }
   if (/(>|')(Low|Normal|Intensive|Very intensive)(<|')/.test(page)) errs.push('у шкалі текстові рівні замість чисел');
@@ -359,13 +364,70 @@ const page = fs.readFileSync('result-check.html', 'utf8');
     const plain = page.slice(page.indexOf('.eq-chip{'), page.indexOf('}', page.indexOf('.eq-chip{')) + 1);
     if (/animation/.test(plain)) errs.push('звичайний chip отримав анімацію');
     /* класифікації дорогих опцій не чіпали */
-    if (!/const hv = o\.value_tier === 'high_value';/.test(page)) errs.push('ознака дорогої опції більше не value_tier');
+    /* цінність опції: каталог MI головний, далі загальний список дорогого */
+    if (!/const hv = CalCarEquipmentValue\.isHighValue\(o\);/.test(page)) errs.push('чип більше не питає підсумкову цінність опції');
+  }
+
+  /* ---------- 6. цінність опцій, легенда, підказка відео, PDF, історія ---------- */
+  {
+    const ev = {};
+    vm.runInNewContext(fs.readFileSync('equipment-value.js', 'utf8'), { window: ev, String, RegExp });
+    const EV = ev.CalCarEquipmentValue;
+    if (!EV) errs.push('equipment-value.js не публікує CalCarEquipmentValue');
+    else {
+      /* каталог MI головний в обидва боки */
+      if (!EV.isHighValue({ name: 'Люк', value_tier: 'standard', mi: { confirmed: true, value_tier: 'high_value' } })) errs.push('MI high_value не виграв');
+      if (EV.isHighValue({ name: 'Пневмоподвеска', value_tier: 'high_value', mi: { confirmed: true, value_tier: 'standard' } })) errs.push('загальний список перебив MI, який сказав "звичайна"');
+      /* каталог мовчить: працює загальний список */
+      if (!EV.isHighValue({ name: 'Пневмоподвеска', value_tier: 'standard' })) errs.push('без каталогу дорога опція не підсвічена');
+      if (!EV.isHighValue({ name: 'Проекционный дисплей', value_tier: 'standard', mi: { confirmed: false, value_tier: 'high_value' } })) errs.push('непідтверджений каталог мав пустити загальний список');
+      /* очевидно дороге обладнання і його синоніми */
+      for (const n of ['Пневмоподвеска', 'Air suspension', 'Адаптивная подвеска', 'Подруливающая задняя ось', 'Керамические тормоза',
+        'Ночное видение', 'Камера 360', 'Камера кругового обзора', 'Матричные фары', 'Лазерные фары',
+        'Head-Up Display', 'HUD', 'Проекционный дисплей', 'Проєкційний дисплей',
+        'Массаж сидений', 'Вентиляция сидений', 'Вентильовані сидіння',
+        'Аудиосистема Burmester', 'Bang & Olufsen', 'Mark Levinson', 'Bowers & Wilkins', 'Доводчики дверей']) {
+        if (!EV.genericHighValue(n)) errs.push('дорога опція не впізнана: ' + n);
+      }
+      /* звичайне лишається звичайним */
+      for (const n of ['Apple CarPlay', 'Подогрев сидений', 'Парктроники', 'Круиз-контроль', 'Adaptive cruise control',
+        'Безключевой доступ', 'Навигация', 'Климат-контроль', 'Камера заднего вида', 'Люк', 'Подогрев руля']) {
+        if (EV.genericHighValue(n)) errs.push('звичайна опція названа дорогою: ' + n);
+      }
+      /* синоніми одного поняття сходяться */
+      if (EV.conceptFor('HUD') !== EV.conceptFor('Проекционный дисплей') || EV.conceptFor('HUD') !== EV.conceptFor('Head-Up Display')) errs.push('синоніми HUD не зводяться до одного поняття');
+      if (EV.conceptFor('Пневмоподвеска') !== EV.conceptFor('Air suspension')) errs.push('синоніми пневмопідвіски не зводяться до одного поняття');
+    }
+    /* легенда лише коли в цьому звіті є хоч одна дорога опція */
+    if (!/id="eqLegend" hidden>Expensive options<\/span>/.test(page)) errs.push('легенда дорогих опцій показується за замовчуванням');
+    if (!/const anyHv = eqV2\.some\(o => CalCarEquipmentValue\.isHighValue\(o\)\);\n\s*\$\('eqLegend'\)\.hidden = !anyHv;/.test(page)) errs.push('легенда не залежить від наявності дорогих опцій');
+    if (!/\.sec-meta\[hidden\]\{display:none\}/.test(page)) errs.push('display класу перебиває hidden у легенди');
+    if (!/<script src="\/equipment-value\.js"><\/script>/.test(page)) errs.push('equipment-value.js не підключений');
+
+    /* підказка про добір відео: працює і по тапу, не лише по наведенню */
+    if (!/id="ytWhy"[^>]*aria-haspopup="dialog"[^>]*aria-expanded="false"/.test(page)) errs.push('підказка про відео не кнопка з aria');
+    if (!/btn\.addEventListener\('click', e => \{ e\.stopPropagation\(\); setOpen\(pop\.hidden\); \}\);/.test(page)) errs.push('підказка про відео не відкривається кліком або тапом');
+    if (!/e\.key === 'Escape' && !pop\.hidden/.test(page)) errs.push('підказка про відео не закривається по ESC');
+    if (/\.yt-why-pop[^{]*\{[^}]*display:block[^}]*\}\s*\.yt-why:hover/.test(page)) errs.push('підказка тримається лише на наведенні');
+    for (const claim of ['лучшие видео', 'best videos in the world', 'AI analysis', 'редакц']) {
+      if (page.includes(claim)) errs.push('у підказці про відео зайва заява: ' + claim);
+    }
+
+    /* PDF: кнопки в інтерфейсі нема, друкована верстка лишається */
+    if (/id="pdfBtn"|Download PDF/.test(page)) errs.push('кнопка PDF лишилась у звіті');
+    if (!/@media print/.test(page)) errs.push('друкована верстка звіту знесена разом із кнопкою');
+    if (!/PDF_FONT_B/.test(fs.readFileSync('result.html', 'utf8'))) errs.push('генерація PDF в Import знесена');
+
+    /* одне підсумкове речення історії показується по центру */
+    if (!/const solo = hist\.length === 1 && !hist\[0\]\.date;/.test(page)) errs.push('одиночне речення історії не відокремлене від хронології');
+    if (!/\.hist-solo\{max-width:62ch;margin-inline:auto;text-align:center\}/.test(page)) errs.push('одиночне речення історії не по центру');
+    if (!/<div class="dmg-note hist-solo">/.test(page)) errs.push('одиночне речення історії рендериться рядком хронології');
   }
 
   /* словники */
   for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
     const s = fs.readFileSync(d, 'utf8');
-    for (const k of ['Average mileage', 'Average calculated from the vehicle age.', 'From the seller', 'Did this analysis help you decide?', 'Yes', 'Not really', 'What was missing?', 'Send', 'Thanks for the feedback', 'km/mo', 'Norm', 'CalCar conclusion', 'Archive photos were used in the analysis but are not available to view right now.', 'Archive photos are unavailable.', 'Owner #{n}']) {
+    for (const k of ['Average mileage', 'Average calculated from the vehicle age.', 'From the seller', 'Did this analysis help you decide?', 'Yes', 'Not really', 'What was missing?', 'Send', 'Thanks for the feedback', 'km/mo', 'CalCar conclusion', 'Expensive options', 'How videos are selected', 'CalCar AI Chat', 'Archive photos were used in the analysis but are not available to view right now.', 'Archive photos are unavailable.', 'Owner #{n}']) {
       if (!s.includes("'" + k + "':")) errs.push(d + ': нема ключа "' + k + '"');
     }
   }

@@ -515,7 +515,8 @@ const REPORTS = [
       if (!(py + bw === hy + hbw && px + bw === hx + hbw)) errs.push('premium-chip змінює геометрію: ' + [py + bw, hy + hbw, px + bw, hx + hbw].join('/'));
     }
     if (!pg4.includes("t('Expensive option')")) errs.push('tooltip не Дорога опція');
-    if (!pg4.includes('Expensive options highlighted')) errs.push('нема підпису Дорогі опції виділені');
+    if (!pg4.includes('>Expensive options</span>')) errs.push('нема підпису Дорогі опції');
+    if (pg4.includes('Expensive options highlighted')) errs.push('старий підпис легенди лишився');
     if (pg4.includes("t('Цінна опція')")) errs.push('старий tooltip лишився');
     /* без першої особи */
     if (!api.includes('БЕЗ ПЕРШОЇ ОСОБИ')) errs.push('нема заборони першої особи в рішенні');

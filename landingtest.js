@@ -239,7 +239,9 @@ for (const [f, s] of Object.entries(PAGES)) if (/last_product|lastProduct|calcar
   if (!/new IntersectionObserver\(/.test(flowJs) || !/rootMargin: '-12% 0px -12% 0px'/.test(flowJs)) errs.push('потік не привʼязаний до появи секції на екрані');
   if (/threshold: 0\.\d/.test(flowJs)) errs.push('частка висоти як поріг: на телефоні схема вища за екран і цикл не стартує');
   if (!/en\.isIntersecting\) start\(\); else stop\(\)/.test(flowJs)) errs.push('поза екраном цикл не зупиняється');
-  if (!/mouseenter[\s\S]{0,80}stop\(\)/.test(flowJs) || !/mouseleave[\s\S]{0,80}start\(\)/.test(flowJs)) errs.push('під курсором автоматичний показ не ставиться на паузу');
+  /* курсор не втручається: ні паузи, ні підсвічування картки під мишею */
+  if (/mouseenter|mouseleave|hovered/.test(flowJs)) errs.push('курсор досі зупиняє або збиває автоматичну послідовність');
+  if (/\.node:hover/.test(home)) errs.push('наведення досі підсвічує картку і конкурує з послідовністю');
   if (/requestAnimationFrame|setInterval/.test(flowJs)) errs.push('замість одного таймера зроблено цикл кадрів');
   /* порядок кроків: чотири джерела -> лінії -> Decision Engine -> лінія -> результат -> асистент */
   const steps = (/var STEPS = \[([\s\S]*?)\];/.exec(flowJs) || [])[1] || '';
@@ -266,7 +268,7 @@ for (const [f, s] of Object.entries(PAGES)) if (/last_product|lastProduct|calcar
   if (!(g1 + g2 > 0 && g1 + g2 <= 56)) errs.push('проміжок над секцією не зменшений приблизно вдвічі: ' + (g1 + g2));
   if (/glow|neon|particle|blur\(|rotate3d|perspective/.test(tech)) errs.push('у блоці зʼявились ефекти поза мовою CalCar');
   /* мікровзаємодії стримані: рамка і іконка, без стрибка картки */
-  if (!/\.node:hover\{border-color:var\(--line-strong\)/.test(home)) errs.push('нема стриманого hover на вузлах');
+  if (/\.node:hover/.test(home)) errs.push('наведення знову підсвічує картку');
   if (/\.node:hover\{[^}]*transform:translateY\(-[2-9]/.test(home)) errs.push('картки стрибають на hover');
   if (!/transition:[^;]*\.18s ease/.test(home)) errs.push('переходи не плавні 180 мс');
   /* копія каже, що це системи CalCar, а не абстрактний ШІ */

@@ -21,7 +21,7 @@ import { resolveAccidentEvents, sanitizeFindingsV3, zoneClasses } from './score-
 import { ownerEventsConsistent } from './history-owners.js';
 
 export const SCORE_CONFIG_V4 = {
-  CONFIG_TAG: 'v4-prod-2026-09-24',
+  CONFIG_TAG: 'v4-prod-2026-09-25',
   STARTING_SCORE: 10,
   ACCIDENT: { light: 0.4, medium: 1.2, heavy: 2.5, total: 5.0, unknown: 1.5, unrepaired_seller: 2.5, earlier_events: 1.0, flood: 2.5, fire: 3.0 },
   BODY: { dent: 0.5, corrosion: 0.6, headlight: 0.4, windshield: 0.3, broken_element: 0.3, missing_part: 0.3, wheel: 0.15, wheel_max: 0.3 },
@@ -40,7 +40,9 @@ export const SCORE_CONFIG_V4 = {
     localized_powertrain_issue: 1.5, chassis_brakes_steering: 1.0, body_work_needed: 0.8, electrics_comfort: 0.5,
     consumables: 0, srs_not_restored: 2.0, srs_warning_generic: 1.0,
   },
-  ELIGIBILITY: { photos_min: 6, seller_text_chars: 150, rich_photos: 12, rich_zones: 6, strong_item_min: 0.4, mileage_points_min: 2 },
+  ELIGIBILITY: { photos_min: 6, seller_text_chars: 150, rich_photos: 12, rich_zones: 6, strong_item_min: 0.4, mileage_points_min: 2,
+    /* оголошення саме по собі як ідентичність: базові факти плюс власні докази */
+    listing_identity_photos: 8 },
 };
 
 export const SELLER_CATEGORIES = ['vehicle_not_running_or_unit_replacement', 'major_powertrain_symptom', 'generic_powertrain_warning',
@@ -651,7 +653,16 @@ export function detectVinMismatch(findings, listingVin) {
 export function eligibilityV4(ctx, items, events, cfg = SCORE_CONFIG_V4) {
   const e = ctx || {};
   const E = cfg.ELIGIBILITY;
-  const identityOk = !!e.identity_confirmed && e.basics_known !== false;
+  /* Ідентичність підтверджує декодер VIN або держреєстр площадки. Але сама
+     ВІДСУТНІСТЬ VIN не робить авто неоцінюваним: коли оголошення дає базові
+     факти (рік і модель), відомий пробіг і достатньо власних кадрів, бал
+     рахується за тим, що Є. Непідтверджена історія лишається НЕВІДОМОЮ:
+     вона б'є по Confidence і покриттю, а не по самій можливості оцінки.
+     Чистої історії з невідомості ніхто не вигадує. */
+  const listingIdentity = e.basics_known === true
+    && e.mileage_known === true
+    && (num(e.photos_count) || 0) >= E.listing_identity_photos;
+  const identityOk = e.basics_known !== false && (!!e.identity_confirmed || listingIdentity);
   const strong = events.length > 0
     || items.some(i => i.input === 'mileage_rollback' && i.key === 'input5:rollback')
     || items.some(i => (i.key === 'flood_event' || i.key === 'fire_event'))
@@ -668,7 +679,7 @@ export function eligibilityV4(ctx, items, events, cfg = SCORE_CONFIG_V4) {
   if (!identityOk) reason = 'vehicle_identity_unconfirmed';
   else if (e.vin_mismatch === true) reason = 'vehicle_identity_mismatch';
   else if (!(strong || domainsCount >= 2 || richVisual)) reason = 'insufficient_evidence';
-  return { eligible: reason === null, reason, identity_ok: identityOk, mismatch: e.vin_mismatch === true, strong_negative: strong, domains, domains_count: domainsCount, rich_visual: richVisual };
+  return { eligible: reason === null, reason, identity_ok: identityOk, identity_source: e.identity_confirmed ? 'decoder_or_registry' : (listingIdentity ? 'listing_evidence' : null), mismatch: e.vin_mismatch === true, strong_negative: strong, domains, domains_count: domainsCount, rich_visual: richVisual };
 }
 
 /* ---------- головна формула ---------- */

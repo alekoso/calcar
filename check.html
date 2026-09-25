@@ -476,9 +476,7 @@
   .tech{margin-top:8px;padding-top:28px}
   .arch{--g:16px;display:grid;grid-template-columns:repeat(4,1fr);gap:0 var(--g);margin-top:32px;align-items:stretch}
   .node{display:flex;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:15px 16px;text-align:left;transition:border-color .18s ease,box-shadow .18s ease}
-  .node:hover{border-color:var(--line-strong);box-shadow:0 4px 14px rgba(20,22,25,.05)}
   .node-ic{width:30px;height:30px;flex:0 0 auto;border-radius:8px;background:var(--surface-2);color:var(--ink-2);display:flex;align-items:center;justify-content:center;transition:background .18s ease,color .18s ease}
-  .node:hover .node-ic{background:var(--brand-soft);color:var(--brand-ink)}
   .node-ic svg{width:16px;height:16px}
   .node b{display:block;font-size:14px;letter-spacing:-.1px}
   .node p{font-size:13px;line-height:1.5;color:var(--muted);margin-top:4px}
@@ -767,7 +765,7 @@
       <span class="prod" data-prod="Check" aria-hidden="true"></span>
     </div>
     <div class="header-right">
-      <button class="btn-ai" id="aiBtn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.7 4.6L18 9.3l-4.3 1.7L12 15.6l-1.7-4.6L6 9.3l4.3-1.7z"/><path d="M18.5 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></svg><span class="ai-full">My CalCar AI</span><span class="ai-short">CalCar AI</span></button>
+      <button class="btn-ai" id="aiBtn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.7 4.6L18 9.3l-4.3 1.7L12 15.6l-1.7-4.6L6 9.3l4.3-1.7z"/><path d="M18.5 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></svg><span class="ai-full">CalCar AI Chat</span><span class="ai-short">CalCar AI</span></button>
     </div>
   </div>
 </header>
@@ -1779,7 +1777,7 @@ if (window.CALCAR_SIGNED_IN !== undefined) window.calcarAuthState(window.CALCAR_
     [nodes[0], 700], [nodes[1], 700], [nodes[2], 700], [nodes[3], 700],
     [fan, 900], [nodes[4], 900], [split, 700], [nodes[5], 700], [nodes[6], 2500],
   ];
-  var i = 0, timer = null, running = false, hovered = false;
+  var i = 0, timer = null, running = false;
   function clear() { arch.querySelectorAll('.is-live').forEach(function (el) { el.classList.remove('is-live'); }); }
   function step() {
     if (i >= STEPS.length) { i = 0; clear(); }
@@ -1789,7 +1787,7 @@ if (window.CALCAR_SIGNED_IN !== undefined) window.calcarAuthState(window.CALCAR_
     timer = setTimeout(step, cur[1]);
   }
   function start() {
-    if (running || hovered) return;
+    if (running) return;
     running = true; i = 0; clear(); step();
   }
   function stop() {
@@ -1803,9 +1801,7 @@ if (window.CALCAR_SIGNED_IN !== undefined) window.calcarAuthState(window.CALCAR_
   new IntersectionObserver(function (entries) {
     entries.forEach(function (en) { if (en.isIntersecting) start(); else stop(); });
   }, { rootMargin: '-12% 0px -12% 0px' }).observe(arch);
-  /* під курсором автоматичний показ стоїть, підсвічена лише ця картка */
-  arch.addEventListener('mouseenter', function () { hovered = true; stop(); }, true);
-  arch.addEventListener('mouseleave', function () { hovered = false; start(); });
+  /* курсор на схему НЕ впливає: послідовність іде так, ніби миші нема */
 })();
 </script>
 <script>
