@@ -208,21 +208,45 @@ for (const [f, s] of Object.entries(PAGES)) if (/last_product|lastProduct|calcar
   for (const notLive of ['Vehicle Graph', 'CalCar Data', 'Ask CalCar', 'Market', 'Current Vision']) {
     if (tech.includes(notLive)) errs.push('у блок потрапила нереалізована система: ' + notLive);
   }
-  /* три колонки на десктопі, одна на телефоні, без ліній звʼязку на вузькому */
-  if (!/\.tech-flow\{display:grid;grid-template-columns:1\.15fr 1fr 1fr/.test(home)) errs.push('на десктопі не композиція з трьох колонок');
-  if (!/@media\(max-width:900px\)\{\n\s*\.tech-flow\{grid-template-columns:1fr/.test(home)) errs.push('на телефоні картки не в одну колонку');
-  if (!/\.tech-line\{display:none\}/.test(home)) errs.push('лінії звʼязку лишились на вузькому екрані');
-  /* лайм лишається акцентом: смуга ледь тонована, не лаймова */
-  if (/\.tech-band\{background:var\(--brand\)/.test(home)) errs.push('смуга технологій залита лаймом');
+  /* композиція: чотири рівні картки, Decision Engine по центру, два
+     результати по центру під ним. Симетрія тримається сіткою, не очима */
+  if (!/\.arch\{--g:16px;display:grid;grid-template-columns:repeat\(4,1fr\)/.test(home)) errs.push('верхній шар не з чотирьох рівних карток');
+  if (!/\.node-engine\{grid-column:2 \/ 4/.test(home)) errs.push('Decision Engine не по центру сітки');
+  if (!/\.out-a\{grid-column:1 \/ 3\}/.test(home) || !/\.out-b\{grid-column:3 \/ 5\}/.test(home)) errs.push('нижні картки не симетричні відносно центра');
+  /* звʼязки: у тій самій сітці, центри колонок як (100% - 3g)/8 */
+  if (!/\.join\{grid-column:1 \/ -1;position:relative/.test(home)) errs.push('звʼязки живуть поза сіткою карток');
+  for (const pos of ['\\(100% - 3 \\* var\\(--g\\)\\) \\/ 8', '3 \\* \\(100% - 3 \\* var\\(--g\\)\\) \\/ 8 \\+ var\\(--g\\)', '5 \\* \\(100% - 3 \\* var\\(--g\\)\\) \\/ 8 \\+ 2 \\* var\\(--g\\)', '7 \\* \\(100% - 3 \\* var\\(--g\\)\\) \\/ 8 \\+ 3 \\* var\\(--g\\)']) {
+    if (!new RegExp('left:calc\\(' + pos + '\\)').test(home)) errs.push('стійка звʼязку не в центрі колонки: ' + pos.slice(0, 20));
+  }
+  if (!/\.join\.split i\.h\{left:calc\(\(100% - 3 \* var\(--g\)\) \/ 4 \+ var\(--g\) \/ 2\);right:calc\(\(100% - 3 \* var\(--g\)\) \/ 4 \+ var\(--g\) \/ 2\)\}/.test(home)) errs.push('шина до нижніх карток не в їх центрах');
+  if (!/\.join i\.d\{width:1px;left:50%/.test(home)) errs.push('спуск між шарами не по центру');
+  /* одна мова карток: без пунктиру і сірої "вимкненої" картки */
+  if (/border-style:dashed/.test(home)) errs.push('пунктирна картка результату лишилась');
+  if (/\.node-out\{background:var\(--surface-2\)/.test(home)) errs.push('картка результату досі сіра');
+  if (!/\.node\{display:flex;gap:12px;background:var\(--card\);border:1px solid var\(--line\)/.test(home)) errs.push('картки перестали бути однією родиною');
+  /* фон секції нейтральний, як у решти сторінки */
+  if (/\.tech-band/.test(home)) errs.push('лаймова смуга під секцією лишилась');
+  if (/tech-flow\{display:grid;grid-template-columns:1\.15fr/.test(home)) errs.push('стара асиметрична композиція лишилась');
+  /* телефон: колонка карток і коротка риска між шарами, без геометрії */
+  if (!/@media\(max-width:900px\)\{\n\s*\/\*[^*]*\*\/\n\s*\.arch\{grid-template-columns:1fr/.test(home)) errs.push('на телефоні картки не в одну колонку');
+  if (!/\.node-engine,\.out-a,\.out-b\{grid-column:1 \/ -1\}/.test(home)) errs.push('на телефоні картки не на всю ширину');
+  if (!/\.join i\{display:none\}/.test(home)) errs.push('складна геометрія звʼязків лишилась на телефоні');
   /* рух тільки за згодою і тільки повільний */
-  const flow = (/@keyframes tech-flow\{[^}]*\}[^}]*\}/.exec(home) || [''])[0];
-  if (!/@media\(prefers-reduced-motion:no-preference\)\{\.tech-line\{animation:tech-flow (\d+)s/.test(home)) errs.push('рух по лініях не за prefers-reduced-motion');
+  if (!/@media\(prefers-reduced-motion:no-preference\)\{\.join i\.d\{animation:tech-flow (\d+)s/.test(home)) errs.push('рух по лініях не за prefers-reduced-motion');
   const dur = parseInt((/animation:tech-flow (\d+)s/.exec(home) || [])[1] || '0', 10);
   if (!(dur >= 6)) errs.push('рух по лініях швидкий: ' + dur + 's');
   if (/glow|neon|particle|blur\(|rotate3d|perspective/.test(tech)) errs.push('у блоці зʼявились ефекти поза мовою CalCar');
-  /* мікровзаємодії стримані: підйом на 1px і плавні переходи */
-  if (!/\.node:hover\{[^}]*transform:translateY\(-1px\)/.test(home)) errs.push('нема стриманого hover на вузлах');
+  /* мікровзаємодії стримані: рамка і іконка, без стрибка картки */
+  if (!/\.node:hover\{border-color:var\(--line-strong\)/.test(home)) errs.push('нема стриманого hover на вузлах');
+  if (/\.node:hover\{[^}]*transform:translateY\(-[2-9]/.test(home)) errs.push('картки стрибають на hover');
   if (!/transition:[^;]*\.18s ease/.test(home)) errs.push('переходи не плавні 180 мс');
+  /* копія каже, що це системи CalCar, а не абстрактний ШІ */
+  for (const claim of ["CalCar's AI vision module", "CalCar's memory system", "CalCar's automotive knowledge base", "CalCar's search module", "CalCar's Decision Engine", "CalCar's AI assistant"]) {
+    if (!tech.includes(claim)) errs.push('опис не називає систему CalCar: ' + claim);
+  }
+  for (const hype of ['most advanced', 'unique neural', 'our own AI model', 'proprietary model', 'world-class']) {
+    if (tech.toLowerCase().includes(hype)) errs.push('непідтверджена заява в описі: ' + hype);
+  }
   /* доступність: фокус на кнопці і на полі лишається видимим */
   if (!/\.btn-primary:focus-visible\{outline:2px solid var\(--ink\)/.test(home)) errs.push('головна кнопка без видимого фокуса');
   if (!/input\[type=text\]:focus\{outline:none;border-color:var\(--brand\)/.test(home)) errs.push('поле втратило акцент фокуса');
