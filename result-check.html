@@ -767,6 +767,13 @@
   body.await-job .await-box{display:block}
   body.await-job .report-skel{display:none}
   body.await-job .ld{margin-top:0}
+  /* звіт не завантажився (мережа, 5xx): не стадії аналізу, а чесне повідомлення */
+  .job-fail{padding:6px 2px}
+  .jf-t{font-size:15px;font-weight:700;color:var(--ink)}
+  .jf-s{margin-top:4px;font-size:13.5px;color:var(--muted)}
+  .jf-btn{margin-top:12px;display:inline-flex;align-items:center;height:38px;padding:0 16px;border:1px solid var(--line-strong);border-radius:var(--radius);background:var(--card);color:var(--ink);font:inherit;font-size:14px;font-weight:600;cursor:pointer}
+  .jf-btn:hover{background:var(--surface-2)}
+  .jf-btn:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
   /* Той самий випадок, що з блоком недавніх: скелетон це flex-елемент
      сторінки з авто-полями, тому без width:100% його ширина рахувалась від
      плейсхолдерів і була вужчою за майбутній звіт */
@@ -1391,43 +1398,97 @@ function loadingError(rid, msg) {
 
 /* назва вкладки на час очікування; після появи звіту повертається */
 let AWAIT_TITLE = null;
-(async function init(){
-  if (OPEN_TOKEN) {
-    const q = 'token=' + encodeURIComponent(OPEN_TOKEN);
-    let j = null;
-    for (let attempt = 0; attempt < 240; attempt++) {
-      try {
-        const r = await fetch('/api/check-job?' + q + '&lang=' + encodeURIComponent(window.calcarLang()), { cache: 'no-store' });
-        j = await r.json().catch(() => null);
-        if (r.status === 404) { document.body.innerHTML = '<div class="wrap"><div class="card"><div class="card-body">' + esc(t('Report not found')) + '</div></div></div>'; document.body.classList.add('report-ready'); return; }
-      } catch (e) { j = null; }
-      if (j && j.status === 'done' && j.report && j.report.vehicle) break;
-      if (j && j.status === 'error') {
-        /* аналіз не встиг завершитись (retryable): замість вічного очікування
-           повідомлення і повторний запуск зі сторінки Check з тією ж адресою */
-        const retry = j.retryable ? ' <a class="job-retry" href="/' + (j.url ? '?url=' + encodeURIComponent(j.url) : '') + '">' + esc(t('Try again')) + '</a>' : '';
-        document.body.innerHTML = '<div class="wrap"><div class="card"><div class="card-body">' + esc(j.error || t('Server error')) + retry + '</div></div></div>'; document.body.classList.add('report-ready'); return;
-      }
-      /* автор повернувся до ще не готового аналізу: показуємо той самий
-         багатоетапний індикатор, що й на сторінці запуску, і рухаємо його
-         реальною стадією з сервера */
-      if (!ld) { document.body.classList.add('await-job'); AWAIT_TITLE = document.title; document.title = t('The report is not ready yet'); loadingStart(); }
-      if (ld && ld.setStage && j && STAGE_IDX[j.stage] != null) ld.setStage(STAGE_IDX[j.stage]);
-      await new Promise(r => setTimeout(r, document.visibilityState === 'visible' ? 3000 : 8000));
-    }
-    if (!j || !j.report) { location.replace('/'); return; }
-    if (ld) { await loadingFinish(ld.rid); document.body.classList.remove('await-job'); if (AWAIT_TITLE) document.title = AWAIT_TITLE; }
-    DATA = j.report;
-    READONLY = !(isLocalAuthor(OPEN_TOKEN) || (DATA._meta && DATA._meta.share_token && isLocalAuthor(DATA._meta.share_token)));
-    /* власник акаунта, що відкрив свій звіт за публічним посиланням, теж
-       бачить його як read-only: редагування живе на /check/<public_id> */
-    if (READONLY) document.body.classList.add('readonly');
-    /* канонічна людська адреса: slug із сервера, токен незмінний */
-    SHARE_SLUG = j.slug || (DATA._meta && DATA._meta.share_slug) || SHARE_SLUG || 'car';
-    history.replaceState(null, '', '/check/r/' + SHARE_SLUG + '/' + OPEN_TOKEN);
-    boot();
-    return;
+
+/* ---------- публічний звіт за токеном: читання durable job ----------
+   Два різні стани, які не можна змішувати:
+   A. сервер відповів, аналіз справді ще триває -> справжні стадії аналізу;
+   B. мережа, 5xx або не-JSON -> це НЕ "Check ще рахується": швидкі повтори
+      незалежно від видимості вкладки, після 5 збоїв поспіль людське
+      повідомлення з кнопкою, що перечитує той самий job (новий Check не
+      створюється). 404 (невідомий токен) не повторюється. */
+function jobReadOnce(q) {
+  let ctl = null, timer = null;
+  try { ctl = new AbortController(); timer = setTimeout(() => ctl.abort(), 20000); } catch (e) { ctl = null; }
+  return fetch('/api/check-job?' + q, { cache: 'no-store', signal: ctl ? ctl.signal : undefined })
+    .then(async r => {
+      if (r.status === 404) return { kind: 'not_found' };
+      if (!r.ok) return { kind: 'failed', http: r.status };
+      const j = await r.json().catch(() => null);
+      return j && typeof j === 'object' ? { kind: 'ok', job: j } : { kind: 'failed', http: r.status };
+    })
+    .catch(() => ({ kind: 'failed', http: 0 }))
+    .finally(() => { if (timer) clearTimeout(timer); });
+}
+async function jobReadResilient(q, sleep) {
+  const PAUSES = [1000, 2000, 3000, 5000];
+  let res = null;
+  for (let i = 0; i <= PAUSES.length; i++) {
+    res = await jobReadOnce(q);
+    if (res.kind !== 'failed') return res;
+    console.warn('[chk-job] read failed', { attempt: i + 1, http: res.http });
+    if (i < PAUSES.length) await sleep(PAUSES[i]);
   }
+  return res;
+}
+function jobLoadFailed() {
+  loadingStop(); ld = null;
+  if (AWAIT_TITLE) { document.title = AWAIT_TITLE; AWAIT_TITLE = null; }
+  document.body.classList.add('await-job');
+  const box = $('loadBox');
+  box.className = 'ld on';
+  box.innerHTML = '<div class="job-fail" role="alert"><div class="jf-t">' + esc(t('Could not load the report')) + '</div>'
+    + '<div class="jf-s">' + esc(t('This may be a temporary error. Please try again.')) + '</div>'
+    + '<button type="button" class="jf-btn" id="jobRetry">' + esc(t('Try loading again')) + '</button></div>';
+  $('jobRetry').addEventListener('click', () => {
+    box.innerHTML = ''; box.className = 'ld';
+    document.body.classList.remove('await-job');
+    openTokenReport();
+  });
+}
+/* -> job зі звітом або null (стан уже показано) */
+async function loadByToken(sleep) {
+  const q = 'token=' + encodeURIComponent(OPEN_TOKEN) + '&lang=' + encodeURIComponent(window.calcarLang());
+  for (let attempt = 0; attempt < 240; attempt++) {
+    const res = await jobReadResilient(q, sleep);
+    if (res.kind === 'not_found') { document.body.innerHTML = '<div class="wrap"><div class="card"><div class="card-body">' + esc(t('Report not found')) + '</div></div></div>'; document.body.classList.add('report-ready'); return null; }
+    if (res.kind !== 'ok') { jobLoadFailed(); return null; }
+    const j = res.job;
+    if (j.status === 'done' && j.report && j.report.vehicle) {
+      if (ld) { await loadingFinish(ld.rid); document.body.classList.remove('await-job'); if (AWAIT_TITLE) document.title = AWAIT_TITLE; }
+      return j;
+    }
+    if (j.status === 'error') {
+      /* аналіз не встиг завершитись (retryable): замість вічного очікування
+         повідомлення і повторний запуск зі сторінки Check з тією ж адресою */
+      const retry = j.retryable ? ' <a class="job-retry" href="/' + (j.url ? '?url=' + encodeURIComponent(j.url) : '') + '">' + esc(t('Try again')) + '</a>' : '';
+      document.body.innerHTML = '<div class="wrap"><div class="card"><div class="card-body">' + esc(j.error || t('Server error')) + retry + '</div></div></div>'; document.body.classList.add('report-ready'); return null;
+    }
+    /* автор повернувся до ще не готового аналізу: показуємо той самий
+       багатоетапний індикатор, що й на сторінці запуску, і рухаємо його
+       реальною стадією з сервера */
+    if (!ld) { document.body.classList.add('await-job'); AWAIT_TITLE = document.title; document.title = t('The report is not ready yet'); loadingStart(); }
+    if (ld && ld.setStage && STAGE_IDX[j.stage] != null) ld.setStage(STAGE_IDX[j.stage]);
+    await sleep(document.visibilityState === 'visible' ? 3000 : 8000);
+  }
+  location.replace('/');
+  return null;
+}
+async function openTokenReport() {
+  const j = await loadByToken(ms => new Promise(r => setTimeout(r, ms)));
+  if (!j) return;
+  DATA = j.report;
+  READONLY = !(isLocalAuthor(OPEN_TOKEN) || (DATA._meta && DATA._meta.share_token && isLocalAuthor(DATA._meta.share_token)));
+  /* власник акаунта, що відкрив свій звіт за публічним посиланням, теж
+     бачить його як read-only: редагування живе на /check/<public_id> */
+  if (READONLY) document.body.classList.add('readonly');
+  /* канонічна людська адреса: slug із сервера, токен незмінний */
+  SHARE_SLUG = j.slug || (DATA._meta && DATA._meta.share_slug) || SHARE_SLUG || 'car';
+  history.replaceState(null, '', '/check/r/' + SHARE_SLUG + '/' + OPEN_TOKEN);
+  boot();
+}
+
+(async function init(){
+  if (OPEN_TOKEN) { await openTokenReport(); return; }
   if (OPEN_ID) {
     if (!SB) { location.replace('/'); return; }
     const q = SB.from('reports').select('id,public_id,data');

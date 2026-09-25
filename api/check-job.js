@@ -12,8 +12,62 @@
 
 export const config = { maxDuration: 15 };
 
+import { createHash } from 'node:crypto';
 import { resolveLocale, errText } from './locale.js';
 import { TOKEN_RE, publicReport, reportSummary, reportSlug } from './share.js';
+
+/* Читання job із Supabase з жорстким таймаутом: увесь ендпоінт мусить
+   вкластися в maxDuration 15 с, інакше Vercel сам віддає 504 без жодного
+   сліду в логах. Гірший випадок: спроба 5 с + пауза 0,4 с + спроба 5 с +
+   PATCH застряглого job 3 с = 13,4 с. Обидві спроби невдалі -> 503
+   (сторінка повторить), а не "job ще рахується". */
+export const JOB_READ_TIMEOUT_MS = 5000;
+export const JOB_READ_BACKOFF_MS = 400;
+export const JOB_PATCH_TIMEOUT_MS = 3000;
+export const JOB_READ_ATTEMPTS = 2;
+
+/* токен це ключ доступу до звіту: у логи лише короткий відбиток */
+export function tokenRef(token) {
+  return createHash('sha256').update(String(token || '')).digest('hex').slice(0, 12);
+}
+
+function classifyReadError(e) {
+  if (e && e.http_status) return { error_type: e.http_status >= 500 || e.http_status === 429 ? 'http_5xx' : 'http_4xx', transient: e.http_status >= 500 || e.http_status === 429 };
+  if (e && e.name === 'AbortError') return { error_type: 'timeout', transient: true };
+  if (e && e.name === 'SyntaxError') return { error_type: 'bad_json', transient: true };
+  return { error_type: 'network', transient: true };
+}
+
+/* -> { ok: true, rows, attempts } | { ok: false, transient, error_type, http_status, attempts } */
+export async function readJobRow(url, hdr, token, opts = {}) {
+  const timeoutMs = opts.timeoutMs ?? JOB_READ_TIMEOUT_MS;
+  const backoffMs = opts.backoffMs ?? JOB_READ_BACKOFF_MS;
+  const sleep = opts.sleep || (ms => new Promise(r => setTimeout(r, ms)));
+  const log = opts.log || (o => console.error(JSON.stringify(o)));
+  let fail = null;
+  for (let attempt = 1; attempt <= JOB_READ_ATTEMPTS; attempt++) {
+    const t0 = Date.now();
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), timeoutMs);
+    try {
+      const r = await fetch(url, { headers: hdr, signal: ctl.signal });
+      if (!r.ok) throw Object.assign(new Error('supabase http ' + r.status), { http_status: r.status || 500 });
+      /* тіло читається під тим самим таймаутом */
+      const rows = await r.json();
+      return { ok: true, rows, attempts: attempt };
+    } catch (e) {
+      const c = classifyReadError(e);
+      fail = { ok: false, transient: c.transient, error_type: c.error_type, http_status: (e && e.http_status) || null, attempts: attempt };
+      const last = !c.transient || attempt === JOB_READ_ATTEMPTS;
+      log({ op: 'check_job_read', attempt, final: last, duration_ms: Date.now() - t0, error_type: c.error_type, http_status: fail.http_status, token_ref: tokenRef(token) });
+      if (last) break;
+      await sleep(backoffMs);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return fail;
+}
 
 /* Застряглий job. Функція /api/check живе щонайбільше maxDuration (300 с)
    від початку виклику, а created_at рядка ставиться ВЖЕ всередині цього
@@ -34,17 +88,30 @@ export function isStaleJob(row, nowMs = Date.now()) {
 export async function failStaleJob(root, hdr, token, errorText, nowMs = Date.now()) {
   const now = new Date(nowMs).toISOString();
   const threshold = new Date(nowMs - STALE_JOB_AFTER_MS).toISOString();
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), JOB_PATCH_TIMEOUT_MS);
+  const t0 = Date.now();
   try {
     const r = await fetch(root + '/rest/v1/check_jobs?token=eq.' + encodeURIComponent(token)
       + '&status=in.(queued,running)&created_at=lt.' + encodeURIComponent(threshold), {
       method: 'PATCH',
       headers: { ...hdr, 'content-type': 'application/json', prefer: 'return=representation' },
       body: JSON.stringify({ status: 'error', stage: STALE_STAGE, error: errorText, finished_at: now, updated_at: now }),
+      signal: ctl.signal,
     });
-    if (!r.ok) return false;
+    if (!r.ok) {
+      console.error(JSON.stringify({ op: 'check_job_fail_stale', duration_ms: Date.now() - t0, error_type: 'http', http_status: r.status || null, token_ref: tokenRef(token) }));
+      return false;
+    }
     const rows = await r.json().catch(() => null);
     return Array.isArray(rows) && rows.length > 0;
-  } catch (e) { return false; }
+  } catch (e) {
+    /* невдалий PATCH відповідь не змінює, наступне опитування спробує ще раз */
+    console.error(JSON.stringify({ op: 'check_job_fail_stale', duration_ms: Date.now() - t0, error_type: e && e.name === 'AbortError' ? 'timeout' : 'network', token_ref: tokenRef(token) }));
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export default async function handler(req, res) {
@@ -60,9 +127,14 @@ export default async function handler(req, res) {
   try {
     if (!token) return res.status(400).json({ error: 'token required' });
     if (!TOKEN_RE.test(token)) return res.status(404).json({ error: 'not found' });
-    const r = await fetch(root + '/rest/v1/check_jobs?token=eq.' + encodeURIComponent(token) + '&select=status,stage,report,error,url,vin,lang,created_at,updated_at,finished_at&limit=1', { headers: hdr });
-    if (!r.ok) return res.status(500).json({ error: errText(lang, 'internal') });
-    const rows = await r.json();
+    const read = await readJobRow(root + '/rest/v1/check_jobs?token=eq.' + encodeURIComponent(token) + '&select=status,stage,report,error,url,vin,lang,created_at,updated_at,finished_at&limit=1', hdr, token);
+    /* збій читання не маскується під "job ще триває": 503 для тимчасового
+       збою (сторінка повторить), 500 для постійного */
+    if (!read.ok) {
+      if (read.transient) res.setHeader('retry-after', '2');
+      return res.status(read.transient ? 503 : 500).json({ error: errText(lang, 'internal') });
+    }
+    const rows = read.rows;
     const row = Array.isArray(rows) && rows[0] ? rows[0] : null;
     if (!row) return res.status(404).json({ error: 'not found' });
     /* застряглий job: спершу лагодимо стан у БД (текст помилки мовою
