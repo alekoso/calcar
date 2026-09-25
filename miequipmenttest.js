@@ -142,9 +142,13 @@ function grab(src, name) {
   ok('4d. лише слова продавця: позначка без підтвердження, цінність моделі лишається', it('Аудіосистема Harman Kardon').mi.confirmed === false
     && it('Аудіосистема Harman Kardon').value_tier === 'standard' && it('Аудіосистема Harman Kardon').confidence_level === 'seller');
   ok('4e. лічильники', res.stats.matched === 4 && res.stats.confirmed === 3 && res.stats.confirmed_high_value === 3 && res.stats.seller_only === 1, JSON.stringify(res.stats));
-  /* рамка .eq-chip.hv у result-check.html вмикається value_tier === 'high_value' */
+  /* рамка .eq-chip.hv у result-check.html вмикається спільним рішенням
+     equipment-value.js: каталог MI головний, запасний список працює лише
+     там, де каталог опцію не покриває */
   const page = fs.readFileSync('result-check.html', 'utf8');
-  ok('4f. рамка преміуму читає value_tier', /const hv = o\.value_tier === 'high_value';/.test(page) && /\.eq-chip\.hv/.test(page));
+  ok('4f. рамка преміуму читає спільне рішення цінності', /const hv = CalCarEquipmentValue\.isHighValue\(o\);/.test(page) && /\.eq-chip\.hv/.test(page));
+  const ev = fs.readFileSync('equipment-value.js', 'utf8');
+  ok('4g. каталог MI має пріоритет над запасним списком', /if \(mi && mi\.confirmed === true && mi\.value_tier\) return mi\.value_tier === 'high_value';/.test(ev));
   const hvFromMi = items.filter(x => x.mi && x.value_tier === 'high_value' && before.find(b => b.name === x.name).value_tier !== 'high_value');
   ok('4g. маркер каталогу дістався лише підтвердженим пунктам', hvFromMi.length === 3 && hvFromMi.every(x => x.mi.confirmed === true));
   ok('6. відкритий пошук: пункти поза каталогом без змін', JSON.stringify(it('Підігрів керма')) === JSON.stringify(before.find(b => b.name === 'Підігрів керма'))

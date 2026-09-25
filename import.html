@@ -608,7 +608,9 @@
   .ld-row.done .ld-ico{background:var(--brand);border-color:var(--brand);color:var(--ink);font-weight:800}
   .ld-row.active .ld-ico{border:none}
   .ld-body{flex:1;min-width:0}
-  .ld-t{font-size:14px;font-weight:600;color:var(--faint)}
+  .ld-t{display:flex;align-items:baseline;gap:10px;font-size:14px;font-weight:600;color:var(--faint)}
+  /* скільки вже триває перевірка: час, що ЙДЕ, а не зворотний відлік */
+  .ld-time{margin-left:auto;flex:0 0 auto;font-size:12.5px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums}
   .ld-row.active .ld-t{color:var(--ink)}
   .ld-row.passed .ld-t{color:var(--muted)}
   .ld-row.done .ld-t{color:var(--text)}
@@ -951,7 +953,7 @@ function loadingStart() {
     '<div class="ld-row" data-i="' + i + '"><span class="ld-ico">✓</span><div class="ld-body"><div class="ld-t">' + esc(t(st.title)) + '</div><div class="ld-sub"></div></div></div>'
   ).join('') + '<div class="ld-note" id="ldNote">' + esc(t('The analysis is taking a bit longer. Some cars need extra checks.')) + '</div>';
   box.className = 'ld on';
-  ld = { rid, stage: -1, subIdx: 0, timers: [], rot: null, done: false };
+  ld = { rid, stage: -1, subIdx: 0, timers: [], rot: null, tick: null, t0: Date.now(), done: false };
   const setStage = i => {
     if (!ld || ld.done) return;
     console.log('[' + LOAD_LOG + '-load]', rid, 'stage', i + 1, LOAD_STAGES[i].title);
@@ -963,7 +965,17 @@ function loadingStart() {
     });
     ld.stage = i;
     ld.subIdx = 0;
+    const activeTitle = box.querySelector('.ld-row.active .ld-t');
+    if (activeTitle) activeTitle.appendChild(timeEl);
     rotateSub();
+  };
+  /* лічильник часу живе в активному рядку: клієнт знає момент старту,
+     сервер для цього не опитується */
+  const timeEl = document.createElement('span');
+  timeEl.className = 'ld-time';
+  const showTime = () => {
+    const secs = Math.max(0, Math.round((Date.now() - ld.t0) / 1000));
+    timeEl.textContent = t('{n} sec').replace('{n}', secs);
   };
   const rotateSub = () => {
     if (!ld || ld.done || ld.stage < 0) return;
@@ -973,6 +985,8 @@ function loadingStart() {
     ld.subIdx++;
   };
   setStage(0);
+  showTime();
+  ld.tick = setInterval(showTime, 1000);
   /* реальні стадії з сервера (durable job) рухають індикатор вперед */
   ld.setStage = i => { if (ld && !ld.done && i > ld.stage) setStage(i); };
   for (let i = 1; i < LOAD_STAGES.length; i++) ld.timers.push(setTimeout(() => setStage(i), LOAD_STAGE_AT[i]));
@@ -987,6 +1001,7 @@ function loadingStop() {
   ld.done = true;
   ld.timers.forEach(clearTimeout);
   clearInterval(ld.rot);
+  clearInterval(ld.tick);
 }
 
 /* фінальна успішна відповідь: ЄДИНЕ місце, де стадії отримують галочку.

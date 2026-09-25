@@ -3,6 +3,11 @@
    коли обрано цю мову. Згенеровано розворотом попередніх словників UA -> EN/RU. */
 window.CALCAR_DICTS = window.CALCAR_DICTS || {};
 window.CALCAR_DICTS.ua = {
+  '{n} sec': '{n} с',
+  'Usually ~90 sec': 'Зазвичай ~90 с',
+  'What to check': 'Що перевірити',
+  'Previous photos': 'Попередні фото',
+  'Next photos': 'Наступні фото',
   'CalCar AI Chat': 'Чат CalCar AI',
   'CalCar AI': 'CalCar AI',
   'CalCar menu': 'Меню CalCar',

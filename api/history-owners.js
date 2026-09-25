@@ -17,6 +17,10 @@
 
 const OWNER_EVENT_RE = /(\d{1,2})\s*-\s*(?:ий|ій|й|ый|ой)\s+(?:власник|владелец)\s+(\d{2})\.(\d{2})\.(\d{2,4})\s+(?:Перереєстрац|Реєстрац|Перерегистрац|Регистрац)/gi;
 const REG_ROW_RE = /реєстрац|регистрац|registration|власник|владел|owner/i;
+/* перехід авто до іншої людини: саме він нумерує власників */
+const OWNERSHIP_ROW_RE = /перереєстрац|перерегистрац|на нового|нового власник|нового владельц|іншого власник|другого владельц|власник|владельц|owner|change of owner/i;
+/* реєстраційні дії, які власника НЕ міняють */
+const NOT_OWNERSHIP_ROW_RE = /номерн\w{0,3}\s+знак|номерного знак|заміні номер|замене номер|индивидуальн\w{0,3}\s+номер|іменн\w{0,3}\s+номер|plate/i;
 
 /* структуровані події зміни власника з тексту реєстру: [{ ordinal, date: 'YYYY-MM-DD' }] */
 export function parseOwnerEvents(text) {
@@ -61,11 +65,31 @@ export function annotateOwnerOrdinals(history, facts) {
   });
   const events = facts && Array.isArray(facts.owner_events) ? facts.owner_events : [];
   if (!ownerEventsConsistent(events, facts && facts.owners_count)) return rows;
+  const taken = new Set();
+  let matched = 0;
   for (const ev of events) {
     const month = ev.date.slice(0, 7);
-    const hits = rows.map((h, i) => (h && rowMonth(h.date) === month && REG_ROW_RE.test(String(h.event || ''))) ? i : -1).filter(i => i >= 0);
+    let hits = rows.map((h, i) => (h && !taken.has(i) && rowMonth(h.date) === month && REG_ROW_RE.test(String(h.event || ''))) ? i : -1).filter(i => i >= 0);
+    /* у місяці кілька реєстраційних рядків: беремо саме перехід до іншої
+       людини, а заміну номерного знака чи технічну дію пропускаємо */
+    if (hits.length > 1) {
+      const owners = hits.filter(i => OWNERSHIP_ROW_RE.test(String(rows[i].event || '')) && !NOT_OWNERSHIP_ROW_RE.test(String(rows[i].event || '')));
+      if (owners.length === 1) hits = owners;
+    }
     if (hits.length !== 1) continue;
+    taken.add(hits[0]);
+    matched++;
     rows[hits[0]] = { ...rows[hits[0]], owner_ordinal: ev.ordinal, owner_ordinal_source: 'registry' };
+  }
+  /* показуємо номери ЛИШЕ коли на хронологію лягла вся послідовність.
+     Інакше вийшло б "1-й, 3-й, 4-й": другий власник нікуди не подівся,
+     просто його події у хронології немає. Краще без бейджів, ніж з дірою */
+  if (matched !== events.length) {
+    return rows.map(h => {
+      if (!h || typeof h !== 'object' || h.owner_ordinal === undefined) return h;
+      const { owner_ordinal, owner_ordinal_source, ...rest } = h;
+      return rest;
+    });
   }
   return rows;
 }

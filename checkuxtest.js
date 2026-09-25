@@ -299,8 +299,14 @@ const page = fs.readFileSync('result-check.html', 'utf8');
     if (!none(HO.annotateOwnerOrdinals(raw, { owners_count: null, owner_events: [] }))) errs.push('без реєстру зʼявились номери');
     if (!none(HO.annotateOwnerOrdinals(raw.map(r => ({ ...r, owner_ordinal: 5, owner_ordinal_source: 'registry' })), {}))) errs.push('старі owner_ordinal без реєстру не скинуті');
     /* два реєстраційні рядки в одному місяці: не вгадуємо */
-    const twin = raw.concat([{ date: '09.2020', event: 'Перереєстрація при заміні номерного знаку' }]);
-    if (HO.annotateOwnerOrdinals(twin, { owners_count: 3, owner_events: evs }).some(r => r.date === '09.2020' && r.owner_ordinal)) errs.push('неоднозначний місяць отримав номер');
+    /* заміна номерного знака в тому ж місяці розвʼязується на користь переходу
+       до іншої людини, а два справжні переходи в одному місяці лишаються
+       неоднозначними, і тоді номерів нема зовсім */
+    const twinPlate = raw.concat([{ date: '09.2020', event: 'Перереєстрація при заміні номерного знаку' }]);
+    const twinPlateOut = HO.annotateOwnerOrdinals(twinPlate, { owners_count: 3, owner_events: evs });
+    if (!twinPlateOut.some(r => r.date === '09.2020' && /власника$/.test(r.event) === false && r.owner_ordinal === 2)) errs.push('заміна номерного знака не розвʼязала місяць на користь зміни власника');
+    const twinOwners = raw.concat([{ date: '09.2020', event: 'Перереєстрація на нового власника за договором' }]);
+    if (HO.annotateOwnerOrdinals(twinOwners, { owners_count: 3, owner_events: evs }).some(r => r.owner_ordinal)) errs.push('два переходи в одному місяці дали номери навмання');
     /* перекладений звіт: номер лише з оригіналу, вигаданий перекладом ігнорується */
     const tr = ann.map(r => ({ ...r, owner_ordinal: 9 }));
     if (TL.normalize(tr, 'en', ann).find(r => r.date === '09.2020').owner_ordinal !== 2) errs.push('номер власника взятий з перекладу, а не з оригіналу');
@@ -406,7 +412,7 @@ const page = fs.readFileSync('result-check.html', 'utf8');
 
     /* підказка про добір відео: працює і по тапу, не лише по наведенню */
     if (!/id="ytWhy"[^>]*aria-haspopup="dialog"[^>]*aria-expanded="false"/.test(page)) errs.push('підказка про відео не кнопка з aria');
-    if (!/btn\.addEventListener\('click', e => \{ e\.stopPropagation\(\); setOpen\(pop\.hidden\); \}\);/.test(page)) errs.push('підказка про відео не відкривається кліком або тапом');
+    if (!/btn\.addEventListener\('click', e => \{ e\.stopPropagation\(\); setOpen\(pop\.hidden \|\| !pinned, true\); \}\);/.test(page)) errs.push('підказка про відео не відкривається кліком або тапом');
     if (!/e\.key === 'Escape' && !pop\.hidden/.test(page)) errs.push('підказка про відео не закривається по ESC');
     if (/\.yt-why-pop[^{]*\{[^}]*display:block[^}]*\}\s*\.yt-why:hover/.test(page)) errs.push('підказка тримається лише на наведенні');
     for (const claim of ['лучшие видео', 'best videos in the world', 'AI analysis', 'редакц']) {
@@ -424,10 +430,87 @@ const page = fs.readFileSync('result-check.html', 'utf8');
     if (!/<div class="dmg-note hist-solo">/.test(page)) errs.push('одиночне речення історії рендериться рядком хронології');
   }
 
+  /* ---------- 7. пас полірування: ризики, галерея, історія, підказка ---------- */
+  {
+    /* ризики: один заголовок, один чип рівня, одне пояснення, одна дія */
+    const riskRender = page.slice(page.indexOf("fill('risksCard'"), page.indexOf("/* ---- історія пошкоджень"));
+    if ((riskRender.match(/class="badge/g) || []).length !== 1) errs.push('у ризику більше одного чипа стану');
+    /* latent-ризик не додає ДРУГУ позначку: його зміст іде самим чипом */
+    if (!/const chip = r\.kind === 'latent' \? t\('Not verified, high cost if wrong'\) : lv\[1\];/.test(riskRender)) errs.push('чип ризику не несе зміст latent');
+    if ((riskRender.match(/Not verified, high cost if wrong/g) || []).length !== 1) errs.push('дубль "не підтверджено, висока ціна помилки" поруч із чипом рівня');
+    if (!/<span class="act-l">' \+ esc\(t\('What to check'\)\)/.test(riskRender)) errs.push('дія без підпису "Що перевірити"');
+    if (!/const lv = LVL\[r\.level\] \|\| LVL\.med;/.test(riskRender)) errs.push('рівні ризику більше не з наявного поля level');
+    if (!/\.risk \.act\{[^}]*border-top:1px dashed/.test(page)) errs.push('дія не відокремлена від пояснення');
+    if (/\.risk \.act::before\{content:'→'/.test(page)) errs.push('стара стрілка перед дією лишилась');
+
+    /* галерея: стрілки зʼявляються лише коли стрічка справді ширша за екран */
+    const nav = page.slice(page.indexOf('function stripNav('), page.indexOf('/* ---------- лайтбокс'));
+    if (!nav) errs.push('нема навігації стрічкою кадрів');
+    if (!/const overflows = max > 4;/.test(nav) || !/prev\.hidden = !overflows \|\| strip\.scrollLeft <= 2;/.test(nav) || !/next\.hidden = !overflows \|\| strip\.scrollLeft >= max - 2;/.test(nav)) errs.push('стрілки не ховаються на краях або без переповнення');
+    if (!/behavior: 'smooth'/.test(nav)) errs.push('прокрутка стрілками не плавна');
+    if (!/strip\.addEventListener\('scroll', sync/.test(nav)) errs.push('стан стрілок не оновлюється при прокрутці');
+    if (!/@media\(max-width:760px\)\{\.strip-nav\{display:none\}\}/.test(page)) errs.push('на телефоні стрілки не приховані');
+    if (!/\.photo-strip\{[^}]*overflow-x:auto/.test(page)) errs.push('звичайна горизонтальна прокрутка зникла');
+    if (!/stripNav\(\$\('photoStrip'\)\);/.test(page)) errs.push('стрічка кадрів не отримує стрілок');
+
+    /* історія: дата і перший рядок події на одній базовій лінії */
+    if (!/\.hrow\{[^}]*align-items:baseline/.test(page)) errs.push('рядок історії не вирівняний по базовій лінії');
+    if (!/\.hrow \.hd\{[^}]*align-self:baseline;padding:0\}/.test(page)) errs.push('дата зсунута власним відступом');
+
+    /* підказка про відео: плаваюча, не штовхає верстку */
+    const pop = (/\n\s*\.yt-why-pop\{([^}]*)\}/.exec(page) || [])[1] || '';
+    if (!/position:fixed/.test(pop) || !/z-index:1\d\d/.test(pop)) errs.push('підказка про відео не плаває над вмістом');
+    if (/margin:0 20px/.test(pop)) errs.push('підказка досі вбудована в потік і розсуває секцію');
+    const why = (/\n\s*\.yt-why\{([^}]*)\}/.exec(page) || [])[1] || '';
+    if (!/color:var\(--ink\)/.test(why) || /color:var\(--muted\)/.test(why)) errs.push('контрол підказки сірий, ніби вимкнений');
+    const whyJs = page.slice(page.indexOf("const btn = $('ytWhy')"), page.indexOf('/* плеєр вантажиться'));
+    for (const [re, msg] of [[/addEventListener\('mouseenter'/, 'нема відкриття по наведенню'], [/addEventListener\('focus'/, 'нема відкриття з клавіатури'],
+      [/addEventListener\('click'/, 'нема відкриття кліком або тапом'], [/e\.key === 'Escape'/, 'ESC не закриває'],
+      [/!pop\.contains\(e\.target\) && !btn\.contains\(e\.target\)/, 'клік поза підказкою не закриває'],
+      [/const place = \(\) => \{/, 'підказка не прикріплена до контрола'],
+      [/Math\.max\(16, Math\.min\(r\.right - w, window\.innerWidth - w - 16\)\)/, 'підказка може вилізти за край екрана']]) {
+      if (!re.test(whyJs)) errs.push('підказка про відео: ' + msg);
+    }
+  }
+
+  /* ---------- 8. послідовність власників ---------- */
+  {
+    const HO = await import('file://' + path.join(dir, 'history-owners.js'));
+    const evs = n => Array.from({ length: n }, (_, i) => ({ ordinal: i + 1, date: '202' + i + '-0' + (i + 1) + '-11' }));
+    const ords = rows => rows.map(r => r.owner_ordinal || null);
+    /* реальний Nissan 5N1CL0MB5KC570086: у хронології нема події 2-го власника.
+       Показати 1, 3, 4 не можна: або вся послідовність, або без бейджів */
+    const gap = HO.annotateOwnerOrdinals([
+      { date: '06.2020', event: 'Первичная регистрация ввезённого автомобиля.' },
+      { date: '09.2022', event: 'Перерегистрация на третьего владельца.' },
+      { date: '11.2023', event: 'Перерегистрация на четвёртого владельца.' },
+    ], { owners_count: 4, owner_events: [{ ordinal: 1, date: '2020-06-15' }, { ordinal: 2, date: '2021-07-02' }, { ordinal: 3, date: '2022-09-10' }, { ordinal: 4, date: '2023-11-20' }] });
+    if (ords(gap).some(Boolean)) errs.push('послідовність з дірою (1, 3, 4) показана: ' + JSON.stringify(ords(gap)));
+    /* повна послідовність лягає на хронологію: номери лишаються */
+    const full = HO.annotateOwnerOrdinals([
+      { date: '06.2020', event: 'Первичная регистрация в Украине.' },
+      { date: '07.2021', event: 'Перерегистрация на нового владельца.' },
+      { date: '09.2022', event: 'Перерегистрация на нового владельца.' },
+      { date: '11.2023', event: 'Перерегистрация на нового владельца.' },
+    ], { owners_count: 4, owner_events: [{ ordinal: 1, date: '2020-06-15' }, { ordinal: 2, date: '2021-07-02' }, { ordinal: 3, date: '2022-09-10' }, { ordinal: 4, date: '2023-11-20' }] });
+    if (JSON.stringify(ords(full)) !== '[1,2,3,4]') errs.push('повна послідовність власників загубилась: ' + JSON.stringify(ords(full)));
+    /* заміна номерного знака в тому ж місяці власника НЕ додає */
+    const plate = HO.annotateOwnerOrdinals([
+      { date: '06.2020', event: 'Первичная регистрация в Украине.' },
+      { date: '07.2021', event: 'Перерегистрация при замене номерного знака.' },
+      { date: '07.2021', event: 'Перерегистрация на нового владельца по договору.' },
+      { date: '09.2022', event: 'Перерегистрация на нового владельца.' },
+      { date: '11.2023', event: 'Перерегистрация на нового владельца.' },
+    ], { owners_count: 4, owner_events: [{ ordinal: 1, date: '2020-06-15' }, { ordinal: 2, date: '2021-07-02' }, { ordinal: 3, date: '2022-09-10' }, { ordinal: 4, date: '2023-11-20' }] });
+    if (JSON.stringify(ords(plate)) !== '[1,null,2,3,4]') errs.push('заміна номерного знака збила нумерацію: ' + JSON.stringify(ords(plate)));
+    /* реєстр мовчить: нічого не вгадуємо */
+    if (ords(HO.annotateOwnerOrdinals(full, { owners_count: null, owner_events: [] })).some(Boolean)) errs.push('без реєстру номери вигадані');
+  }
+
   /* словники */
   for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
     const s = fs.readFileSync(d, 'utf8');
-    for (const k of ['Average mileage', 'Average calculated from the vehicle age.', 'From the seller', 'Did this analysis help you decide?', 'Yes', 'Not really', 'What was missing?', 'Send', 'Thanks for the feedback', 'km/mo', 'CalCar conclusion', 'Expensive options', 'How videos are selected', 'CalCar AI Chat', 'Archive photos were used in the analysis but are not available to view right now.', 'Archive photos are unavailable.', 'Owner #{n}']) {
+    for (const k of ['Average mileage', 'Average calculated from the vehicle age.', 'From the seller', 'Did this analysis help you decide?', 'Yes', 'Not really', 'What was missing?', 'Send', 'Thanks for the feedback', 'km/mo', 'CalCar conclusion', 'Expensive options', 'What to check', '{n} sec', 'How videos are selected', 'CalCar AI Chat', 'Archive photos were used in the analysis but are not available to view right now.', 'Archive photos are unavailable.', 'Owner #{n}']) {
       if (!s.includes("'" + k + "':")) errs.push(d + ': нема ключа "' + k + '"');
     }
   }

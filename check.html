@@ -587,7 +587,9 @@
     border:1px solid var(--line);box-shadow:0 1px 2px rgba(20,22,25,.04),0 10px 28px rgba(20,22,25,.06);text-align:left;
   }
   .hf-label{display:block;font-size:13px;font-weight:700;color:var(--ink);margin:2px 4px 8px}
-  .hf-help{font-size:12.5px;color:var(--muted);margin:8px 4px 0}
+  .hf-help{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin:8px 4px 0}
+  /* типова тривалість перевірки: медіана реальних завершених Check */
+  .hf-time{margin-left:auto;white-space:nowrap;font-variant-numeric:tabular-nums}
   .hf-row{display:flex;gap:10px;flex-wrap:wrap}
   /* поле адреси: іконка посилання ліворуч, сам ввід лишається той самий */
   .hf-field{position:relative;flex:1;min-width:240px;display:flex}
@@ -619,7 +621,9 @@
   .ld-row.done .ld-ico{background:var(--brand);border-color:var(--brand);color:var(--ink);font-weight:800}
   .ld-row.active .ld-ico{border:none}
   .ld-body{flex:1;min-width:0}
-  .ld-t{font-size:14px;font-weight:600;color:var(--faint)}
+  .ld-t{display:flex;align-items:baseline;gap:10px;font-size:14px;font-weight:600;color:var(--faint)}
+  /* скільки вже триває перевірка: час, що ЙДЕ, а не зворотний відлік */
+  .ld-time{margin-left:auto;flex:0 0 auto;font-size:12.5px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums}
   .ld-row.active .ld-t{color:var(--ink)}
   .ld-row.passed .ld-t{color:var(--muted)}
   .ld-row.done .ld-t{color:var(--text)}
@@ -818,7 +822,7 @@
         <div class="hf-field"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg><input type="text" id="urlInput" placeholder="Paste a vehicle listing link" spellcheck="false"></div>
         <button class="btn-primary" id="goBtn" type="button">Check the car</button>
       </div>
-      <div class="hf-help">For example, a listing from a supported marketplace</div>
+      <div class="hf-help"><span>For example, a listing from a supported marketplace</span><span class="hf-time">Usually ~90 sec</span></div>
       <div class="hf-status" id="status"></div>
       <div class="ld" id="loadBox"></div>
     </div>
@@ -974,7 +978,7 @@ function loadingStart() {
     '<div class="ld-row" data-i="' + i + '"><span class="ld-ico">✓</span><div class="ld-body"><div class="ld-t">' + esc(t(st.title)) + '</div><div class="ld-sub"></div></div></div>'
   ).join('') + '<div class="ld-note" id="ldNote">' + esc(t('The analysis is taking a bit longer. Some cars need extra checks.')) + '</div>';
   box.className = 'ld on';
-  ld = { rid, stage: -1, subIdx: 0, timers: [], rot: null, done: false };
+  ld = { rid, stage: -1, subIdx: 0, timers: [], rot: null, tick: null, t0: Date.now(), done: false };
   const setStage = i => {
     if (!ld || ld.done) return;
     console.log('[' + LOAD_LOG + '-load]', rid, 'stage', i + 1, LOAD_STAGES[i].title);
@@ -986,7 +990,17 @@ function loadingStart() {
     });
     ld.stage = i;
     ld.subIdx = 0;
+    const activeTitle = box.querySelector('.ld-row.active .ld-t');
+    if (activeTitle) activeTitle.appendChild(timeEl);
     rotateSub();
+  };
+  /* лічильник часу живе в активному рядку: клієнт знає момент старту,
+     сервер для цього не опитується */
+  const timeEl = document.createElement('span');
+  timeEl.className = 'ld-time';
+  const showTime = () => {
+    const secs = Math.max(0, Math.round((Date.now() - ld.t0) / 1000));
+    timeEl.textContent = t('{n} sec').replace('{n}', secs);
   };
   const rotateSub = () => {
     if (!ld || ld.done || ld.stage < 0) return;
@@ -996,6 +1010,8 @@ function loadingStart() {
     ld.subIdx++;
   };
   setStage(0);
+  showTime();
+  ld.tick = setInterval(showTime, 1000);
   /* реальні стадії з сервера (durable job) рухають індикатор вперед */
   ld.setStage = i => { if (ld && !ld.done && i > ld.stage) setStage(i); };
   for (let i = 1; i < LOAD_STAGES.length; i++) ld.timers.push(setTimeout(() => setStage(i), LOAD_STAGE_AT[i]));
@@ -1010,6 +1026,7 @@ function loadingStop() {
   ld.done = true;
   ld.timers.forEach(clearTimeout);
   clearInterval(ld.rot);
+  clearInterval(ld.tick);
 }
 
 /* фінальна успішна відповідь: ЄДИНЕ місце, де стадії отримують галочку.

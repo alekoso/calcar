@@ -681,7 +681,18 @@
   #saveHint.show{opacity:1}
 
   /* ---- авто: компактно, як в Import ---- */
-  .photo-strip{display:flex;gap:6px;overflow-x:auto;padding:10px 10px 4px}
+  /* стрічка кадрів: горизонтальна прокрутка лишається, але про неї видно
+     з самих стрілок. Вони плавають над краями, як у звичайних галереях */
+  .strip-wrap{position:relative}
+  .photo-strip{display:flex;gap:6px;overflow-x:auto;padding:10px 10px 4px;scroll-behavior:smooth}
+  .strip-nav{position:absolute;top:50%;transform:translateY(-50%);width:32px;height:32px;border-radius:50%;border:1px solid var(--line-strong);background:var(--card);color:var(--ink);display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 10px rgba(20,22,25,.12);transition:background .15s,opacity .15s;z-index:2}
+  .strip-nav:hover{background:var(--surface-2)}
+  .strip-nav:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  .strip-nav svg{width:16px;height:16px}
+  .strip-nav.prev{left:6px}
+  .strip-nav.next{right:6px}
+  .strip-nav[hidden]{display:none}
+  @media(max-width:760px){.strip-nav{display:none}}
   /* у блоці про США стрічка вирівняна по краю картки, як підписи і текст */
   #usCard .photo-strip{padding:10px 20px 4px}
   .photo-strip img{height:86px;border-radius:8px;flex:0 0 auto;cursor:zoom-in;display:block}
@@ -721,13 +732,14 @@
   .flag{display:flex;align-items:center;gap:10px;background:var(--bg);border-radius:10px;padding:10px 14px;font-size:13.5px;font-weight:600}
 
   /* ключові ризики */
-  .risk{padding:13px 0;border-top:1px solid var(--line)}
+  .risk{padding:16px 0;border-top:1px solid var(--line)}
   .risk:first-child{border-top:none;padding-top:0}
   .risk-t{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
   .risk-t b{font-size:14.5px;font-weight:700}
-  .risk p{font-size:13.5px;color:var(--ink-2);margin-top:4px;line-height:1.5}
-  .risk .act{margin-top:6px;font-size:13.5px;font-weight:600;display:flex;gap:7px;align-items:flex-start}
-  .risk .act::before{content:'→';color:var(--brand-ink);font-weight:800}
+  .risk p{font-size:13.5px;color:var(--ink-2);margin-top:5px;line-height:1.55}
+  /* дія окремим рядком під підписом, а не другим ризиком */
+  .risk .act{margin-top:10px;padding-top:9px;border-top:1px dashed var(--line);font-size:13.5px;color:var(--ink-2);line-height:1.5}
+  .risk .act-l{display:block;font-size:12px;font-weight:700;letter-spacing:.2px;color:var(--muted);margin-bottom:2px}
 
   /* комплектація з джерелами */
   .eq-group{padding:11px 0;border-top:1px solid var(--line)}
@@ -783,11 +795,13 @@
   .yt-t{padding:0 12px;font-size:13.5px;font-weight:600;line-height:1.35;color:var(--ink);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .yt-meta{padding:0 12px 12px;font-size:12px;color:var(--muted);display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
   /* підказка про добір відео: тихий контрол у шапці, працює і по тапу */
-  .yt-why{margin-left:auto;gap:6px;cursor:pointer;font-family:inherit;color:var(--muted);transition:color .15s,border-color .15s}
-  .yt-why:hover,.yt-why[aria-expanded="true"]{color:var(--ink);border-color:var(--line-strong)}
+  /* підказка про добір відео: звичайний контрол, не вимкнений сірий */
+  .yt-why{margin-left:auto;gap:6px;cursor:pointer;font-family:inherit;color:var(--ink);transition:background .15s,border-color .15s}
+  .yt-why:hover,.yt-why[aria-expanded="true"]{background:var(--surface-2);border-color:var(--line-strong)}
   .yt-why:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
-  .yt-why svg{width:14px;height:14px;flex:0 0 auto}
-  .yt-why-pop{margin:0 20px 12px;padding:12px 14px;background:var(--surface-2);border-radius:10px;font-size:13px;line-height:1.5;color:var(--ink-2);max-width:70ch}
+  .yt-why svg{width:14px;height:14px;flex:0 0 auto;color:var(--muted)}
+  /* спливає НАД вмістом: нічого не зсуває і висоту секції не міняє */
+  .yt-why-pop{position:fixed;z-index:160;width:320px;max-width:calc(100vw - 32px);padding:12px 14px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 28px rgba(20,22,25,.16);font-size:13px;line-height:1.5;color:var(--ink-2)}
   .yt-why-pop[hidden]{display:none}
   .yt-more{margin-top:12px;height:34px;padding:0 14px;border:1px solid var(--line-strong);border-radius:10px;background:var(--card);color:var(--ink);font-size:13px;font-weight:600;font-family:inherit;cursor:pointer}
   .yt-more:hover{background:var(--surface-2)}
@@ -821,7 +835,9 @@
   .ld-row.done .ld-ico{background:var(--brand);border-color:var(--brand);color:var(--ink);font-weight:800}
   .ld-row.active .ld-ico{border:none}
   .ld-body{flex:1;min-width:0}
-  .ld-t{font-size:14px;font-weight:600;color:var(--faint)}
+  .ld-t{display:flex;align-items:baseline;gap:10px;font-size:14px;font-weight:600;color:var(--faint)}
+  /* скільки вже триває перевірка: час, що ЙДЕ, а не зворотний відлік */
+  .ld-time{margin-left:auto;flex:0 0 auto;font-size:12.5px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums}
   .ld-row.active .ld-t{color:var(--ink)}
   .ld-row.passed .ld-t{color:var(--muted)}
   .ld-row.done .ld-t{color:var(--text)}
@@ -893,11 +909,12 @@
      рядку і в кожному інтервалі на всю висоту, тому зʼєднує центри дат
      незалежно від висоти тексту; дата своїм фоном розриває лінію */
   #histList{--hd-w:96px;--rail-x:48px}
-  .hrow{display:grid;grid-template-columns:var(--hd-w) minmax(0,1fr);column-gap:14px;padding:9px 0;font-size:14px;line-height:1.5;position:relative}
+  .hrow{display:grid;grid-template-columns:var(--hd-w) minmax(0,1fr);column-gap:14px;align-items:baseline;padding:9px 0;font-size:14px;line-height:1.5;position:relative}
   .hrow::before{content:'';position:absolute;left:var(--rail-x);top:0;bottom:0;width:2px;transform:translateX(-50%);background:var(--line-strong);border-radius:2px}
   .hrow:first-child::before{top:50%}
   .hrow.last::before{bottom:50%}
-  .hrow .hd{text-align:center;font-weight:700;font-variant-numeric:tabular-nums;background:var(--card);position:relative;z-index:1;align-self:start;padding:2px 0}
+  /* дата і перший рядок події стоять на одній базовій лінії */
+  .hrow .hd{text-align:center;font-weight:700;font-variant-numeric:tabular-nums;background:var(--card);position:relative;z-index:1;align-self:baseline;padding:0}
   .hrow > span:not(.hd){min-width:0;overflow-wrap:anywhere}
   .hrow .reg-badge{display:inline-block;white-space:normal;margin:2px 0 0 6px;vertical-align:baseline}
   @media(max-width:620px){
@@ -1434,7 +1451,7 @@ function loadingStart() {
     '<div class="ld-row" data-i="' + i + '"><span class="ld-ico">✓</span><div class="ld-body"><div class="ld-t">' + esc(t(st.title)) + '</div><div class="ld-sub"></div></div></div>'
   ).join('') + '<div class="ld-note" id="ldNote">' + esc(t('The analysis is taking a bit longer. Some cars need extra checks.')) + '</div>';
   box.className = 'ld on';
-  ld = { rid, stage: -1, subIdx: 0, timers: [], rot: null, done: false };
+  ld = { rid, stage: -1, subIdx: 0, timers: [], rot: null, tick: null, t0: Date.now(), done: false };
   const setStage = i => {
     if (!ld || ld.done) return;
     console.log('[' + LOAD_LOG + '-load]', rid, 'stage', i + 1, LOAD_STAGES[i].title);
@@ -1446,7 +1463,17 @@ function loadingStart() {
     });
     ld.stage = i;
     ld.subIdx = 0;
+    const activeTitle = box.querySelector('.ld-row.active .ld-t');
+    if (activeTitle) activeTitle.appendChild(timeEl);
     rotateSub();
+  };
+  /* лічильник часу живе в активному рядку: клієнт знає момент старту,
+     сервер для цього не опитується */
+  const timeEl = document.createElement('span');
+  timeEl.className = 'ld-time';
+  const showTime = () => {
+    const secs = Math.max(0, Math.round((Date.now() - ld.t0) / 1000));
+    timeEl.textContent = t('{n} sec').replace('{n}', secs);
   };
   const rotateSub = () => {
     if (!ld || ld.done || ld.stage < 0) return;
@@ -1456,6 +1483,8 @@ function loadingStart() {
     ld.subIdx++;
   };
   setStage(0);
+  showTime();
+  ld.tick = setInterval(showTime, 1000);
   /* реальні стадії з сервера (durable job) рухають індикатор вперед */
   ld.setStage = i => { if (ld && !ld.done && i > ld.stage) setStage(i); };
   for (let i = 1; i < LOAD_STAGES.length; i++) ld.timers.push(setTimeout(() => setStage(i), LOAD_STAGE_AT[i]));
@@ -1470,6 +1499,7 @@ function loadingStop() {
   ld.done = true;
   ld.timers.forEach(clearTimeout);
   clearInterval(ld.rot);
+  clearInterval(ld.tick);
 }
 
 /* фінальна успішна відповідь: ЄДИНЕ місце, де стадії отримують галочку.
@@ -1769,10 +1799,32 @@ async function videosInit(D) {
 (function () {
   const btn = $('ytWhy'), pop = $('ytWhyPop');
   if (!btn || !pop) return;
-  const setOpen = on => { pop.hidden = !on; btn.setAttribute('aria-expanded', on ? 'true' : 'false'); };
-  btn.addEventListener('click', e => { e.stopPropagation(); setOpen(pop.hidden); });
+  /* позиція рахується від самого контрола і тримається в межах екрана */
+  const place = () => {
+    const r = btn.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
+    const left = Math.max(16, Math.min(r.right - w, window.innerWidth - w - 16));
+    let top = r.bottom + 8;
+    if (top + h > window.innerHeight - 12 && r.top - h - 8 > 12) top = r.top - h - 8;
+    pop.style.left = left + 'px';
+    pop.style.top = top + 'px';
+  };
+  let pinned = false;
+  const setOpen = (on, pin) => {
+    pop.hidden = !on;
+    btn.setAttribute('aria-expanded', on ? 'true' : 'false');
+    pinned = on ? !!pin : false;
+    if (on) place();
+  };
+  /* десктоп: наведення і фокус з клавіатури; будь-де: клік або тап */
+  btn.addEventListener('mouseenter', () => { if (!pinned) setOpen(true, false); });
+  btn.addEventListener('mouseleave', () => { if (!pinned) setOpen(false); });
+  btn.addEventListener('focus', () => setOpen(true, false));
+  btn.addEventListener('blur', () => { if (!pinned) setOpen(false); });
+  btn.addEventListener('click', e => { e.stopPropagation(); setOpen(pop.hidden || !pinned, true); });
   document.addEventListener('click', e => { if (!pop.hidden && !pop.contains(e.target) && !btn.contains(e.target)) setOpen(false); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !pop.hidden) { setOpen(false); btn.focus(); } });
+  window.addEventListener('scroll', () => { if (!pop.hidden) place(); }, { passive: true });
+  window.addEventListener('resize', () => { if (!pop.hidden) place(); });
 })();
 
 /* плеєр вантажиться ЛИШЕ після кліку і лише в режимі без кукі YouTube */
@@ -1832,6 +1884,7 @@ function boot2(D){
   if (ph.length) {
     $('photoStrip').style.display = '';
     $('photoStrip').innerHTML = ph.map(u => '<img loading="lazy" src="' + esc(u) + '" alt="">').join('');
+    stripNav($('photoStrip'));
   }
   /* характеристики: label і value в одному рядку. Дані і порядок ті самі,
      змінюється лише подача. 6 полів: 4+2, менше: порівну */
@@ -1963,11 +2016,15 @@ function boot2(D){
   const LVL = { high: ['red', t('high cost of mistake')], med: ['amber', t('worth attention')], low: ['blue', t('background')] };
   fill('risksCard', 'risksList', D.risks, r => {
     const lv = LVL[r.level] || LVL.med;
+    /* один заголовок, один чип, одне пояснення, одна дія. Раніше поруч з
+       чипом рівня стояла друга позначка і вони дублювались; тепер для
+       latent-ризику його зміст іде САМИМ чипом, колір лишається від рівня.
+       Сам розбір ризиків не змінювався */
+    const chip = r.kind === 'latent' ? t('Not verified, high cost if wrong') : lv[1];
     return '<div class="risk"><div class="risk-t"><b>' + esc(r.title) + '</b>'
-      + '<span class="badge ' + lv[0] + '">' + esc(lv[1]) + '</span>'
-      + (r.kind === 'latent' ? '<span class="badge">' + esc(t('Not verified, high cost if wrong')) + '</span>' : '') + '</div>'
+      + '<span class="badge ' + lv[0] + '">' + esc(chip) + '</span></div>'
       + (r.note ? '<p>' + esc(r.note) + '</p>' : '')
-      + (r.action ? '<div class="act"><span>' + esc(r.action) + '</span></div>' : '')
+      + (r.action ? '<div class="act"><span class="act-l">' + esc(t('What to check')) + '</span>' + esc(r.action) + '</div>' : '')
       + '</div>';
   });
 
@@ -2685,6 +2742,41 @@ function shareSetup(){
 document.getElementById('pdChatBtn').addEventListener('click', () => {
   if (typeof window.calcarOpenChat === 'function') window.calcarOpenChat();
 });
+
+/* ---------- стрілки стрічки кадрів ----------
+   Прокрутка лишилась звичайною (колесо, трекпад, свайп): стрілки лише
+   роблять її очевидною. Крок це майже видима ширина стрічки; на краях
+   відповідна стрілка ховається */
+function stripNav(strip) {
+  if (!strip || strip.parentElement.classList.contains('strip-wrap')) return;
+  const wrap = document.createElement('div');
+  wrap.className = 'strip-wrap';
+  strip.parentNode.insertBefore(wrap, strip);
+  wrap.appendChild(strip);
+  const arrow = (dir, path) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'strip-nav ' + dir;
+    b.setAttribute('aria-label', t(dir === 'prev' ? 'Previous photos' : 'Next photos'));
+    b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + path + '"/></svg>';
+    b.addEventListener('click', () => strip.scrollBy({ left: (dir === 'prev' ? -1 : 1) * Math.max(160, strip.clientWidth * 0.8), behavior: 'smooth' }));
+    wrap.appendChild(b);
+    return b;
+  };
+  const prev = arrow('prev', 'm15 18-6-6 6-6'), next = arrow('next', 'm9 6 6 6-6 6');
+  const sync = () => {
+    const max = strip.scrollWidth - strip.clientWidth;
+    const overflows = max > 4;
+    prev.hidden = !overflows || strip.scrollLeft <= 2;
+    next.hidden = !overflows || strip.scrollLeft >= max - 2;
+  };
+  strip.addEventListener('scroll', sync, { passive: true });
+  window.addEventListener('resize', sync);
+  /* кадри вантажаться поступово: перерахунок після їх появи */
+  strip.querySelectorAll('img').forEach(img => img.addEventListener('load', sync, { once: true }));
+  setTimeout(sync, 60);
+  sync();
+}
 
 /* ---------- лайтбокс ---------- */
 document.addEventListener('click', e => {

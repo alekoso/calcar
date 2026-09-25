@@ -293,6 +293,31 @@ for (const [f, s] of Object.entries(PAGES)) if (/last_product|lastProduct|calcar
   }
 }
 
+/* ---- скільки триває перевірка: підказка на головній і час, що йде ---- */
+{
+  const home = PAGES['check.html'];
+  /* типова тривалість це реальна медіана завершених Check, а не вигадка */
+  const hint = (/<span class="hf-time">Usually ~(\d+) sec<\/span>/.exec(home) || [])[1];
+  if (!hint) errs.push('нема підказки про типову тривалість перевірки');
+  else if (+hint < 30 || +hint > 180) errs.push('типова тривалість поза правдоподібним діапазоном: ' + hint);
+  if (!/\.hf-time\{[^}]*margin-left:auto/.test(home)) errs.push('підказка про час конкурує з головною кнопкою');
+  for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
+    const dict = fs.readFileSync(d, 'utf8');
+    for (const k of ['Usually ~90 sec', '{n} sec']) if (!dict.includes("'" + k + "':")) errs.push(d + ': нема ключа "' + k + '"');
+  }
+  /* час у завантажувачі ЙДЕ вперед, рахується на клієнті і зупиняється */
+  const loader = home.slice(home.indexOf('function loadingStart()'), home.indexOf('function loadingError('));
+  if (!/const secs = Math\.max\(0, Math\.round\(\(Date\.now\(\) - ld\.t0\) \/ 1000\)\);/.test(loader)) errs.push('час рахується не від моменту старту на клієнті');
+  if (!/t\('\{n\} sec'\)\.replace\('\{n\}', secs\)/.test(loader)) errs.push('час без локалізованого підпису');
+  if (!/ld\.tick = setInterval\(showTime, 1000\)/.test(loader)) errs.push('час не оновлюється щосекунди');
+  if (!/clearInterval\(ld\.tick\)/.test(loader)) errs.push('таймер не зупиняється разом із аналізом');
+  if (/remaining|залишилось|осталось|countdown/i.test(loader)) errs.push('замість часу, що йде, зроблено зворотний відлік');
+  if (/setInterval[^)]*fetch|fetch\([^)]*\)[^;]*;\s*\}, 1000\)/.test(loader)) errs.push('таймер опитує сервер');
+  /* завантажувач лишається побайтово однаковим на обох сторінках */
+  const block = src => src.slice(src.indexOf('/* progress:start'), src.indexOf('/* progress:end'));
+  if (block(home) !== block(fs.readFileSync('result-check.html', 'utf8'))) errs.push('копії завантажувача розійшлись між сторінками');
+}
+
 if (errs.length) { console.log('FAILED:', errs); process.exit(1); }
 console.log('лендинги: форма чиста · бейдж · недавні лише з даними, максимум 3, адреси як у кабінеті · приклад сходиться · 3 картки · головна Check');
 console.log('LANDING TEST PASSED');
