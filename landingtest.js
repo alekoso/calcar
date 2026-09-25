@@ -186,6 +186,58 @@ const v = JSON.parse(fs.readFileSync('vercel.json', 'utf8'));
 if (!v.rewrites.some(r => r.source === '/' && r.destination === '/check.html')) errs.push('маршрут / не веде на check.html');
 for (const [f, s] of Object.entries(PAGES)) if (/last_product|lastProduct|calcar_product/.test(s)) errs.push(f + ': зʼявилась памʼять останнього продукту');
 
+/* ---- поле адреси і блок "Що працює всередині CalCar" ---- */
+{
+  const home = PAGES['check.html'];
+  /* поле: людська дія замість обрізаної адреси */
+  if (/placeholder="https?:/.test(home)) errs.push('у полі знову обрізана адреса замість дії');
+  if (!/placeholder="Paste a vehicle listing link"/.test(home)) errs.push('нема людського заповнювача поля');
+  if (!/<div class="hf-field"><svg /.test(home)) errs.push('нема іконки посилання в полі');
+  if (!/For example, a listing from a supported marketplace/.test(home)) errs.push('підпис під полем не оновлений');
+  if (/For example, paste a link to an AUTO\.RIA listing/.test(home)) errs.push('старий підпис під полем лишився');
+  /* секція йде після "Що перевіряє CalCar" і не дублює її картки */
+  const iChecks = home.indexOf('What CalCar checks'), iTech = home.indexOf('What powers CalCar');
+  if (!(iChecks > 0 && iTech > iChecks)) errs.push('секція технологій стоїть не після "Що перевіряє CalCar"');
+  if (/class="feat"[\s\S]{0,200}Vehicle Vision/.test(home)) errs.push('технології зроблені тими самими картками, що й "Що перевіряє"');
+  const tech = home.slice(iTech, home.indexOf('<footer>', iTech));
+  /* показуємо лише те, що справді працює в проді */
+  for (const name of ['Vehicle Vision', 'Vehicle Memory', 'Model Intelligence', 'Web Search', 'Decision Engine', 'CalCar AI']) {
+    if (!tech.includes('<b>' + name + '</b>')) errs.push('нема системи ' + name);
+  }
+  /* нічого з дорожньої карти: це ще не працює і обіцяти його не можна */
+  for (const notLive of ['Vehicle Graph', 'CalCar Data', 'Ask CalCar', 'Market', 'Current Vision']) {
+    if (tech.includes(notLive)) errs.push('у блок потрапила нереалізована система: ' + notLive);
+  }
+  /* три колонки на десктопі, одна на телефоні, без ліній звʼязку на вузькому */
+  if (!/\.tech-flow\{display:grid;grid-template-columns:1\.15fr 1fr 1fr/.test(home)) errs.push('на десктопі не композиція з трьох колонок');
+  if (!/@media\(max-width:900px\)\{\n\s*\.tech-flow\{grid-template-columns:1fr/.test(home)) errs.push('на телефоні картки не в одну колонку');
+  if (!/\.tech-line\{display:none\}/.test(home)) errs.push('лінії звʼязку лишились на вузькому екрані');
+  /* лайм лишається акцентом: смуга ледь тонована, не лаймова */
+  if (/\.tech-band\{background:var\(--brand\)/.test(home)) errs.push('смуга технологій залита лаймом');
+  /* рух тільки за згодою і тільки повільний */
+  const flow = (/@keyframes tech-flow\{[^}]*\}[^}]*\}/.exec(home) || [''])[0];
+  if (!/@media\(prefers-reduced-motion:no-preference\)\{\.tech-line\{animation:tech-flow (\d+)s/.test(home)) errs.push('рух по лініях не за prefers-reduced-motion');
+  const dur = parseInt((/animation:tech-flow (\d+)s/.exec(home) || [])[1] || '0', 10);
+  if (!(dur >= 6)) errs.push('рух по лініях швидкий: ' + dur + 's');
+  if (/glow|neon|particle|blur\(|rotate3d|perspective/.test(tech)) errs.push('у блоці зʼявились ефекти поза мовою CalCar');
+  /* мікровзаємодії стримані: підйом на 1px і плавні переходи */
+  if (!/\.node:hover\{[^}]*transform:translateY\(-1px\)/.test(home)) errs.push('нема стриманого hover на вузлах');
+  if (!/transition:[^;]*\.18s ease/.test(home)) errs.push('переходи не плавні 180 мс');
+  /* доступність: фокус на кнопці і на полі лишається видимим */
+  if (!/\.btn-primary:focus-visible\{outline:2px solid var\(--ink\)/.test(home)) errs.push('головна кнопка без видимого фокуса');
+  if (!/input\[type=text\]:focus\{outline:none;border-color:var\(--brand\)/.test(home)) errs.push('поле втратило акцент фокуса');
+  /* словники: описи перекладені, назви систем лишаються продуктовими іменами */
+  for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
+    const dict = fs.readFileSync(d, 'utf8');
+    for (const k of ['Paste a vehicle listing link', 'For example, a listing from a supported marketplace', 'What powers CalCar']) {
+      if (!dict.includes("'" + k + "':")) errs.push(d + ': нема ключа "' + k + '"');
+    }
+    for (const name of ['Vehicle Memory', 'Decision Engine']) {
+      if (dict.includes("'" + name + "':")) errs.push(d + ': назву системи ' + name + ' переклали, вона мусить лишатись продуктовим імʼям');
+    }
+  }
+}
+
 if (errs.length) { console.log('FAILED:', errs); process.exit(1); }
 console.log('лендинги: форма чиста · бейдж · недавні лише з даними, максимум 3, адреси як у кабінеті · приклад сходиться · 3 картки · головна Check');
 console.log('LANDING TEST PASSED');

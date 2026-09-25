@@ -335,11 +335,12 @@ tourChecks();
   /* Check: підпис, підказка і плейсхолдер */
   const c = S['check.html'];
   if (!c.includes('<label class="hf-label" for="urlInput">Car listing link</label>')) errs.push('check.html: нема підпису поля');
-  if (!c.includes('placeholder="https://auto.ria.com/..."')) errs.push('check.html: плейсхолдер не приклад адреси');
-  if (!c.includes('<div class="hf-help">For example, paste a link to an AUTO.RIA listing</div>')) errs.push('check.html: нема підказки під полем');
+  /* плейсхолдер це дія людини, а не обрізана адреса (landingtest.js) */
+  if (!c.includes('placeholder="Paste a vehicle listing link"')) errs.push('check.html: плейсхолдер не людська дія');
+  if (!c.includes('<div class="hf-help">For example, a listing from a supported marketplace</div>')) errs.push('check.html: нема підказки під полем');
   for (const d of ['i18n/ua.js', 'i18n/ru.js']) {
     const t = fs.readFileSync(d, 'utf8');
-    for (const k of ['Car listing link', 'For example, paste a link to an AUTO.RIA listing', 'Contact', 'Did this analysis help you decide?', 'Yes', 'Not really', 'What was missing?', 'Transfer from an AI chat', 'CalCar does not know much about you yet']) if (!t.includes("'" + k + "':")) errs.push(d + ': нема ключа "' + k + '"');
+    for (const k of ['Car listing link', 'Paste a vehicle listing link', 'For example, a listing from a supported marketplace', 'Contact', 'Did this analysis help you decide?', 'Yes', 'Not really', 'What was missing?', 'Transfer from an AI chat', 'CalCar does not know much about you yet']) if (!t.includes("'" + k + "':")) errs.push(d + ': нема ключа "' + k + '"');
   }
   /* мова памʼяті: одна й та сама правило в обох специфікаціях, мова інтерфейсу передається */
   const mem = fs.readFileSync('api/memory.js', 'utf8'), chat = fs.readFileSync('api/chat.js', 'utf8');

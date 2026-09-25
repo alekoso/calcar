@@ -463,7 +463,42 @@
     background:var(--brand);color:var(--ink);border:1px solid rgba(20,22,25,.08);border-radius:var(--radius);
     height:52px;padding:0 26px;font-size:15px;font-weight:800;cursor:pointer;white-space:nowrap;font-family:inherit;
   }
+
+  /* ---- як влаштований CalCar: системи і їх звʼязок ----
+     Не ще один ряд маркетингових карток: ліворуч системи, що збирають дані,
+     посередині Decision Engine, праворуч результат. Смуга трохи тонована
+     лаймом, лайм лишається акцентом. Лінії звʼязку тільки на десктопі */
+  .tech-band{background:linear-gradient(180deg,#FBFDF6 0%,#F6FAEE 100%);border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin-top:64px;padding:56px 0 60px}
+  .tech-flow{display:grid;grid-template-columns:1.15fr 1fr 1fr;gap:26px;align-items:center;margin-top:36px}
+  .tech-col{display:flex;flex-direction:column;gap:12px;position:relative}
+  .node{display:flex;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;text-align:left;transition:border-color .18s ease,box-shadow .18s ease,transform .18s ease}
+  .node:hover{border-color:var(--line-strong);box-shadow:0 4px 14px rgba(20,22,25,.05);transform:translateY(-1px)}
+  .node-ic{width:30px;height:30px;flex:0 0 auto;border-radius:8px;background:var(--surface-2);color:var(--ink-2);display:flex;align-items:center;justify-content:center;transition:background .18s ease,color .18s ease}
+  .node:hover .node-ic{background:var(--brand-soft);color:var(--brand-ink)}
+  .node-ic svg{width:16px;height:16px}
+  .node b{display:block;font-size:14px;letter-spacing:-.1px}
+  .node p{font-size:13px;line-height:1.5;color:var(--muted);margin-top:3px}
+  /* Decision Engine і результат: той самий каркас, акцент лише тонкою лінією */
+  .node-engine{border-color:var(--line-strong);box-shadow:0 1px 2px rgba(20,22,25,.04)}
+  .node-engine .node-ic{background:var(--brand);color:var(--ink)}
+  .node-out{background:var(--surface-2);border-style:dashed}
+  .node-out:hover{transform:none;box-shadow:none}
+  .node-out .node-ic{background:var(--card)}
+  /* звʼязки: тонка лінія в проміжку між колонками, з лаймовим кінцем біля
+     Decision Engine. На вузьких екранах геометрії немає зовсім */
+  .tech-line{position:absolute;top:50%;height:1px;width:26px;background:linear-gradient(90deg,var(--line-strong),var(--brand));background-size:200% 100%}
+  .tech-line.in{right:100%}
+  .tech-line.out{left:100%;background:linear-gradient(90deg,var(--brand),var(--line-strong))}
+  @media(prefers-reduced-motion:no-preference){.tech-line{animation:tech-flow 9s linear infinite}}
+  @keyframes tech-flow{from{background-position:100% 0}to{background-position:-100% 0}}
+  @media(max-width:900px){
+    .tech-flow{grid-template-columns:1fr;gap:12px;margin-top:28px}
+    .tech-line{display:none}
+    .tech-band{margin-top:48px;padding:40px 0 44px}
+  }
+  .btn-primary{transition:background .18s ease,box-shadow .18s ease}
   .btn-primary:hover{background:var(--brand-hover)}
+  .btn-primary:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
   .btn-primary:active{background:var(--brand-active)}
   .btn-primary:disabled{opacity:.55;cursor:default}
   .btn-back{
@@ -522,10 +557,17 @@
   .hf-label{display:block;font-size:13px;font-weight:700;color:var(--ink);margin:2px 4px 8px}
   .hf-help{font-size:12.5px;color:var(--muted);margin:8px 4px 0}
   .hf-row{display:flex;gap:10px;flex-wrap:wrap}
+  /* поле адреси: іконка посилання ліворуч, сам ввід лишається той самий */
+  .hf-field{position:relative;flex:1;min-width:240px;display:flex}
+  .hf-field svg{position:absolute;left:15px;top:50%;margin-top:-9px;width:18px;height:18px;color:var(--faint);pointer-events:none;transition:color .18s ease}
+  .hf-field:focus-within svg{color:var(--brand-ink)}
   .hf-row input[type=text]{
-    flex:1;min-width:240px;height:52px;border:1px solid var(--line);border-radius:12px;
-    padding:0 16px;font-size:15px;color:var(--text);font-family:inherit;
+    flex:1;min-width:0;height:52px;border:1px solid var(--line);border-radius:12px;
+    padding:0 16px 0 43px;font-size:15px;color:var(--text);font-family:inherit;
+    transition:border-color .18s ease,box-shadow .18s ease;
   }
+  .hf-row input[type=text]::placeholder{color:var(--faint)}
+  .hf-row input[type=text]:hover{border-color:var(--line-strong)}
   .hf-row input[type=text]:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(184,242,61,.18)}
   /* статус зʼявляється лише під час роботи, тому не тримаємо під нього місце */
   /* екран очікування: 4 спокійні стадії, без відсотків і фальшивого прогрес-бара.
@@ -741,10 +783,10 @@
     <div class="hero-form">
       <label class="hf-label" for="urlInput">Car listing link</label>
       <div class="hf-row">
-        <input type="text" id="urlInput" placeholder="https://auto.ria.com/..." spellcheck="false">
+        <div class="hf-field"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg><input type="text" id="urlInput" placeholder="Paste a vehicle listing link" spellcheck="false"></div>
         <button class="btn-primary" id="goBtn" type="button">Check the car</button>
       </div>
-      <div class="hf-help">For example, paste a link to an AUTO.RIA listing</div>
+      <div class="hf-help">For example, a listing from a supported marketplace</div>
       <div class="hf-status" id="status"></div>
       <div class="ld" id="loadBox"></div>
     </div>
@@ -812,6 +854,31 @@
 </div>
 
 
+<div class="tech-band" id="tech">
+  <div class="wrap-sec">
+    <section>
+      <h2 class="sec">What powers CalCar</h2>
+      <p class="sec-sub">Several systems work together: they collect data about this exact car and turn it into a clear conclusion.</p>
+      <div class="tech-flow">
+        <div class="tech-col">
+      <article class="node"><span class="node-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="2.6"/></svg></span><span><b>Vehicle Vision</b><p>Reads the car's photos: body condition, damage, wear and visible equipment.</p></span></article>
+      <article class="node"><span class="node-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg></span><span><b>Vehicle Memory</b><p>Keeps what is already known about this VIN: listings, mileage readings, photos and recorded events.</p></span></article>
+      <article class="node"><span class="node-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 9h6v6H9z"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/></svg></span><span><b>Model Intelligence</b><p>Knows the specific version: what equipment was available for it and what tends to go wrong.</p></span></article>
+      <article class="node"><span class="node-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18Z"/></svg></span><span><b>Web Search</b><p>Looks for archive records and past auction photos of this VIN in open sources.</p></span></article>
+        </div>
+        <div class="tech-col">
+          <span class="tech-line in" aria-hidden="true"></span>
+          <span class="tech-line out" aria-hidden="true"></span>
+      <article class="node node-engine"><span class="node-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="3.4"/></svg></span><span><b>Decision Engine</b><p>Weighs the found signals into the CalCar Score, the confidence in it and the final conclusion.</p></span></article>
+        </div>
+        <div class="tech-col">
+      <article class="node node-out"><span class="node-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19V9M10 19V5M16 19v-6M22 19H2"/></svg></span><span><b>CalCar Score, confidence, conclusion</b><p>What you see in the report: the score, how well it is backed by data, and what to do about this car.</p></span></article>
+      <article class="node"><span class="node-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7A8.5 8.5 0 0 1 12 3h.5a8.5 8.5 0 0 1 8 8z"/></svg></span><span><b>CalCar AI</b><p>Answers questions about this exact car using the data already collected for it.</p></span></article>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
 
 <footer>
   <div class="footer-in">

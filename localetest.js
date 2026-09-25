@@ -222,7 +222,8 @@ const read = f => fs.readFileSync(f, 'utf8');
   const MEM_HEADINGS = new Set(['Людина', 'Уподобання й обмеження', 'Активний пошук', 'Рішення']);
   const decode = s => s.replace(/&#(\d+);/g, (m, n) => String.fromCharCode(+n)).replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ');
   /* бренди і технічні токени, що свідомо не перекладаються */
-  const UNTRANSLATED = /^(Cal|Car|beta|UA|RU|EN|English|CalCar( Check| Import| Garage| Score)?|Google|VIN|you@example\.com|OK|PDF|AI)$/;
+  /* назви систем CalCar це продуктові імена: однакові всіма мовами */
+  const UNTRANSLATED = /^(Cal|Car|beta|UA|RU|EN|English|CalCar( Check| Import| Garage| Score| AI)?|Google|VIN|you@example\.com|OK|PDF|AI|Vehicle Vision|Vehicle Memory|Model Intelligence|Decision Engine|Web Search)$/;
   const need = new Map();
   for (const p of PAGES) {
     const s = read(p);
