@@ -503,8 +503,17 @@ const REPORTS = [
     const pg4 = fs.readFileSync('result-check.html', 'utf8');
     if (!pg4.includes('humanRef')) errs.push('tooltip комплектації показує технічні id');
     if (pg4.includes('eq-star') || pg4.includes('hvGrad')) errs.push('зірка не видалена повністю');
-    if (!pg4.includes('.eq-chip.hv{border-color:transparent;background:linear-gradient(var(--card),var(--card)) padding-box')) errs.push('premium-опція без градієнтної рамки');
-    if (/\.eq-chip\.hv\{[^}]*(padding(?!-box)|width|height|margin)/.test(pg4)) errs.push('premium-chip змінює геометрію');
+    /* рамка дорогої опції тече; детально це стереже checkuxtest.js */
+    if (!/\.eq-chip\.hv,\n\s*\.sec-meta\.hv-legend\{[\s\S]{0,600}?animation:eq-hv-flow/.test(pg4)) errs.push('premium-опція без рухомої градієнтної рамки');
+    /* габарити premium-chip ті самі: товща рамки компенсована padding */
+    {
+      const pick = (re, src) => (re.exec(src) || []).slice(1).map(parseFloat);
+      const [py, px] = pick(/\.eq-chip\{[^}]*padding:([\d.]+)px ([\d.]+)px/, pg4);
+      const [bw] = pick(/\.eq-chip\{[^}]*border:([\d.]+)px solid/, pg4);
+      const [hy, hx] = pick(/\.eq-chip\.hv\{padding:([\d.]+)px ([\d.]+)px\}/, pg4);
+      const [hbw] = pick(/border-width:([\d.]+)px/, pg4.slice(pg4.indexOf('.eq-chip.hv,')));
+      if (!(py + bw === hy + hbw && px + bw === hx + hbw)) errs.push('premium-chip змінює геометрію: ' + [py + bw, hy + hbw, px + bw, hx + hbw].join('/'));
+    }
     if (!pg4.includes("t('Expensive option')")) errs.push('tooltip не Дорога опція');
     if (!pg4.includes('Expensive options highlighted')) errs.push('нема підпису Дорогі опції виділені');
     if (pg4.includes("t('Цінна опція')")) errs.push('старий tooltip лишився');

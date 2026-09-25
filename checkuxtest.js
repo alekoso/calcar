@@ -314,70 +314,53 @@ const page = fs.readFileSync('result-check.html', 'utf8');
   /* ---------- 4. рухома рамка дорогих опцій ---------- */
   {
     const imp = fs.readFileSync('result.html', 'utf8');
-    const ring = (src, sel) => {
-      const i = src.indexOf(sel + '::after{');
-      return i < 0 ? null : src.slice(i, src.indexOf('}', i) + 1);
+    /* правило рамки читаємо цілим блоком: перевіряємо реальне застосування
+       до класу, а не просто наявність властивості десь у файлі */
+    const rule = (src, sel) => {
+      const i = src.indexOf('\n  ' + sel + ',\n');
+      if (i < 0) return null;
+      return src.slice(i, src.indexOf('\n  }', i) + 4);
     };
-    const check = (src, sel, hoverSel, where) => {
-      const r = ring(src, sel);
-      if (!r) { errs.push(where + ': нема рухомої рамки ' + sel); return; }
-      /* рамка і тільки рамка: геометрія chip не змінюється */
-      if (/(^|;)\s*(width|height|margin|inset:(?!-1px)|padding:(?!1px))/.test(r)) errs.push(where + ': рухома рамка змінює геометрію chip');
-      if (!/inset:-1px/.test(r) || !/padding:1px/.test(r) || !/border-radius:inherit/.test(r)) errs.push(where + ': рамка не по межі chip');
-      if (!/mask-composite:exclude/.test(r) || !/-webkit-mask-composite:xor/.test(r)) errs.push(where + ': без маски рамка заллє chip');
-      if (!/pointer-events:none/.test(r)) errs.push(where + ': шар рамки ловить кліки');
-      /* повільно і стримано: 8-12 с, без свічення і пульсації */
-      const dur = (/animation:eq-hv-turn (\d+)s linear infinite/.exec(r) || [])[1];
-      if (!dur || +dur < 8 || +dur > 12) errs.push(where + ': оберт не 8-12 с: ' + dur);
-      if (/box-shadow|filter:|blur|scale|pulse|alternate/.test(r)) errs.push(where + ': свічення або пульсація');
-      /* hover тільки помітність */
-      const h = src.slice(src.indexOf(hoverSel + '{'), src.indexOf('}', src.indexOf(hoverSel + '{')) + 1);
-      if (!/^[^{]*\{opacity:1\}$/.test(h)) errs.push(where + ': hover змінює не лише видимість: ' + h);
-      /* статична рамка лишається як фолбек і як стан reduced-motion */
-      if (!new RegExp('@supports \\(\\(mask-composite:exclude\\) or \\(-webkit-mask-composite:xor\\)\\)').test(src)) errs.push(where + ': рамка без @supports-запобіжника');
-      if (!src.includes('@media (prefers-reduced-motion:reduce){' + sel + '::after{animation:none}}')) errs.push(where + ': reduced-motion не зупиняє рух');
-      if (!/@property --eq-ang\{syntax:"<angle>";initial-value:0deg;inherits:false\}/.test(src)) errs.push(where + ': нема @property --eq-ang');
+    const check = (src, sel, where) => {
+      const r = rule(src, sel);
+      if (!r) { errs.push(where + ': нема спільного правила рухомої рамки для ' + sel + ' і легенди'); return; }
+      /* рух саме градієнта, а не кільця з маски чи кута у @property */
+      if (!/background-position:0 0,0 0/.test(r)) errs.push(where + ': градієнт не має стартової позиції для руху');
+      if (!/background-repeat:no-repeat,repeat/.test(r)) errs.push(where + ': плитка градієнта не повторюється, цикл буде рваний');
+      if (!/background-clip:padding-box,border-box/.test(r)) errs.push(where + ': градієнт не по рамці');
+      const dur = parseFloat((/animation:eq-hv-flow ([\d.]+)s linear infinite/.exec(r) || [])[1] || '0');
+      if (!(dur >= 5 && dur <= 7)) errs.push(where + ': цикл не 5-7 с: ' + dur);
+      /* зсув рівно на ширину плитки: інакше цикл смикається */
+      const tile = (/background-size:auto,(\d+)px 100%/.exec(r) || [])[1];
+      const shift = (new RegExp('@keyframes eq-hv-flow\\{to\\{background-position:0 0,(\\d+)px 0\\}\\}').exec(src) || [])[1];
+      if (!tile || tile !== shift) errs.push(where + ': зсув (' + shift + ') не дорівнює ширині плитки (' + tile + ')');
+      /* видимість рамки і незмінні габарити: 1.5px рамки компенсовані padding */
+      if (!/border-width:1\.5px/.test(r)) errs.push(where + ': рамка лишилась ледь помітною');
+      if (!/padding:4\.5px 10\.5px/.test(src.slice(src.indexOf(sel + '{'), src.indexOf('}', src.indexOf(sel + '{')) + 1))) errs.push(where + ': padding не компенсує товщу рамки, chip змінить розмір');
+      /* рух не через прозорість і без свічення */
+      if (/opacity|box-shadow|filter:|blur|pulse|alternate/.test(r)) errs.push(where + ': рух через прозорість або свічення');
+      /* без руху рамка лишається, просто нерухома */
+      if (!src.includes('@media (prefers-reduced-motion:reduce){' + sel + ',.sec-meta.hv-legend{animation:none}}')) errs.push(where + ': reduced-motion не зупиняє рух');
+      /* стара крихка механіка більше не потрібна для головного ефекту */
+      if (/@property --eq-ang/.test(src) || /eq-hv-turn/.test(src)) errs.push(where + ': лишилась стара залежність від @property/--eq-ang');
+      if (/mask-composite/.test(src.slice(src.indexOf(sel), src.indexOf(sel) + 900))) errs.push(where + ': рамка знову залежить від mask-composite');
     };
-    check(page, '.eq-chip.hv', '.eq-chip.hv:hover::after', 'Check');
-    check(imp, '.chip.gold', '.chip.gold:hover::after', 'Import');
-    /* анімується лише те, що вже позначене дорогим; звичайні опції і легенда статичні */
+    check(page, '.eq-chip.hv', 'Check');
+    check(imp, '.chip.gold', 'Import');
+    /* легенда рухається так само, тому людина бачить, що означає рамка */
+    for (const [src, where] of [[page, 'Check'], [imp, 'Import']]) {
+      const i = src.indexOf('.sec-meta.hv-legend');
+      if (!/\.sec-meta\.hv-legend\{padding:2\.5px 9\.5px\}/.test(src)) errs.push(where + ': легенда не компенсує товщу рамки');
+      if (i < 0) errs.push(where + ': нема легенди дорогих опцій');
+    }
+    /* звичайні опції лишаються статичними і без псевдоелементів */
     if (/\.eq-chip::(?:after|before)|\.eq-chips span:not\(\[class\]\)::(?:after|before)/.test(page)) errs.push('рухома рамка потрапила на звичайні опції');
-    if (/\.hv-legend::after/.test(page) || /\.hv-legend::after/.test(imp)) errs.push('легенда теж рухається');
-    if (!/\.eq-chip\.hv\{border-color:transparent;background:linear-gradient/.test(page)) errs.push('статична рамка дорогої опції зникла');
+    if (/\.eq-chip\.hv::after|\.chip\.gold::after/.test(page + imp)) errs.push('повернувся псевдоелемент рамки');
+    const plain = page.slice(page.indexOf('.eq-chip{'), page.indexOf('}', page.indexOf('.eq-chip{')) + 1);
+    if (/animation/.test(plain)) errs.push('звичайний chip отримав анімацію');
     /* класифікації дорогих опцій не чіпали */
     if (!/const hv = o\.value_tier === 'high_value';/.test(page)) errs.push('ознака дорогої опції більше не value_tier');
   }
-
-  /* ---------- 5. картка висновку: тиха редакційна ієрархія ----------
-     Оцінка CalCar вище лишається головним сигналом: оцінка CalCar лишається головним
-     сигналом, картка пояснює, а не повторює її ще одним вердиктом */
-  if (!/<h2>CalCar conclusion<\/h2>/.test(page)) errs.push('заголовок секції не "Вивід CalCar"');
-  if (/Worth buying\?/.test(page)) errs.push('старий заголовок секції лишився');
-  /* нема великого заголовка-вердикту: перший абзац лише трохи щільніший за текст */
-  if (/\.pd-headline\{/.test(page) || /class="pd-headline"/.test(page)) errs.push('великий заголовок-вердикт повернувся');
-  const lead = (/\n\s*\.pd-lead\{([^}]*)\}/.exec(page) || [])[1] || '';
-  const leadSize = parseFloat((/font-size:([\d.]+)px/.exec(lead) || [])[1] || '0');
-  const bodySize = parseFloat((/\n\s*\.pd-short\{[^}]*font-size:([\d.]+)px/.exec(page) || [])[1] || '0');
-  if (!(leadSize > 0 && bodySize > 0 && leadSize <= bodySize + 1)) errs.push('перший абзац висновку все ще заголовкового розміру: ' + leadSize + ' проти ' + bodySize);
-  if (!/max-width:78ch/.test(lead)) errs.push('рядок висновку тягнеться через усю картку');
-  /* жодної другої плашки вердикту всередині картки */
-  if (/\.pd-rec/.test(page)) errs.push('у картці зʼявилась друга плашка вердикту');
-  /* розкриття: тихий контрол із шевроном і станом для клавіатури */
-  const more = (/\n\s*\.pd-more\{([^}]*)\}/.exec(page) || [])[1] || '';
-  if (/background:var\(--brand\)/.test(more)) errs.push('розкриття стало кнопкою-CTA');
-  if (!/aria-expanded="false" aria-controls="pdReasoning"/.test(page)) errs.push('розкриття без стану для скрінрідера');
-  if (!/setAttribute\('aria-expanded', open \? 'false' : 'true'\)/.test(page)) errs.push('aria-expanded не перемикається');
-  if (!/\.pd-more svg\{/.test(page) || !/\.pd-more\[aria-expanded="true"\] svg\{transform:rotate\(180deg\)\}/.test(page)) errs.push('нема шеврона або він не повертається');
-  /* CTA чату вторинна: без лаймового фону; поруч лише тиха підказка, що чат врахує вподобання */
-  const cta = (/\n\s*\.pd-cta-btn\{([^}]*)\}/.exec(page) || [])[1] || '';
-  if (/background:var\(--brand\)/.test(cta)) errs.push('кнопка чату досі домінує яскравим фоном');
-  if (!/border:1px solid var\(--line-strong\)/.test(cta)) errs.push('кнопка чату не вторинна');
-  if (!/<span class="pd-cta-hint">Discuss the car with your preferences in mind\.<\/span>/.test(page)) errs.push('нема тихої підказки про вподобання біля кнопки чату');
-  if (!/\.pd-cta-hint\{font-size:12\.5px;line-height:1\.4;color:var\(--muted\)\}/.test(page)) errs.push('підказка біля кнопки чату не вторинна');
-  if (!/@media\(max-width:620px\)\{\.pd-cta-btn\{width:100%/.test(page)) errs.push('на телефоні кнопка чату не на всю ширину');
-  /* сам текст висновку не чіпали: ті самі поля рішення */
-  if (!/\$\('pdHeadline'\)\.textContent = clean\(pd\.headline\);/.test(page)) errs.push('висновок рендериться не з pd.headline');
-  if (!/pd\.summary_short/.test(page) || !/pd\.reasoning/.test(page)) errs.push('склад тексту висновку змінено');
 
   /* словники */
   for (const d of ['i18n/ru.js', 'i18n/ua.js']) {

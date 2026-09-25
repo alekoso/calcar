@@ -642,29 +642,20 @@
   ul.chk li{position:relative;padding:7px 0 7px 24px;font-size:13.5px;line-height:1.45;color:var(--ink-2)}
   ul.chk li::before{content:"";position:absolute;left:6px;top:14px;width:6px;height:6px;border-radius:50%;background:var(--brand-active)}
   .notes-foot{font-size:11.5px;color:var(--faint);border-top:1px solid var(--line);padding-top:10px}
-  /* дорога опція відрізняється лише рамкою: та сама градієнтна обводка, що в Check */
-  .chip.gold{border-color:transparent;background:linear-gradient(var(--card),var(--card)) padding-box,linear-gradient(135deg,#7C3AED 0%,#C026D3 50%,#E8A33D 100%) border-box}
-  @supports ((mask-composite:exclude) or (-webkit-mask-composite:xor)){
-    /* Рухома градієнтна обводка тих самих premium-опцій. Малюється окремим
-       шаром ::before у межах рамки (inset -1px + маска, яка лишає лише
-       рамку), тому геометрія, фон, padding і текст chip не змінюються і
-       нічого не зсувається. Обертається один кут --eq-ang: анімується лише
-       фон цього шару, решта звіту не перемальовується. Рух повільний
-       (12 с на оберт), без свічення і пульсації; hover лише трохи піднімає
-       видимість. Кольори ті самі, що в статичній рамці нижче/вище.
-       Браузер без mask-composite чи @property показує статичну рамку. */
-    .chip.gold::after{
-      content:"";position:absolute;inset:-1px;border-radius:inherit;padding:1px;pointer-events:none;
-      background:conic-gradient(from var(--eq-ang,0deg),rgba(124,58,237,.18) 0deg,#7C3AED 60deg,#C026D3 130deg,#E8A33D 200deg,rgba(124,58,237,.18) 290deg,rgba(124,58,237,.18) 360deg);
-      -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;
-      mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude;
-      opacity:.75;transition:opacity .25s ease;animation:eq-hv-turn 12s linear infinite}
-    .chip.gold:hover::after{opacity:1}
+  /* дорога опція і легенда: та сама рухома рамка, що в Check (одна мова,
+     один механізм: рух лише background-position, без маски і @property) */
+  .chip.gold,
+  .sec-meta.hv-legend{
+    border-color:transparent;border-width:1.5px;
+    background-image:linear-gradient(var(--card),var(--card)),linear-gradient(90deg,#7C3AED 0%,#C026D3 33%,#E8A33D 66%,#7C3AED 100%);
+    background-origin:padding-box,border-box;background-clip:padding-box,border-box;
+    background-repeat:no-repeat,repeat;background-size:auto,220px 100%;background-position:0 0,0 0;
+    animation:eq-hv-flow 6s linear infinite;
   }
-  @property --eq-ang{syntax:"<angle>";initial-value:0deg;inherits:false}
-  @keyframes eq-hv-turn{to{--eq-ang:360deg}}
-  @media (prefers-reduced-motion:reduce){.chip.gold::after{animation:none}}
-  .sec-meta.hv-legend{border-color:transparent;background:linear-gradient(var(--card),var(--card)) padding-box,linear-gradient(135deg,#7C3AED 0%,#C026D3 50%,#E8A33D 100%) border-box}
+  .chip.gold{padding:4.5px 10.5px}
+  .sec-meta.hv-legend{padding:2.5px 9.5px}
+  @keyframes eq-hv-flow{to{background-position:0 0,220px 0}}
+  @media (prefers-reduced-motion:reduce){.chip.gold,.sec-meta.hv-legend{animation:none}}
   .eq-impact{margin:12px 0 2px;padding:10px 14px;background:var(--amber-soft);border:1px solid #F3E4C8;border-radius:var(--radius)}
   .eq-impact .notes-t{color:var(--amber);margin-bottom:4px}
   .eq-impact .note-row{border-top-color:#F3E4C8}
