@@ -396,8 +396,6 @@
  .mem-save{border:none;border-radius:10px;background:var(--brand);color:var(--ink);font-weight:700;font-size:13px;padding:8px 16px;cursor:pointer;font-family:inherit}
  .mem-clear{border:1px solid var(--line-strong);border-radius:10px;background:var(--card);color:var(--muted);font-weight:600;font-size:13px;padding:8px 14px;cursor:pointer;font-family:inherit}
  .mem-clear:hover{color:var(--red);border-color:var(--red)}
- .mem-use{display:flex;align-items:center;gap:9px;padding:0 20px 16px;font-size:13px;color:var(--muted);cursor:pointer}
- .mem-use input{width:16px;height:16px;accent-color:var(--brand);cursor:pointer}
  .mem-status{font-size:12.5px;color:var(--muted)}
  .acc-row{display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid var(--line);font-size:14px}
  .acc-lbl{flex:0 0 90px;color:var(--muted);font-size:13px}
@@ -676,7 +674,6 @@ Return a compact but sufficiently detailed structured profile in the language we
    <div class="mem-tr-act"><button class="mem-save" id="memPasteSave" type="button">Save to memory</button><button class="mem-clear" id="memTrClose" type="button">Cancel</button><span class="mem-status" id="memTrStatus"></span></div>
   </div>
   <textarea id="memText" rows="6" style="display:none" placeholder="Describe yourself as a car buyer: budget, market, body type, what matters, what you have already rejected"></textarea>
-  <label class="mem-use" id="memUseRow"><input type="checkbox" id="memUse" checked><span>Use memory in report conclusions</span></label>
   <div class="mem-actions">
    <button class="mem-save" id="memEdit">Change</button>
    <button class="mem-save" id="memSave" style="display:none">Save</button>
@@ -808,7 +805,6 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  const bSave = document.getElementById('memSave');
  const bCancel = document.getElementById('memCancel');
  const bClear = document.getElementById('memClear');
- const useRow = document.getElementById('memUseRow');
  const memActions = document.querySelector('#memCard .mem-actions');
  let saved = ta.value;   /* останній збережений текст: для скасування */
  /* початковий рендер: без нього сторінка показувала лише перші рядки поля,
@@ -887,7 +883,6 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  bSave.style.display = mode === 'edit' ? '' : 'none';
  bCancel.style.display = mode === 'edit' ? '' : 'none';
  bClear.style.display = mode === 'read' && !empty ? '' : 'none';
- useRow.style.display = empty ? 'none' : '';
  memActions.style.display = mode === 'import' || (mode === 'read' && empty) ? 'none' : '';
  if (mode === 'edit') { autoGrow(); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
  else if (mode === 'read') renderMemory(ta.value);
@@ -912,18 +907,6 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  ta.value = '';
  renderMemory('');
  save(null, t('Erased ✓'));
- };
-
- /* памʼять у висновках звітів: людина може лишити нотатку, але заборонити
-    використовувати її у фінальному висновку Check. Прапорець локальний для
-    браузера, схему БД не чіпає; check.html читає той самий ключ */
- const MEMORY_IN_REPORTS_KEY = 'calcar_memory_reports';
- const use = document.getElementById('memUse');
- try { use.checked = localStorage.getItem(MEMORY_IN_REPORTS_KEY) !== 'off'; } catch (e) {}
- use.onchange = () => {
-  try { localStorage.setItem(MEMORY_IN_REPORTS_KEY, use.checked ? 'on' : 'off'); } catch (e) {}
-  st.textContent = use.checked ? t('Memory is used in conclusions ✓') : t('Memory in conclusions is off');
-  setTimeout(() => { st.textContent = ''; }, 2600);
  };
 
  /* порожня памʼять це онбординг у режимі читання, а не відкритий редактор */

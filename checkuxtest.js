@@ -368,11 +368,12 @@ const page = fs.readFileSync('result-check.html', 'utf8');
   if (!/aria-expanded="false" aria-controls="pdReasoning"/.test(page)) errs.push('розкриття без стану для скрінрідера');
   if (!/setAttribute\('aria-expanded', open \? 'false' : 'true'\)/.test(page)) errs.push('aria-expanded не перемикається');
   if (!/\.pd-more svg\{/.test(page) || !/\.pd-more\[aria-expanded="true"\] svg\{transform:rotate\(180deg\)\}/.test(page)) errs.push('нема шеврона або він не повертається');
-  /* CTA чату вторинна: без лаймового фону і без службової підказки поруч */
+  /* CTA чату вторинна: без лаймового фону; поруч лише тиха підказка, що чат врахує вподобання */
   const cta = (/\n\s*\.pd-cta-btn\{([^}]*)\}/.exec(page) || [])[1] || '';
   if (/background:var\(--brand\)/.test(cta)) errs.push('кнопка чату досі домінує яскравим фоном');
   if (!/border:1px solid var\(--line-strong\)/.test(cta)) errs.push('кнопка чату не вторинна');
-  if (/pd-cta-hint/.test(page)) errs.push('службовий підпис біля кнопки чату лишився');
+  if (!/<span class="pd-cta-hint">Discuss the car with your preferences in mind\.<\/span>/.test(page)) errs.push('нема тихої підказки про вподобання біля кнопки чату');
+  if (!/\.pd-cta-hint\{font-size:12\.5px;line-height:1\.4;color:var\(--muted\)\}/.test(page)) errs.push('підказка біля кнопки чату не вторинна');
   if (!/@media\(max-width:620px\)\{\.pd-cta-btn\{width:100%/.test(page)) errs.push('на телефоні кнопка чату не на всю ширину');
   /* сам текст висновку не чіпали: ті самі поля рішення */
   if (!/\$\('pdHeadline'\)\.textContent = clean\(pd\.headline\);/.test(page)) errs.push('висновок рендериться не з pd.headline');

@@ -149,19 +149,19 @@ function run(text) {
   const setModeFn = grab(page, 'setMode');
   if (!setModeFn) errs.push('нема setMode');
   else {
-    const view = makeEl(), ta = makeEl(), bEdit = makeEl(), bSave = makeEl(), bCancel = makeEl(), bClear = makeEl(), useRow = makeEl(), memActions = makeEl();
+    const view = makeEl(), ta = makeEl(), bEdit = makeEl(), bSave = makeEl(), bCancel = makeEl(), bClear = makeEl(), memActions = makeEl();
     const trBox = { hidden: true };
     ta.value = NOTE;
     let rendered = null;
     const ctx = {
-      ta, memView: view, bEdit, bSave, bCancel, bClear, useRow, memActions, trBox, saved: NOTE, String,
+      ta, memView: view, bEdit, bSave, bCancel, bClear, memActions, trBox, saved: NOTE, String,
       autoGrow() {}, renderMemory(v) { rendered = v; },
     };
     vm.createContext(ctx);
     vm.runInContext(setModeFn + '\nsetMode(false);', ctx);
     if (ta.style.display !== 'none' || view.style.display !== '') errs.push('у режимі читання видно поле, а не контейнер памʼяті');
     if (rendered !== NOTE) errs.push('режим читання показує не весь текст');
-    if (bEdit.style.display !== '' || bClear.style.display !== '' || useRow.style.display !== '') errs.push('непорожня памʼять у читанні без Змінити/Видалити/прапорця');
+    if (bEdit.style.display !== '' || bClear.style.display !== '') errs.push('непорожня памʼять у читанні без Змінити/Видалити');
     vm.runInContext('setMode(true);', ctx);
     if (ta.style.display !== '' || view.style.display !== 'none') errs.push('у режимі правки не видно поле');
     if (bSave.style.display !== '' || bCancel.style.display !== '' || bEdit.style.display !== 'none') errs.push('у режимі правки не ті кнопки');
@@ -172,7 +172,7 @@ function run(text) {
     ctx.saved = ''; ta.value = '';
     vm.runInContext('setMode(false);', ctx);
     if (ta.style.display !== 'none' || view.style.display !== '') errs.push('порожня памʼять відкриває редактор замість онбордингу');
-    if (bClear.style.display !== 'none' || bCancel.style.display !== 'none' || bEdit.style.display !== 'none' || useRow.style.display !== 'none' || memActions.style.display !== 'none') errs.push('порожня памʼять показує Видалити/Скасувати/Змінити або прапорець');
+    if (bClear.style.display !== 'none' || bCancel.style.display !== 'none' || bEdit.style.display !== 'none' || memActions.style.display !== 'none') errs.push('порожня памʼять показує Видалити/Скасувати/Змінити або прапорець');
     if (trBox.hidden !== true) errs.push('порожнє читання показує панель імпорту');
     /* Скасувати повертає рівно збережений текст */
     const cancel = (page.match(/bCancel\.onclick = \(\) => \{[^}]*\};/) || [''])[0];
@@ -185,8 +185,10 @@ function run(text) {
   if (!/<textarea id="memText" rows="6" style="display:none"/.test(page)) errs.push('поле правки видно в режимі читання');
   if (!/renderMemory\(saved\);/.test(page)) errs.push('памʼять не рендериться одразу при завантаженні');
   if (/if \(!ta\.value\) setMode\(true\)/.test(page)) errs.push('порожня памʼять знову відкриває редактор при завантаженні');
-  /* прапорець і видалення памʼяті лишились */
-  if (!/id="memUse"/.test(page) || !/id="memClear"/.test(page)) errs.push('зник прапорець використання або видалення памʼяті');
+  /* видалення памʼяті лишилось; прапорця "памʼять у висновках звітів" нема:
+     памʼять у висновок звіту не йде взагалі, вона працює лише в чаті */
+  if (!/id="memClear"/.test(page)) errs.push('зникло видалення памʼяті');
+  if (/id="memUse"|calcar_memory_reports/.test(page)) errs.push('кабінет досі обіцяє памʼять у висновках звітів');
 }
 
 if (errs.length) { console.log('MEMORY TEST FAILED:'); errs.forEach(e => console.log('  - ' + e)); process.exit(1); }
