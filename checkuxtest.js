@@ -348,10 +348,40 @@ const page = fs.readFileSync('result-check.html', 'utf8');
     if (!/const hv = o\.value_tier === 'high_value';/.test(page)) errs.push('ознака дорогої опції більше не value_tier');
   }
 
+  /* ---------- 5. картка висновку: тиха редакційна ієрархія ----------
+     Оцінка CalCar вище лишається головним сигналом: оцінка CalCar лишається головним
+     сигналом, картка пояснює, а не повторює її ще одним вердиктом */
+  if (!/<h2>CalCar conclusion<\/h2>/.test(page)) errs.push('заголовок секції не "Вивід CalCar"');
+  if (/Worth buying\?/.test(page)) errs.push('старий заголовок секції лишився');
+  /* нема великого заголовка-вердикту: перший абзац лише трохи щільніший за текст */
+  if (/\.pd-headline\{/.test(page) || /class="pd-headline"/.test(page)) errs.push('великий заголовок-вердикт повернувся');
+  const lead = (/\n\s*\.pd-lead\{([^}]*)\}/.exec(page) || [])[1] || '';
+  const leadSize = parseFloat((/font-size:([\d.]+)px/.exec(lead) || [])[1] || '0');
+  const bodySize = parseFloat((/\n\s*\.pd-short\{[^}]*font-size:([\d.]+)px/.exec(page) || [])[1] || '0');
+  if (!(leadSize > 0 && bodySize > 0 && leadSize <= bodySize + 1)) errs.push('перший абзац висновку все ще заголовкового розміру: ' + leadSize + ' проти ' + bodySize);
+  if (!/max-width:78ch/.test(lead)) errs.push('рядок висновку тягнеться через усю картку');
+  /* жодної другої плашки вердикту всередині картки */
+  if (/\.pd-rec/.test(page)) errs.push('у картці зʼявилась друга плашка вердикту');
+  /* розкриття: тихий контрол із шевроном і станом для клавіатури */
+  const more = (/\n\s*\.pd-more\{([^}]*)\}/.exec(page) || [])[1] || '';
+  if (/background:var\(--brand\)/.test(more)) errs.push('розкриття стало кнопкою-CTA');
+  if (!/aria-expanded="false" aria-controls="pdReasoning"/.test(page)) errs.push('розкриття без стану для скрінрідера');
+  if (!/setAttribute\('aria-expanded', open \? 'false' : 'true'\)/.test(page)) errs.push('aria-expanded не перемикається');
+  if (!/\.pd-more svg\{/.test(page) || !/\.pd-more\[aria-expanded="true"\] svg\{transform:rotate\(180deg\)\}/.test(page)) errs.push('нема шеврона або він не повертається');
+  /* CTA чату вторинна: без лаймового фону і без службової підказки поруч */
+  const cta = (/\n\s*\.pd-cta-btn\{([^}]*)\}/.exec(page) || [])[1] || '';
+  if (/background:var\(--brand\)/.test(cta)) errs.push('кнопка чату досі домінує яскравим фоном');
+  if (!/border:1px solid var\(--line-strong\)/.test(cta)) errs.push('кнопка чату не вторинна');
+  if (/pd-cta-hint/.test(page)) errs.push('службовий підпис біля кнопки чату лишився');
+  if (!/@media\(max-width:620px\)\{\.pd-cta-btn\{width:100%/.test(page)) errs.push('на телефоні кнопка чату не на всю ширину');
+  /* сам текст висновку не чіпали: ті самі поля рішення */
+  if (!/\$\('pdHeadline'\)\.textContent = clean\(pd\.headline\);/.test(page)) errs.push('висновок рендериться не з pd.headline');
+  if (!/pd\.summary_short/.test(page) || !/pd\.reasoning/.test(page)) errs.push('склад тексту висновку змінено');
+
   /* словники */
   for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
     const s = fs.readFileSync(d, 'utf8');
-    for (const k of ['Average mileage', 'Average calculated from the vehicle age.', 'From the seller', 'Did this analysis help you decide?', 'Yes', 'Not really', 'What was missing?', 'Send', 'Thanks for the feedback', 'km/mo', 'Norm', 'Archive photos were used in the analysis but are not available to view right now.', 'Archive photos are unavailable.', 'Owner #{n}']) {
+    for (const k of ['Average mileage', 'Average calculated from the vehicle age.', 'From the seller', 'Did this analysis help you decide?', 'Yes', 'Not really', 'What was missing?', 'Send', 'Thanks for the feedback', 'km/mo', 'Norm', 'CalCar conclusion', 'Archive photos were used in the analysis but are not available to view right now.', 'Archive photos are unavailable.', 'Owner #{n}']) {
       if (!s.includes("'" + k + "':")) errs.push(d + ': нема ключа "' + k + '"');
     }
   }

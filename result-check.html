@@ -960,26 +960,33 @@
   .score-tip span{display:block;font-size:12.5px;line-height:1.5;color:var(--text);font-weight:400}
   .score-tip span + span{margin-top:6px;color:var(--muted)}
 
-  .pd-top{display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:8px}
-  .pd-rec{flex-shrink:0;font-size:12px;font-weight:700;letter-spacing:.3px;border-radius:14px;padding:4px 12px}
-  .pd-rec.ok{background:var(--green-soft);color:var(--green)}
-  .pd-rec.go{background:var(--blue-soft, var(--surface-2));color:var(--brand-ink)}
-  .pd-rec.warn{background:var(--amber-soft);color:var(--amber)}
-  .pd-rec.bad{background:var(--red-soft);color:var(--red)}
-  .pd-headline{font-size:17px;font-weight:700;line-height:1.35;color:var(--ink)}
-  .pd-short{font-size:14.5px;line-height:1.6;color:var(--text);margin:0 0 12px}
+  /* висновок читається як текст аналітика, а не як другий вердикт: оцінка
+     CalCar вище лишається головним сигналом. Перший абзац трохи темніший і
+     щільніший, далі звичайний корпусний текст. Ширина рядка обмежена, щоб
+     на десктопі не тягнувся через усю картку */
+  .pd-lead{font-size:15px;font-weight:600;line-height:1.55;color:var(--ink);margin:0 0 10px;max-width:78ch}
+  .pd-short{font-size:14.5px;line-height:1.65;color:var(--text);margin:0 0 10px;max-width:78ch}
+  .pd-short:last-child{margin-bottom:0}
   .pd-sec{margin-top:12px}
   .pd-sec b{display:block;font-size:12.5px;letter-spacing:.2px;color:var(--muted);margin-bottom:6px}
   .pd-sec ul{margin:0;padding-left:18px}
   .pd-sec li{font-size:13.5px;line-height:1.55;margin-bottom:4px}
-  .pd-more{border:none;background:none;cursor:pointer;padding:0;margin-top:14px;font-size:13.5px;font-weight:600;color:var(--brand-ink);text-decoration:underline}
-  .pd-reasoning{margin-top:12px;font-size:14px;line-height:1.65;color:var(--text)}
-  .pd-reasoning p{margin:0 0 10px}
-  .pd-cta{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
-  .pd-cta-btn{display:inline-flex;align-items:center;gap:8px;background:var(--brand);color:var(--ink);border:1px solid rgba(20,22,25,.08);border-radius:12px;height:40px;padding:0 15px;font-size:13.5px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap}
-  .pd-cta-btn:hover{background:var(--brand-hover)}
-  .pd-cta-btn:active{background:var(--brand-active)}
-  .pd-cta-hint{font-size:12.5px;color:var(--muted);line-height:1.45;flex:1;min-width:180px}
+  /* розкриття це третинний контрол: текст із шевроном, не друга кнопка */
+  .pd-more{display:inline-flex;align-items:center;gap:6px;border:none;background:none;cursor:pointer;padding:0;margin-top:18px;font:inherit;font-size:13.5px;font-weight:600;color:var(--ink-2);text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--line-strong)}
+  .pd-more:hover{color:var(--ink);text-decoration-color:var(--muted)}
+  .pd-more:focus-visible{outline:2px solid var(--ink);outline-offset:3px;border-radius:4px}
+  .pd-more svg{width:13px;height:13px;flex:0 0 auto;transition:transform .18s ease}
+  .pd-more[aria-expanded="true"] svg{transform:rotate(180deg)}
+  .pd-reasoning{margin-top:14px;font-size:14px;line-height:1.7;color:var(--text);max-width:78ch}
+  .pd-reasoning p{margin:0 0 12px}
+  /* дія в чат вторинна: висновок лишається головним у картці */
+  .pd-cta{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}
+  .pd-cta-btn{display:inline-flex;align-items:center;gap:8px;background:var(--card);color:var(--ink);border:1px solid var(--line-strong);border-radius:10px;height:38px;padding:0 15px;font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;transition:background .15s,border-color .15s}
+  .pd-cta-btn:hover{background:var(--surface-2);border-color:var(--muted)}
+  .pd-cta-btn:active{background:var(--surface-2)}
+  .pd-cta-btn:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  .pd-cta-btn svg{opacity:.75}
+  @media(max-width:620px){.pd-cta-btn{width:100%;justify-content:center}}
   @media print{.pd-cta{display:none}}
   /* відгук про звіт: два кліки після вердикту, без модалки; на Score не впливає */
   @media print{.fb{display:none}}
@@ -1146,15 +1153,13 @@
   <!-- вердикт -->
   <div class="card" id="verdictCard" style="display:none">
     <div class="card-head">
-      <h2>Worth buying?</h2>
+      <h2>CalCar conclusion</h2>
     </div>
     <div class="card-body">
       <div id="pdBlock" style="display:none">
-        <div class="pd-top">
-          <div class="pd-headline" id="pdHeadline"></div>
-        </div>
+        <p class="pd-lead" id="pdHeadline"></p>
         <div id="pdShort"></div>
-        <button class="pd-more" id="pdMoreBtn" type="button">Read the full reasoning</button>
+        <button class="pd-more" id="pdMoreBtn" type="button" aria-expanded="false" aria-controls="pdReasoning"><span id="pdMoreLabel">Read the full reasoning</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
         <div class="pd-reasoning" id="pdReasoning" style="display:none"></div>
         <!-- відгук: лише в кінці розгорнутого повного розбору; поле тексту приховане від session replay -->
         <div class="fbx" id="fbBox" hidden>
@@ -1165,7 +1170,6 @@
         </div>
         <div class="pd-cta">
           <button class="pd-cta-btn" id="pdChatBtn" type="button"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg><span>Discuss this car in chat</span></button>
-          <span class="pd-cta-hint">Ask about the accident, mileage, options, risks, or compare with other cars</span>
         </div>
       </div>
       <div class="v-text" id="vText"></div>
@@ -1907,7 +1911,8 @@ function boot2(D){
       $('pdMoreBtn').onclick = () => {
         const open = $('pdReasoning').style.display !== 'none';
         $('pdReasoning').style.display = open ? 'none' : '';
-        $('pdMoreBtn').textContent = open ? t('Read the full reasoning') : t('Collapse the reasoning');
+        $('pdMoreLabel').textContent = open ? t('Read the full reasoning') : t('Collapse the reasoning');
+        $('pdMoreBtn').setAttribute('aria-expanded', open ? 'false' : 'true');
         /* відгук живе лише в кінці розгорнутого повного розбору */
         if (window.calcarFeedbackSync) window.calcarFeedbackSync(open === false);
       };
