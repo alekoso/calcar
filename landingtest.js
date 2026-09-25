@@ -231,10 +231,39 @@ for (const [f, s] of Object.entries(PAGES)) if (/last_product|lastProduct|calcar
   if (!/@media\(max-width:900px\)\{\n\s*\/\*[^*]*\*\/\n\s*\.arch\{grid-template-columns:1fr/.test(home)) errs.push('на телефоні картки не в одну колонку');
   if (!/\.node-engine,\.out-a,\.out-b\{grid-column:1 \/ -1\}/.test(home)) errs.push('на телефоні картки не на всю ширину');
   if (!/\.join i\{display:none\}/.test(home)) errs.push('складна геометрія звʼязків лишилась на телефоні');
-  /* рух тільки за згодою і тільки повільний */
-  if (!/@media\(prefers-reduced-motion:no-preference\)\{\.join i\.d\{animation:tech-flow (\d+)s/.test(home)) errs.push('рух по лініях не за prefers-reduced-motion');
-  const dur = parseInt((/animation:tech-flow (\d+)s/.exec(home) || [])[1] || '0', 10);
-  if (!(dur >= 6)) errs.push('рух по лініях швидкий: ' + dur + 's');
+  /* потік сигналів: послідовність, запуск у полі зору, пауза під курсором,
+     повна тиша за prefers-reduced-motion */
+  const flowJs = home.slice(home.indexOf("var arch = document.querySelector('.arch')"), home.indexOf('})();', home.indexOf("var arch = document.querySelector('.arch')")));
+  if (!flowJs) errs.push('нема сценарію потоку сигналів');
+  if (!/matchMedia\('\(prefers-reduced-motion: reduce\)'\)\.matches\) return;/.test(flowJs)) errs.push('потік сигналів не вимикається за prefers-reduced-motion');
+  if (!/new IntersectionObserver\(/.test(flowJs) || !/rootMargin: '-12% 0px -12% 0px'/.test(flowJs)) errs.push('потік не привʼязаний до появи секції на екрані');
+  if (/threshold: 0\.\d/.test(flowJs)) errs.push('частка висоти як поріг: на телефоні схема вища за екран і цикл не стартує');
+  if (!/en\.isIntersecting\) start\(\); else stop\(\)/.test(flowJs)) errs.push('поза екраном цикл не зупиняється');
+  if (!/mouseenter[\s\S]{0,80}stop\(\)/.test(flowJs) || !/mouseleave[\s\S]{0,80}start\(\)/.test(flowJs)) errs.push('під курсором автоматичний показ не ставиться на паузу');
+  if (/requestAnimationFrame|setInterval/.test(flowJs)) errs.push('замість одного таймера зроблено цикл кадрів');
+  /* порядок кроків: чотири джерела -> лінії -> Decision Engine -> лінія -> результат -> асистент */
+  const steps = (/var STEPS = \[([\s\S]*?)\];/.exec(flowJs) || [])[1] || '';
+  const order = (steps.match(/nodes\[\d\]|fan|split/g) || []).join(',');
+  if (order !== 'nodes[0],nodes[1],nodes[2],nodes[3],fan,nodes[4],split,nodes[5],nodes[6]') errs.push('порядок підсвічування не за архітектурою: ' + order);
+  const times = (steps.match(/, (\d+)\]/g) || []).map(x => parseInt(x.slice(2), 10));
+  if (times.length !== 9) errs.push('не девʼять кроків у циклі: ' + times.length);
+  if (times.slice(0, 4).some(t => t < 600 || t > 800)) errs.push('верхні картки спалахують не за 600-800 мс: ' + times.slice(0, 4).join());
+  if (times[4] < 800 || times[4] > 1000 || times[5] < 800 || times[5] > 1000) errs.push('збіг ліній і Decision Engine не 800-1000 мс');
+  if (times[8] < 2000 || times[8] > 3000) errs.push('пауза між циклами не 2-3 с: ' + times[8]);
+  const loop = times.reduce((a2, b2) => a2 + b2, 0);
+  if (loop < 7000 || loop > 10000) errs.push('цикл не 7-10 с: ' + loop);
+  /* активна картка це акцент, а не зсув чи зміна розміру */
+  const live = (/\n\s*\.node\.is-live\{([^}]*)\}/.exec(home) || [])[1] || '';
+  if (!/border-color:var\(--brand\)/.test(live)) errs.push('активна картка без лаймового акценту');
+  if (/transform|width|height|padding|margin|font-size/.test(live)) errs.push('активна картка рухається або змінює розмір');
+  if (!/\.join\.is-live i\{background:var\(--brand\)\}/.test(home)) errs.push('звʼязки не беруть участі в потоці');
+  if (/opacity:0?\.[0-5]/.test(live)) errs.push('неактивні картки гасяться надто сильно');
+  /* відступ між секціями помітно менший */
+  /* видимий проміжок над секцією це margin плюс власний padding секції:
+     разом мусить лишитись приблизно половина від колишніх 64 + 48 */
+  const g1 = parseInt((/\.tech\{margin-top:(\d+)px;padding-top:(\d+)px\}/.exec(home) || [])[1] || '0', 10);
+  const g2 = parseInt((/\.tech\{margin-top:\d+px;padding-top:(\d+)px\}/.exec(home) || [])[1] || '0', 10);
+  if (!(g1 + g2 > 0 && g1 + g2 <= 56)) errs.push('проміжок над секцією не зменшений приблизно вдвічі: ' + (g1 + g2));
   if (/glow|neon|particle|blur\(|rotate3d|perspective/.test(tech)) errs.push('у блоці зʼявились ефекти поза мовою CalCar');
   /* мікровзаємодії стримані: рамка і іконка, без стрибка картки */
   if (!/\.node:hover\{border-color:var\(--line-strong\)/.test(home)) errs.push('нема стриманого hover на вузлах');
@@ -253,7 +282,7 @@ for (const [f, s] of Object.entries(PAGES)) if (/last_product|lastProduct|calcar
   /* словники: описи перекладені, назви систем лишаються продуктовими іменами */
   for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
     const dict = fs.readFileSync(d, 'utf8');
-    for (const k of ['Paste a vehicle listing link', 'For example, a listing from a supported marketplace', 'What powers CalCar']) {
+    for (const k of ['Paste a vehicle listing link', 'For example, a listing from a supported marketplace', 'What powers CalCar', 'More than a single AI prompt. Several specialized systems work together on every car.']) {
       if (!dict.includes("'" + k + "':")) errs.push(d + ': нема ключа "' + k + '"');
     }
     for (const name of ['Vehicle Memory', 'Decision Engine']) {

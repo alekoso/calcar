@@ -471,7 +471,9 @@
      Звʼязки живуть у ТІЙ САМІЙ сітці, тому лінії сходяться точно в центри
      карток за будь-якої ширини: центр колонки в сітці з 4 колонок це
      (100% - 3g)/8 від її початку. Жодного окремого діаграмного рушія */
-  .tech{margin-top:64px}
+  /* дві секції це одна розповідь: зверху лишається приблизно половина
+     колишнього проміжку (64px margin + 48px padding секції -> 8 + 28) */
+  .tech{margin-top:8px;padding-top:28px}
   .arch{--g:16px;display:grid;grid-template-columns:repeat(4,1fr);gap:0 var(--g);margin-top:32px;align-items:stretch}
   .node{display:flex;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:15px 16px;text-align:left;transition:border-color .18s ease,box-shadow .18s ease}
   .node:hover{border-color:var(--line-strong);box-shadow:0 4px 14px rgba(20,22,25,.05)}
@@ -482,7 +484,7 @@
   .node p{font-size:13px;line-height:1.5;color:var(--muted);margin-top:4px}
   /* Decision Engine виділений лише лаймовою іконкою і трохи щільнішою
      рамкою: та сама мова карток, без окремого стилю */
-  .node-engine{grid-column:2 / 4;border-color:var(--line-strong);box-shadow:0 1px 2px rgba(20,22,25,.04)}
+  .node-engine{grid-column:2 / 4;border-color:var(--ink-2);box-shadow:0 2px 10px rgba(20,22,25,.07)}
   .node-engine .node-ic{background:var(--brand);color:var(--ink)}
   .out-a{grid-column:1 / 3}
   .out-b{grid-column:3 / 5}
@@ -494,7 +496,7 @@
   .join i.v{width:1px;height:19px;transform:translateX(-50%)}
   .join.split i.v:nth-of-type(3){transform:translateX(50%)}
   .join i.h{height:1px;top:19px}
-  .join i.d{width:1px;left:50%;transform:translateX(-50%);background:linear-gradient(180deg,var(--line-strong),var(--brand));background-size:100% 200%}
+  .join i.d{width:1px;left:50%;transform:translateX(-50%)}
   /* шар 1 -> Decision Engine: стійки з центрів чотирьох карток, шина, спуск */
   .join.fan i.v{top:0}
   .join.fan i.v:nth-of-type(1){left:calc((100% - 3 * var(--g)) / 8)}
@@ -510,8 +512,15 @@
   .join.split i.v:nth-of-type(2){left:calc((100% - 3 * var(--g)) / 4 + var(--g) / 2)}
   .join.split i.v:nth-of-type(3){right:calc((100% - 3 * var(--g)) / 4 + var(--g) / 2)}
   /* дуже повільний лаймовий рух лише вертикальними спусками і лише за згодою */
-  @media(prefers-reduced-motion:no-preference){.join i.d{animation:tech-flow 9s linear infinite}}
-  @keyframes tech-flow{from{background-position:0 100%}to{background-position:0 -100%}}
+  /* потік сигналів: підсвічування вмикає JS, коли секція справді на екрані.
+     Активна картка лише набирає лаймовий акцент, геометрія не рухається,
+     неактивні лишаються повністю читабельними */
+  .node,.join i{transition:border-color .3s ease,box-shadow .3s ease,background-color .3s ease,background .3s ease}
+  .node.is-live{border-color:var(--brand);box-shadow:0 4px 16px rgba(139,186,40,.18)}
+  .node.is-live .node-ic{background:var(--brand);color:var(--ink)}
+  .node-engine.is-live{border-color:var(--brand);box-shadow:0 4px 18px rgba(139,186,40,.24)}
+  .join i{background:var(--line-strong)}
+  .join.is-live i{background:var(--brand)}
   @media(max-width:900px){
     /* на телефоні діаграми немає: колонка карток і коротка риска між шарами */
     .arch{grid-template-columns:1fr;gap:10px;margin-top:26px}
@@ -519,7 +528,7 @@
     .join{height:22px}
     .join i{display:none}
     .join i.d{display:block;top:0;bottom:0;height:auto;left:50%}
-    .tech{margin-top:48px}
+    .tech{margin-top:6px;padding-top:22px}
   }
   .btn-primary{transition:background .18s ease,box-shadow .18s ease}
   .btn-primary:hover{background:var(--brand-hover)}
@@ -882,7 +891,7 @@
 <div class="wrap-sec" id="tech">
   <section class="tech">
     <h2 class="sec">What powers CalCar</h2>
-    <p class="sec-sub">Several CalCar systems work together: they collect evidence about this exact car and turn it into a clear conclusion.</p>
+    <p class="sec-sub">More than a single AI prompt. Several specialized systems work together on every car.</p>
     <div class="arch">
         <article class="node"><span class="node-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="2.6"/></svg></span><span><b>Vehicle Vision</b><p>CalCar's AI vision module reads the car's photos and finds signs of damage, wear and visible equipment.</p></span></article>
         <article class="node"><span class="node-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg></span><span><b>Vehicle Memory</b><p>CalCar's memory system builds the history of this exact VIN: listings, mileage readings, photos and recorded events.</p></span></article>
@@ -1747,6 +1756,56 @@ if (window.CALCAR_SIGNED_IN !== undefined) window.calcarAuthState(window.CALCAR_
     place();
   });
   window.addEventListener('scroll', function () { if (open) place(); }, { passive: true });
+})();
+</script>
+<script>
+/* Потік сигналів у секції "Що працює всередині CalCar".
+   Це ВІЗУАЛЬНЕ пояснення, що над машиною працює кілька систем, а не один
+   запит; послідовність підсвічування НЕ означає, що на бекенді системи
+   ходять строго одна за одною. Цикл ~8.6 с: чотири джерела, збіг ліній у
+   Decision Engine, далі результат і асистент, потім пауза.
+   Анімація живе лише поки секція на екрані, зупиняється під курсором і
+   зовсім не вмикається за prefers-reduced-motion. Жодного фреймворка:
+   один таймер і клас is-live. */
+(function () {
+  var arch = document.querySelector('.arch');
+  if (!arch || !window.IntersectionObserver) return;
+  try { if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return; } catch (e) {}
+  var nodes = arch.querySelectorAll('.node');
+  var fan = arch.querySelector('.join.fan'), split = arch.querySelector('.join.split');
+  if (nodes.length < 7 || !fan || !split) return;
+  /* [що підсвітити, скільки тримати до наступного кроку] */
+  var STEPS = [
+    [nodes[0], 700], [nodes[1], 700], [nodes[2], 700], [nodes[3], 700],
+    [fan, 900], [nodes[4], 900], [split, 700], [nodes[5], 700], [nodes[6], 2500],
+  ];
+  var i = 0, timer = null, running = false, hovered = false;
+  function clear() { arch.querySelectorAll('.is-live').forEach(function (el) { el.classList.remove('is-live'); }); }
+  function step() {
+    if (i >= STEPS.length) { i = 0; clear(); }
+    var cur = STEPS[i];
+    cur[0].classList.add('is-live');
+    i++;
+    timer = setTimeout(step, cur[1]);
+  }
+  function start() {
+    if (running || hovered) return;
+    running = true; i = 0; clear(); step();
+  }
+  function stop() {
+    running = false;
+    if (timer) { clearTimeout(timer); timer = null; }
+    clear();
+  }
+  /* поріг у відсотках висоти не годиться: на телефоні схема вища за екран і
+     така частка не набирається ніколи. Тому рахуємо перетин із центральною
+     смугою екрана */
+  new IntersectionObserver(function (entries) {
+    entries.forEach(function (en) { if (en.isIntersecting) start(); else stop(); });
+  }, { rootMargin: '-12% 0px -12% 0px' }).observe(arch);
+  /* під курсором автоматичний показ стоїть, підсвічена лише ця картка */
+  arch.addEventListener('mouseenter', function () { hovered = true; stop(); }, true);
+  arch.addEventListener('mouseleave', function () { hovered = false; start(); });
 })();
 </script>
 <script>
