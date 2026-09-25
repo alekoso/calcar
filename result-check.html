@@ -1679,7 +1679,9 @@ function boot(){
 /* ---------- відео про модель ----------
    Необовʼязкове збагачення: запит іде після рендера звіту, помилка чи
    порожній список просто лишають блок схованим. Дані звіту не змінюються */
-const YT_INITIAL = 3, YT_MAX = 6;
+/* показуємо по три: 3 -> 6 -> 9 -> 12 -> 15, далі згортання назад до 3.
+   Добірка приходить одна і назавжди: жодного нового запиту по кліку */
+const YT_INITIAL = 3, YT_STEP = 3, YT_MAX = 15;
 function ytDuration(sec) {
   if (typeof sec !== 'number' || !isFinite(sec) || sec <= 0) return '';
   const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s2 = Math.round(sec % 60);
@@ -1690,13 +1692,17 @@ function ytDuration(sec) {
    використовуємо */
 function ytIdentityParams(D) {
   const mi = (M && M.model_identity) || {};
+  const v = D.vehicle || {};
   const p = new URLSearchParams();
-  const title = clean((D.vehicle || {}).title || '');
+  const title = clean(v.title || '');
   if (title) p.set('title', title);
   if (mi.make) p.set('make', mi.make);
   if (mi.model) p.set('model', mi.model);
+  /* покоління головний ключ пошуку; рік потрібен лише як запасний */
   if (mi.generation) p.set('generation', mi.generation);
+  else if (v.year) p.set('year', String(v.year));
   if (mi.engine_code) p.set('engine_code', mi.engine_code);
+  if (v.fuel) p.set('powertrain', clean(v.fuel));
   p.set('lang', window.calcarLang());
   return (title || mi.make) ? p : null;
 }
@@ -1727,14 +1733,19 @@ async function videosInit(D) {
   card.style.display = '';
   if (window.calcar) window.calcar.track('youtube_block_viewed', { product: 'check', count: videos.length });
   if (videos.length > YT_INITIAL) {
+    let shown = YT_INITIAL;
+    const apply = () => {
+      grid.querySelectorAll('.yt-card').forEach((el, i) => { el.hidden = i >= shown; });
+      moreBtn.textContent = shown >= videos.length ? t('Show less') : t('Show more');
+    };
     moreBtn.hidden = false;
-    moreBtn.textContent = t('Show more');
+    apply();
     moreBtn.onclick = () => {
-      const open = moreBtn.dataset.open === '1';
-      grid.querySelectorAll('.yt-card').forEach((el, i) => { el.hidden = open && i >= YT_INITIAL; });
-      moreBtn.dataset.open = open ? '' : '1';
-      moreBtn.textContent = open ? t('Show more') : t('Show less');
-      if (!open && window.calcar) window.calcar.track('youtube_show_more', { product: 'check' });
+      /* усе вже показано: згортаємо назад до трьох */
+      if (shown >= videos.length) { shown = YT_INITIAL; apply(); return; }
+      shown = Math.min(videos.length, shown + YT_STEP);
+      apply();
+      if (window.calcar) window.calcar.track('youtube_show_more', { product: 'check', count: shown });
     };
   }
   /* один обробник на сітку: повторний виклик не подвоює відкриття */

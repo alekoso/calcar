@@ -26,7 +26,7 @@ const vid = (id, title, extra = {}) => Object.assign({
   /* рік не звужує пошук */
   if (/\b(19|20)\d{2}\b/.test(m550.base)) errs.push('рік потрапив у пошуковий запит');
   /* сирий заголовок оголошення не використовуємо: беремо нормалізовану назву звіту */
-  if (!/const title = clean\(\(D\.vehicle \|\| \{\}\)\.title \|\| ''\);/.test(page)) errs.push('сторінка бере ідентичність не з нормалізованої назви звіту');
+  if (!/const v = D\.vehicle \|\| \{\};\n\s*const p = new URLSearchParams\(\);\n\s*const title = clean\(v\.title \|\| ''\);/.test(page)) errs.push('сторінка бере ідентичність не з нормалізованої назви звіту');
   /* покоління з площадки буває сміттям: типом кузова, приводом, версією */
   for (const g of ['Base', 'Sedan', 'повний привід', 'SUV', 'XSE', 'Limited', 'Premium', 'Hybrid', 'Automatic', 'AWD', 'GT', 'GTS', 'LE', 'SEL', '2015']) {
     if (Y.validGeneration(g)) errs.push('сміттєве покоління прийняте за код платформи: ' + g + ' -> ' + Y.validGeneration(g));
@@ -54,6 +54,19 @@ const vid = (id, title, extra = {}) => Object.assign({
   /* покоління вже в назві не дублюється */
   if (Y.buildIdentity({ title: 'Hyundai Tucson TL 2019', generation: 'TL' }).base !== 'Hyundai Tucson TL') errs.push('покоління продубльоване в ідентичності');
 
+  /* покоління головний ключ, рік лише коли покоління нема */
+  const camry = Y.buildIdentity({ make: 'Toyota', model: 'Camry', generation: 'XV80', year: 2025, powertrain: 'hybrid' });
+  if (camry.base !== 'Toyota Camry XV80') errs.push('Camry: ідентичність не "Toyota Camry XV80": ' + camry.base);
+  if (/\b(19|20)\d{2}\b/.test(camry.base)) errs.push('Camry: рік лишився попри відоме покоління');
+  if (camry.withPower !== 'Toyota Camry XV80 Hybrid') errs.push('тип установки не уточнює запит: ' + camry.withPower);
+  const camryNoGen = Y.buildIdentity({ make: 'Toyota', model: 'Camry', generation: null, year: 2025 });
+  if (camryNoGen.base !== 'Toyota Camry 2025') errs.push('без покоління нема запасного ключа за роком: ' + camryNoGen.base);
+  const camryTrim = Y.buildIdentity({ make: 'Toyota', model: 'Camry', generation: 'XSE', year: 2025 });
+  if (camryTrim.base !== 'Toyota Camry 2025') errs.push('trim XSE став поколінням: ' + camryTrim.base);
+  /* тип установки лише коли він справді розрізняє версії */
+  if (Y.validPowertrain('petrol') || Y.validPowertrain('gasoline') || Y.validPowertrain('')) errs.push('бензин додається в запит без потреби');
+  if (Y.validPowertrain('plug-in hybrid') !== 'Hybrid' || Y.validPowertrain('electric') !== 'Electric' || Y.validPowertrain('diesel') !== 'Diesel') errs.push('гібрид, електро або дизель не розпізнані');
+
   /* ---------- 2. три запити, мова звіту, шаблони без моделі ---------- */
   const q = (id, lang) => Y.buildQueries(id, lang).map(x => x.q);
   const ru = q(m550, 'ru'), ua = q(m550, 'ua'), en = q(m550, 'en');
@@ -62,6 +75,8 @@ const vid = (id, title, extra = {}) => Object.assign({
   if (en.join('|') !== 'BMW M550i G30 review|BMW M550i G30 N63 common problems|BMW M550i G30 ownership review') errs.push('EN-запити не за шаблоном: ' + en.join('|'));
   if (q(m550, 'de').join('|') !== en.join('|')) errs.push('невідома мова не падає на англійські шаблони');
   /* двигун лише у запиті про проблеми */
+  const camryRu = Y.buildQueries(camry, 'ru').map(x => x.q);
+  if (camryRu.join('|') !== 'Toyota Camry XV80 Hybrid обзор|Toyota Camry XV80 Hybrid проблемы|Toyota Camry XV80 опыт владения') errs.push('Camry: запити не за шаблоном: ' + camryRu.join('|'));
   const engQ = Y.buildQueries(m550, 'ru').filter(x => x.q.includes('N63')).map(x => x.intent);
   if (engQ.join() !== 'problems') errs.push('двигун потрапив не лише в запит про проблеми: ' + engQ.join());
   /* двигун невідомий: його нема в жодному запиті */
@@ -103,8 +118,8 @@ const vid = (id, title, extra = {}) => Object.assign({
   const reup = Y.selectVideos([vid('r1', 'BMW M550i G30 обзор', { channel_id: 'a' }), vid('r2', 'BMW M550i G30 обзор', { channel_id: 'b' })], id);
   if (reup.length !== 1) errs.push('перезалив з тим самим заголовком не прибраний');
   /* більше шести кандидатів: віддаємо максимум шість */
-  const many = Y.selectVideos(Array.from({ length: 12 }, (_, i) => vid('v' + i, 'BMW M550i G30 обзор частина ' + i, { channel_id: 'c' + i, views: 10000 * (i + 1) })), id);
-  if (many.length !== 6) errs.push('віддано не 6 відео, а ' + many.length);
+  const many = Y.selectVideos(Array.from({ length: 24 }, (_, i) => vid('v' + i, 'BMW M550i G30 обзор частина ' + i, { channel_id: 'c' + i, views: 10000 * (i + 1) })), id);
+  if (many.length !== 15) errs.push('віддано не 15 відео, а ' + many.length);
   /* лише два придатних: слабкими не добиваємо */
   const two = Y.selectVideos([
     vid('t1', 'BMW M550i G30 обзор', { channel_id: 'a' }),
@@ -123,25 +138,74 @@ const vid = (id, title, extra = {}) => Object.assign({
   const kinds = diverse.flatMap(v => v.intents);
   for (const need of ['review', 'problems', 'ownership']) if (!kinds.includes(need)) errs.push('у трьох перших нема наміру ' + need);
   /* один канал не забирає всі слоти */
-  const oneCh = Y.selectVideos(Array.from({ length: 6 }, (_, i) => vid('c' + i, 'BMW M550i G30 обзор ' + i, { channel_id: 'same', views: 100000 })), id);
-  if (oneCh.length > 2) errs.push('один канал зайняв більше двох слотів: ' + oneCh.length);
+  const oneCh = Y.selectVideos(Array.from({ length: 9 }, (_, i) => vid('c' + i, 'BMW M550i G30 обзор ' + i, { channel_id: 'same', views: 100000 })), id);
+  if (oneCh.length > 3) errs.push('один канал зайняв більше трьох слотів: ' + oneCh.length);
   /* тривалість з ISO-8601 */
   if (Y.parseDuration('PT12M30S') !== 750 || Y.parseDuration('PT1H2M3S') !== 3723 || Y.parseDuration('bad') !== null) errs.push('тривалість розібрана неправильно');
   if (!(Y.popularity(0) === 0 && Y.popularity(10000000) === 1 && Y.popularity(1000) > 0)) errs.push('нормалізація переглядів не логарифмічна 0..1');
+
+  /* ---------- 3б. чуже покоління і мотлох ---------- */
+  {
+    const camryId = Y.buildIdentity({ make: 'Toyota', model: 'Camry', generation: 'XV80' });
+    const g30 = Y.buildIdentity({ make: 'BMW', model: '5 Series', generation: 'G30' });
+    const w205 = Y.buildIdentity({ make: 'Mercedes-Benz', model: 'C-Class', generation: 'W205' });
+    const c958 = Y.buildIdentity({ make: 'Porsche', model: 'Cayenne', generation: '958.1' });
+    const conflict = [
+      [camryId, 'Toyota Camry XV70 обзор'], [camryId, 'Camry 70: честный обзор'], [camryId, 'Toyota Camry 70 опыт владения'],
+      [g30, 'BMW 530i G60 review'], [w205, 'Mercedes C-Class W206 review'], [c958, 'Porsche Cayenne 958.2 обзор'],
+    ];
+    for (const [idn, title] of conflict) if (!Y.generationConflict(title, idn)) errs.push('чуже покоління пройшло: ' + title);
+    const okTitles = [
+      [camryId, 'Toyota Camry XV80 обзор'], [camryId, 'Новая Toyota Camry 2025: большой тест'], [camryId, 'Camry 80 опыт владения'],
+      [g30, 'BMW 530i G30 review'], [g30, 'BMW 5 Series review'], [w205, 'Mercedes W205 C200 обзор'], [c958, 'Porsche Cayenne 958.1 обзор'],
+    ];
+    for (const [idn, title] of okTitles) if (Y.generationConflict(title, idn)) errs.push('правильне або нейтральне відео відкинуте: ' + title);
+    /* покоління невідоме: нічого не відкидаємо за кодом */
+    if (Y.generationConflict('Toyota Camry XV70 обзор', Y.buildIdentity({ make: 'Toyota', model: 'Camry', year: 2025 }))) errs.push('без цільового покоління щось відкинуто');
+    /* віральне відео про чуже покоління не обходить правильне */
+    const mix = Y.selectVideos([
+      vid('wrong', 'Toyota Camry XV70 обзор', { views: 9000000 }),
+      vid('right', 'Toyota Camry XV80 обзор', { views: 12000 }),
+    ], camryId);
+    if (mix.length !== 1 || mix[0].id !== 'right') errs.push('чуже покоління обійшло правильне: ' + JSON.stringify(mix.map(v => v.id)));
+
+    /* мотлох без розбору відсіюється, тест-драйв лишається */
+    const junk = ['Toyota Camry XV80 POV drive', 'Camry XV80 0-100 km/h acceleration', 'Camry XV80 exhaust sound', 'Camry XV80 top speed', 'Camry XV80 #shorts', 'Camry XV80 ночная поездка', 'Toyota Camry XV80 в наличии, цена в салоне'];
+    for (const title of junk) if (!Y.lowValue({ title, duration_s: 600 })) errs.push('мотлох пройшов фільтр: ' + title);
+    const useful = ['Toyota Camry XV80 тест-драйв', 'Toyota Camry XV80 test drive review', 'Camry XV80 обзор', 'Camry XV80 опыт владения', 'Camry XV80 проблемы и надежность'];
+    for (const title of useful) if (Y.lowValue({ title, duration_s: 600 })) errs.push('корисне відео відкинуте: ' + title);
+    /* коротке відео без ознак розбору не потрібне, Shorts не проходить ніколи */
+    if (!Y.lowValue({ title: 'Camry XV80 быстрый взгляд', duration_s: 90 })) errs.push('Shorts пройшов');
+    if (!Y.lowValue({ title: 'Camry XV80 быстрый взгляд', duration_s: 200 })) errs.push('коротке відео без розбору пройшло');
+    if (Y.lowValue({ title: 'Camry XV80 обзор', duration_s: 200 })) errs.push('короткий, але змістовний огляд відкинутий');
+  }
 
   /* ---------- 4. ендпоінт: ключ, помилки, кеш ---------- */
   const res = () => { const r = { code: 0, h: {}, body: null }; r.status = c => { r.code = c; return r; }; r.json = b => { r.body = b; return r; }; r.setHeader = (k, v) => { r.h[k.toLowerCase()] = v; }; return r; };
   const query = { title: 'BMW M550i 2018', generation: 'G30', engine_code: 'N63', lang: 'ru' };
   const calls = [];
+  /* керований фейковий YouTube: скільки результатів дає кожна мова */
+  let perLang = { ru: 12, en: 12 };
   const okFetch = async (u) => {
     u = String(u); calls.push(u);
-    if (u.includes('/search?') || u.includes('/search')) {
-      const qq = new URL(u).searchParams.get('q');
-      const n = qq.includes('проблемы') ? 'p' : qq.includes('опыт') ? 'o' : 'r';
-      return { ok: true, json: async () => ({ items: [1, 2].map(i => ({ id: { videoId: n + i }, snippet: { title: 'BMW M550i G30 ' + qq, channelTitle: 'Chan ' + n, channelId: 'ch' + n + i, publishedAt: '2024-05-01T00:00:00Z', liveBroadcastContent: 'none' } })) }) };
+    const url = new URL(u);
+    if (u.includes('/search')) {
+      const qq = url.searchParams.get('q');
+      const lang = url.searchParams.get('relevanceLanguage');
+      const n = qq.includes('проблемы') || qq.includes('problems') ? 'p' : (qq.includes('опыт') || qq.includes('ownership') ? 'o' : 'r');
+      const count = perLang[lang === 'uk' ? 'ua' : lang] || 0;
+      const items = Array.from({ length: count }, (_, k) => ({
+        id: { videoId: lang + n + k },
+        snippet: { title: 'BMW M550i G30 ' + qq + ' #' + k, channelTitle: 'Chan ' + lang + n + k, channelId: 'ch' + lang + n + k, publishedAt: '2024-05-01T00:00:00Z', liveBroadcastContent: 'none' },
+      }));
+      return { ok: true, json: async () => ({ items }) };
     }
-    const ids = new URL(u).searchParams.get('id').split(',');
-    return { ok: true, json: async () => ({ items: ids.map(i => ({ id: i, snippet: { title: 'BMW M550i G30 обзор ' + i, channelTitle: 'Chan ' + i[0], thumbnails: { medium: { url: 'https://i.ytimg.com/vi/' + i + '/mq.jpg' } }, liveBroadcastContent: 'none', publishedAt: '2024-05-01T00:00:00Z' }, contentDetails: { duration: 'PT11M' }, statistics: { viewCount: '123456' } })) }) };
+    const ids = url.searchParams.get('id').split(',');
+    return { ok: true, json: async () => ({ items: ids.map(i => ({
+      id: i,
+      snippet: { title: 'BMW M550i G30 обзор ' + i, channelTitle: 'Chan ' + i, thumbnails: { medium: { url: 'https://i.ytimg.com/vi/' + i + '/mq.jpg' } }, liveBroadcastContent: 'none', publishedAt: '2024-05-01T00:00:00Z' },
+      contentDetails: { duration: 'PT11M' }, statistics: { viewCount: '123456' },
+    })) }) };
   };
 
   /* 11. нема ключа: порожньо і жодного запиту назовні */
@@ -169,13 +233,14 @@ const vid = (id, title, extra = {}) => Object.assign({
   let r4 = res();
   await Y.default({ method: 'GET', query }, r4);
   const searches = calls.filter(u => u.includes('/search'));
-  if (searches.length !== 3) errs.push('не три пошукові запити: ' + searches.length);
+  if (searches.length !== 3) errs.push('мовою звіту не три пошукові запити: ' + searches.length);
   if (!searches.every(u => /type=video/.test(u) && /videoEmbeddable=true/.test(u) && /videoSyndicated=true/.test(u))) errs.push('пошук не обмежений відео, які можна вбудувати');
-  if (!searches.every(u => /maxResults=5/.test(u))) errs.push('беремо не по 5 кандидатів');
+  if (!searches.every(u => /maxResults=10/.test(u))) errs.push('беремо не по 10 кандидатів на запит');
   if (!searches.some(u => /relevanceLanguage=ru/.test(u))) errs.push('мова звіту не передана в пошук');
   if (calls.filter(u => u.includes('/videos')).length !== 1) errs.push('метадані тягнуться не одним запитом');
   if (/commentThreads|channels\?/.test(calls.join(' '))) errs.push('ендпоінт ліз у коментарі або історію каналу');
-  if (!r4.body.videos.length || r4.body.videos.length > 6) errs.push('успішний шлях віддав ' + r4.body.videos.length + ' відео');
+  if (r4.body.videos.length !== 15) errs.push('успішний шлях віддав не 15 відео, а ' + r4.body.videos.length);
+  if (r4.body.fallback_language) errs.push('добір англійською увімкнувся, хоча своєю мовою вистачило');
   for (const v of r4.body.videos) {
     for (const k of ['id', 'title', 'channel', 'thumb', 'duration_s']) if (v[k] === undefined) errs.push('у відео нема поля ' + k);
   }
@@ -188,6 +253,33 @@ const vid = (id, title, extra = {}) => Object.assign({
   /* 405 на чужий метод */
   const r5 = res(); await Y.default({ method: 'POST', query }, r5);
   if (r5.code !== 405) errs.push('POST не відхилений');
+
+  /* мова: свого мало -> добираємо англійською; української російською НЕ добираємо */
+  perLang = { ru: 3, en: 12 };
+  calls.length = 0;
+  const r6 = res(); await Y.default({ method: 'GET', query }, r6);
+  const langs6 = calls.filter(u => u.includes('/search')).map(u => new URL(u).searchParams.get('relevanceLanguage'));
+  if (langs6.filter(l => l === 'ru').length !== 3 || langs6.filter(l => l === 'en').length !== 3) errs.push('добір англійською не відбувся: ' + langs6.join());
+  if (r6.body.fallback_language !== 'en') errs.push('добір англійською не позначений у відповіді');
+  if (r6.body.videos.length !== 15) errs.push('після добору не 15 відео, а ' + r6.body.videos.length);
+  const ruCount = r6.body.videos.filter(v => v.lang === 'ru').length;
+  if (ruCount !== 9) errs.push('усі свої відео мали лишитись у добірці: ' + ruCount);
+
+  perLang = { ua: 3, en: 12 };
+  calls.length = 0;
+  const r7 = res(); await Y.default({ method: 'GET', query: { ...query, lang: 'ua' } }, r7);
+  const langs7 = calls.filter(u => u.includes('/search')).map(u => new URL(u).searchParams.get('relevanceLanguage'));
+  if (langs7.some(l => l === 'ru')) errs.push('для української добирали російською');
+  if (!langs7.includes('uk') || !langs7.includes('en')) errs.push('українська не добирається англійською: ' + langs7.join());
+
+  /* англійський звіт: жодного другого кола */
+  perLang = { en: 6 };
+  calls.length = 0;
+  const r8 = res(); await Y.default({ method: 'GET', query: { ...query, lang: 'en' } }, r8);
+  if (calls.filter(u => u.includes('/search')).length !== 3) errs.push('для англійського звіту зробили зайвий добір');
+  if (r8.body.videos.length < 1 || r8.body.videos.length > 15) errs.push('англійський звіт віддав ' + r8.body.videos.length);
+  if (r8.body.fallback_language) errs.push('англійський звіт позначений добором');
+  perLang = { ru: 12, en: 12 };
 
   /* ---------- 5. проводка на сторінці ---------- */
   /* блок стоїть одразу після слабких місць */
@@ -209,9 +301,16 @@ const vid = (id, title, extra = {}) => Object.assign({
   if (!/id="ytmLink"[^>]*target="_blank"[^>]*rel="noopener"/.test(page)) errs.push('нема запасного переходу на YouTube');
   /* показати ще / згорнути */
   if (!/grid\.onclick = e => \{/.test(vi)) errs.push('обробник кліку по картках навішується повторно');
-  if (!/moreBtn\.textContent = open \? t\('Show more'\) : t\('Show less'\)/.test(vi)) errs.push('немає перемикання показати ще / згорнути');
+  /* показ по три і жодного нового запиту по кліку */
+  if (!/shown = Math\.min\(videos\.length, shown \+ YT_STEP\);/.test(vi)) errs.push('кнопка додає не по три відео');
+  if (!/if \(shown >= videos\.length\) \{ shown = YT_INITIAL; apply\(\); return; \}/.test(vi)) errs.push('після останньої порції немає згортання до трьох');
+  if (!/moreBtn\.textContent = shown >= videos\.length \? t\('Show less'\) : t\('Show more'\)/.test(vi)) errs.push('підпис кнопки не перемикається');
+  if (/fetch\('\/api\/youtube/.test(vi.slice(vi.indexOf('moreBtn.onclick')))) errs.push('клік "показати ще" йде по нову добірку в API');
   if (!/\.yt-card\[hidden\],\.yt-more\[hidden\]\{display:none\}/.test(page)) errs.push('атрибут hidden у картках перебивається display класу: видно всі шість одразу');
-  if (!/YT_INITIAL = 3, YT_MAX = 6/.test(page)) errs.push('показуємо не 3 спочатку і не 6 максимум');
+  if (!/YT_INITIAL = 3, YT_STEP = 3, YT_MAX = 15/.test(page)) errs.push('показуємо не 3 спочатку, по 3 і не 15 максимум');
+  /* сторінка передає рік і тип установки, щоб запит мав запасний ключ */
+  if (!/else if \(v\.year\) p\.set\('year', String\(v\.year\)\)/.test(page)) errs.push('рік не йде як запасний ключ');
+  if (!/if \(v\.fuel\) p\.set\('powertrain', clean\(v\.fuel\)\)/.test(page)) errs.push('тип установки не передається');
   /* мобільний: одна колонка, без горизонтального переповнення */
   if (!/@media\(max-width:620px\)\{\.yt-grid\{grid-template-columns:1fr\}/.test(page)) errs.push('на телефоні картки не в одну колонку');
   if (!/\.yt-grid\{display:grid;grid-template-columns:repeat\(3,1fr\)/.test(page)) errs.push('на десктопі не три картки в ряд');
@@ -251,6 +350,6 @@ const vid = (id, title, extra = {}) => Object.assign({
 
   fs.rmSync(dir, { recursive: true, force: true });
   if (errs.length) { console.log('FAILED:', errs); process.exit(1); }
-  console.log('ідентичність моделі без року · три мовні шаблони, двигун лише в "проблеми" · релевантність 70 / перегляди 30 · максимум 6, слабкими не добиваємо · будь-яка невдача ховає блок');
+  console.log('покоління головний ключ, рік запасний · чуже покоління і мотлох не проходять · 3 запити по 10 кандидатів, добір англійською · максимум 15, показ по 3 · будь-яка невдача ховає блок');
   console.log('YOUTUBE TEST PASSED');
 })();

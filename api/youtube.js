@@ -14,10 +14,11 @@
 
 export const config = { maxDuration: 20 };
 
-const SEARCH_PER_QUERY = 5;     /* до 5 кандидатів на запит, разом до 15 */
-const MAX_RESULTS = 6;          /* стільки віддаємо сторінці */
-const MIN_DURATION_S = 120;     /* коротше: Shorts і трейлери, не огляд */
-const MAX_PER_CHANNEL = 2;      /* не всі слоти одному каналу */
+const SEARCH_PER_QUERY = 10;    /* до 10 кандидатів на запит, разом до 30 */
+const MAX_RESULTS = 15;         /* стільки максимум віддаємо сторінці */
+const MIN_DURATION_S = 120;     /* коротше: Shorts і кліпи, не огляд */
+const SUBSTANTIAL_S = 300;      /* від 5 хвилин це вже розмова по суті */
+const MAX_PER_CHANNEL = 3;      /* не всі слоти одному каналу */
 const CACHE_TTL_S = 7 * 24 * 3600;
 const FETCH_TIMEOUT_MS = 5000;
 
@@ -100,30 +101,57 @@ export function validEngineCode(raw) {
   return e;
 }
 
-/* Ідентичність для пошуку: нормалізована назва моделі зі звіту (НЕ сирий
-   заголовок оголошення) плюс покоління, якщо воно відоме. Рік навмисно не
-   додаємо: він звужує пошук і ріже корисні відео сусідніх років. Двигун іде
-   лише в запит про проблеми і лише коли код справді відомий. */
-export function buildIdentity({ title, make, model, generation, engine_code } = {}) {
-  let base = clean(title);
-  /* рік у кінці назви ("BMW 530e 2018") прибираємо */
-  base = base.replace(/\s*\b(19|20)\d{2}\b\s*$/, '').trim();
-  if (!base) base = [clean(make), clean(model)].filter(Boolean).join(' ').trim();
+/* Тип силової установки в запит іде лише коли він справді розрізняє версії:
+   гібрид, електро і дизель шукаються інакше, ніж звичайний бензин. */
+const POWERTRAIN_WORD = {
+  hybrid: 'Hybrid', phev: 'Hybrid', 'plug-in hybrid': 'Hybrid', 'plug-in': 'Hybrid',
+  electric: 'Electric', bev: 'Electric', ev: 'Electric', diesel: 'Diesel',
+};
+export function validPowertrain(raw) {
+  const p = clean(raw).toLowerCase();
+  if (!p) return null;
+  for (const k of Object.keys(POWERTRAIN_WORD)) if (p === k || p.includes(k)) return POWERTRAIN_WORD[k];
+  return null;
+}
+
+/* Ідентичність для пошуку.
+
+   ГОЛОВНИЙ ключ це покоління/кузов: Toyota Camry XV80, BMW 5 Series G30,
+   Mercedes-Benz C-Class W205. Торгова версія (XSE, xDrive) головною не буває:
+   вона не відрізняє покоління і звужує пошук до випадкових відео.
+   Покоління відоме -> рік НЕ додаємо: він ріже корисні відео сусідніх років.
+   Покоління невідоме -> запасний ключ це рік: Toyota Camry 2025.
+   Двигун лишається тільки в запиті про проблеми і тільки коли код відомий.
+   Нічого тут заново не визначається: значення приходять зі звіту. */
+export function buildIdentity({ title, make, model, generation, engine_code, year, powertrain } = {}) {
+  const mk = clean(make), md = clean(model);
+  let base = (mk && md) ? (mk + ' ' + md) : clean(title).replace(/\s*\b(19|20)\d{2}\b\s*$/, '').trim();
+  if (!base) base = [mk, md].filter(Boolean).join(' ').trim();
   if (!base) return null;
+  const has = (text, token) => new RegExp('(^|\\s)' + String(token).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|\\s)', 'i').test(text);
   const gen = validGeneration(generation);
-  if (gen && !new RegExp('(^|\\s)' + gen + '($|\\s)', 'i').test(base)) base += ' ' + gen;
+  const yr = /^(19|20)\d{2}$/.test(String(year || '').trim()) ? String(year).trim() : null;
+  if (gen) { if (!has(base, gen)) base += ' ' + gen; }
+  else if (yr && !has(base, yr)) base += ' ' + yr;
+  const pw = validPowertrain(powertrain);
+  const withPower = pw && !has(base, pw) ? base + ' ' + pw : base;
   const eng = validEngineCode(engine_code);
-  const withEngine = eng && !new RegExp('(^|\\s)' + eng.replace(/[.\-]/g, '\\$&') + '($|\\s)', 'i').test(base)
-    ? base + ' ' + eng : base;
-  return { base: base.slice(0, 80), withEngine: withEngine.slice(0, 90), generation: gen, engine_code: eng };
+  const withEngine = eng && !has(withPower, eng) ? withPower + ' ' + eng : withPower;
+  return {
+    base: base.slice(0, 80), withPower: withPower.slice(0, 90), withEngine: withEngine.slice(0, 100),
+    generation: gen, engine_code: eng, powertrain: pw, year: gen ? null : yr,
+  };
 }
 
 export function buildQueries(identity, lang) {
   const tpl = QUERY_TEMPLATES[lang] || QUERY_TEMPLATES.en;
   if (!identity) return [];
+  /* огляд і проблеми уточнюються типом установки, досвід володіння лишається
+     ширшим: там корисні і сусідні версії того самого покоління */
+  const forIntent = { review: identity.withPower, problems: identity.withEngine, ownership: identity.base };
   return INTENTS.map(intent => ({
     intent,
-    q: tpl[intent].replace('{engineId}', identity.withEngine).replace('{id}', identity.base),
+    q: tpl[intent].replace('{engineId}', identity.withEngine).replace('{id}', forIntent[intent]),
   }));
 }
 
@@ -137,6 +165,68 @@ export function parseDuration(iso) {
   return (+(m[1] || 0)) * 3600 + (+(m[2] || 0)) * 60 + (+(m[3] || 0));
 }
 
+/* ---------- чуже покоління ----------
+   Популярне відео про інший кузов не має права обійти менш популярне про
+   потрібний. Тому явний конфлікт коду це відмова, а не мінус до балу.
+   Перевірка навмисно вузька: порівнюємо лише коди ТІЄЇ САМОЇ сімʼї
+   (однакова літерна частина і довжина числа), плюс звичний числовий
+   псевдонім після назви моделі ("Camry 70" проти XV80). Жодної глобальної
+   онтології поколінь: коду в заголовку немає -> відео не відкидається. */
+const GEN_TOKEN_RE = /\b([A-Z]{1,3})[\s-]?(\d{2,3})(?:\.(\d))?\b/g;
+
+export function generationConflict(title, identity) {
+  const gen = identity && identity.generation;
+  if (!gen) return false;
+  const m = /^([A-Z]{0,3})(\d{2,3})(?:\.(\d))?$/.exec(gen);
+  if (!m) return false;
+  const prefix = m[1], num = m[2], sub = m[3] || null;
+  const text = ' ' + String(title || '').toUpperCase() + ' ';
+  if (prefix) {
+    GEN_TOKEN_RE.lastIndex = 0;
+    let t;
+    while ((t = GEN_TOKEN_RE.exec(text))) {
+      if (t[1] !== prefix) continue;
+      if (t[2].length !== num.length) continue;
+      if (t[2] !== num) return true;                 /* XV70 при цілі XV80 */
+      if (sub && t[3] && t[3] !== sub) return true;  /* 958.2 при цілі 958.1 */
+    }
+  }
+  /* суто числове покоління з фазою (Porsche 958.1): інша фаза це конфлікт.
+     Без фази ("958") нічого не відкидаємо: 958.2 це те саме сімейство */
+  if (!prefix && sub) {
+    const re = new RegExp('\\b' + num + '\\.(\\d)\\b', 'g');
+    let ph;
+    while ((ph = re.exec(text))) if (ph[1] !== sub) return true;
+  }
+  /* числовий псевдонім покоління відразу після назви моделі: "Camry 70" */
+  if (num.length === 2) {
+    const model = (identityTokens(identity).model || []).filter(w => /^[a-z]+$/i.test(w)).pop();
+    if (model) {
+      const re = new RegExp('\\b' + model.toUpperCase() + '\\s+(\\d{2})\\b', 'g');
+      let a;
+      while ((a = re.exec(text))) if (a[1] !== num) return true;
+    }
+  }
+  return false;
+}
+
+/* ---------- цінність відео для покупця ----------
+   Відсікаємо те, де немає розбору: Shorts, покатушки від першої особи,
+   розгін і максималка, звук вихлопу, нічні поїздки, оголошення автосалону.
+   "Тест-драйв" і "test drive" НЕ відкидаємо: так називають якісні огляди. */
+const LOW_VALUE_RE = /#?shorts\b|\bpov\b|\bпов\b|0\s*-\s*(?:100|60)|\b(?:0|нуль)\s*до\s*100|acceleration|launch control|разгон|прискорення|top speed|максималк|макс\.?\s*скорость|exhaust (?:sound|note)|звук выхлопа|звук вихлопу|выхлоп\b|вихлоп\b|night drive|ночная поездка|нічна поїздка|нарезка|подборка|for sale\b|в наличии|в наявності|продам\b|цена в салоне|дрифт|drift|burnout|gymkhana|asmr|pure sound|walkaround only/i;
+const USEFUL_RE = /обзор|огляд|review|тест-?драйв|test[\s-]?drive|опыт владения|досвід володіння|ownership|long[\s-]?term|проблем|problem|надеж|надій|reliab|болячк|слабые места|слабкі місця|стоит ли брать|чи варто|buying guide|what to look|before you buy|характеристик|comparison|сравнение|порівняння/i;
+
+export function lowValue(video) {
+  const title = String((video && video.title) || '');
+  if (LOW_VALUE_RE.test(title)) return true;
+  const d = video && video.duration_s;
+  /* дуже коротке відео без ознак розбору користі не дає */
+  if (typeof d === 'number' && d < MIN_DURATION_S) return true;
+  if (typeof d === 'number' && d < SUBSTANTIAL_S && !USEFUL_RE.test(title)) return true;
+  return false;
+}
+
 /* токени ідентичності: марка, модель/версія, покоління, двигун */
 export function identityTokens(identity) {
   const words = norm(identity.base).split(' ').filter(Boolean);
@@ -146,20 +236,23 @@ export function identityTokens(identity) {
   return { make: rest[0] || null, model: rest.slice(1).filter(Boolean), generation: gen, engine: eng };
 }
 
-/* 0..1: наскільки заголовок відео справді про цю модель */
+/* 0..1: наскільки заголовок відео справді про ЦЕ покоління цієї моделі.
+   Покоління важить найбільше: саме воно відрізняє потрібне відео від
+   схожого про попередній кузов */
 export function relevance(video, identity) {
   const tok = identityTokens(identity);
   const hay = norm(video.title + ' ' + (video.channel || ''));
   const has = w => !!w && new RegExp('(^| )' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '( |$)').test(hay);
   let got = 0, max = 0;
-  max += 0.2; if (has(tok.make)) got += 0.2;
-  max += 0.5;
+  max += 0.15; if (has(tok.make)) got += 0.15;
+  max += 0.35;
   if (tok.model.length) {
     const hits = tok.model.filter(has).length;
-    got += 0.5 * (hits / tok.model.length);
+    got += 0.35 * (hits / tok.model.length);
   }
-  if (tok.generation) { max += 0.2; if (has(tok.generation)) got += 0.2; }
-  if (tok.engine && video.engineQuery) { max += 0.1; if (has(tok.engine)) got += 0.1; }
+  if (tok.generation) { max += 0.35; if (has(tok.generation)) got += 0.35; }
+  if (identity.powertrain) { max += 0.1; if (has(norm(identity.powertrain))) got += 0.1; }
+  if (tok.engine && video.engineQuery) { max += 0.05; if (has(tok.engine)) got += 0.05; }
   return max > 0 ? got / max : 0;
 }
 
@@ -170,11 +263,19 @@ export function popularity(views) {
   return Math.max(0, Math.min(1, Math.log10(v + 1) / 7));
 }
 
-export function scoreVideo(video, identity) {
+export function scoreVideo(video, identity, { primaryLang = null } = {}) {
   const rel = relevance(video, identity);
   /* те саме відео у кількох запитах це невеликий бонус, не окрема механіка */
-  const bonus = Math.min(0.1, 0.05 * Math.max(0, (video.intents || []).length - 1));
-  return { ...video, relevance: rel, score: 0.7 * rel + 0.3 * popularity(video.views) + bonus };
+  const bonus = Math.min(0.06, 0.03 * Math.max(0, (video.intents || []).length - 1));
+  /* змістовний розбір корисніший за нарізку тієї ж довжини */
+  const useful = USEFUL_RE.test(String(video.title || '')) ? 0.06 : 0;
+  const substantial = typeof video.duration_s === 'number' && video.duration_s >= SUBSTANTIAL_S ? 0.03 : 0;
+  /* мова звіту виграє лише серед схожих за силою, а не сама по собі */
+  const langBonus = primaryLang && video.lang === primaryLang ? 0.05 : 0;
+  return {
+    ...video, relevance: rel,
+    score: 0.72 * rel + 0.22 * popularity(video.views) + bonus + useful + substantial + langBonus,
+  };
 }
 
 /* модель має бути в заголовку: інакше це відео "згадало" авто побіжно */
@@ -187,7 +288,7 @@ export function isRelated(video, identity) {
 
 /* фільтр + ранжування + мінімальна різноманітність. Слабке відео у добірку
    не заштовхуємо: краще показати менше */
-export function selectVideos(candidates, identity, { max = MAX_RESULTS, minScore = 0.35 } = {}) {
+export function selectVideos(candidates, identity, { max = MAX_RESULTS, minScore = 0.35, primaryLang = null } = {}) {
   const byId = new Map();
   for (const c of candidates || []) {
     if (!c || !c.id) continue;
@@ -198,9 +299,11 @@ export function selectVideos(candidates, identity, { max = MAX_RESULTS, minScore
   const seenTitle = new Set();
   const pool = [...byId.values()]
     .filter(v => v.live !== true)
-    .filter(v => typeof v.duration_s !== 'number' || v.duration_s >= MIN_DURATION_S)
+    /* чуже покоління не проходить узагалі, скільки б переглядів не мало */
+    .filter(v => !generationConflict(v.title, identity))
+    .filter(v => !lowValue(v))
     .filter(v => isRelated(v, identity))
-    .map(v => scoreVideo(v, identity))
+    .map(v => scoreVideo(v, identity, { primaryLang }))
     .filter(v => v.score >= minScore)
     .sort((a, b) => b.score - a.score)
     /* очевидні перезаливи: той самий заголовок */
@@ -214,7 +317,8 @@ export function selectVideos(candidates, identity, { max = MAX_RESULTS, minScore
     out.push(v);
     return true;
   };
-  /* спершу найсильніше відео кожного наміру: огляд, проблеми, досвід */
+  /* спершу найсильніше відео кожного наміру: огляд, проблеми, досвід.
+     Слабке відео заради категорії не беремо */
   for (const intent of INTENTS) {
     const best = pool.find(v => !out.includes(v) && (v.intents || []).includes(intent));
     if (best && out.length < max) take(best);
@@ -259,7 +363,68 @@ export function sanitizeQuery(query) {
     model: str(q.model, 40),
     generation: str(q.generation, 12),
     engine_code: str(q.engine_code, 12),
+    year: str(q.year, 4),
+    powertrain: str(q.powertrain, 24),
   };
+}
+
+/* один прохід пошуку однією мовою: 3 наміри по SEARCH_PER_QUERY кандидатів */
+async function searchLang(identity, lang, key, seen) {
+  const queries = buildQueries(identity, lang);
+  const results = await Promise.all(queries.map(q => ytFetch('search', {
+    part: 'snippet', type: 'video', q: q.q, maxResults: SEARCH_PER_QUERY,
+    videoEmbeddable: 'true', videoSyndicated: 'true',
+    relevanceLanguage: lang === 'ua' ? 'uk' : lang,
+  }, key)));
+  const found = new Map();
+  results.forEach((data, i) => {
+    for (const it of (data && data.items) || []) {
+      const id = it && it.id && it.id.videoId;
+      if (!id || seen.has(id)) continue;
+      const prev = found.get(id);
+      if (prev) { prev.intents.push(queries[i].intent); continue; }
+      found.set(id, {
+        id, lang,
+        title: clean(it.snippet && it.snippet.title),
+        channel: clean(it.snippet && it.snippet.channelTitle),
+        channel_id: (it.snippet && it.snippet.channelId) || null,
+        published_at: (it.snippet && it.snippet.publishedAt) || null,
+        live: (it.snippet && it.snippet.liveBroadcastContent) === 'live',
+        engineQuery: queries[i].intent === 'problems',
+        intents: [queries[i].intent],
+      });
+    }
+  });
+  return found;
+}
+
+/* метадані для показу і простого ранжування: тривалість, перегляди,
+   мініатюра. Коментарі, історія каналу і будь-який інший аналіз не потрібні */
+async function withMeta(found, key) {
+  const ids = [...found.keys()].slice(0, 50);
+  if (!ids.length) return [];
+  const meta = await ytFetch('videos', {
+    part: 'snippet,contentDetails,statistics', id: ids.join(','), maxResults: 50,
+  }, key);
+  if (!meta) return null;
+  const out = [];
+  for (const it of (meta.items || [])) {
+    const base = found.get(it.id);
+    if (!base) continue;
+    const th = (it.snippet && it.snippet.thumbnails) || {};
+    const pick = th.medium || th.high || th.default || null;
+    out.push({
+      ...base,
+      title: clean(it.snippet && it.snippet.title) || base.title,
+      channel: clean(it.snippet && it.snippet.channelTitle) || base.channel,
+      thumb: pick ? pick.url : null,
+      duration_s: parseDuration(it.contentDetails && it.contentDetails.duration),
+      views: it.statistics && it.statistics.viewCount ? parseInt(it.statistics.viewCount, 10) || 0 : null,
+      published_at: (it.snippet && it.snippet.publishedAt) || base.published_at,
+      live: (it.snippet && it.snippet.liveBroadcastContent) === 'live',
+    });
+  }
+  return out;
 }
 
 export default async function handler(req, res) {
@@ -275,72 +440,39 @@ export default async function handler(req, res) {
     return res.status(200).json({ videos: [] });
   }
 
-  const queries = buildQueries(identity, input.lang);
-  const found = new Map();
-  const results = await Promise.all(queries.map(q => ytFetch('search', {
-    part: 'snippet', type: 'video', q: q.q, maxResults: SEARCH_PER_QUERY,
-    videoEmbeddable: 'true', videoSyndicated: 'true',
-    relevanceLanguage: input.lang === 'ua' ? 'uk' : input.lang,
-  }, key)));
-  results.forEach((data, i) => {
-    for (const it of (data && data.items) || []) {
-      const id = it && it.id && it.id.videoId;
-      if (!id) continue;
-      const prev = found.get(id);
-      if (prev) { prev.intents.push(queries[i].intent); continue; }
-      found.set(id, {
-        id,
-        title: clean(it.snippet && it.snippet.title),
-        channel: clean(it.snippet && it.snippet.channelTitle),
-        channel_id: (it.snippet && it.snippet.channelId) || null,
-        published_at: (it.snippet && it.snippet.publishedAt) || null,
-        live: (it.snippet && it.snippet.liveBroadcastContent) === 'live',
-        engineQuery: queries[i].intent === 'problems',
-        intents: [queries[i].intent],
-      });
+  const seen = new Set();
+  const primary = await searchLang(identity, input.lang, key, seen);
+  let candidates = primary.size ? await withMeta(primary, key) : [];
+  if (candidates === null) {
+    res.setHeader('cache-control', 'no-store');
+    return res.status(200).json({ videos: [] });
+  }
+  let videos = selectVideos(candidates, identity, { primaryLang: input.lang });
+  /* добір англійською: мовою звіту хороших відео менше, ніж місць. Для
+     української резервна мова саме англійська, а не російська */
+  let fallbackUsed = false;
+  if (videos.length < MAX_RESULTS && input.lang !== 'en') {
+    candidates.forEach(v => seen.add(v.id));
+    const extra = await searchLang(identity, 'en', key, seen);
+    const extraMeta = extra.size ? await withMeta(extra, key) : [];
+    if (extraMeta && extraMeta.length) {
+      fallbackUsed = true;
+      candidates = candidates.concat(extraMeta);
+      videos = selectVideos(candidates, identity, { primaryLang: input.lang });
     }
-  });
-  if (!found.size) {
-    res.setHeader('cache-control', 'no-store');
-    return res.status(200).json({ videos: [] });
   }
 
-  /* метадані лише для показу і простого ранжування: тривалість, перегляди,
-     мініатюра. Коментарі, історія каналу і будь-який додатковий аналіз не
-     потрібні */
-  const meta = await ytFetch('videos', {
-    part: 'snippet,contentDetails,statistics', id: [...found.keys()].slice(0, 15).join(','), maxResults: 15,
-  }, key);
-  if (!meta) {
-    res.setHeader('cache-control', 'no-store');
-    return res.status(200).json({ videos: [] });
-  }
-  const candidates = [];
-  for (const it of (meta.items || [])) {
-    const base = found.get(it.id);
-    if (!base) continue;
-    const th = (it.snippet && it.snippet.thumbnails) || {};
-    const pick = th.medium || th.high || th.default || null;
-    candidates.push({
-      ...base,
-      title: clean(it.snippet && it.snippet.title) || base.title,
-      channel: clean(it.snippet && it.snippet.channelTitle) || base.channel,
-      thumb: pick ? pick.url : null,
-      duration_s: parseDuration(it.contentDetails && it.contentDetails.duration),
-      views: it.statistics && it.statistics.viewCount ? parseInt(it.statistics.viewCount, 10) || 0 : null,
-      published_at: (it.snippet && it.snippet.publishedAt) || base.published_at,
-      live: (it.snippet && it.snippet.liveBroadcastContent) === 'live',
-    });
-  }
-
-  const videos = selectVideos(candidates, identity).map(v => ({
+  const payload = videos.map(v => ({
     id: v.id, title: v.title, channel: v.channel, thumb: v.thumb,
     duration_s: v.duration_s, published_at: v.published_at, views: v.views,
-    intents: v.intents,
+    intents: v.intents, lang: v.lang,
   }));
   /* кеш рівня CDN: ключ це сама адреса (ідентичність моделі + мова), 7 днів */
-  res.setHeader('cache-control', videos.length
+  res.setHeader('cache-control', payload.length
     ? 'public, max-age=3600, s-maxage=' + CACHE_TTL_S + ', stale-while-revalidate=86400'
     : 'no-store');
-  return res.status(200).json({ videos, identity: identity.base, query_language: input.lang });
+  return res.status(200).json({
+    videos: payload, identity: identity.base, query_language: input.lang,
+    fallback_language: fallbackUsed ? 'en' : null,
+  });
 }
