@@ -219,13 +219,42 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
 
   /* ===== 9. вхід 4: інтенсивність ===== */
   {
-    for (const [x, y] of [[1.2, 0], [1.5, 0.3], [2.0, 0.8], [3.0, 1.4], [5.0, 2.2], [8.0, 3.0], [12.0, 4.0]]) eq(intensityPenalty(x), y, 'якір ' + x);
-    eq(intensityPenalty(1.19), 0, '1.19'); eq(intensityPenalty(0.5), 0, 'нижче норми'); eq(intensityPenalty(20), 4, '20'); eq(intensityPenalty(1.35), 0.15, 'інтерполяція 1.35'); eq(intensityPenalty(10), 3.5, 'інтерполяція 10');
+    /* погоджена крива 2026-09-26: точні якорі, лінійна інтерполяція, кап 5.0 з 12x */
+    const near = (a, b, m) => { if (Math.abs(a - b) > 1e-9) errs.push(m + ': ' + a + ' != ' + b); };
+    for (const [x, y] of [[1.2, 0], [1.5, 0.4], [2.0, 1.0], [2.5, 1.6], [3.0, 2.1], [3.5, 2.5], [4.0, 2.9], [5.0, 3.5], [8.0, 4.5], [12.0, 5.0]]) near(intensityPenalty(x), y, 'якір ' + x);
+    eq(intensityPenalty(1.19), 0, '1.19'); eq(intensityPenalty(1.0), 0, 'норма'); eq(intensityPenalty(0.3), 0, 'малий пробіг без бонусу'); eq(intensityPenalty(12.5), 5, '12.5 кап'); eq(intensityPenalty(40), 5, '40 кап');
+    near(intensityPenalty(3.2), 2.26, 'інтерполяція 3.2'); near(intensityPenalty(1.35), 0.2, 'інтерполяція 1.35'); near(intensityPenalty(10), 4.75, 'інтерполяція 10');
+    ok(intensityPenalty(0.1) >= 0 && intensityPenalty(0) === 0, 'бонусу за малий пробіг нема');;
     const veh = { odometer_km: 180000, age_months: 60, powertrain_class: 'petrol' };   /* 36 000 км/рік, ratio 3.0 */
     const r = run({ vehicle: veh });
-    eq(r.items.find(i => i.key === 'input4:intensity').amount, 1.4, 'ratio 3.0 = 1.4'); eq(r.mileage_intensity.ratio, 3, 'ratio');
+    eq(r.items.find(i => i.key === 'input4:intensity').amount, 2.1, 'ratio 3.0 = 2.1'); eq(r.mileage_intensity.ratio, 3, 'ratio');
     const swap = run({ vehicle: veh, listingText: 'Стоит контрактный мотор.', sellerDisclosures: [{ category: 'engine_swap_installed', unit: 'engine', quote: 'контрактный мотор', negated: false, vague: false, seller_favor: true }] });
-    eq(swap.items.find(i => i.key === 'input4:intensity').amount, 1.4, 'свап не вимикає інтенсивність'); ok(swap.unresolved.some(u => u.key === 'engine_swap_claimed'), 'свап в unresolved');
+    eq(swap.items.find(i => i.key === 'input4:intensity').amount, 2.1, 'свап не вимикає інтенсивність'); ok(swap.unresolved.some(u => u.key === 'engine_swap_claimed'), 'свап в unresolved');
+    /* старе авто з пробігом, накопиченим за багато років: майже без штрафу
+       (300 000 км за ~24 роки ~ 12 500 км/рік, ratio ~1.04) */
+    const old = run({ vehicle: { odometer_km: 300000, age_months: 288, powertrain_class: 'petrol' } });
+    eq(old.inputs.mileage_intensity.status, 'clean', 'старе авто з віковим пробігом без штрафу інтенсивності');
+    ok(old.mileage_intensity.ratio < 1.2, 'старе авто: ratio ' + old.mileage_intensity.ratio);
+    /* невідомий пробіг чи вік: штрафу нема (UNKNOWN != BAD) */
+    for (const v of [{ odometer_km: null, age_months: 60, powertrain_class: 'petrol' }, { odometer_km: 200000, age_months: null, powertrain_class: 'petrol' }]) {
+      const u = run({ vehicle: v });
+      eq(u.inputs.mileage_intensity.status, 'unavailable', 'невідомо = unavailable'); ok(!u.items.some(x => x.input === 'mileage_intensity'), 'невідомо = без штрафу');
+    }
+    /* інтерполяція без проміжного округлення: 3.2x -> 2.26 у точному значенні */
+    const r32 = run({ vehicle: { odometer_km: 192000, age_months: 60, powertrain_class: 'petrol' } });   /* 38 400 км/рік / 12 000 = 3.2 */
+    ok(Math.abs(r32.mileage_intensity.penalty_exact - 2.26) < 1e-9, '3.2x точно 2.26: ' + r32.mileage_intensity.penalty_exact);
+    /* реальний кейс: Toyota RAV4 MY2023, 124 000 км, вік 39 міс. від середини модельного року,
+       тип двигуна за наявним правилом (hybrid без рівня електрифікації = unknown, норма 14 000):
+       стара крива давала 1.24 і бал 8.6, нова мусить відчутно знизити бал */
+    const OLD_CFG = { ...C, INTENSITY_CURVE: [[1.2, 0], [1.5, 0.3], [2.0, 0.8], [3.0, 1.4], [5.0, 2.2], [8.0, 3.0], [12.0, 4.0]] };
+    const rav = { vehicle: { odometer_km: 124000, age_months: 39, age_source: 'model_year_midpoint', powertrain_class: 'unknown' } };
+    const ravNew = run(rav), ravOld = computeScoreV4({ findings: [], evidence: baseEv, listingText: 'Продається авто. Опис продавця без дефектів.', ...rav }, OLD_CFG);
+    eq(ravOld.final_if_eligible, 8.6, 'RAV4 зі старою кривою 8.6 (як у проді)');
+    ok(ravNew.mileage_intensity.penalty_exact > 1.8 && ravNew.mileage_intensity.penalty_exact < 1.85, 'RAV4 новий штраф ~1.83: ' + ravNew.mileage_intensity.penalty_exact);
+    ok(ravOld.final_if_eligible - ravNew.final_if_eligible >= 0.5, 'RAV4: нова крива відчутно знижує бал: ' + ravOld.final_if_eligible + ' -> ' + ravNew.final_if_eligible);
+    /* той самий пробіг у гібрида з відомим рівнем (HEV, норма 12 000): ~3.18x */
+    const ravHev = run({ vehicle: { ...rav.vehicle, powertrain_class: 'hev' } });
+    ok(ravHev.mileage_intensity.ratio > 3.1 && ravHev.final_if_eligible < ravNew.final_if_eligible, 'RAV4 HEV: вища інтенсивність, нижчий бал');
     eq(run({ vehicle: { ...veh, age_months: 6 } }).inputs.mileage_intensity.status, 'unavailable', 'молодше року');
     eq(resolvePowertrainClass({ nhtsa: { ElectrificationLevel: 'PHEV (Plug-in Hybrid Electric Vehicle)', FuelTypePrimary: 'Gasoline' } }), 'phev', 'PHEV');
     eq(resolvePowertrainClass({ nhtsa: { FuelTypePrimary: 'Gasoline' }, fuel: 'hybrid' }), 'petrol', 'NHTSA пріоритетніше');
@@ -248,7 +277,7 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     const noAge = run({ vehicle: { odometer_km: 1000, age_months: null, powertrain_class: 'petrol' } });
     eq(noAge.inputs.vehicle_age.status, 'unavailable', 'вік невідомий = unavailable'); eq(sum(noAge), 0, 'вік невідомий = 0');
     const both = run({ vehicle: { odometer_km: 180000, age_months: 60, powertrain_class: 'petrol' } });
-    ok(near(sum(both), 1.7, 1.7), 'інтенсивність 1.4 + вік 0.3 незалежно: ' + sum(both)); eq(both.final, 8.3, 'final 8.3');
+    ok(near(sum(both), 2.4, 2.4), 'інтенсивність 2.1 + вік 0.3 незалежно: ' + sum(both)); eq(both.final, 7.6, 'final 7.6');
     eq(run({ vehicle: { odometer_km: 1000, age_months: 480, powertrain_class: 'petrol' } }).items.find(i => i.key === 'input7:age').amount, 2.05, '40 років = 2.05, без капа');
   }
 
@@ -278,7 +307,7 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     eq(w5.score_eligible, false, 'пʼять власників самі по собі не роблять Score eligible'); eq(w5.eligibility.strong_negative, false, 'власники не strong negative');
     /* незалежність від віку та інтенсивності */
     const both = run({ ownerEvents: ev(1, 2, 3), ownersCountRegistry: 3, vehicle: { odometer_km: 180000, age_months: 60, powertrain_class: 'petrol' } });
-    ok(near(sum(both), 1.9, 1.9), 'власники 0.2 + інтенсивність 1.4 + вік 0.3: ' + sum(both)); eq(both.final, 8.1, 'final 8.1 сходиться з items');
+    ok(near(sum(both), 2.6, 2.6), 'власники 0.2 + інтенсивність 2.1 + вік 0.3: ' + sum(both)); eq(both.final, 7.4, 'final 7.4 сходиться з items');
   }
 
   /* ===== 10. вхід 5: відкат ===== */
@@ -340,9 +369,9 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
   /* ===== 12. незмінний config_tag ===== */
   {
     const hash = crypto.createHash('md5').update(JSON.stringify(C)).digest('hex');
-    /* 2026-09-25: у ELIGIBILITY додано listing_identity_photos, тег піднятий
-       до v4-prod-2026-09-25. Формула балу не змінювалась */
-    const EXPECTED = 'deff34915c447031c29e744495c60965';
+    /* 2026-09-25: у ELIGIBILITY додано listing_identity_photos (v4-prod-2026-09-25).
+       2026-09-26: погоджена крива інтенсивності пробігу, тег v4-prod-2026-09-26 */
+    const EXPECTED = '6a2cccb753e62b9b7e430b4e8ef298a1';
     if (hash !== EXPECTED) errs.push('SCORE_CONFIG_V4 змінився (md5 ' + hash + '), онови CONFIG_TAG і хеш у тесті');
   }
 

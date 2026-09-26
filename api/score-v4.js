@@ -21,13 +21,17 @@ import { resolveAccidentEvents, sanitizeFindingsV3, zoneClasses } from './score-
 import { ownerEventsConsistent } from './history-owners.js';
 
 export const SCORE_CONFIG_V4 = {
-  CONFIG_TAG: 'v4-prod-2026-09-25',
+  CONFIG_TAG: 'v4-prod-2026-09-26',
   STARTING_SCORE: 10,
   ACCIDENT: { light: 0.4, medium: 1.2, heavy: 2.5, total: 5.0, unknown: 1.5, unrepaired_seller: 2.5, earlier_events: 1.0, flood: 2.5, fire: 3.0 },
   BODY: { dent: 0.5, corrosion: 0.6, headlight: 0.4, windshield: 0.3, broken_element: 0.3, missing_part: 0.3, wheel: 0.15, wheel_max: 0.3 },
   INTERIOR: { seat_damage: 0.4, driver_seat_wear: 0.25, steering_wheel_wear: 0.2 },
   MILEAGE_NORM_KM_YEAR: { petrol: 12000, diesel: 18000, hev: 12000, phev: 15000, bev: 16000, unknown: 14000 },
-  INTENSITY_CURVE: [[1.2, 0], [1.5, 0.3], [2.0, 0.8], [3.0, 1.4], [5.0, 2.2], [8.0, 3.0], [12.0, 4.0]],
+  /* 2026-09-26, погоджена крива власника: штраф за АНОМАЛЬНО інтенсивне
+     використання відносно віку і типу двигуна (не ринкове порівняння, не
+     вік, не скрутка); лінійна інтерполяція між якорями, від 12x кап 5.0,
+     до 1.2x нуль, бонусу за малий пробіг нема */
+  INTENSITY_CURVE: [[1.2, 0], [1.5, 0.4], [2.0, 1.0], [2.5, 1.6], [3.0, 2.1], [3.5, 2.5], [4.0, 2.9], [5.0, 3.5], [8.0, 4.5], [12.0, 5.0]],
   MIN_AGE_MONTHS: 12,
   /* вік: до року 0, далі 0.1 + (роки - 1) * 0.05 від точного age_months,
      без капа (лінійні 0.1 за рік у тіні домінували над реальними знахідками) */
@@ -418,7 +422,8 @@ export function intensityPenalty(ratio, cfg = SCORE_CONFIG_V4) {
   for (let i = 1; i < curve.length; i++) {
     if (ratio <= curve[i][0]) {
       const [x0, y0] = curve[i - 1], [x1, y1] = curve[i];
-      return round2(y0 + (y1 - y0) * (ratio - x0) / (x1 - x0));
+      /* без округлення: точне значення йде в підсумковий бал */
+      return y0 + (y1 - y0) * (ratio - x0) / (x1 - x0);
     }
   }
   return curve[curve.length - 1][1];
@@ -431,9 +436,10 @@ function intensityInput(inp, cfg) {
   const cls = cfg.MILEAGE_NORM_KM_YEAR[v.powertrain_class] ? v.powertrain_class : 'unknown';
   const norm = mileageNormKmYear(cls, cfg);
   const annual = odo / (months / 12);
-  const ratio = round2(annual / norm);
-  const amount = intensityPenalty(ratio, cfg);
-  const detail = { odometer_km: odo, age_months: months, age_source: v.age_source || null, powertrain_class: cls, norm_km_year: norm, annual_km: Math.round(annual), ratio };
+  /* точне відношення в криву; округлене лише для показу */
+  const ratioExact = annual / norm;
+  const amount = intensityPenalty(ratioExact, cfg);
+  const detail = { odometer_km: odo, age_months: months, age_source: v.age_source || null, powertrain_class: cls, norm_km_year: norm, annual_km: Math.round(annual), ratio: round2(ratioExact), penalty_exact: amount };
   const items = amount > 0 ? [{ key: 'input4:intensity', input: 'mileage_intensity', amount, label_key: 'Mileage intensity above the norm for this powertrain', params: detail, evidence: [] }] : [];
   return { items, available: true, status: amount > 0 ? 'applied' : 'clean', detail };
 }
@@ -709,10 +715,14 @@ export function computeScoreV4(input, cfg = SCORE_CONFIG_V4) {
     }
   }
 
-  const items = [...acc.items, ...cur.body.items, ...cur.interior.items, ...inten.items, ...age.items, ...owners.items, ...roll.items, ...sellerItems]
-    .map(i => ({ ...i, amount: round2(i.amount) }));
-  const rawSum = round2(items.reduce((s, i) => s + i.amount, 0));
-  const raw = round2(cfg.STARTING_SCORE - rawSum);
+  const allItems = [...acc.items, ...cur.body.items, ...cur.interior.items, ...inten.items, ...age.items, ...owners.items, ...roll.items, ...sellerItems];
+  /* підсумок з ТОЧНИХ сум: проміжне округлення до сотих могло зсувати бал
+     на межі .x5 (крива інтенсивності дає неокруглені значення). 1e-9 гасить
+     лише шум плаваючої коми; збережені суми для показу лишаються до сотих */
+  const exactSum = Math.round(allItems.reduce((s, i) => s + i.amount, 0) * 1e9) / 1e9;
+  const items = allItems.map(i => ({ ...i, amount: round2(i.amount) }));
+  const rawSum = round2(exactSum);
+  const raw = cfg.STARTING_SCORE - exactSum;
   const final = round1(Math.max(0, raw));
 
   const mileageDated = new Set(roll.points.map(p => p.date)).size;
