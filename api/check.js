@@ -393,12 +393,15 @@ function extractListing(html, url) {
 
   /* текст для AI: опис продавця + офіційний блок перевірки + історія.
      Маркери підібрані під RIA, generic отримує початок сторінки */
-  const aiText = relevantText(text, [
+  const aiTextRaw = relevantText(text, [
     { from: 'Опис від продавця', to: ['Дізнайтесь більше', 'Оголошення створене'], cap: 5000 },
     { from: 'Перевірено AUTO.RIA', to: ['Дізнайтесь більше про авто'], cap: 4000 },
     { from: 'Історія авто за VIN', to: ['Дізнайтесь більше', 'Виїзна перевірка'], cap: 4000 },
     { from: title.slice(0, 40), to: ['Опис від продавця'], cap: 3000 },
   ]);
+  /* внутрішньо неможливий віджет "Пробіг" не доходить до моделі */
+  const mileageWidget = screenMileageWidget(aiTextRaw);
+  const aiText = mileageWidget.text;
 
   /* оригінальний опис продавця: ЛИШЕ користувацький текст, без
      автогенерованих секцій площадки (кузов, "Що перевірити перед
@@ -496,6 +499,8 @@ function extractListing(html, url) {
     listing_equipment: listingEquipment.slice(0, 60),
     price, currency, odometer_km: odometerKm, year, make, model,
     photos, text: aiText,
+    /* технічний слід рішення щодо віджета "Пробіг" (для діагностики) */
+    mileage_widget: mileageWidget.widget,
     photo_variants_removed: dedup.removed,
     /* кадри "до ремонту" з аукціону США, збережені самою RIA */
     usa_photos: usaPhotos.slice(0, 12),
@@ -506,6 +511,67 @@ function extractListing(html, url) {
        лишається (обрізаний лише технічним лімітом) */
     ...extractListingMeta(html, url, flat, text),
   };
+}
+
+/* ---------- 3б. Віджет AUTO.RIA "Пробіг" над хронологією ----------
+   Окремий блок "Пробіг Перевірено <дата> Останній перевірений пробіг N
+   тис.км ... від ДД.ММ.РРРР джерело фіксації ..." це НЕ хронологія, а
+   зведення площадки. Буває внутрішньо неможливим: запис датований ПІЗНІШЕ
+   за саму перевірку (QX60: перевірено 03.06.2025, запис 07.10.2025, 35 тис.
+   при хронології 24 -> 34 -> 81 -> 82 тис.). Такий запис не є підтвердженим
+   фактом пробігу: у текст для моделі (історія, розбіжності, ризики,
+   висновок) він не йде взагалі. Узгоджений віджет лишається як є. Сирий
+   текст сторінки (raw_page_text у знімку) не змінюється. */
+const WIDGET_MONTHS = {
+  'січня': 1, 'лютого': 2, 'березня': 3, 'квітня': 4, 'травня': 5, 'червня': 6, 'липня': 7, 'серпня': 8, 'вересня': 9, 'жовтня': 10, 'листопада': 11, 'грудня': 12,
+  'января': 1, 'февраля': 2, 'марта': 3, 'апреля': 4, 'мая': 5, 'июня': 6, 'июля': 7, 'августа': 8, 'сентября': 9, 'октября': 10, 'ноября': 11, 'декабря': 12,
+};
+const WIDGET_START_RE = /(Пробіг|Пробег)\s+(Перевірено|Проверено)\s+(\d{1,2})\s+([^\s\d]+)\s+(\d{4})\s+(Останній перевірений пробіг|Последний проверенный пробег)/;
+/* одне входження віджета, що починається з позиції start (збіг WIDGET_START_RE) */
+function readMileageWidget(t, start) {
+  const tail = t.slice(start.index, start.index + 500);
+  const endM = /\s(Пробіг від продавця|Пробег от продавца|ДТП та страхові|ДТП и страховые|Історія авто за VIN|История авто по VIN)/.exec(tail.slice(start[0].length));
+  const seg = endM ? tail.slice(0, start[0].length + endM.index) : tail;
+  const month = WIDGET_MONTHS[String(start[4]).toLowerCase()];
+  const checkMs = month ? Date.UTC(Number(start[5]), month - 1, Number(start[3])) : NaN;
+  const kmM = /(?:пробіг|пробег)\s+(\d+)\s*(тис|тыс)/i.exec(seg);
+  const recM = /(?:від|от)\s+(\d{2})\.(\d{2})\.(\d{4})/.exec(seg);
+  const recordMs = recM ? Date.UTC(Number(recM[3]), Number(recM[2]) - 1, Number(recM[1])) : NaN;
+  /* неможливо за датами: запис пізніше за перевірку (допуск доба) */
+  const impossible = isFinite(checkMs) && isFinite(recordMs) && recordMs > checkMs + 86400000;
+  return {
+    seg,
+    widget: {
+      check_date: isFinite(checkMs) ? new Date(checkMs).toISOString().slice(0, 10) : null,
+      record_date: isFinite(recordMs) ? new Date(recordMs).toISOString().slice(0, 10) : null,
+      km: kmM ? Number(kmM[1]) * 1000 : null,
+      status: impossible ? 'rejected' : 'kept',
+      ...(impossible ? { reason: 'record_after_check' } : {}),
+    },
+  };
+}
+/* текст для моделі може містити блок перевірки кілька разів (секції
+   relevantText перекриваються): обробляється КОЖНЕ входження */
+export function screenMileageWidget(text) {
+  let t = String(text || '');
+  let widget = null, pos = 0, cut = 0;
+  for (;;) {
+    const m = WIDGET_START_RE.exec(t.slice(pos));
+    if (!m) break;
+    m.index += pos;
+    const w = readMileageWidget(t, m);
+    if (!widget) widget = w.widget;
+    if (w.widget.status === 'rejected') {
+      /* склеюємо лише місце розрізу: абзаци решти тексту не чіпаємо */
+      const before = t.slice(0, m.index).replace(/\s+$/, ''), after = t.slice(m.index + w.seg.length).replace(/^\s+/, '');
+      t = before + ' ' + after;
+      pos = before.length;
+      cut++;
+    } else {
+      pos = m.index + m[0].length;
+    }
+  }
+  return { text: t, widget: widget ? { ...widget, ...(cut ? { removed: cut } : {}) } : null };
 }
 
 /* ---------- 3а. Метадані оголошення для Vehicle Memory ----------
@@ -3797,6 +3863,8 @@ async function runCheck(req, res, job) {
       /* мапи для UI і чату: технічний id кадру -> позиція у вихідній галереї */
       photo_map: { listing: photoIdx, auction: auctionPhotos.map(u => { const real = photoOriginByData.get(u) || u; return (auction && Array.isArray(auction.photos)) ? auction.photos.indexOf(real) : -1; }) },
       price_context: listing.price_context || null,
+      /* віджет AUTO.RIA "Пробіг": узгоджений лишився в тексті, неможливий за датами відкинутий */
+      mileage_widget: listing.mileage_widget || null,
       /* що саме отримав фінальний висновок: діагностика і контекст для чату.
          Висновок обʼєктивний: особистого контексту людини в ньому нема */
       decision_inputs: decisionContext ? {

@@ -21,7 +21,7 @@ import { resolveAccidentEvents, sanitizeFindingsV3, zoneClasses } from './score-
 import { ownerEventsConsistent } from './history-owners.js';
 
 export const SCORE_CONFIG_V4 = {
-  CONFIG_TAG: 'v4-prod-2026-09-26',
+  CONFIG_TAG: 'v4-prod-2026-09-26-hev',
   STARTING_SCORE: 10,
   ACCIDENT: { light: 0.4, medium: 1.2, heavy: 2.5, total: 5.0, unknown: 1.5, unrepaired_seller: 2.5, earlier_events: 1.0, flood: 2.5, fire: 3.0 },
   BODY: { dent: 0.5, corrosion: 0.6, headlight: 0.4, windshield: 0.3, broken_element: 0.3, missing_part: 0.3, wheel: 0.15, wheel_max: 0.3 },
@@ -82,8 +82,11 @@ export function resolvePowertrainClass({ nhtsa = null, fuel = null } = {}) {
   if (f === 'petrol' || f === 'gasoline') return 'petrol';
   if (f === 'diesel') return 'diesel';
   if (f === 'electric' || f === 'bev') return 'bev';
-  if (f === 'phev') return 'phev';
-  if (f === 'hev') return 'hev';
+  /* явна ознака plug-in: PHEV (норма 15 000) */
+  if (f === 'phev' || /plug|phev/.test(f)) return 'phev';
+  /* 2026-09-26, рішення власника: "hybrid" без явної ознаки plug-in це HEV
+     (норма 12 000); раніше такий гібрид ішов у unknown (14 000) */
+  if (f === 'hev' || f === 'hybrid') return 'hev';
   return 'unknown';
 }
 export function mileageNormKmYear(cls, cfg = SCORE_CONFIG_V4) {

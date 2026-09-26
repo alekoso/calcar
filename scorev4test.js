@@ -252,13 +252,18 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     eq(ravOld.final_if_eligible, 8.6, 'RAV4 зі старою кривою 8.6 (як у проді)');
     ok(ravNew.mileage_intensity.penalty_exact > 1.8 && ravNew.mileage_intensity.penalty_exact < 1.85, 'RAV4 новий штраф ~1.83: ' + ravNew.mileage_intensity.penalty_exact);
     ok(ravOld.final_if_eligible - ravNew.final_if_eligible >= 0.5, 'RAV4: нова крива відчутно знижує бал: ' + ravOld.final_if_eligible + ' -> ' + ravNew.final_if_eligible);
-    /* той самий пробіг у гібрида з відомим рівнем (HEV, норма 12 000): ~3.18x */
-    const ravHev = run({ vehicle: { ...rav.vehicle, powertrain_class: 'hev' } });
-    ok(ravHev.mileage_intensity.ratio > 3.1 && ravHev.final_if_eligible < ravNew.final_if_eligible, 'RAV4 HEV: вища інтенсивність, нижчий бал');
+    /* з 2026-09-26 той самий RAV4 (fuel "hybrid") класифікується як HEV, норма 12 000 */
+    const ravHev = run({ vehicle: { ...rav.vehicle, powertrain_class: resolvePowertrainClass({ fuel: 'hybrid' }) } });
+    eq(ravHev.mileage_intensity.powertrain_class, 'hev', 'RAV4 hybrid -> HEV'); eq(ravHev.mileage_intensity.ratio, 3.18, 'RAV4 HEV ratio 3.18');
+    ok(Math.abs(ravHev.mileage_intensity.penalty_exact - 2.2436) < 0.001, 'RAV4 HEV штраф ~2.24: ' + ravHev.mileage_intensity.penalty_exact);
+    eq(ravHev.final_if_eligible, 7.5, 'RAV4 HEV бал 7.5 (було 8.6)');
     eq(run({ vehicle: { ...veh, age_months: 6 } }).inputs.mileage_intensity.status, 'unavailable', 'молодше року');
     eq(resolvePowertrainClass({ nhtsa: { ElectrificationLevel: 'PHEV (Plug-in Hybrid Electric Vehicle)', FuelTypePrimary: 'Gasoline' } }), 'phev', 'PHEV');
     eq(resolvePowertrainClass({ nhtsa: { FuelTypePrimary: 'Gasoline' }, fuel: 'hybrid' }), 'petrol', 'NHTSA пріоритетніше');
-    eq(resolvePowertrainClass({ fuel: 'hybrid' }), 'unknown', 'hybrid без рівня = unknown');
+    /* 2026-09-26, рішення власника: hybrid без явного plug-in = HEV, явний plug-in = PHEV */
+    eq(resolvePowertrainClass({ fuel: 'hybrid' }), 'hev', 'hybrid без ознаки plug-in = HEV');
+    eq(resolvePowertrainClass({ fuel: 'plug-in hybrid' }), 'phev', 'явний plug-in = PHEV'); eq(resolvePowertrainClass({ fuel: 'phev' }), 'phev', 'phev');
+    eq(resolvePowertrainClass({ fuel: null }), 'unknown', 'тип невідомий = unknown'); eq(resolvePowertrainClass({ fuel: 'lpg' }), 'unknown', 'невизначений тип = unknown');
     eq(V4.mileageNormKmYear('unknown'), 14000, 'норма unknown'); eq(V4.mileageNormKmYear('phev'), 15000, 'норма phev');
   }
 
@@ -370,8 +375,9 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
   {
     const hash = crypto.createHash('md5').update(JSON.stringify(C)).digest('hex');
     /* 2026-09-25: у ELIGIBILITY додано listing_identity_photos (v4-prod-2026-09-25).
-       2026-09-26: погоджена крива інтенсивності пробігу, тег v4-prod-2026-09-26 */
-    const EXPECTED = '6a2cccb753e62b9b7e430b4e8ef298a1';
+       2026-09-26: погоджена крива інтенсивності пробігу, тег v4-prod-2026-09-26;
+       того ж дня hybrid без plug-in = HEV, тег v4-prod-2026-09-26-hev */
+    const EXPECTED = '083e889fba45f80ce7b0fe96af8cb68a';
     if (hash !== EXPECTED) errs.push('SCORE_CONFIG_V4 змінився (md5 ' + hash + '), онови CONFIG_TAG і хеш у тесті');
   }
 
