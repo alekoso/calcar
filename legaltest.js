@@ -102,6 +102,14 @@ for (const p of ['check.html', 'import.html', 'result.html', 'result-check.html'
   if (!foot.includes('<div class="ft-col"><b>Legal</b><a href="/privacy">Privacy</a><a href="/terms">Terms</a></div>')) errs.push(p + ': у футері нема Privacy/Terms');
   if (!foot.includes('<div class="ft-col" id="ftContacts" hidden><b>Contact</b></div>')) errs.push(p + ': у футері нема колонки контактів');
 }
+/* колонки футера мусять переноситись: інакше на вузькому екрані сторінка
+   їде вбік. Правила однакові в усіх копіях спільного блоку */
+const FT_BASE = '.ft-cols{display:flex;flex-wrap:wrap;gap:24px 56px}';
+const FT_MOBILE = '.ft-cols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px 20px}.ft-col{min-width:0}';
+for (const p of ['check.html', 'import.html', 'result.html', 'result-check.html', ...LEGAL]) {
+  if (!S[p].includes(FT_BASE)) errs.push(p + ': колонки футера не переносяться (горизонтальний скрол)');
+  if (!S[p].includes(FT_MOBILE)) errs.push(p + ': на вузькому екрані футер не в дві колонки');
+}
 const pub = fs.readFileSync('calcar-public.js', 'utf8');
 if (!/telegram: 'https:\/\/t\.me\/calcar_ai'/.test(pub)) errs.push('calcar-public.js: Telegram не t.me/calcar_ai, футер лишиться без контакту');
 
