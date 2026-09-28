@@ -267,7 +267,7 @@ const F = (text, over = {}) => ({ text_en: text, scope: 'version', component_rol
     ok('8g. підказка лишається для MI: persistPayload її зберігає як кандидата', M.persistPayload([w205Lead], ID_COLD, 't').findings.length === 1);
     ok('8h. без знімка і без issues фільтр нічого не ламає', M.guardModelNotes({}, null).checked === 0 && M.guardModelNotes({ model_notes: { issues: [{ title: 'x', source_ref: 'F1' }] } }, null).dropped.length === 0);
     const schema = fs.readFileSync('api/check-schema.js', 'utf8');
-    ok('8i. схема model_notes.issues і risks несе source_ref', /seller_serviced: S\('boolean'\),\n\s*source_ref: NS\(/.test(schema) && /action: S\('string', 'конкретна перевірка до покупки, 1 рядок'\),\n\s*source_ref: NS\(/.test(schema));
+    ok('8i. схема model_notes.issues і risks несе source_ref', /seller_serviced: S\('boolean'\),\n\s*source_ref: NS\(\)/.test(schema) && /action: S\('string', 'конкретна перевірка до покупки, 1 рядок'\),\n\s*source_ref: NS\(\)/.test(schema));
     ok('8j. фільтр викликається одразу після розбору відповіді основного виклику', core.indexOf('guardModelNotes(parsed, miResearchSnapshot)') > core.indexOf("parsed = JSON.parse((data.choices") && core.indexOf('guardModelNotes(parsed, miResearchSnapshot)') < core.indexOf('parsed._meta = {'));
     ok('8k. телеметрія фільтра у _meta.mi_research', /lead_guard: state\.lead_guard \|\| null/.test(SRC));
     /* Audi A5 з полем площадки "B9/F5": холодне дослідження стартує */
