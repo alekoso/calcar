@@ -656,7 +656,7 @@ export function researchBlock(snapshot) {
       for (const { id, f } of prominent) lines.push(describe(id, f));
     }
     if (leads.length) {
-      lines.push('WEAK_LEADS (одне слабке джерело: форум, власник, блог чи вторинний переказ; це ПІДКАЗКИ, а не слабкі місця моделі. У model_notes.issues їх НЕ писати; доречну можна обережно згадати одним пунктом checklist як "перевірити"):');
+      lines.push('WEAK_LEADS (одне слабке джерело: форум, власник, блог чи вторинний переказ; це ПІДКАЗКИ, а не слабкі місця моделі. У model_notes.issues і risks їх НЕ писати; доречну можна обережно згадати одним пунктом checklist як "перевірити"):');
       for (const { id, f } of leads) lines.push(describe(id, f));
     }
     if (closed.length) {
@@ -665,29 +665,29 @@ export function researchBlock(snapshot) {
     }
   }
   lines.push('');
-  lines.push('SOURCE_REF: кожен пункт model_notes.issues має поле source_ref: F<n>, якщо він спирається на FRESH_WEB_FINDINGS; "MI", якщо на MODEL_INTELLIGENCE; null, якщо це твоє власне знання про модель. Пункт, що спирається лише на WEAK_LEADS, у model_notes.issues не пишеться; якщо все ж написаний, source_ref = L<n>, і код його прибере.');
+  lines.push('SOURCE_REF: кожен пункт model_notes.issues і risks має поле source_ref: F<n>, якщо він спирається на FRESH_WEB_FINDINGS; "MI", якщо на MODEL_INTELLIGENCE; L<n>, якщо на WEAK_LEADS; null, якщо це твоє власне знання або факт цього екземпляра. Пункт, що спирається лише на WEAK_LEADS, ні в model_notes.issues, ні в risks не пишеться; якщо все ж написаний, source_ref = L<n>, і код його прибере.');
   lines.push('ЯК КОРИСТУВАТИСЬ: у model_notes.issues спирайся насамперед на MODEL_INTELLIGENCE і FRESH_WEB_FINDINGS про САМЕ ЦЮ версію і її агрегати. Туди йде лише АКТУАЛЬНЕ і корисне ПЕРЕВІРИТИ; закрите і не про цю машину не виносити. Поширеність не дорівнює важливості: рідша, але катастрофічна поломка мотора важить більше за часту дрібницю; важлива дорога поломка (мотор, коробка, привід, батарея, охолодження) стоїть вище за дрібні загальні слабкості. Джерело кожного пункту зберігай у формулюванні за правилами вище; ярликів "найчастіша", "проблема номер один", "майже всі" без даних про повторюваність не пиши. Разову кампанію без підтвердження виконання подавай як "перевірити по VIN, чи виконана", а не як активну поломку. Знання з приміткою про іншу версію чи мотор до цієї машини не переноси. Нічого з цього блоку не є фактом про конкретний екземпляр: у risks воно потрапляє лише за конкретного сигналу по цій машині.');
   return lines.join('\n');
 }
 
-/* Фільтр після основного виклику: помітне слабке місце моделі не може
-   спиратися лише на слабку підказку. Пункт model_notes.issues з source_ref
-   L<n> (або F<n>, що вказує на підказку) прибирається; решта не чіпається.
-   Підказка лишається у контексті аналізу, у памʼяті кандидатів і може
-   бути пунктом checklist. */
+/* Фільтр після основного виклику: помітне слабке місце моделі чи ризик не
+   може спиратися лише на слабку підказку. Пункт model_notes.issues або
+   risks з source_ref L<n> прибирається; решта не чіпається. Підказка
+   лишається у контексті аналізу, у памʼяті кандидатів і може бути
+   пунктом checklist. */
 export function guardModelNotes(parsed, snapshot) {
   const stats = { checked: 0, dropped: [], leads: 0 };
-  const issues = parsed && parsed.model_notes && Array.isArray(parsed.model_notes.issues) ? parsed.model_notes.issues : null;
-  if (!issues) return stats;
-  const { prominent, leads } = snapshotItems(snapshot || {});
+  if (!parsed || typeof parsed !== 'object') return stats;
+  const { leads } = snapshotItems(snapshot || {});
   stats.leads = leads.length;
-  parsed.model_notes.issues = issues.filter(it => {
+  const keep = where => it => {
     stats.checked++;
     const ref = String((it && it.source_ref) || '').trim().toUpperCase();
-    const isLead = /^L\d+$/.test(ref);
-    if (isLead) { stats.dropped.push({ ref, title: String((it && it.title) || '').slice(0, 80) }); return false; }
+    if (/^L\d+$/.test(ref)) { stats.dropped.push({ where, ref, title: String((it && it.title) || '').slice(0, 80) }); return false; }
     return true;
-  });
+  };
+  if (parsed.model_notes && Array.isArray(parsed.model_notes.issues)) parsed.model_notes.issues = parsed.model_notes.issues.filter(keep('model_notes'));
+  if (Array.isArray(parsed.risks)) parsed.risks = parsed.risks.filter(keep('risks'));
   return stats;
 }
 

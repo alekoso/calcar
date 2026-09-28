@@ -248,22 +248,26 @@ const F = (text, over = {}) => ({ text_en: text, scope: 'version', component_rol
     const snapW = { context: CTX_COLD, identity: ID_COLD, reportYear: 2026, findings: [w205Lead, strong] };
     const blkW = M.researchBlock(snapW);
     ok('8b. підказка лишається у контексті аналізу як WEAK_LEADS L1, сильна знахідка як F1', /\nF1\. \[version, known_issue, major\] The plastic engine-valley coolant/.test(blkW) && /\nL1\. \[version, owner_pattern, minor\] Owner reports for the W205 C43/.test(blkW) && blkW.indexOf('L1.') > blkW.indexOf('WEAK_LEADS (') && blkW.indexOf('F1.') < blkW.indexOf('WEAK_LEADS ('));
-    ok('8c. блок забороняє підказці ставати слабким місцем і вимагає source_ref', /У model_notes\.issues їх НЕ писати/.test(blkW) && /SOURCE_REF: кожен пункт model_notes\.issues має поле source_ref/.test(blkW));
+    ok('8c. блок забороняє підказці ставати слабким місцем і вимагає source_ref', /У model_notes\.issues і risks їх НЕ писати/.test(blkW) && /SOURCE_REF: кожен пункт model_notes\.issues і risks має поле source_ref/.test(blkW));
     const parsedW = { model_notes: { issues: [
       { unit: 'коробка', title: 'Рывки коробки на малой скорости', detail: 'd', severity: 'low', seller_serviced: false, source_ref: 'L1' },
       { unit: 'охолодження', title: 'Трещины перемычки охлаждения', detail: 'd', severity: 'high', seller_serviced: false, source_ref: 'F1' },
       { unit: 'підвіска', title: 'Пневмостойки', detail: 'd', severity: 'med', seller_serviced: false, source_ref: 'MI' },
       { unit: 'мотор', title: 'Власне знання', detail: 'd', severity: 'med', seller_serviced: false, source_ref: null },
-    ] }, checklist: ['Проверить рывки коробки на малой скорости на тест-драйве'] };
+    ], }, risks: [
+      { title: 'Возможное запотевание верхних крышек ГРМ', level: 'low', kind: 'latent', note: 'Владельцы сообщают', action: 'осмотреть', source_ref: 'L1' },
+      { title: 'Переднее ДТП', level: 'high', kind: 'finding', note: 'n', action: 'a', source_ref: null },
+    ], checklist: ['Проверить рывки коробки на малой скорости на тест-драйве'] };
     const g = M.guardModelNotes(parsedW, snapW);
     const titles = parsedW.model_notes.issues.map(i => i.title);
-    ok('8d. W205: підказка з source_ref L1 прибрана зі слабких місць', !titles.includes('Рывки коробки на малой скорости') && g.dropped.length === 1 && g.dropped[0].ref === 'L1', JSON.stringify(g));
+    ok('8d. W205: підказка з source_ref L1 прибрана зі слабких місць', !titles.includes('Рывки коробки на малой скорости') && g.dropped.some(d => d.where === 'model_notes' && d.ref === 'L1'), JSON.stringify(g));
+    ok('8d2. форма Q7: ризик, що спирається лише на підказку, теж прибраний; ризик цього екземпляра лишається', parsedW.risks.map(x => x.title).join('|') === 'Переднее ДТП' && g.dropped.some(d => d.where === 'risks'));
     ok('8e. сильна знахідка, MI і власне знання лишаються', titles.join('|') === 'Трещины перемычки охлаждения|Пневмостойки|Власне знання');
     ok('8f. обережний пункт перевірки у checklist не чіпається', parsedW.checklist.length === 1);
     ok('8g. підказка лишається для MI: persistPayload її зберігає як кандидата', M.persistPayload([w205Lead], ID_COLD, 't').findings.length === 1);
     ok('8h. без знімка і без issues фільтр нічого не ламає', M.guardModelNotes({}, null).checked === 0 && M.guardModelNotes({ model_notes: { issues: [{ title: 'x', source_ref: 'F1' }] } }, null).dropped.length === 0);
     const schema = fs.readFileSync('api/check-schema.js', 'utf8');
-    ok('8i. схема model_notes.issues несе source_ref', /seller_serviced: S\('boolean'\),\n\s*source_ref: NS\(/.test(schema));
+    ok('8i. схема model_notes.issues і risks несе source_ref', /seller_serviced: S\('boolean'\),\n\s*source_ref: NS\(/.test(schema) && /action: S\('string', 'конкретна перевірка до покупки, 1 рядок'\),\n\s*source_ref: NS\(/.test(schema));
     ok('8j. фільтр викликається одразу після розбору відповіді основного виклику', core.indexOf('guardModelNotes(parsed, miResearchSnapshot)') > core.indexOf("parsed = JSON.parse((data.choices") && core.indexOf('guardModelNotes(parsed, miResearchSnapshot)') < core.indexOf('parsed._meta = {'));
     ok('8k. телеметрія фільтра у _meta.mi_research', /lead_guard: state\.lead_guard \|\| null/.test(SRC));
     /* Audi A5 з полем площадки "B9/F5": холодне дослідження стартує */

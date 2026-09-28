@@ -95,6 +95,7 @@ export function buildMainSchema({ hvProvided = false } = {}) {
       kind: E(['finding', 'latent'], 'latent = HIGH_COST_LATENT_RISK'),
       note: S('string', '1-2 речення'),
       action: S('string', 'конкретна перевірка до покупки, 1 рядок'),
+      source_ref: NS('L1.., якщо ризик спирається на WEAK_LEADS; F1.. з FRESH_WEB_FINDINGS; "MI"; інакше null'),
     })),
     equipment_v2: ARR(OBJ({
       name: S('string'),
