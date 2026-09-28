@@ -248,7 +248,7 @@ const F = (text, over = {}) => ({ text_en: text, scope: 'version', component_rol
     const snapW = { context: CTX_COLD, identity: ID_COLD, reportYear: 2026, findings: [w205Lead, strong] };
     const blkW = M.researchBlock(snapW);
     ok('8b. підказка лишається у контексті аналізу як WEAK_LEADS L1, сильна знахідка як F1', /\nF1\. \[version, known_issue, major\] The plastic engine-valley coolant/.test(blkW) && /\nL1\. \[version, owner_pattern, minor\] Owner reports for the W205 C43/.test(blkW) && blkW.indexOf('L1.') > blkW.indexOf('WEAK_LEADS (') && blkW.indexOf('F1.') < blkW.indexOf('WEAK_LEADS ('));
-    ok('8c. блок забороняє підказці ставати слабким місцем і вимагає source_ref', /У model_notes\.issues і risks їх НЕ писати/.test(blkW) && /SOURCE_REF: кожен пункт model_notes\.issues і risks має поле source_ref/.test(blkW));
+    ok('8c. блок забороняє підказці ставати слабким місцем і вимагає source_ref', /У model_notes\.issues і risks їх НЕ писати/.test(blkW) && /SOURCE_REF: кожен пункт model_notes\.issues МУСИТЬ мати source_ref/.test(blkW));
     const parsedW = { model_notes: { issues: [
       { unit: 'коробка', title: 'Рывки коробки на малой скорости', detail: 'd', severity: 'low', seller_serviced: false, source_ref: 'L1' },
       { unit: 'охолодження', title: 'Трещины перемычки охлаждения', detail: 'd', severity: 'high', seller_serviced: false, source_ref: 'F1' },
@@ -262,10 +262,39 @@ const F = (text, over = {}) => ({ text_en: text, scope: 'version', component_rol
     const titles = parsedW.model_notes.issues.map(i => i.title);
     ok('8d. W205: підказка з source_ref L1 прибрана зі слабких місць', !titles.includes('Рывки коробки на малой скорости') && g.dropped.some(d => d.where === 'model_notes' && d.ref === 'L1'), JSON.stringify(g));
     ok('8d2. форма Q7: ризик, що спирається лише на підказку, теж прибраний; ризик цього екземпляра лишається', parsedW.risks.map(x => x.title).join('|') === 'Переднее ДТП' && g.dropped.some(d => d.where === 'risks'));
-    ok('8e. сильна знахідка, MI і власне знання лишаються', titles.join('|') === 'Трещины перемычки охлаждения|Пневмостойки|Власне знання');
+    ok('8e. без знання MI у знімку лишається лише сильна знахідка F1; "MI" без знання MI і власне знання прибрані', titles.join('|') === 'Трещины перемычки охлаждения' && g.dropped.some(d => d.reason === 'no_mi_knowledge') && g.dropped.some(d => d.reason === 'ungrounded'), JSON.stringify(g.dropped));
     ok('8f. обережний пункт перевірки у checklist не чіпається', parsedW.checklist.length === 1);
     ok('8g. підказка лишається для MI: persistPayload її зберігає як кандидата', M.persistPayload([w205Lead], ID_COLD, 't').findings.length === 1);
-    ok('8h. без знімка і без issues фільтр нічого не ламає', M.guardModelNotes({}, null).checked === 0 && M.guardModelNotes({ model_notes: { issues: [{ title: 'x', source_ref: 'F1' }] } }, null).dropped.length === 0);
+    ok('8h. без знімка і без issues фільтр нічого не ламає; без знімка F1 не має на що спиратися', M.guardModelNotes({}, null).checked === 0 && M.guardModelNotes({ model_notes: { issues: [{ title: 'x', source_ref: 'F1' }] } }, null).dropped.length === 1);
+    /* обґрунтовані слабкі місця: лише MI (коли знання є) і F<n> (коли знахідка є) */
+    const snapMI = { context: { ...CTX_MI }, identity: ID_MI, reportYear: 2026, findings: [w205Lead, strong] };
+    const P = () => ({ model_notes: { issues: [
+      { title: 'mi', source_ref: 'MI' }, { title: 'f1', source_ref: 'F1' }, { title: 'l1', source_ref: 'L1' }, { title: 'null', source_ref: null },
+      { title: 'missing' }, { title: 'bad', source_ref: 'wikipedia' }, { title: 'f9', source_ref: 'F9' }, { title: 'lower', source_ref: 'mi' },
+    ] }, risks: [
+      { title: 'Переднее ДТП', kind: 'finding', source_ref: null }, { title: 'Пробег', kind: 'finding', source_ref: 'MILEAGE_CONTEXT' },
+      { title: 'Кадр', kind: 'finding' }, { title: 'Слабкий', kind: 'latent', source_ref: 'L1' }, { title: 'MI ризик', kind: 'latent', source_ref: 'MI' },
+    ] });
+    const pm = P(); const gm = M.guardModelNotes(pm, snapMI);
+    const t2 = pm.model_notes.issues.map(i => i.title).join(',');
+    ok('9.1 source_ref MI зберігається, коли знання MI є', t2.includes('mi') && t2.includes('lower'), t2);
+    ok('9.2 source_ref F1 зберігається, коли така помітна знахідка є', t2.split(',').includes('f1'), t2);
+    ok('9.3 L1 прибраний', !t2.split(',').includes('l1') && gm.dropped.some(d => d.ref === 'L1' && d.reason === 'weak_lead' && d.where === 'model_notes'));
+    ok('9.4 null прибраний', !t2.split(',').includes('null') && gm.dropped.some(d => d.title === 'null' && d.reason === 'ungrounded'));
+    ok('9.5 відсутній source_ref прибраний', !t2.split(',').includes('missing'));
+    ok('9.6 невідомий і неіснуючий F9 прибрані', !t2.split(',').includes('bad') && !t2.split(',').includes('f9') && gm.dropped.filter(d => d.reason === 'unknown_ref').length === 2, JSON.stringify(gm.dropped));
+    ok('9.7 ризики цього екземпляра (null, відсутній, власна мітка) не прибрані', pm.risks.map(r => r.title).join('|') === 'Переднее ДТП|Пробег|Кадр|MI ризик');
+    ok('9.8 L<n> у risks і далі прибирається', !pm.risks.some(r => r.title === 'Слабкий') && gm.dropped.some(d => d.where === 'risks' && d.ref === 'L1'));
+    /* справжня форма Mercedes W205 після повторного прогону: знання MI немає, знахідок немає */
+    const snapW205 = { context: { ...CTX_COLD, knowledge: [], knowledge_count: 0 }, identity: ID_COLD, reportYear: 2026, findings: [] };
+    const w = { model_notes: { issues: [
+      { unit: 'турбіни', title: 'Турбины и контур охлаждения', detail: 'd', severity: 'med', seller_serviced: false, source_ref: null },
+      { unit: 'коробка', title: 'Работа 9-ступенчатой коробки', detail: 'd', severity: 'med', seller_serviced: false, source_ref: null },
+    ] }, risks: [{ title: 'Переднее ДТП с непроверенной геометрией', kind: 'finding', source_ref: 'AUTO.RIA history_facts' }], checklist: ['9-ступенчатая коробка: проверить переключения'] };
+    M.guardModelNotes(w, snapW205);
+    ok('9.9 W205: "Работа 9-ступенчатой коробки" з null більше не слабке місце; перелік чесно порожній; ризик і checklist лишились', w.model_notes.issues.length === 0 && w.risks.length === 1 && w.checklist.length === 1);
+    ok('9.10 обґрунтоване MI і F<n> слабке місце з\'являється як звичайно', (() => { const q = { model_notes: { issues: [{ title: 'Пневмостойки', source_ref: 'MI' }, { title: 'Трещины перемычки', source_ref: 'F1' }] } }; M.guardModelNotes(q, snapMI); return q.model_notes.issues.length === 2; })());
+    ok('9.11 промпт: MI або F<n> обовʼязкові для issues; risks можуть мати null', /кожен пункт model_notes\.issues МУСИТЬ мати source_ref "MI"/.test(M.researchBlock(snapMI)) && /null для фактів і міркувань про цей екземпляр/.test(M.researchBlock(snapMI)) && /ЛИШЕ з блоку MODEL_INTELLIGENCE \(source_ref "MI"\) або FRESH_WEB_FINDINGS/.test(CHECK));
     const schema = fs.readFileSync('api/check-schema.js', 'utf8');
     ok('8i. схема model_notes.issues і risks несе source_ref', /seller_serviced: S\('boolean'\),\n\s*source_ref: NS\(\)/.test(schema) && /action: S\('string', 'конкретна перевірка до покупки, 1 рядок'\),\n\s*source_ref: NS\(\)/.test(schema));
     ok('8j. фільтр викликається одразу після розбору відповіді основного виклику', core.indexOf('guardModelNotes(parsed, miResearchSnapshot)') > core.indexOf("parsed = JSON.parse((data.choices") && core.indexOf('guardModelNotes(parsed, miResearchSnapshot)') < core.indexOf('parsed._meta = {'));

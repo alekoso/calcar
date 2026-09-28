@@ -665,29 +665,49 @@ export function researchBlock(snapshot) {
     }
   }
   lines.push('');
-  lines.push('SOURCE_REF: кожен пункт model_notes.issues і risks має поле source_ref: F<n>, якщо він спирається на FRESH_WEB_FINDINGS; "MI", якщо на MODEL_INTELLIGENCE; L<n>, якщо на WEAK_LEADS; null, якщо це твоє власне знання або факт цього екземпляра. Пункт, що спирається лише на WEAK_LEADS, ні в model_notes.issues, ні в risks не пишеться; якщо все ж написаний, source_ref = L<n>, і код його прибере.');
+  lines.push('SOURCE_REF: кожен пункт model_notes.issues МУСИТЬ мати source_ref "MI" (спирається на MODEL_INTELLIGENCE) або F<n> (спирається на FRESH_WEB_FINDINGS); слабке місце, яке не спирається ні на те, ні на інше, у model_notes.issues не пишеться взагалі, і код прибере будь-який пункт без такого посилання. У risks source_ref: F<n>, "MI", L<n> або null для фактів і міркувань про цей екземпляр. Пункт, що спирається лише на WEAK_LEADS (L<n>), ні в model_notes.issues, ні в risks не пишеться.');
   lines.push('ЯК КОРИСТУВАТИСЬ: у model_notes.issues спирайся насамперед на MODEL_INTELLIGENCE і FRESH_WEB_FINDINGS про САМЕ ЦЮ версію і її агрегати. Туди йде лише АКТУАЛЬНЕ і корисне ПЕРЕВІРИТИ; закрите і не про цю машину не виносити. Поширеність не дорівнює важливості: рідша, але катастрофічна поломка мотора важить більше за часту дрібницю; важлива дорога поломка (мотор, коробка, привід, батарея, охолодження) стоїть вище за дрібні загальні слабкості. Джерело кожного пункту зберігай у формулюванні за правилами вище; ярликів "найчастіша", "проблема номер один", "майже всі" без даних про повторюваність не пиши. Разову кампанію без підтвердження виконання подавай як "перевірити по VIN, чи виконана", а не як активну поломку. Знання з приміткою про іншу версію чи мотор до цієї машини не переноси. Нічого з цього блоку не є фактом про конкретний екземпляр: у risks воно потрапляє лише за конкретного сигналу по цій машині.');
   return lines.join('\n');
 }
 
-/* Фільтр після основного виклику: помітне слабке місце моделі чи ризик не
-   може спиратися лише на слабку підказку. Пункт model_notes.issues або
-   risks з source_ref L<n> прибирається; решта не чіпається. Підказка
-   лишається у контексті аналізу, у памʼяті кандидатів і може бути
-   пунктом checklist. */
+/* Фільтр після основного виклику.
+
+   model_notes.issues ("Типові слабкі місця цієї версії") це ЛИШЕ
+   обґрунтоване знання про модель: пункт лишається тільки з source_ref
+   "MI" (коли у знімку справді є знання MI) або F<n> (коли така помітна
+   свіжа знахідка справді є у знімку). Підказка L<n>, null, відсутнє чи
+   невідоме посилання прибирається: власна памʼять моделі слабким місцем
+   не стає. Порожній перелік це нормальний стан.
+
+   risks це міркування про конкретний екземпляр (кадри, пробіг, історія,
+   суперечності), тому там прибирається лише L<n>; null лишається.
+   Підказка лишається у контексті аналізу, у памʼяті кандидатів і може
+   бути пунктом checklist. */
 export function guardModelNotes(parsed, snapshot) {
   const stats = { checked: 0, dropped: [], leads: 0 };
   if (!parsed || typeof parsed !== 'object') return stats;
-  const { leads } = snapshotItems(snapshot || {});
+  const { prominent, leads } = snapshotItems(snapshot || {});
   stats.leads = leads.length;
-  const keep = where => it => {
-    stats.checked++;
-    const ref = String((it && it.source_ref) || '').trim().toUpperCase();
-    if (/^L\d+$/.test(ref)) { stats.dropped.push({ where, ref, title: String((it && it.title) || '').slice(0, 80) }); return false; }
-    return true;
-  };
-  if (parsed.model_notes && Array.isArray(parsed.model_notes.issues)) parsed.model_notes.issues = parsed.model_notes.issues.filter(keep('model_notes'));
-  if (Array.isArray(parsed.risks)) parsed.risks = parsed.risks.filter(keep('risks'));
+  const fIds = new Set(prominent.map(x => x.id));
+  const hasMi = !!(snapshot && snapshot.context && Array.isArray(snapshot.context.knowledge) && snapshot.context.knowledge.length);
+  const refOf = it => String((it && it.source_ref) || '').trim().toUpperCase();
+  const drop = (where, it, ref, reason) => { stats.dropped.push({ where, ref: ref || null, reason, title: String((it && it.title) || '').slice(0, 80) }); return false; };
+  if (parsed.model_notes && Array.isArray(parsed.model_notes.issues)) {
+    parsed.model_notes.issues = parsed.model_notes.issues.filter(it => {
+      stats.checked++;
+      const ref = refOf(it);
+      if (ref === 'MI' && hasMi) return true;
+      if (fIds.has(ref)) return true;
+      return drop('model_notes', it, ref, /^L\d+$/.test(ref) ? 'weak_lead' : !ref ? 'ungrounded' : ref === 'MI' ? 'no_mi_knowledge' : 'unknown_ref');
+    });
+  }
+  if (Array.isArray(parsed.risks)) {
+    parsed.risks = parsed.risks.filter(it => {
+      stats.checked++;
+      const ref = refOf(it);
+      return /^L\d+$/.test(ref) ? drop('risks', it, ref, 'weak_lead') : true;
+    });
+  }
   return stats;
 }
 
