@@ -720,6 +720,8 @@ window.CALCAR_DICTS.ru = {
   'Owner #{n}': '{n}-й владелец',
   'Discuss with CalCar AI': 'Обсудить с CalCar AI',
   'Discuss the car with your preferences in mind.': 'Обсуди машину с учётом своих предпочтений.',
+  'CalCar AI left a message': 'CalCar AI оставил сообщение',
+  'Unread messages: {n}': 'Непрочитанных сообщений: {n}',
   'You can ask about this car': 'Можно спросить про эту машину',
   'The chat can walk you through the accident history, mileage and risks, and suggest what to check before buying.': 'Чат поможет разобрать ДТП, пробег, риски и подскажет, что проверить перед покупкой.',
   'km/mo': 'км/мес',

@@ -507,10 +507,34 @@ const page = fs.readFileSync('result-check.html', 'utf8');
     if (ords(HO.annotateOwnerOrdinals(full, { owners_count: null, owner_events: [] })).some(Boolean)) errs.push('без реєстру номери вигадані');
   }
 
+  /* ---------- 8. висновок CalCar: редакторська колонка, кнопка, футер CalCar AI ---------- */
+  {
+    /* колонка по центру картки, текст зліва; картка лишається на всю ширину */
+    if (!/#verdictCard\{--pd-col:860px;/.test(page)) errs.push('висновок без редакторської колонки');
+    if (!page.includes('#verdictCard .card-body{padding:16px max(28px,calc((100% - var(--pd-col)) / 2)) 30px}')) errs.push('текст висновку не в центральній колонці');
+    if (!page.includes('#verdictCard .card-head{border-bottom:none;padding:30px max(28px,calc((100% - var(--pd-col)) / 2)) 0}')) errs.push('заголовок висновку не вирівняний з колонкою');
+    if (/\.pd-(lead|short|reasoning)\{[^}]*max-width:78ch/.test(page)) errs.push('у висновку лишилось обмеження 78ch');
+    /* розкриття це справжня вторинна кнопка */
+    const more = (page.match(/\n  \.pd-more\{[^}]*\}/) || [''])[0];
+    if (!/border:1px solid var\(--line-strong\)/.test(more) || !/height:38px/.test(more) || /text-decoration:underline/.test(more)) errs.push('"Читати повний розбір" не кнопка');
+    /* непрочитане: приховане в розмітці, сторінка сама "1" не вмикає */
+    if (!/<span class="pd-ai-msg" id="pdAiMsg" hidden>CalCar AI left a message<span class="pd-ai-badge" id="pdAiBadge"><\/span><\/span>/.test(page)) errs.push('рядок непрочитаного не прихований за замовчуванням');
+    if ((page.replace(/\/\*[\s\S]*?\*\//g, '').match(/calcarAiUnread\(/g) || []).length !== 0) errs.push('сторінка сама викликає calcarAiUnread');
+    if (!/window\.calcarAiUnread = n =>/.test(page)) errs.push('нема входу для справжнього джерела непрочитаного');
+    if (!/addEventListener\('calcar-chat-state', e => \{\n\s*if \(e\.detail && e\.detail\.open && unread\) \{ unread = 0; render\(false\); \}/.test(page)) errs.push('відкриття чату не скидає непрочитане');
+    if (!/\.pd-ai-badge\.pulse\{animation:pd-ai-pulse \.9s ease-out 2\}/.test(page)) errs.push('пульсація не дві і скінченна');
+    if (!/@media \(prefers-reduced-motion:reduce\)\{\.pd-ai-badge\.pulse\{animation:none\}\}/.test(page)) errs.push('пульсація ігнорує reduced-motion');
+    /* абзаци короткого висновку не рвуться на скороченні "тыс." */
+    const src = page.slice(page.indexOf('const sents = (vis.match('), page.indexOf('if (sents && sents.length >= 2)'));
+    const vis = 'QX60 интересен богатым оснащением. Однако дилерская запись 35 тыс. км от октября 2025 года против 81-82 тыс. км выглядит нестыковкой. Цена не компенсирует риск.';
+    const sents = new Function('vis', src + 'return sents;')(vis);
+    if (sents.length !== 3 || !/35 тыс\. км от октября/.test(sents[1])) errs.push('короткий висновок рветься на "тыс.": ' + JSON.stringify(sents));
+  }
+
   /* словники */
   for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
     const s = fs.readFileSync(d, 'utf8');
-    for (const k of ['Average mileage', 'Average calculated from the vehicle age.', 'From the seller', 'Did this analysis help you decide?', 'Yes', 'Not really', 'What was missing?', 'Send', 'Thanks for the feedback', 'km/mo', 'CalCar conclusion', 'Expensive options', 'What to check', '{n} sec', 'How videos are selected', 'CalCar AI Chat', 'Archive photos were used in the analysis but are not available to view right now.', 'Archive photos are unavailable.', 'Owner #{n}']) {
+    for (const k of ['Average mileage', 'Average calculated from the vehicle age.', 'From the seller', 'Did this analysis help you decide?', 'CalCar AI left a message', 'Unread messages: {n}', 'Yes', 'Not really', 'What was missing?', 'Send', 'Thanks for the feedback', 'km/mo', 'CalCar conclusion', 'Expensive options', 'What to check', '{n} sec', 'How videos are selected', 'CalCar AI Chat', 'Archive photos were used in the analysis but are not available to view right now.', 'Archive photos are unavailable.', 'Owner #{n}']) {
       if (!s.includes("'" + k + "':")) errs.push(d + ': нема ключа "' + k + '"');
     }
   }
