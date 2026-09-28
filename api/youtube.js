@@ -54,7 +54,8 @@ const NOT_GENERATION = new Set([
   'v6', 'v8', 'i3', 'i4', 'i5', 'i6', 'w8', 'h4', 'h6', 'l4', 'l6',
 ]);
 export function validGeneration(raw) {
-  const g = clean(raw).replace(/[«»"']/g, '');
+  /* площадки пишуть заводський тип зі службовим словом: "Typ 4M", "Type 8V" */
+  const g = clean(raw).replace(/[«»"']/g, '').replace(/^(?:typ|type)\s+/i, '');
   if (!g || g.length > 12) return null;
   if (!/^[A-Za-z]{0,3}\d{2,3}(?:\.\d)?[A-Za-z]?$|^[A-Z]{2,3}$|^[A-Za-z]\d$|^\d[A-Za-z]$/.test(g)) return null;
   if (NOT_GENERATION.has(g.toLowerCase())) return null;

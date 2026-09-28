@@ -42,6 +42,9 @@ const vid = (id, title, extra = {}) => Object.assign({
   if (Y.resolveGeneration([{ value: 'Sport/Base', source: 'listing' }]).generation !== null) errs.push('складене сміття пройшло');
   /* назва моделі у формі коду покоління не є */
   if (Y.resolveGeneration([{ value: 'A6', source: 'listing', notModel: 'A6' }]).generation !== null) errs.push('назва моделі прийнята за покоління');
+  /* заводський тип зі службовим словом, як його пише AUTO.RIA */
+  if (Y.validGeneration('Typ 4M') !== '4M' || Y.validGeneration('Typ 8R') !== '8R' || Y.validGeneration('Type 8V') !== '8V') errs.push('заводський тип "Typ 4M" не нормалізований');
+  if (Y.validGeneration('Typ') || Y.validGeneration('Type Sport')) errs.push('службове слово без коду прийняте за покоління');
   /* код платформи з готової назви ідентичності MI: лише токен із цифрами */
   if (Y.generationFromLabel('BMW 540i G30') !== 'G30') errs.push('код платформи не взятий із назви версії MI');
   if (Y.generationFromLabel('Porsche Cayenne GTS 958.1') !== '958.1') errs.push('фаза покоління втрачена з назви MI');

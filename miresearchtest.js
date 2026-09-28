@@ -270,7 +270,7 @@ const F = (text, over = {}) => ({ text_en: text, scope: 'version', component_rol
     const Y = await import('file://' + path.join(dir, 'api', 'youtube.js')).catch(() => null);
     const Y2 = Y || await (async () => { fs.writeFileSync(path.join(dir, 'api', 'youtube.js'), fs.readFileSync('api/youtube.js', 'utf8')); return import('file://' + path.join(dir, 'api', 'youtube.js')); })();
     const audiGen = Y2.resolveGeneration([{ value: 'B9/F5', source: 'listing', notModel: 'A5' }]).generation;
-    ok('8l. Audi "B9/F5" дає покоління B9', audiGen === 'B9', String(audiGen));
+    ok('8l. Audi "B9/F5" дає покоління B9; поле AUTO.RIA "Typ 4M" дає 4M', audiGen === 'B9' && Y2.resolveGeneration([{ value: 'Typ 4M', source: 'listing', notModel: 'Q7' }]).generation === '4M', String(audiGen));
     r = await run({ vin: 'WAUZZZF55MA000001', identity: { brand: 'AUDI', model_line: 'A5', generation: audiGen, version_text: '45 TFSI quattro', engine_text: '2 L Gasoline 265 hp', model_year: 2021, mileage_km: 90000 } }, { ctx: CTX_COLD });
     ok('8m. Audi A5 холодне дослідження придатне і стартує в тих самих стелях', r.state.identity.sufficient && r.state.eligibility === 'check_identity' && r.state.batches.length >= 1 && r.state.totals.queries <= 15 && r.state.totals.sources <= 20 && r.calls.search[0].startsWith('AUDI A5 B9'), r.state.reason + ' ' + r.state.identity.label);
   }
