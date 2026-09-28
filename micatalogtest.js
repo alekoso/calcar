@@ -855,15 +855,15 @@ t(57, 'контекст дослідження: ідентичність і на
   declare c jsonb;
   begin
   perform mi_test.seed_production_replay();
-  c := mi.research_context(${RVIN});
+  c := mi.research_context(${RVIN}, null);
   ${A(`(c->>'available')::boolean and c->>'identity_precision' = 'partial' and c->'identity_summary'->>'version' like 'Porsche Cayenne GTS%'`, 'the GTS did not resolve to its version')}
   ${A(`(c->>'knowledge_count')::int >= 10 and exists (select 1 from jsonb_array_elements(c->'knowledge') k where k->>'kind' = 'comparisons')`, 'existing knowledge, including version-level facts, is not exposed to research')}
   ${A(`exists (select 1 from jsonb_array_elements(c->'knowledge') k where k->>'status' = 'CONDITIONAL' and k->>'condition' is not null)`, 'conditional knowledge lost its condition text')}
-  ${A(`c->>'last_research_at' is null and (c->>'open_candidates')::int = 0`, 'a fresh identity already looks researched')}
+  ${A(`c->>'last_research_at' is null and (c->>'open_candidates_count')::int = 0`, 'a fresh identity already looks researched')}
   perform mi_test.seed_check('WVWZZZ1KZAW0S0004', 'Volkswagen', 'Golf', 'GTI', 'GTI', 2010, 'mobile', 'EU', 9000, 210000, null, null, null);
-  ${A(`mi.research_context('WVWZZZ1KZAW0S0004')->>'reason' = 'brand_not_in_catalog'`, 'a brand outside the catalogue did not refuse before the bridge')}
-  ${A(`(select count(*) from mi_vm.resolved_identity where vin = 'WVWZZZ1KZAW0S0004') = 0`, 'the refusal still ran the bridge')}
-  ${A(`mi.research_context('short')->>'reason' = 'no_vin'`, 'a short VIN did not refuse')}
+  ${A(`(mi.research_context('WVWZZZ1KZAW0S0004', null)->>'available')::boolean and mi.research_context('WVWZZZ1KZAW0S0004', null)->>'mi_scope' = 'none' and not (mi.research_context('WVWZZZ1KZAW0S0004', null)->>'catalog_brand')::boolean`, 'a brand outside the catalogue is not a cold research context')}
+  ${A(`(select count(*) from mi_vm.resolved_identity where vin = 'WVWZZZ1KZAW0S0004') = 0`, 'the cold context still ran the bridge')}
+  ${A(`mi.research_context('short', null)->>'reason' = 'no_identity' and not (mi.research_context('short', null)->>'available')::boolean`, 'a VIN without a vehicle row and without identity did not refuse')}
   end;`);
 
 t(58, 'офіційна знахідка проходить gate, публікується, перезбирає фрагменти і видна наступному дослідженню', `
@@ -875,7 +875,7 @@ t(58, 'офіційна знахідка проходить gate, публіку
   ${A(`(select count(*) from mi.claim cl where cl.text_en like 'Porsche extended the transfer case warranty%' and cl.status = 'published' and cl.subject_id = (select subject_id from mi.vehicle_version where version_code = 'GTS')) = 1`, 'the claim is not on the version subject')}
   ${A(`(select count(*) from mi.claim_applicability a join mi.claim cl on cl.id = a.claim_id where cl.text_en like 'Porsche extended the transfer case warranty%' and a.dimension = 'version') = 1`, 'applicability is not the exact version')}
   ${A(`(select count(*) from mi.pack_fragment where not valid) = 0`, 'publication left invalidated fragments behind')}
-  c := mi.research_context(${RVIN});
+  c := mi.research_context(${RVIN}, null);
   ${A(`exists (select 1 from jsonb_array_elements(c->'knowledge') k where k->>'text' like 'Porsche extended the transfer case warranty%' and k->>'status' = 'APPLICABLE')`, 'the next research does not see the new knowledge')}
   ${A(`c->>'last_research_at' is not null`, 'the research timestamp is not derived from the candidate')}
   ${A(`(select count(*) from jsonb_array_elements(mi.compile_pack(mi_test.id_porsche(), 'report')->'pack'->'comparisons') e where e->>'text' like 'Porsche extended the transfer case warranty%') = 1`, 'the exact 2013 pack does not carry the published finding')}
@@ -927,7 +927,7 @@ t(62, 'компонентна знахідка на точній ідентич�
   perform mi_test.seed_production_replay();
   -- ринок продажу з аукціонної події робить ідентичність точною: VMY, комплектація, заводський M48.02 (сильне припущення)
   perform mi.vm_record_identity(${RVIN}, 'market_sold', 'auction', 'US', null, null, null, now(), 'high', 'auction:test:1', 'copart');
-  c := mi.research_context(${RVIN});
+  c := mi.research_context(${RVIN}, null);
   ${A(`c->>'identity_precision' = 'exact' and exists (select 1 from jsonb_array_elements(c->'identity'->'components') x where x->>'role' = 'engine' and x->>'status' = 'assumed_factory')`, 'the exact GTS identity has no assumed factory engine')}
   r := mi.research_persist(${RVIN}, ('{"check_token":"e","findings":[' || ${sq(rfind('component', 'known_issue', 'The 4.8 V8 of this version can score its bores; the Alusil bores cannot be rebored.', rev('https://www.example-shop.example/x', 'specialist', 'primary', 'bores'), ',"component_role":"engine"'))} || ']}')::jsonb);
   ${A(`r->'results'->0->>'status' = 'candidate' and (r->'results'->0->>'subject_id')::bigint = (select subject_id from mi.component_variant where variant_code = 'M48_02')`, 'the engine finding did not land on the resolved engine variant')}
@@ -941,6 +941,66 @@ t(63, 'входи для продукту: лише службова роль, s
           from pg_proc p join pg_namespace n on n.oid = p.pronamespace
          where n.nspname = 'public' and p.proname in ('mi_research_context', 'mi_research_persist')
         having count(*) = 2)`, 'a research entry is missing, not a security definer or executable by public')}`);
+
+/* ---- MI Research v1.1 (міграція 029): холодний старт, памʼять кандидатів, життєвий цикл ---- */
+
+t(64, 'холодний бренд: контекст доступний без каталогу, знахідка стає холодним кандидатом без субʼєкта і застосовності', `
+  declare c jsonb; r jsonb; r2 jsonb;
+  begin
+  perform mi_test.seed_check('WVWZZZ1KZAW0S0004', 'Volkswagen', 'Golf', 'GTI', 'GTI', 2010, 'mobile', 'EU', 9000, 210000, null, null, null);
+  c := mi.research_context('WVWZZZ1KZAW0S0004', '{"brand":"Volkswagen","model_line":"Golf","generation":"MK6","label":"Volkswagen Golf MK6 2010"}'::jsonb);
+  ${A(`(c->>'available')::boolean and c->>'mi_scope' = 'none' and not (c->>'catalog_brand')::boolean and (c->>'knowledge_count')::int = 0 and (c->>'open_candidates_count')::int = 0`, 'a cold brand did not get a research context')}
+  ${A(`(select count(*) from mi_vm.resolved_identity where vin = 'WVWZZZ1KZAW0S0004') = 0`, 'the cold path ran the catalogue bridge')}
+  r := mi.research_persist('WVWZZZ1KZAW0S0004', ('{"check_token":"c1","identity":{"label":"Volkswagen Golf MK6 2010","brand":"Volkswagen","model_line":"Golf","generation":"MK6"},"findings":[' || ${sq(rfind('generation', 'known_issue', 'The DSG mechatronic unit of this generation is reported to fail and was covered by a service action.', rev('https://vwvortex.com/x', 'owner', 'secondary', 'mechatronic failed', ',"source_date":"2026-01-05","evidence_date":"2012"'), ',"lifecycle":"campaign_or_one_time_fix","current_relevance":"verify","remedy":"service action","verify_on_vehicle":"dealer campaign check by VIN"'))} || ']}')::jsonb);
+  ${A(`(r->>'staged_cold')::int = 1 and (r->>'published')::int = 0 and r->'results'->0->>'status' = 'staged_cold'`, 'a cold finding was not staged')}
+  ${A(`(select bool_and(resolved_subject_id is null and proposed_applicability is null and proposed_subject_text = 'Volkswagen Golf MK6 2010' and review_note like '%cold identity%' and review_note like '%lifecycle: campaign_or_one_time_fix%') from mi.candidate_claim where extractor = 'check_research')`, 'the cold candidate invented a subject or applicability')}
+  ${A(`(select bool_and(ce.context->>'lifecycle' = 'campaign_or_one_time_fix' and ce.context->>'evidence_date' = '2012' and ce.context->>'source_date' = '2026-01-05' and ce.context->>'current_relevance' = 'verify') from mi.candidate_evidence ce join mi.candidate_claim cc on cc.id = ce.candidate_id where cc.extractor = 'check_research')`, 'lifecycle metadata did not reach the evidence context')}
+  ${A(`(select published_at from mi.source where url = 'https://vwvortex.com/x') = date '2026-01-05'`, 'the page date was not stored on the source')}
+  ${A(`(select count(*) from mi.claim where text_en like 'The DSG mechatronic%') = 0`, 'a subjectless candidate was published')}
+  c := mi.research_context('WVWZZZ1KZAW0S0004', '{"brand":"Volkswagen","model_line":"Golf","generation":"MK6","label":"Volkswagen Golf MK6 2010"}'::jsonb);
+  ${A(`(c->>'open_candidates_count')::int = 1 and (c->'open_candidates'->0->>'cold')::boolean and c->'open_candidates'->0->>'lifecycle' = 'campaign_or_one_time_fix' and c->'open_candidates'->0->'gate_failed' @> '["subject_resolved"]'::jsonb`, 'the next research does not see the cold candidate as memory')}
+  r2 := mi.research_persist('WVWZZZ1KZAW0S0004', ('{"check_token":"c2","identity":{"label":"Volkswagen Golf MK6 2010","brand":"Volkswagen","model_line":"Golf","generation":"MK6"},"findings":[' || ${sq(rfind('generation', 'known_issue', 'The DSG mechatronic unit of this generation is reported to fail and was covered by a service action.', rev('https://golfmk6.com/y', 'owner', 'secondary', 'same here')))} || ']}')::jsonb);
+  ${A(`not (r2->'results'->0->>'new_candidate')::boolean and (r2->'results'->0->>'strengthened')::boolean and (select count(*) from mi.candidate_claim where extractor = 'check_research') = 1`, 'a repeated cold finding created a second candidate')}
+  end;`);
+
+t(65, 'катологізований бренд без версії: покоління з коду платформи; версійна знахідка не падає на покоління', `
+  declare c jsonb; r jsonb;
+  begin
+  perform mi_test.seed_check('WP1ZZZ92ZDLA45900', 'Porsche', 'Cayenne', null, null, 2011, 'autoria', 'UA', 20000, 234000, null, null, null);
+  c := mi.research_context('WP1ZZZ92ZDLA45900', '{"brand":"Porsche","model_line":"Cayenne","generation":"958.1","label":"Porsche Cayenne 958.1 2011"}'::jsonb);
+  ${A(`c->>'mi_scope' = 'generation' and (c->'subjects'->>'generation')::bigint = (select subject_id from mi.generation where platform_code = '958' and phase = 'base') and c->'subjects'->>'version' is null`, 'the generation was not resolved from the platform code')}
+  ${A(`(c->>'catalog_brand')::boolean and jsonb_typeof(c->'knowledge') = 'array'`, 'generation-level context is malformed')}
+  r := mi.research_persist('WP1ZZZ92ZDLA45900', ('{"check_token":"g1","identity":{"label":"Porsche Cayenne 958.1 2011","brand":"Porsche","model_line":"Cayenne","generation":"958.1"},"findings":[' || ${sq(rfind('generation', 'owner_pattern', 'Owners of this generation report the panoramic roof drains clogging and wetting the carpets.', rev('https://rennlist.com/x', 'owner', 'secondary', 'wet carpets', ',"mileage_km":120000')))} || ',' || ${sq(rfind('version', 'known_issue', 'The Turbo version of this generation is reported to have a specific turbocharger oil line weakness.', rev('https://rennlist.com/t', 'owner', 'secondary', 'oil line')))} || ']}')::jsonb);
+  ${A(`r->'results'->0->>'status' = 'candidate' and (r->'results'->0->>'subject_id')::bigint = (select subject_id from mi.generation where platform_code = '958' and phase = 'base')`, 'a generation finding did not land on the generation subject')}
+  ${A(`r->'results'->1->>'status' = 'staged_cold' and r->'results'->1->>'subject_id' is null`, 'a version finding without a version subject was widened to the generation')}
+  end;`);
+
+t(66, 'посилення наявного кандидата за candidate_id; чужий субʼєкт не приймається', `
+  declare r1 jsonb; r2 jsonb; r3 jsonb; cid bigint;
+  begin
+  perform mi_test.seed_production_replay();
+  r1 := mi.research_persist(${RVIN}, ('{"check_token":"a","identity":{"label":"Porsche Cayenne GTS 958.1","brand":"Porsche","model_line":"Cayenne","generation":"958.1"},"findings":[' || ${sq(rfind('version', 'known_issue', 'The transfer case of this version can shudder on tight turns between 100000 and 150000 km.', rev('https://rennlist.com/forums/cayenne/tc.html', 'owner', 'secondary', 'shudder on turns')))} || ']}')::jsonb);
+  cid := (r1->'results'->0->>'candidate_id')::bigint;
+  r2 := mi.research_persist(${RVIN}, ('{"check_token":"b","identity":{"label":"Porsche Cayenne GTS 958.1","brand":"Porsche","model_line":"Cayenne","generation":"958.1"},"findings":[{"scope":"version","knowledge_type":"known_issue","text_en":"Totally different wording: low-speed transfer case shudder appears on tight turns at high mileage.","buyer_importance":4,"candidate_id":"' || cid || '","evidence":[{"url":"https://www.planet-9.com/threads/tc.1/","source_type":"owner","quality":"secondary","stance":"supports","excerpt":"same shudder here"}]}]}')::jsonb);
+  ${A(`(r2->'results'->0->>'candidate_id')::bigint = cid and (r2->'results'->0->>'strengthened')::boolean and not (r2->'results'->0->>'new_candidate')::boolean`, 'candidate_id did not attach evidence to the existing candidate')}
+  ${A(`(select count(*) from mi.candidate_evidence where candidate_id = cid) = 2 and (select count(*) from mi.candidate_claim where extractor = 'check_research') = 1`, 'strengthening created a duplicate')}
+  r3 := mi.research_persist(${RVIN}, ('{"check_token":"c","identity":{"label":"Porsche Cayenne GTS 958.1","brand":"Porsche","model_line":"Cayenne","generation":"958.1"},"findings":[{"scope":"generation","knowledge_type":"known_issue","text_en":"Generation scope finding that names the same candidate id but a different subject.","buyer_importance":3,"candidate_id":"' || cid || '","evidence":[{"url":"https://rennlist.com/g","source_type":"owner","quality":"secondary","stance":"supports","excerpt":"g"}]}]}')::jsonb);
+  ${A(`(r3->'results'->0->>'candidate_id')::bigint <> cid and (r3->'results'->0->>'new_candidate')::boolean`, 'evidence was attached across subjects')}
+  ${A(`(select count(*) from mi.claim where reviewed_by = 'check-research') = 0`, 'weak owner evidence got published')}
+  end;`);
+
+t(67, 'gate і публікація незмінні для розвʼязаної версії; входи двопараметрові лише для службової ролі', `
+  declare r jsonb;
+  begin
+  perform mi_test.seed_production_replay();
+  r := mi.research_persist(${RVIN}, ('{"check_token":"o","identity":{"label":"Porsche Cayenne GTS 958.1"},"findings":[' || ${sq(rfind('version', 'official_fact', 'Porsche extended the transfer case warranty for this generation under a service campaign.', rev('https://www.porsche.com/usa/service/campaign/tc', 'official', 'primary', 'warranty extended'), ',"lifecycle":"campaign_or_one_time_fix","current_relevance":"verify","remedy":"warranty extension","verify_on_vehicle":"dealer check"'))} || ']}')::jsonb);
+  ${A(`(r->>'published')::int = 1 and (r->>'fragments_rebuilt')::int > 0`, 'the resolved-version path changed')}
+  ${A(`(select e.context->>'lifecycle' from mi.evidence e join mi.claim c on c.id = e.claim_id where c.text_en like 'Porsche extended the transfer case warranty%' limit 1) = 'campaign_or_one_time_fix'`, 'lifecycle metadata was lost on publication')}
+  ${A(`(select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = 'mi_research_context') = 1`, 'the one-argument research context entry still exists beside the new one')}
+  ${A(`(select bool_and(p.prosecdef and not exists (select 1 from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a where a.grantee = 0 and a.privilege_type = 'EXECUTE'))
+          from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+         where n.nspname = 'public' and p.proname in ('mi_research_context', 'mi_research_persist') having count(*) = 2)`, 'a research entry is executable by public')}
+  end;`);
 
 /* ---- Підсумок ---- */
 

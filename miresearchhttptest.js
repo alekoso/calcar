@@ -59,19 +59,19 @@ async function rpc(key, name, args) {
 const brief = b => JSON.stringify(b || {}).slice(0, 220);
 
 (async () => {
-  const c = await rpc(SERVICE, 'mi_research_context', { p_vin: VIN });
+  const c = await rpc(SERVICE, 'mi_research_context', { p_vin: VIN, p_identity: null });
   ok('1. mi_research_context відповідає 200', c.status === 200, 'HTTP ' + c.status + ' ' + brief(c.body));
   ok('1b. немає SQLSTATE 21000 (safeupdate)', !(c.body && c.body.code === '21000'), brief(c.body));
   if (c.status === 200) {
     ok('1c. контракт відповіді', typeof c.body.available === 'boolean' && (c.body.available || typeof c.body.reason === 'string'), brief(c.body));
-    if (c.body.available) ok('1d. доступна ідентичність несе перелік відомого', Array.isArray(c.body.knowledge) && typeof c.body.knowledge_count === 'number' && c.body.identity_summary && c.body.identity_summary.version);
-    console.log('   context: available=' + c.body.available + ' reason=' + (c.body.reason || null) + ' knowledge=' + (c.body.knowledge_count == null ? '-' : c.body.knowledge_count) + ' version=' + ((c.body.identity_summary && c.body.identity_summary.version) || '-'));
+    if (c.body.available) ok('1d. контекст несе mi_scope, перелік відомого і памʼять кандидатів', ['version', 'generation', 'none'].includes(c.body.mi_scope) && Array.isArray(c.body.knowledge) && Array.isArray(c.body.open_candidates));
+    console.log('   context: available=' + c.body.available + ' mi_scope=' + (c.body.mi_scope || '-') + ' knowledge=' + (c.body.knowledge_count == null ? '-' : c.body.knowledge_count) + ' candidates=' + (c.body.open_candidates_count == null ? '-' : c.body.open_candidates_count) + ' version=' + ((c.body.identity_summary && c.body.identity_summary.version) || '-'));
   }
 
-  const w0 = await rpc(SERVICE, 'mi_research_persist', { p_vin: VIN, p_run: { check_token: 'http-test', findings: [] } });
+  const w0 = await rpc(SERVICE, 'mi_research_persist', { p_vin: VIN, p_run: { check_token: 'http-test', identity: { label: 'HTTP test identity' }, findings: [] } });
   ok('2. mi_research_persist відповідає 200 на порожній перелік', w0.status === 200, 'HTTP ' + w0.status + ' ' + brief(w0.body));
   ok('2b. порожній перелік нічого не пише', w0.body && (w0.body.ok === false || (w0.body.findings === 0 && w0.body.published === 0 && w0.body.candidates === 0)), brief(w0.body));
-  const w1 = await rpc(SERVICE, 'mi_research_persist', { p_vin: VIN, p_run: { check_token: 'http-test', findings: [
+  const w1 = await rpc(SERVICE, 'mi_research_persist', { p_vin: VIN, p_run: { check_token: 'http-test', identity: { label: 'HTTP test identity' }, findings: [
     { scope: 'vehicle', knowledge_type: 'official_fact', text_en: 'This VIN was sold abroad according to a listing seen during the HTTP test.', buyer_importance: 3, evidence: [] },
   ] } });
   ok('2c. знахідка про VIN пропускається, у MI не пише', w1.status === 200 && w1.body && (w1.body.ok === false
@@ -81,7 +81,7 @@ const brief = b => JSON.stringify(b || {}).slice(0, 220);
   if (ANON && !plainKey(ANON)) {
     ok('3. анонімний ключ придатний для заголовка', false, 'ключ містить не-ASCII символи (замаскована копія?)');
   } else if (ANON) {
-    for (const [name, args] of [['mi_research_context', { p_vin: VIN }], ['mi_research_persist', { p_vin: VIN, p_run: { findings: [] } }]]) {
+    for (const [name, args] of [['mi_research_context', { p_vin: VIN, p_identity: null }], ['mi_research_persist', { p_vin: VIN, p_run: { findings: [] } }]]) {
       try {
         const a = await rpc(ANON, name, args);
         ok('3. anon не виконує ' + name, [401, 403].includes(a.status) && a.body && a.body.code === '42501', 'HTTP ' + a.status + ' ' + brief(a.body));

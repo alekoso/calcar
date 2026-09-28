@@ -47,7 +47,7 @@ import { runMiShadow } from './mi-shadow.js';
 import { fetchMiEquipmentCandidates, candidatePromptBlock, visionHintBlock, supplementVisionEquipment, applyMiEquipment, equipmentMemoryObservations, recordMiEquipment, miIdentityGeneration } from './mi-equipment.js';
 /* Model Intelligence Research v1: наявне MI плюс малий паралельний веб-пошук
    у контекст поточного звіту, придатні знахідки у конвеєр MI */
-import { runCheckResearch, researchBlock, persistPayload, persistResearch, researchMeta } from './mi-research.js';
+import { startCheckResearch, researchBlock, researchMeta } from './mi-research.js';
 
 /* ============================================================
    CalCar Check, рушій v1: посилання на оголошення -> звіт.
@@ -2789,19 +2789,29 @@ async function runCheck(req, res, job) {
     const miEqPromise = (listing.vin ? fetchMiEquipmentCandidates(listing.vin) : Promise.resolve({ ok: false, reason: 'no_vin', candidates: [], ms: 0 }))
       .catch(e => ({ ok: false, reason: 'error', candidates: [], ms: 0, error: String((e && e.message) || e).slice(0, 120) }));
     miEqPromise.then(miEqResolve);
-    /* MI Research v1: наявне знання про версію плюс малий веб-пошук того,
-       чого MI ще не знає. Іде паралельно з решткою Check від цього місця
-       (ідентичність вже в памʼяті) до основного виклику; той чекає його не
-       довше MI_RESEARCH_MAIN_WAIT_MS. Обрив у кінці Check: продовження
-       після відповіді немає, наступний Check спробує знову */
+    /* MI Research v1.1: наявне MI плюс послідовні малі пакети веб-пошуку,
+       поки Check і так працює. Ідентичність для дослідження канонічна:
+       бренд і ряд з декодера чи площадки, покоління з поля площадки після
+       перевірки форми, версія і мотор ЛИШЕ з декодера (не з заголовка
+       продавця), рік з декодера. Слабша за покоління ідентичність
+       дослідження не запускає; версія каталогу MI теж робить його
+       придатним. Основний виклик чекає поточний пакет не довше
+       MI_RESEARCH_MAIN_WAIT_MS і бере знімок; що завершилось пізніше, у
+       звіт не потрапляє, але у MI зберігається; у кінці Check решта
+       обривається: продовження після відповіді немає */
     const MI_RESEARCH_MAIN_WAIT_MS = 3000;
-    const miResearchAbort = new AbortController();
-    const miResearchPromise = runCheckResearch({ vin: listing.vin, listingHost: listing.domain || null }, { callModel, signal: miResearchAbort.signal })
-      .catch(e => ({ status: 'failed', reason: 'error', context: null, queries: [], sources: [], findings: [], ms: 0, error: String((e && e.message) || e).slice(0, 120) }));
-    /* збереження у MI стартує, щойно дослідження готове, ще під час основного виклику */
-    const miResearchPersistPromise = miResearchPromise.then(r => (r && r.status === 'ok' && r.findings.length && listing.vin)
-      ? persistResearch(listing.vin, persistPayload(r, job && job.token)) : null)
-      .catch(e => ({ ok: false, reason: 'error', error: String((e && e.message) || e).slice(0, 120) }));
+    const miResearch = startCheckResearch({
+      vin: listing.vin || null, listingHost: listing.domain || null, token: job && job.token,
+      identity: {
+        brand: (nhtsa && nhtsa.Make) || listing.make || null,
+        model_line: (nhtsa && nhtsa.Model) || listing.model || null,
+        generation: resolveGeneration([{ value: listing.generation, source: 'listing' }]).generation,
+        version_text: (nhtsa && (nhtsa.Trim || nhtsa.Series)) || null,
+        engine_text: nhtsa ? [nhtsa.DisplacementL ? nhtsa.DisplacementL + ' L' : null, nhtsa.FuelTypePrimary || null, nhtsa.EngineHP ? nhtsa.EngineHP + ' hp' : null].filter(Boolean).join(' ') || null : null,
+        model_year: (nhtsa && nhtsa.ModelYear) || listing.year || null,
+        mileage_km: listing.odometer_km || null,
+      },
+    }, { callModel, t0: tRun });
     /* кадри оголошення: паралельно з рештою пайплайна; для нового стану
        оголошення завжди, для dedup лише коли знімок ще без кадрів (створений
        до появи Photo Assets): досохраняємо один раз */
@@ -3258,15 +3268,18 @@ async function runCheck(req, res, job) {
     const miEqBlock = miEq.ok ? candidatePromptBlock(miEq.candidates) : null;
     if (miEqBlock) content.splice(1, 0, { type: 'text', text: miEqBlock });
     mark('mi_equipment', miEq.ms || 0, miEq.ok ? 'executed' : 'skipped', { reason: miEq.reason || null, candidates: (miEq.candidates || []).length });
-    /* MI Research v1: наявне MI і свіжі знахідки у контекст основного
-       виклику. Дослідження, що не встигло, звіт не тримає */
+    /* MI Research v1.1: знімок завершених знахідок у контекст основного
+       виклику. Поточний пакет чекається не довше 3 с; далі звіт не тримає */
     const tResWait = Date.now();
-    let miResearch = await Promise.race([miResearchPromise, new Promise(r => setTimeout(() => r({ status: 'pending', reason: 'main_not_waiting', context: null, findings: [], queries: [], sources: [], ms: 0 }), MI_RESEARCH_MAIN_WAIT_MS))]);
+    await miResearch.waitBatch(MI_RESEARCH_MAIN_WAIT_MS);
     const miResearchWaited = Date.now() - tResWait;
-    const miResearchBlock = researchBlock(miResearch);
+    const miResearchSnapshot = miResearch.cutoff();
+    const miResearchBlock = researchBlock(miResearchSnapshot);
     if (miResearchBlock) content.splice(1, 0, { type: 'text', text: miResearchBlock });
-    mark('mi_research', miResearch.ms || 0, miResearch.status === 'ok' ? 'executed' : miResearch.status === 'pending' ? 'pending' : 'skipped',
-      { reason: miResearch.reason || null, waited_ms: miResearchWaited, knowledge: (miResearch.context && miResearch.context.knowledge_count) || 0, findings: (miResearch.findings || []).length, block: !!miResearchBlock });
+    mark('mi_research', miResearchSnapshot.context ? (Date.now() - tRun - (miResearch.state.started_at || 0)) : 0,
+      miResearch.state.status === 'running' ? 'pending' : miResearch.state.status === 'ok' ? 'executed' : 'skipped',
+      { reason: miResearch.state.reason || null, waited_ms: miResearchWaited, knowledge: (miResearchSnapshot.context && miResearchSnapshot.context.knowledge_count) || 0,
+        findings_at_cutoff: miResearchSnapshot.findings.length, batches_at_cutoff: miResearchSnapshot.batches, block: !!miResearchBlock });
     let mainSystem = mainMsg.system;
     const mainPayload = mainPayloadBreakdown(mainSystem, content, {
       current: mainPhotoPositions.length, current_high: cvFeed ? Math.min(4, mainPhotoPositions.length) : photoUrls.filter((_, i) => highSet.has(i)).length, gallery_total: listing.photos.length,
@@ -3975,16 +3988,17 @@ async function runCheck(req, res, job) {
     const miEqMemory = await miEqMemoryPromise;
     if (miEqMemory) parsed._meta.mi_equipment.memory = { ok: !!miEqMemory.ok, reason: miEqMemory.reason || null, written: miEqMemory.written || 0, skipped: miEqMemory.skipped || 0, rejected: miEqMemory.rejected || 0 };
     mark('knowledge', Date.now() - tKn, 'executed');
-    /* MI Research v1: дослідження, що встигло під час основного виклику,
-       зберігається; те, що не встигло, обривається: продовження після
-       відповіді немає */
-    const miResearchPersist = await Promise.race([miResearchPersistPromise, new Promise(r => setTimeout(() => r({ ok: false, reason: 'not_finished' }), 3000))]);
-    miResearchAbort.abort();
-    if (miResearch.status === 'pending') miResearch = await Promise.race([miResearchPromise, new Promise(r => setTimeout(() => r(miResearch), 500))]);
-    parsed._meta.mi_research = researchMeta(miResearch, miResearchPersist);
-    console.log('[mi-research]', JSON.stringify({ op: 'check', status: miResearch.status, reason: miResearch.reason || null, knowledge: (miResearch.context && miResearch.context.knowledge_count) || 0,
-      queries: (miResearch.queries || []).length, sources: (miResearch.sources || []).length, findings: (miResearch.findings || []).length, waited_ms: miResearchWaited, ms: miResearch.ms || 0,
-      persist: miResearchPersist ? { ok: miResearchPersist.ok, reason: miResearchPersist.reason || null, published: miResearchPersist.published || 0, merged: miResearchPersist.merged || 0, candidates: miResearchPersist.candidates || 0 } : null }));
+    /* MI Research v1.1: завершені пакети вже збережені у MI; збереження
+       останніх чекається не довше 3 с, решта дослідження обривається.
+       Продовження після відповіді немає */
+    await miResearch.persistDone(3000);
+    miResearch.abort();
+    parsed._meta.mi_research = researchMeta(miResearch.state);
+    const rs = miResearch.state;
+    console.log('[mi-research]', JSON.stringify({ op: 'check', status: rs.status, reason: rs.reason || rs.stop_reason || null, eligibility: rs.eligibility || null,
+      knowledge: (rs.context && rs.context.knowledge_count) || 0, batches: rs.batches.length, queries: rs.totals.queries, sources: rs.totals.sources,
+      findings: rs.findings.length, findings_at_cutoff: rs.cutoff_findings, cutoff_at: rs.cutoff_at, aborted_at: rs.aborted_at, waited_ms: miResearchWaited,
+      persisted: rs.batches.filter(b => b.persist && b.persist.ok).map(b => ({ n: b.n, published: b.persist.published, merged: b.persist.merged, candidates: b.persist.candidates, staged_cold: b.persist.staged_cold })) }));
     timings.total_ms = Date.now() - tRun;
 
     return res.status(200).json(parsed);
