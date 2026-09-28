@@ -608,6 +608,21 @@ const LIFECYCLE_WORDING = {
   unknown: 'життєвий цикл невідомий',
 };
 
+/* Розкладка знімка на три групи з ідентифікаторами, спільна для блоку
+   основного виклику і для фільтра після нього: помітні знахідки F1..,
+   слабкі підказки L1.. (prominence lead) і закриті. Помітне слабке місце
+   вимагає офіційного чи сильного фахового джерела або кількох незалежних;
+   одне слабке джерело лишається підказкою для перевірки. */
+export function snapshotItems(snapshot) {
+  const all = snapshot && Array.isArray(snapshot.findings) ? snapshot.findings.slice() : [];
+  const year = (snapshot && snapshot.reportYear) || new Date().getFullYear();
+  const current = all.filter(f => f.current_relevance === 'active' || f.current_relevance === 'verify').sort((a, b) => rankScore(b, year) - rankScore(a, year));
+  const prominent = current.filter(f => (f.prominence || prominence(f)) !== 'lead').map((f, i) => ({ id: 'F' + (i + 1), f }));
+  const leads = current.filter(f => (f.prominence || prominence(f)) === 'lead').map((f, i) => ({ id: 'L' + (i + 1), f }));
+  const closed = all.filter(f => f.current_relevance === 'resolved' || f.current_relevance === 'not_applicable');
+  return { prominent, leads, closed, year };
+}
+
 /* Блок для основного виклику зі знімка: наявне MI і знахідки, завершені
    ДО фінального аналізу, відсортовані за рангом, а не за кількістю згадок. */
 export function researchBlock(snapshot) {
@@ -616,9 +631,7 @@ export function researchBlock(snapshot) {
   const known = (ctx.knowledge || []).slice(0, 14);
   const all = Array.isArray(snapshot.findings) ? snapshot.findings.slice() : [];
   if (!known.length && !all.length) return null;
-  const year = snapshot.reportYear || new Date().getFullYear();
-  const current = all.filter(f => f.current_relevance === 'active' || f.current_relevance === 'verify').sort((a, b) => rankScore(b, year) - rankScore(a, year));
-  const closed = all.filter(f => f.current_relevance === 'resolved' || f.current_relevance === 'not_applicable');
+  const { prominent, leads, closed, year } = snapshotItems(snapshot);
   const lines = [];
   lines.push('MODEL_INTELLIGENCE (перевірена база знань CalCar про ' + identityLabel(ctx, snapshot.identity) + '; статус APPLICABLE = стосується цієї машини, CONDITIONAL = залежить від невідомого виміру, тоді формулюй як "варто перевірити", а не як факт):');
   if (known.length) {
@@ -628,26 +641,54 @@ export function researchBlock(snapshot) {
   } else {
     lines.push('- база знань про цю версію поки порожня');
   }
-  if (current.length || closed.length) {
+  const describe = (id, f) => {
+    const srcs = f.evidence.map(e => e.host + ' (' + e.source_type + '/' + e.quality + (e.evidence_date ? ', досвід ' + e.evidence_date : '') + (e.stance !== 'supports' ? ', ' + e.stance : '') + ')').join('; ');
+    return id + '. [' + f.scope + (f.component_role ? ':' + f.component_role : '') + ', ' + f.knowledge_type + (f.severity !== 'none' ? ', ' + f.severity : '') + '] ' + f.text_en
+      + '\n   актуальність: ' + RELEVANCE_WORDING[f.current_relevance] + '; цикл: ' + LIFECYCLE_WORDING[f.lifecycle]
+      + (f.remedy ? '\n   ліки: ' + f.remedy : '') + (f.verify_on_vehicle ? '\n   як перевірити на цій машині: ' + f.verify_on_vehicle : '')
+      + (f.affected_scope ? '\n   зона дії: ' + f.affected_scope : '')
+      + '\n   джерела: ' + srcs + '\n   формулювання: ' + STRENGTH_WORDING[f.strength];
+  };
+  if (prominent.length || leads.length || closed.length) {
     lines.push('');
-    lines.push('FRESH_WEB_FINDINGS (свіжий веб-пошук цього Check, завершений до аналізу; це ДОКАЗИ з джерелами, а не перевірене знання CalCar; порядок за важливістю для покупця у ' + year + ' році, НЕ за кількістю згадок):');
-    current.forEach((f, i) => {
-      const srcs = f.evidence.map(e => e.host + ' (' + e.source_type + '/' + e.quality + (e.evidence_date ? ', досвід ' + e.evidence_date : '') + (e.stance !== 'supports' ? ', ' + e.stance : '') + ')').join('; ');
-      lines.push((i + 1) + '. [' + f.scope + (f.component_role ? ':' + f.component_role : '') + ', ' + f.knowledge_type + (f.severity !== 'none' ? ', ' + f.severity : '') + '] ' + f.text_en
-        + '\n   актуальність: ' + RELEVANCE_WORDING[f.current_relevance] + '; цикл: ' + LIFECYCLE_WORDING[f.lifecycle]
-        + (f.remedy ? '\n   ліки: ' + f.remedy : '') + (f.verify_on_vehicle ? '\n   як перевірити на цій машині: ' + f.verify_on_vehicle : '')
-        + (f.affected_scope ? '\n   зона дії: ' + f.affected_scope : '')
-        + '\n   джерела: ' + srcs + '\n   формулювання: ' + STRENGTH_WORDING[f.strength]
-        + (f.prominence === 'lead' ? '\n   ДОКАЗІВ МАЛО (одне слабке джерело): лише пункт для перевірки, НЕ типове слабке місце' : ''));
-    });
+    if (prominent.length) {
+      lines.push('FRESH_WEB_FINDINGS (свіжий веб-пошук цього Check, завершений до аналізу; це ДОКАЗИ з джерелами, а не перевірене знання CalCar; порядок за важливістю для покупця у ' + year + ' році, НЕ за кількістю згадок):');
+      for (const { id, f } of prominent) lines.push(describe(id, f));
+    }
+    if (leads.length) {
+      lines.push('WEAK_LEADS (одне слабке джерело: форум, власник, блог чи вторинний переказ; це ПІДКАЗКИ, а не слабкі місця моделі. У model_notes.issues їх НЕ писати; доречну можна обережно згадати одним пунктом checklist як "перевірити"):');
+      for (const { id, f } of leads) lines.push(describe(id, f));
+    }
     if (closed.length) {
       lines.push('Знайдено, але НЕ актуально для цієї машини (у слабкі місця не виносити, можна згадати як закрите):');
       for (const f of closed) lines.push('- [' + RELEVANCE_WORDING[f.current_relevance].split(':')[0] + '] ' + f.text_en + (f.relevance_reason ? ' (' + f.relevance_reason + ')' : ''));
     }
   }
   lines.push('');
+  lines.push('SOURCE_REF: кожен пункт model_notes.issues має поле source_ref: F<n>, якщо він спирається на FRESH_WEB_FINDINGS; "MI", якщо на MODEL_INTELLIGENCE; null, якщо це твоє власне знання про модель. Пункт, що спирається лише на WEAK_LEADS, у model_notes.issues не пишеться; якщо все ж написаний, source_ref = L<n>, і код його прибере.');
   lines.push('ЯК КОРИСТУВАТИСЬ: у model_notes.issues спирайся насамперед на MODEL_INTELLIGENCE і FRESH_WEB_FINDINGS про САМЕ ЦЮ версію і її агрегати. Туди йде лише АКТУАЛЬНЕ і корисне ПЕРЕВІРИТИ; закрите і не про цю машину не виносити. Поширеність не дорівнює важливості: рідша, але катастрофічна поломка мотора важить більше за часту дрібницю; важлива дорога поломка (мотор, коробка, привід, батарея, охолодження) стоїть вище за дрібні загальні слабкості. Джерело кожного пункту зберігай у формулюванні за правилами вище; ярликів "найчастіша", "проблема номер один", "майже всі" без даних про повторюваність не пиши. Разову кампанію без підтвердження виконання подавай як "перевірити по VIN, чи виконана", а не як активну поломку. Знання з приміткою про іншу версію чи мотор до цієї машини не переноси. Нічого з цього блоку не є фактом про конкретний екземпляр: у risks воно потрапляє лише за конкретного сигналу по цій машині.');
   return lines.join('\n');
+}
+
+/* Фільтр після основного виклику: помітне слабке місце моделі не може
+   спиратися лише на слабку підказку. Пункт model_notes.issues з source_ref
+   L<n> (або F<n>, що вказує на підказку) прибирається; решта не чіпається.
+   Підказка лишається у контексті аналізу, у памʼяті кандидатів і може
+   бути пунктом checklist. */
+export function guardModelNotes(parsed, snapshot) {
+  const stats = { checked: 0, dropped: [], leads: 0 };
+  const issues = parsed && parsed.model_notes && Array.isArray(parsed.model_notes.issues) ? parsed.model_notes.issues : null;
+  if (!issues) return stats;
+  const { prominent, leads } = snapshotItems(snapshot || {});
+  stats.leads = leads.length;
+  parsed.model_notes.issues = issues.filter(it => {
+    stats.checked++;
+    const ref = String((it && it.source_ref) || '').trim().toUpperCase();
+    const isLead = /^L\d+$/.test(ref);
+    if (isLead) { stats.dropped.push({ ref, title: String((it && it.title) || '').slice(0, 80) }); return false; }
+    return true;
+  });
+  return stats;
 }
 
 /* ---------- Збереження у MI ---------- */
@@ -846,6 +887,7 @@ export function researchMeta(state) {
     mi_scope: ctx.mi_scope || null, identity_precision: ctx.identity_precision || null, version: (ctx.identity_summary && ctx.identity_summary.version) || null,
     knowledge_count: ctx.knowledge_count || 0, open_candidates: ctx.open_candidates_count || 0,
     totals: { batches: state.batches.length, queries: state.totals.queries, sources: state.totals.sources, findings: state.findings.length },
+    lead_guard: state.lead_guard || null,
     timeline: { started_at: state.started_at, context_at: state.context_at, cutoff_at: state.cutoff_at, cutoff_findings: state.cutoff_findings != null ? state.cutoff_findings : null, aborted_at: state.aborted_at, finished_at: state.finished_at },
     batches: state.batches.map(b => ({ n: b.n, area: b.area, target_candidate: b.target_candidate, status: b.status, reason: b.reason || null, started_at: b.started_at, ended_at: b.ended_at, queries: b.queries, search: b.search || null,
       sources: (b.sources || []).map(s => ({ host: s.host, source_type: s.source_type, quality: s.quality, status: s.status, chars: s.chars, source_date: s.source_date || null })),

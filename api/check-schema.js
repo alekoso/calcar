@@ -128,6 +128,7 @@ export function buildMainSchema({ hvProvided = false } = {}) {
         detail: S('string', '1-2 речення'),
         severity: E(['low', 'med', 'high']),
         seller_serviced: S('boolean'),
+        source_ref: NS('F1.. з FRESH_WEB_FINDINGS, L1.. з WEAK_LEADS, "MI" з MODEL_INTELLIGENCE, null для власних знань про модель'),
       })),
     }),
     checklist: ARR(S('string')),

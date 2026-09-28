@@ -32,6 +32,16 @@ const vid = (id, title, extra = {}) => Object.assign({
     if (Y.validGeneration(g)) errs.push('сміттєве покоління прийняте за код платформи: ' + g + ' -> ' + Y.validGeneration(g));
   }
   for (const g of ['G30', 'G60', 'W205', 'W206', 'XV70', 'XV80', '958.1', 'TL', 'f10']) if (!Y.validGeneration(g)) errs.push('код платформи відкинуто: ' + g);
+  /* короткі коди платформи з однією цифрою (Audi B9, F5, B8, C7, D4; 8V, 8Y) */
+  for (const g of ['B9', 'F5', 'B8', 'C7', 'D4', '8V', '8Y']) if (Y.validGeneration(g) !== g) errs.push('короткий код платформи відкинуто: ' + g);
+  /* компонування двигуна у формі короткого коду кодом покоління не є */
+  for (const g of ['V6', 'V8', 'I4', 'I6', 'H6', 'W8', '4x4', '2.0']) if (Y.validGeneration(g)) errs.push('компонування двигуна прийняте за покоління: ' + g);
+  /* складене значення площадки: перша частина, що проходить перевірку */
+  if (Y.resolveGeneration([{ value: 'B9/F5', source: 'listing' }]).generation !== 'B9') errs.push('складений код B9/F5 не розібраний');
+  if (Y.resolveGeneration([{ value: '958.1/958', source: 'listing' }]).generation !== '958.1') errs.push('складений код 958.1/958 не розібраний');
+  if (Y.resolveGeneration([{ value: 'Sport/Base', source: 'listing' }]).generation !== null) errs.push('складене сміття пройшло');
+  /* назва моделі у формі коду покоління не є */
+  if (Y.resolveGeneration([{ value: 'A6', source: 'listing', notModel: 'A6' }]).generation !== null) errs.push('назва моделі прийнята за покоління');
   /* код платформи з готової назви ідентичності MI: лише токен із цифрами */
   if (Y.generationFromLabel('BMW 540i G30') !== 'G30') errs.push('код платформи не взятий із назви версії MI');
   if (Y.generationFromLabel('Porsche Cayenne GTS 958.1') !== '958.1') errs.push('фаза покоління втрачена з назви MI');

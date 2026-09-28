@@ -33,7 +33,9 @@ export const INTENTS = ['review', 'problems', 'ownership'];
 const clean = s => String(s == null ? '' : s).replace(/\u2014/g, ',').replace(/\s+/g, ' ').trim();
 
 /* покоління з площадки буває сміттям ("Base", "Sedan", "XSE", "AWD"):
-   беремо лише код платформи виду G30, W205, XV80, 958.1, TL, F10.
+   беремо лише код платформи виду G30, W205, XV80, 958.1, TL, F10, а також
+   короткі коди з однією цифрою: B9, F5, C7, D4 (літера + цифра) і 8V, 8Y
+   (цифра + літера).
 
    Форму коду проходять і короткі торгові позначення (версія, привід,
    паливо, сімʼя двигунів), тому вони відсіюються переліком. Хибне
@@ -48,11 +50,13 @@ const NOT_GENERATION = new Set([
   'ls', 'ex', 'exl', 'lx', 'dx', 'gl', 'gls', 'gle', 'sv', 'sl', 'sr', 'srt',
   'st', 'rs', 'gt', 'gts', 'ti', 'tsi', 'tdi', 'gdi', 'fsi', 'mpi', 'hdi', 'crd',
   'ltd', 'prm', 'trd', 'amg', 'gti', 'gtd',
+  /* компонування двигуна, що має форму короткого коду (V8, I4, H6) */
+  'v6', 'v8', 'i3', 'i4', 'i5', 'i6', 'w8', 'h4', 'h6', 'l4', 'l6',
 ]);
 export function validGeneration(raw) {
   const g = clean(raw).replace(/[«»"']/g, '');
   if (!g || g.length > 12) return null;
-  if (!/^[A-Za-z]{0,3}\d{2,3}(?:\.\d)?[A-Za-z]?$|^[A-Z]{2,3}$/.test(g)) return null;
+  if (!/^[A-Za-z]{0,3}\d{2,3}(?:\.\d)?[A-Za-z]?$|^[A-Z]{2,3}$|^[A-Za-z]\d$|^\d[A-Za-z]$/.test(g)) return null;
   if (NOT_GENERATION.has(g.toLowerCase())) return null;
   return g.toUpperCase();
 }
@@ -77,16 +81,26 @@ export function generationFromLabel(raw) {
    поле площадки -> те, що вже знає Model Intelligence -> висновок
    основного аналізу. Перше, що проходить перевірку форми, і виграє;
    нічого не пройшло: null, бо хибне покоління гірше за відсутнє.
-   Другого поля покоління у звіті не існує, тут рахується канонічне. */
+   Другого поля покоління у звіті не існує, тут рахується канонічне.
+
+   Складене значення площадки ("B9/F5", "958.1/958") перевіряється цілим,
+   а потім по частинах у порядку запису: виграє перша частина, що проходить
+   перевірку форми. Назва моделі у формі коду (A6, X5, K5) покоління не є. */
 export function resolveGeneration(sources) {
+  const same = (a, b) => clean(a).toLowerCase().replace(/[\s-]+/g, '') === clean(b).toLowerCase().replace(/[\s-]+/g, '');
   for (const src of Array.isArray(sources) ? sources : []) {
     if (!src) continue;
-    const g = validGeneration(src.value);
-    if (!g) continue;
-    /* версія комплектації, переказана як покоління, не приймається навіть
-       у правильній формі: "XSE" біля trim "XSE" це trim */
-    if (src.notTrim && validGeneration(src.notTrim) === g) continue;
-    return { generation: g, source: src.source || null };
+    const raw = clean(src.value);
+    const parts = raw.includes('/') || raw.includes(',') || raw.includes(';') ? raw.split(/[\/,;]/).map(clean).filter(Boolean) : [];
+    for (const value of [raw, ...parts]) {
+      const g = validGeneration(value);
+      if (!g) continue;
+      /* версія комплектації, переказана як покоління, не приймається навіть
+         у правильній формі: "XSE" біля trim "XSE" це trim */
+      if (src.notTrim && validGeneration(src.notTrim) === g) continue;
+      if (src.notModel && same(src.notModel, g)) continue;
+      return { generation: g, source: src.source || null };
+    }
   }
   return { generation: null, source: null };
 }

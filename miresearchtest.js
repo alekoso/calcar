@@ -217,7 +217,7 @@ const F = (text, over = {}) => ({ text_en: text, scope: 'version', component_rol
   const pos = s => blk.indexOf(s);
   ok('6k. блок: катастрофічна постійна вразливість вище за кампанію; кампанія позначена ПЕРЕВІРИТИ з ліками і способом перевірки', pos('Bore scoring') < pos('Old recall') && /ПЕРЕВІРИТИ: історично стосується/.test(blk) && /ліки: recall remedy/.test(blk) && /як перевірити на цій машині: VIN campaign check/.test(blk));
   ok('6l. блок: не про цю машину винесено окремо і не як слабке місце', /НЕ актуально для цієї машини/.test(blk) && pos('wiring fault') > pos('Знайдено, але НЕ актуально'));
-  ok('6m. блок: одиничний анекдот позначений як підказка; правила про поширеність і ярлики', /ДОКАЗІВ МАЛО/.test(blk) && /Поширеність не дорівнює важливості/.test(blk) && /"найчастіша", "проблема номер один"/.test(blk) && /перевірити по VIN, чи виконана/.test(blk));
+  ok('6m. блок: одиничний анекдот винесений у WEAK_LEADS, а не у FRESH_WEB_FINDINGS; правила про поширеність і ярлики', /WEAK_LEADS \(/.test(blk) && pos('glovebox') > pos('WEAK_LEADS (') && pos('glovebox') > pos('FRESH_WEB_FINDINGS (') && /Поширеність не дорівнює важливості/.test(blk) && /"найчастіша", "проблема номер один"/.test(blk) && /перевірити по VIN, чи виконана/.test(blk));
   ok('6n. блок несе дати досвіду окремо від дати сторінки', /досвід 2025/.test(blk) && /досвід 2012/.test(blk));
   ok('6o. витяг просить відділяти дату сторінки від періоду досвіду і не робити з анекдоту факт', /Separate the page date from the period of the experience/.test(M.EXTRACTION_RULES) && /one isolated recent post does not outweigh/.test(M.EXTRACTION_RULES) && /A campaign whose completion on this VIN is unknown is verify, never active/.test(M.EXTRACTION_RULES));
   const emptyRun = await run({ vin: null, identity: ID_COLD }, { ctx: CTX_COLD });
@@ -229,12 +229,51 @@ const F = (text, over = {}) => ({ text_en: text, scope: 'version', component_rol
   ok('7b. довгого тире немає', !/\u2014/.test(SRC) && !/\u2014/.test(fs.readFileSync('migrations/mi/029_check_research_cold_start.up.sql', 'utf8')));
   const core = CHECK.slice(CHECK.indexOf('async function runCheck('));
   const startAt = core.indexOf('startCheckResearch({');
-  ok('7c. дослідження стартує після Vehicle Memory з канонічної ідентичності: версія і мотор лише з декодера, покоління після перевірки форми', startAt > core.indexOf('miEqPromise.then(miEqResolve)') && /version_text: \(nhtsa && \(nhtsa\.Trim \|\| nhtsa\.Series\)\) \|\| null/.test(core) && /generation: resolveGeneration\(\[listing\.generation, \.\.\.String\(listing\.generation \|\| ''\)\.split\(\/\[\\\/,;\]\/\)\]\.map\(v => \(\{ value: v, source: 'listing' \}\)\)\)\.generation/.test(core) && !/title/.test(core.slice(startAt, startAt + 900)));
+  ok('7c. дослідження стартує після Vehicle Memory з канонічної ідентичності: версія і мотор лише з декодера, покоління через резолвер з перевіркою назви моделі', startAt > core.indexOf('miEqPromise.then(miEqResolve)') && /version_text: \(nhtsa && \(nhtsa\.Trim \|\| nhtsa\.Series\)\) \|\| null/.test(core) && /generation: resolveGeneration\(\[\{ value: listing\.generation, source: 'listing', notModel: \(nhtsa && nhtsa\.Model\) \|\| listing\.model \}\]\)\.generation/.test(core) && !/title/.test(core.slice(startAt, startAt + 900)));
   ok('7d. знімок перед основним викликом після очікування не довше 3 с', /await miResearch\.waitBatch\(MI_RESEARCH_MAIN_WAIT_MS\);/.test(core) && /const MI_RESEARCH_MAIN_WAIT_MS = 3000;/.test(core) && core.indexOf('miResearch.cutoff()') < core.indexOf("progress('ai')") && /content\.splice\(1, 0, \{ type: 'text', text: miResearchBlock \}\)/.test(core));
   ok('7e. у кінці Check: збереження дочекано і решта обірвана до відповіді', /await miResearch\.persistDone\(3000\);\s*miResearch\.abort\(\);/.test(core) && core.indexOf('miResearch.abort()') < core.indexOf('timings.total_ms = Date.now() - tRun'));
   ok('7f. телеметрія з хронологією і лог', /parsed\._meta\.mi_research = researchMeta\(miResearch\.state\)/.test(core) && /findings_at_cutoff/.test(core));
   ok('7g. ядро Check про тінь так і не знає; Score і share не читають дослідження', !/runMiShadow|mi_shadow_pack/.test(core) && !/mi_research|miResearch/.test(fs.readFileSync('api/score-v4.js', 'utf8')) && !/mi_research/.test(fs.readFileSync('api/share.js', 'utf8')));
   ok('7h. вимикач читає лише api/mi-research.js', fs.readdirSync('api').filter(f => f.endsWith('.js') && /\.MI_RESEARCH\b/.test(fs.readFileSync('api/' + f, 'utf8'))).join() === 'mi-research.js');
+
+  /* ---- 8. фінальна полірування бета: підказка не стає слабким місцем; короткі коди покоління ---- */
+  {
+    const evx = (h, t, q, d) => ({ host: h, independence_group: h, source_type: t, quality: q, stance: 'supports', evidence_date: d, url: 'https://' + h + '/x', excerpt: 'excerpt text long enough for tests', title: 't' });
+    /* справжня форма Mercedes W205 AMG C43: одне джерело власників, low, verify */
+    const w205Lead = { text_en: 'Owner reports for the W205 C43 describe jerky low-speed transmission behaviour as a calibration characteristic.', scope: 'version', component_role: null, knowledge_type: 'owner_pattern', severity: 'minor', lifecycle: 'unknown', current_relevance: 'verify', strength: 'owner', evidence: [evx('mbworld.org', 'owner', 'low', '2023')], buyer_importance: 3, causal_status: 'observed_association' };
+    w205Lead.prominence = M.prominence(w205Lead);
+    const strong = { text_en: 'The plastic engine-valley coolant crossover pipe cracks from heat cycling and leaks coolant.', scope: 'version', component_role: null, knowledge_type: 'known_issue', severity: 'major', lifecycle: 'age_or_wear_related', current_relevance: 'active', strength: 'specialist', evidence: [evx('shop.example', 'specialist', 'primary', '2024')], buyer_importance: 5, causal_status: 'plausible_mechanism' };
+    strong.prominence = M.prominence(strong);
+    ok('8. форма W205: одне слабке джерело це lead', w205Lead.prominence === 'lead' && strong.prominence === 'weak_spot');
+    const snapW = { context: CTX_COLD, identity: ID_COLD, reportYear: 2026, findings: [w205Lead, strong] };
+    const blkW = M.researchBlock(snapW);
+    ok('8b. підказка лишається у контексті аналізу як WEAK_LEADS L1, сильна знахідка як F1', /\nF1\. \[version, known_issue, major\] The plastic engine-valley coolant/.test(blkW) && /\nL1\. \[version, owner_pattern, minor\] Owner reports for the W205 C43/.test(blkW) && blkW.indexOf('L1.') > blkW.indexOf('WEAK_LEADS (') && blkW.indexOf('F1.') < blkW.indexOf('WEAK_LEADS ('));
+    ok('8c. блок забороняє підказці ставати слабким місцем і вимагає source_ref', /У model_notes\.issues їх НЕ писати/.test(blkW) && /SOURCE_REF: кожен пункт model_notes\.issues має поле source_ref/.test(blkW));
+    const parsedW = { model_notes: { issues: [
+      { unit: 'коробка', title: 'Рывки коробки на малой скорости', detail: 'd', severity: 'low', seller_serviced: false, source_ref: 'L1' },
+      { unit: 'охолодження', title: 'Трещины перемычки охлаждения', detail: 'd', severity: 'high', seller_serviced: false, source_ref: 'F1' },
+      { unit: 'підвіска', title: 'Пневмостойки', detail: 'd', severity: 'med', seller_serviced: false, source_ref: 'MI' },
+      { unit: 'мотор', title: 'Власне знання', detail: 'd', severity: 'med', seller_serviced: false, source_ref: null },
+    ] }, checklist: ['Проверить рывки коробки на малой скорости на тест-драйве'] };
+    const g = M.guardModelNotes(parsedW, snapW);
+    const titles = parsedW.model_notes.issues.map(i => i.title);
+    ok('8d. W205: підказка з source_ref L1 прибрана зі слабких місць', !titles.includes('Рывки коробки на малой скорости') && g.dropped.length === 1 && g.dropped[0].ref === 'L1', JSON.stringify(g));
+    ok('8e. сильна знахідка, MI і власне знання лишаються', titles.join('|') === 'Трещины перемычки охлаждения|Пневмостойки|Власне знання');
+    ok('8f. обережний пункт перевірки у checklist не чіпається', parsedW.checklist.length === 1);
+    ok('8g. підказка лишається для MI: persistPayload її зберігає як кандидата', M.persistPayload([w205Lead], ID_COLD, 't').findings.length === 1);
+    ok('8h. без знімка і без issues фільтр нічого не ламає', M.guardModelNotes({}, null).checked === 0 && M.guardModelNotes({ model_notes: { issues: [{ title: 'x', source_ref: 'F1' }] } }, null).dropped.length === 0);
+    const schema = fs.readFileSync('api/check-schema.js', 'utf8');
+    ok('8i. схема model_notes.issues несе source_ref', /seller_serviced: S\('boolean'\),\n\s*source_ref: NS\(/.test(schema));
+    ok('8j. фільтр викликається одразу після розбору відповіді основного виклику', core.indexOf('guardModelNotes(parsed, miResearchSnapshot)') > core.indexOf("parsed = JSON.parse((data.choices") && core.indexOf('guardModelNotes(parsed, miResearchSnapshot)') < core.indexOf('parsed._meta = {'));
+    ok('8k. телеметрія фільтра у _meta.mi_research', /lead_guard: state\.lead_guard \|\| null/.test(SRC));
+    /* Audi A5 з полем площадки "B9/F5": холодне дослідження стартує */
+    const Y = await import('file://' + path.join(dir, 'api', 'youtube.js')).catch(() => null);
+    const Y2 = Y || await (async () => { fs.writeFileSync(path.join(dir, 'api', 'youtube.js'), fs.readFileSync('api/youtube.js', 'utf8')); return import('file://' + path.join(dir, 'api', 'youtube.js')); })();
+    const audiGen = Y2.resolveGeneration([{ value: 'B9/F5', source: 'listing', notModel: 'A5' }]).generation;
+    ok('8l. Audi "B9/F5" дає покоління B9', audiGen === 'B9', String(audiGen));
+    r = await run({ vin: 'WAUZZZF55MA000001', identity: { brand: 'AUDI', model_line: 'A5', generation: audiGen, version_text: '45 TFSI quattro', engine_text: '2 L Gasoline 265 hp', model_year: 2021, mileage_km: 90000 } }, { ctx: CTX_COLD });
+    ok('8m. Audi A5 холодне дослідження придатне і стартує в тих самих стелях', r.state.identity.sufficient && r.state.eligibility === 'check_identity' && r.state.batches.length >= 1 && r.state.totals.queries <= 15 && r.state.totals.sources <= 20 && r.calls.search[0].startsWith('AUDI A5 B9'), r.state.reason + ' ' + r.state.identity.label);
+  }
 
   fs.rmSync(dir, { recursive: true, force: true });
   if (errs.length) {

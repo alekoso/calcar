@@ -47,7 +47,7 @@ import { runMiShadow } from './mi-shadow.js';
 import { fetchMiEquipmentCandidates, candidatePromptBlock, visionHintBlock, supplementVisionEquipment, applyMiEquipment, equipmentMemoryObservations, recordMiEquipment, miIdentityGeneration } from './mi-equipment.js';
 /* Model Intelligence Research v1: наявне MI плюс малий паралельний веб-пошук
    у контекст поточного звіту, придатні знахідки у конвеєр MI */
-import { startCheckResearch, researchBlock, researchMeta } from './mi-research.js';
+import { startCheckResearch, researchBlock, researchMeta, guardModelNotes } from './mi-research.js';
 
 /* ============================================================
    CalCar Check, рушій v1: посилання на оголошення -> звіт.
@@ -2805,9 +2805,9 @@ async function runCheck(req, res, job) {
       identity: {
         brand: (nhtsa && nhtsa.Make) || listing.make || null,
         model_line: (nhtsa && nhtsa.Model) || listing.model || null,
-        /* складений код площадки ("B9/F5", "958.1") розбирається на частини:
-           перша, що проходить перевірку форми, і є поколінням */
-        generation: resolveGeneration([listing.generation, ...String(listing.generation || '').split(/[\/,;]/)].map(v => ({ value: v, source: 'listing' }))).generation,
+        /* складений код площадки ("B9/F5") розбирає сам резолвер; назва
+           моделі у формі коду покоління не є */
+        generation: resolveGeneration([{ value: listing.generation, source: 'listing', notModel: (nhtsa && nhtsa.Model) || listing.model }]).generation,
         version_text: (nhtsa && (nhtsa.Trim || nhtsa.Series)) || null,
         engine_text: nhtsa ? [nhtsa.DisplacementL ? nhtsa.DisplacementL + ' L' : null, nhtsa.FuelTypePrimary || null, nhtsa.EngineHP ? nhtsa.EngineHP + ' hp' : null].filter(Boolean).join(' ') || null : null,
         model_year: (nhtsa && nhtsa.ModelYear) || listing.year || null,
@@ -3339,6 +3339,12 @@ async function runCheck(req, res, job) {
     } catch (e) {
       return res.status(502).json({ error: errText(lang, 'ai_invalid_response') });
     }
+
+    /* MI Research: слабке місце моделі не може спиратися лише на слабку
+       підказку (одне слабке джерело); такий пункт прибирається з
+       model_notes.issues, підказка лишається у контексті і памʼяті MI */
+    try { miResearch.state.lead_guard = guardModelNotes(parsed, miResearchSnapshot); }
+    catch (e) { console.log('[mi-research]', JSON.stringify({ op: 'lead_guard', error: String((e && e.message) || e).slice(0, 120) })); }
 
     /* хибні spec-розбіжності (рік виробництва/модельний рік, потужність
        в різних одиницях): страхувальний фільтр після моделі */
@@ -3874,7 +3880,7 @@ async function runCheck(req, res, job) {
        сходинка це висновок ОСНОВНОГО аналізу: окремого виклику під
        покоління немає. Нічого не підтвердилось: порожньо */
     const genResolved = resolveGeneration([
-      { value: listing.generation, source: 'listing', notTrim: parsed.vehicle && parsed.vehicle.trim },
+      { value: listing.generation, source: 'listing', notTrim: parsed.vehicle && parsed.vehicle.trim, notModel: listing.model },
       { value: miIdentityGeneration(miEq), source: 'model_intelligence' },
       { value: parsed.vehicle && parsed.vehicle.generation, source: 'analysis', notTrim: parsed.vehicle && parsed.vehicle.trim },
     ]);
