@@ -2805,7 +2805,9 @@ async function runCheck(req, res, job) {
       identity: {
         brand: (nhtsa && nhtsa.Make) || listing.make || null,
         model_line: (nhtsa && nhtsa.Model) || listing.model || null,
-        generation: resolveGeneration([{ value: listing.generation, source: 'listing' }]).generation,
+        /* складений код площадки ("B9/F5", "958.1") розбирається на частини:
+           перша, що проходить перевірку форми, і є поколінням */
+        generation: resolveGeneration([listing.generation, ...String(listing.generation || '').split(/[\/,;]/)].map(v => ({ value: v, source: 'listing' }))).generation,
         version_text: (nhtsa && (nhtsa.Trim || nhtsa.Series)) || null,
         engine_text: nhtsa ? [nhtsa.DisplacementL ? nhtsa.DisplacementL + ' L' : null, nhtsa.FuelTypePrimary || null, nhtsa.EngineHP ? nhtsa.EngineHP + ' hp' : null].filter(Boolean).join(' ') || null : null,
         model_year: (nhtsa && nhtsa.ModelYear) || listing.year || null,
