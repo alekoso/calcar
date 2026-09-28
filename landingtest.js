@@ -300,7 +300,10 @@ for (const [f, s] of Object.entries(PAGES)) if (/last_product|lastProduct|calcar
   const hint = (/<span class="hf-time">Usually ~(\d+) sec<\/span>/.exec(home) || [])[1];
   if (!hint) errs.push('нема підказки про типову тривалість перевірки');
   else if (+hint < 30 || +hint > 180) errs.push('типова тривалість поза правдоподібним діапазоном: ' + hint);
-  if (!/\.hf-time\{[^}]*margin-left:auto/.test(home)) errs.push('підказка про час конкурує з головною кнопкою');
+  /* час стоїть під кнопкою "Перевірити авто" і центрований саме відносно неї */
+  if (!/<div class="hf-cta">\n\s*<button class="btn-primary" id="goBtn" type="button">Check the car<\/button>\n\s*<span class="hf-time">/.test(home)) errs.push('типовий час не під кнопкою');
+  if (!/\.hf-cta\{display:flex;flex-direction:column;/.test(home) || !/\.hf-time\{display:block;[^}]*text-align:center/.test(home)) errs.push('типовий час не центрований відносно кнопки');
+  if (/\.hf-time\{[^}]*margin-left:auto/.test(home)) errs.push('типовий час знову притиснутий до правого краю форми');
   for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
     const dict = fs.readFileSync(d, 'utf8');
     for (const k of ['Usually ~90 sec', '{n} sec']) if (!dict.includes("'" + k + "':")) errs.push(d + ': нема ключа "' + k + '"');

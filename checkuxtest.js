@@ -505,6 +505,26 @@ const page = fs.readFileSync('result-check.html', 'utf8');
     if (JSON.stringify(ords(plate)) !== '[1,null,2,3,4]') errs.push('заміна номерного знака збила нумерацію: ' + JSON.stringify(ords(plate)));
     /* реєстр мовчить: нічого не вгадуємо */
     if (ords(HO.annotateOwnerOrdinals(full, { owners_count: null, owner_events: [] })).some(Boolean)) errs.push('без реєстру номери вигадані');
+    /* реальний Porsche Cayenne WP1ZZZ92ZBLA86870: AUTO.RIA явно підписує обох
+       власників, але дія 2-го починається з означення "Вторинна реєстрація".
+       Раніше парсер її не брав, лишався один підпис на двох власників, і
+       перевірка узгодженості знімала ВСІ бейджі */
+    const cayText = 'Остання операція 22.04.2015 • Зняття з облiку для реалiзацiї 2 власники Інформація про перевірки отримана з офіційних відкритих державних даних 01.07.2026 року '
+      + 'Зафіксовано пробіг 225 тис. км дилерське СТО 22.04.15 Зняття з облiку для реалiзацiї 2-ий власник 22.04.15 Вторинна реєстрація тз, придбаного в торговельній організації '
+      + '1-ий власник 09.04.11 Реєстрацiя ТЗ привезеного з-за кордону';
+    const cayEvents = HO.parseOwnerEvents(cayText);
+    if (JSON.stringify(cayEvents) !== '[{"ordinal":1,"date":"2011-04-09"},{"ordinal":2,"date":"2015-04-22"}]') errs.push('Cayenne: підписи власників AUTO.RIA не розібрані: ' + JSON.stringify(cayEvents));
+    const cay = HO.annotateOwnerOrdinals([
+      { gap: null, date: '04.2011', event: 'Регистрация автомобиля, ввезённого из-за границы.' },
+      { gap: '4 года', date: '04.2015', event: 'Вторичная регистрация и снятие с учёта для реализации.' },
+      { gap: '10 лет 8 месяцев', date: '12.2025', event: 'На дилерском СТО зафиксирован пробег 225 000 км.' },
+      { gap: '9 месяцев', date: '09.2026', event: 'В прошлом объявлении AUTO.RIA указан пробег 231 000 км.' },
+      { gap: '4 дня', date: '09.2026', event: 'Текущее объявление: пробег 234 000 км.' },
+    ], { owners_count: 2, owner_events: cayEvents });
+    if (JSON.stringify(ords(cay)) !== '[1,2,null,null,null]') errs.push('Cayenne: бейджі 1-й/2-й власник загубились: ' + JSON.stringify(ords(cay)));
+    /* зняття з обліку для реалізації без підпису "N-ий власник" власника не створює */
+    if (HO.parseOwnerEvents('22.04.15 Зняття з облiку для реалiзацiї').length) errs.push('зняття з обліку стало власником');
+    if (HO.parseOwnerEvents('3-ий власник 01.02.20 Зняття з облiку для реалiзацiї').length) errs.push('підпис власника без реєстраційної дії став подією власника');
   }
 
   /* ---------- 8. висновок CalCar: редакторська колонка, кнопка, футер CalCar AI ---------- */
@@ -523,6 +543,11 @@ const page = fs.readFileSync('result-check.html', 'utf8');
     if (!/window\.calcarAiUnread = n =>/.test(page)) errs.push('нема входу для справжнього джерела непрочитаного');
     if (!/addEventListener\('calcar-chat-state', e => \{\n\s*if \(e\.detail && e\.detail\.open && unread\) \{ unread = 0; render\(false\); \}/.test(page)) errs.push('відкриття чату не скидає непрочитане');
     if (!/\.pd-ai-badge\.pulse\{animation:pd-ai-pulse \.9s ease-out 2\}/.test(page)) errs.push('пульсація не дві і скінченна');
+    if (/#verdictCard \.card-head h2::before/.test(page)) errs.push('біля "Вивід CalCar" знову декоративна мітка');
+    const ctaBtn = (page.match(/\n  \.pd-cta-btn\{[^}]*\}/) || [''])[0];
+    if (!/background:var\(--brand\)/.test(ctaBtn) || !/color:var\(--ink\)/.test(ctaBtn) || /box-shadow/.test(ctaBtn)) errs.push('CTA CalCar AI не лаймовий або з важкою тінню');
+    if (!/<div class="pd-cta">\n\s*<button class="pd-cta-btn" id="pdChatBtn"[^\n]*\n\s*<div class="pd-ai-line"><span class="pd-cta-hint">/.test(page)) errs.push('підказка не праворуч від кнопки CalCar AI');
+    if (!/\n  \.pd-cta\{display:flex;align-items:center;/.test(page) || /\n  \.pd-cta\{[^}]*flex-direction:column/.test(page)) errs.push('кнопка і підказка не в одному рядку на десктопі');
     if (!/@media \(prefers-reduced-motion:reduce\)\{\.pd-ai-badge\.pulse\{animation:none\}\}/.test(page)) errs.push('пульсація ігнорує reduced-motion');
     /* абзаци короткого висновку не рвуться на скороченні "тыс." */
     const src = page.slice(page.indexOf('const sents = (vis.match('), page.indexOf('if (sents && sents.length >= 2)'));

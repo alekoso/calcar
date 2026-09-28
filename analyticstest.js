@@ -337,8 +337,8 @@ tourChecks();
   if (!c.includes('<label class="hf-label" for="urlInput">Car listing link</label>')) errs.push('check.html: нема підпису поля');
   /* плейсхолдер це дія людини, а не обрізана адреса (landingtest.js) */
   if (!c.includes('placeholder="Paste a vehicle listing link"')) errs.push('check.html: плейсхолдер не людська дія');
-  /* підказка з двох частин: приклад джерела і типовий час перевірки */
-  if (!c.includes('<span>For example, a listing from a supported marketplace</span>')) errs.push('check.html: нема підказки під полем');
+  /* приклад джерела під полем, типовий час окремо під кнопкою (landingtest.js) */
+  if (!c.includes('<div class="hf-help">For example, a listing from a supported marketplace</div>')) errs.push('check.html: нема підказки під полем');
   if (!c.includes('<span class="hf-time">Usually ~90 sec</span>')) errs.push('check.html: нема типового часу перевірки');
   for (const d of ['i18n/ua.js', 'i18n/ru.js']) {
     const t = fs.readFileSync(d, 'utf8');

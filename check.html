@@ -588,12 +588,16 @@
     border:1px solid var(--line);box-shadow:0 1px 2px rgba(20,22,25,.04),0 10px 28px rgba(20,22,25,.06);text-align:left;
   }
   .hf-label{display:block;font-size:13px;font-weight:700;color:var(--ink);margin:2px 4px 8px}
-  .hf-help{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin:8px 4px 0}
+  .hf-help{font-size:12.5px;color:var(--muted);margin:8px 4px 0}
   /* типова тривалість перевірки: медіана реальних завершених Check */
-  .hf-time{margin-left:auto;white-space:nowrap;font-variant-numeric:tabular-nums}
-  .hf-row{display:flex;gap:10px;flex-wrap:wrap}
+  .hf-time{display:block;margin-top:8px;text-align:center;font-size:12.5px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+  /* поле з прикладом під ним і кнопка з типовим часом під нею: дві колонки
+     одного рядка, підписи стоять на одній лінії під своїми елементами */
+  .hf-row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start}
+  .hf-fcol{flex:1;min-width:240px}
+  .hf-cta{display:flex;flex-direction:column;flex:0 0 auto}
   /* поле адреси: іконка посилання ліворуч, сам ввід лишається той самий */
-  .hf-field{position:relative;flex:1;min-width:240px;display:flex}
+  .hf-field{position:relative;display:flex}
   .hf-field svg{position:absolute;left:15px;top:50%;margin-top:-9px;width:18px;height:18px;color:var(--faint);pointer-events:none;transition:color .18s ease}
   .hf-field:focus-within svg{color:var(--brand-ink)}
   .hf-row input[type=text]{
@@ -820,10 +824,15 @@
     <div class="hero-form">
       <label class="hf-label" for="urlInput">Car listing link</label>
       <div class="hf-row">
-        <div class="hf-field"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg><input type="text" id="urlInput" placeholder="Paste a vehicle listing link" spellcheck="false"></div>
-        <button class="btn-primary" id="goBtn" type="button">Check the car</button>
+        <div class="hf-fcol">
+          <div class="hf-field"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg><input type="text" id="urlInput" placeholder="Paste a vehicle listing link" spellcheck="false"></div>
+          <div class="hf-help">For example, a listing from a supported marketplace</div>
+        </div>
+        <div class="hf-cta">
+          <button class="btn-primary" id="goBtn" type="button">Check the car</button>
+          <span class="hf-time">Usually ~90 sec</span>
+        </div>
       </div>
-      <div class="hf-help"><span>For example, a listing from a supported marketplace</span><span class="hf-time">Usually ~90 sec</span></div>
       <div class="hf-status" id="status"></div>
       <div class="ld" id="loadBox"></div>
     </div>

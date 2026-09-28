@@ -981,11 +981,10 @@
      всю ширину, а сам текст стоїть у центральній редакторській колонці:
      рядок читабельний, і праворуч не лишається випадкової порожнечі.
      Вирівнювання тексту звичайне, ліве. Акцент стриманий: трохи більше
-     повітря, мʼяка тінь і лаймова мітка біля заголовка */
+     повітря і мʼяка тінь, без декоративних позначок */
   #verdictCard{--pd-col:860px;border-color:var(--line);box-shadow:0 1px 2px rgba(20,22,25,.04),0 10px 28px rgba(20,22,25,.05)}
   #verdictCard .card-head{border-bottom:none;padding:30px max(28px,calc((100% - var(--pd-col)) / 2)) 0}
-  #verdictCard .card-head h2{display:flex;align-items:center;gap:10px;font-size:17px}
-  #verdictCard .card-head h2::before{content:'';width:8px;height:8px;border-radius:2px;background:var(--brand);flex:0 0 auto}
+  #verdictCard .card-head h2{font-size:17px}
   #verdictCard .card-body{padding:16px max(28px,calc((100% - var(--pd-col)) / 2)) 30px}
   .pd-lead{font-size:16.5px;font-weight:600;line-height:1.5;color:var(--ink);margin:0 0 12px}
   .pd-short{font-size:15px;line-height:1.7;color:var(--text);margin:0 0 12px}
@@ -1003,11 +1002,11 @@
   /* повний розбір продовжує ту саму колонку: довша стаття, без карток */
   .pd-reasoning{margin-top:22px;font-size:15px;line-height:1.75;color:var(--text)}
   .pd-reasoning p{margin:0 0 14px}
-  /* фінальна дія після висновку: рядок CalCar AI і вторинна кнопка в чат.
-     Персоналізація живе в чаті, у звіті лише вхід до нього */
-  .pd-cta{display:flex;flex-direction:column;align-items:flex-start;gap:12px;margin-top:26px;padding-top:20px;border-top:1px solid var(--line)}
+  /* фінальна дія після висновку: лаймова кнопка в чат і праворуч від неї
+     підказка або рядок непрочитаного. Персоналізація живе в чаті, у звіті
+     лише вхід до нього */
+  .pd-cta{display:flex;align-items:center;gap:10px 16px;flex-wrap:wrap;margin-top:26px;padding-top:20px;border-top:1px solid var(--line)}
   .pd-ai-line{display:flex;align-items:center;gap:8px;font-size:13px;line-height:1.4;color:var(--muted)}
-  .pd-ai-line > svg{width:15px;height:15px;flex:0 0 auto;color:var(--ink)}
   .pd-cta-hint{color:var(--muted)}
   .pd-ai-msg{display:inline-flex;align-items:center;gap:8px;color:var(--ink);font-weight:600}
   .pd-ai-msg[hidden]{display:none}
@@ -1016,11 +1015,11 @@
   .pd-ai-badge.pulse{animation:pd-ai-pulse .9s ease-out 2}
   @keyframes pd-ai-pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--brand) 70%,transparent)}100%{box-shadow:0 0 0 8px color-mix(in srgb,var(--brand) 0%,transparent)}}
   @media (prefers-reduced-motion:reduce){.pd-ai-badge.pulse{animation:none}}
-  .pd-cta-btn{display:inline-flex;align-items:center;gap:8px;background:var(--card);color:var(--ink);border:1px solid var(--line-strong);border-radius:10px;height:40px;padding:0 16px;font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;transition:background .15s,border-color .15s}
-  .pd-cta-btn::after{content:'\2192';font-weight:600;color:var(--ink-2);transition:transform .15s}
-  .pd-cta-btn:hover{background:var(--surface-2);border-color:var(--muted)}
+  .pd-cta-btn{display:inline-flex;align-items:center;gap:8px;background:var(--brand);color:var(--ink);border:1px solid rgba(20,22,25,.10);border-radius:10px;height:42px;padding:0 18px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;transition:background .15s}
+  .pd-cta-btn::after{content:'\2192';font-weight:700;transition:transform .15s}
+  .pd-cta-btn:hover{background:var(--brand-hover)}
   .pd-cta-btn:hover::after{transform:translateX(2px)}
-  .pd-cta-btn:active{background:var(--surface-2)}
+  .pd-cta-btn:active{background:var(--brand-hover)}
   .pd-cta-btn:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
   @media(max-width:760px){
     #verdictCard .card-head{padding:22px 20px 0}
@@ -1213,8 +1212,8 @@
           <div class="fbx-err" id="fbErr" role="alert" hidden></div>
         </div>
         <div class="pd-cta">
-          <div class="pd-ai-line"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.7 4.6L18 9.3l-4.3 1.7L12 15.6l-1.7-4.6L6 9.3l4.3-1.7z"/><path d="M18.5 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></svg><span class="pd-cta-hint">Discuss the car with your preferences in mind.</span><span class="pd-ai-msg" id="pdAiMsg" hidden>CalCar AI left a message<span class="pd-ai-badge" id="pdAiBadge"></span></span></div>
           <button class="pd-cta-btn" id="pdChatBtn" type="button"><span>Discuss with CalCar AI</span></button>
+          <div class="pd-ai-line"><span class="pd-cta-hint">Discuss the car with your preferences in mind.</span><span class="pd-ai-msg" id="pdAiMsg" hidden>CalCar AI left a message<span class="pd-ai-badge" id="pdAiBadge"></span></span></div>
         </div>
       </div>
       <div class="v-text" id="vText"></div>
