@@ -45,6 +45,9 @@ import { findAuctionRecord, shouldRecheck, discoverVinCandidates, photoHasProven
    працює у фоні ПІСЛЯ запису готового звіту і у звіт нічого не додає */
 import { runMiShadow } from './mi-shadow.js';
 import { fetchMiEquipmentCandidates, candidatePromptBlock, visionHintBlock, supplementVisionEquipment, applyMiEquipment, equipmentMemoryObservations, recordMiEquipment, miIdentityGeneration } from './mi-equipment.js';
+/* Model Intelligence Research v1: наявне MI плюс малий паралельний веб-пошук
+   у контекст поточного звіту, придатні знахідки у конвеєр MI */
+import { runCheckResearch, researchBlock, persistPayload, persistResearch, researchMeta } from './mi-research.js';
 
 /* ============================================================
    CalCar Check, рушій v1: посилання на оголошення -> звіт.
@@ -2544,9 +2547,11 @@ async function runCheck(req, res, job) {
       if (withEffort && EFFORT !== 'off') b.reasoning_effort = EFFORT;
       return b;
     };
-    const callModel = async (body, ms) => {
+    const callModel = async (body, ms, signal) => {
       const ctl = new AbortController();
       const t = setTimeout(() => ctl.abort(), ms);
+      /* зовнішній сигнал: виклик, що вже нікому не потрібен, обривається */
+      if (signal) { if (signal.aborted) ctl.abort(); else signal.addEventListener('abort', () => ctl.abort(), { once: true }); }
       try {
         const resp = await fetch('https://api.openai.com/v1/chat/completions', {
           signal: ctl.signal,
@@ -2784,6 +2789,19 @@ async function runCheck(req, res, job) {
     const miEqPromise = (listing.vin ? fetchMiEquipmentCandidates(listing.vin) : Promise.resolve({ ok: false, reason: 'no_vin', candidates: [], ms: 0 }))
       .catch(e => ({ ok: false, reason: 'error', candidates: [], ms: 0, error: String((e && e.message) || e).slice(0, 120) }));
     miEqPromise.then(miEqResolve);
+    /* MI Research v1: наявне знання про версію плюс малий веб-пошук того,
+       чого MI ще не знає. Іде паралельно з решткою Check від цього місця
+       (ідентичність вже в памʼяті) до основного виклику; той чекає його не
+       довше MI_RESEARCH_MAIN_WAIT_MS. Обрив у кінці Check: продовження
+       після відповіді немає, наступний Check спробує знову */
+    const MI_RESEARCH_MAIN_WAIT_MS = 3000;
+    const miResearchAbort = new AbortController();
+    const miResearchPromise = runCheckResearch({ vin: listing.vin, listingHost: listing.domain || null }, { callModel, signal: miResearchAbort.signal })
+      .catch(e => ({ status: 'failed', reason: 'error', context: null, queries: [], sources: [], findings: [], ms: 0, error: String((e && e.message) || e).slice(0, 120) }));
+    /* збереження у MI стартує, щойно дослідження готове, ще під час основного виклику */
+    const miResearchPersistPromise = miResearchPromise.then(r => (r && r.status === 'ok' && r.findings.length && listing.vin)
+      ? persistResearch(listing.vin, persistPayload(r, job && job.token)) : null)
+      .catch(e => ({ ok: false, reason: 'error', error: String((e && e.message) || e).slice(0, 120) }));
     /* кадри оголошення: паралельно з рештою пайплайна; для нового стану
        оголошення завжди, для dedup лише коли знімок ще без кадрів (створений
        до появи Photo Assets): досохраняємо один раз */
@@ -3240,6 +3258,15 @@ async function runCheck(req, res, job) {
     const miEqBlock = miEq.ok ? candidatePromptBlock(miEq.candidates) : null;
     if (miEqBlock) content.splice(1, 0, { type: 'text', text: miEqBlock });
     mark('mi_equipment', miEq.ms || 0, miEq.ok ? 'executed' : 'skipped', { reason: miEq.reason || null, candidates: (miEq.candidates || []).length });
+    /* MI Research v1: наявне MI і свіжі знахідки у контекст основного
+       виклику. Дослідження, що не встигло, звіт не тримає */
+    const tResWait = Date.now();
+    let miResearch = await Promise.race([miResearchPromise, new Promise(r => setTimeout(() => r({ status: 'pending', reason: 'main_not_waiting', context: null, findings: [], queries: [], sources: [], ms: 0 }), MI_RESEARCH_MAIN_WAIT_MS))]);
+    const miResearchWaited = Date.now() - tResWait;
+    const miResearchBlock = researchBlock(miResearch);
+    if (miResearchBlock) content.splice(1, 0, { type: 'text', text: miResearchBlock });
+    mark('mi_research', miResearch.ms || 0, miResearch.status === 'ok' ? 'executed' : miResearch.status === 'pending' ? 'pending' : 'skipped',
+      { reason: miResearch.reason || null, waited_ms: miResearchWaited, knowledge: (miResearch.context && miResearch.context.knowledge_count) || 0, findings: (miResearch.findings || []).length, block: !!miResearchBlock });
     let mainSystem = mainMsg.system;
     const mainPayload = mainPayloadBreakdown(mainSystem, content, {
       current: mainPhotoPositions.length, current_high: cvFeed ? Math.min(4, mainPhotoPositions.length) : photoUrls.filter((_, i) => highSet.has(i)).length, gallery_total: listing.photos.length,
@@ -3948,6 +3975,16 @@ async function runCheck(req, res, job) {
     const miEqMemory = await miEqMemoryPromise;
     if (miEqMemory) parsed._meta.mi_equipment.memory = { ok: !!miEqMemory.ok, reason: miEqMemory.reason || null, written: miEqMemory.written || 0, skipped: miEqMemory.skipped || 0, rejected: miEqMemory.rejected || 0 };
     mark('knowledge', Date.now() - tKn, 'executed');
+    /* MI Research v1: дослідження, що встигло під час основного виклику,
+       зберігається; те, що не встигло, обривається: продовження після
+       відповіді немає */
+    const miResearchPersist = await Promise.race([miResearchPersistPromise, new Promise(r => setTimeout(() => r({ ok: false, reason: 'not_finished' }), 3000))]);
+    miResearchAbort.abort();
+    if (miResearch.status === 'pending') miResearch = await Promise.race([miResearchPromise, new Promise(r => setTimeout(() => r(miResearch), 500))]);
+    parsed._meta.mi_research = researchMeta(miResearch, miResearchPersist);
+    console.log('[mi-research]', JSON.stringify({ op: 'check', status: miResearch.status, reason: miResearch.reason || null, knowledge: (miResearch.context && miResearch.context.knowledge_count) || 0,
+      queries: (miResearch.queries || []).length, sources: (miResearch.sources || []).length, findings: (miResearch.findings || []).length, waited_ms: miResearchWaited, ms: miResearch.ms || 0,
+      persist: miResearchPersist ? { ok: miResearchPersist.ok, reason: miResearchPersist.reason || null, published: miResearchPersist.published || 0, merged: miResearchPersist.merged || 0, candidates: miResearchPersist.candidates || 0 } : null }));
     timings.total_ms = Date.now() - tRun;
 
     return res.status(200).json(parsed);

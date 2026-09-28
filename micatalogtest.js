@@ -111,7 +111,7 @@ try {
   for (const m of UPS) run(['-f', path.join(DIR, m)], '');
   const files = fs.readdirSync(DATA).filter(f => f.endsWith('.sql')).sort();
   exec(files.map(f => fs.readFileSync(path.join(DATA, f), 'utf8')).join('\n'));
-  for (const f of ['020_identity_fixtures', '022_catalog_identities', '050_check_ingest']) run(['-f', path.join(FIX, f + '.sql')], '');
+  for (const f of ['020_identity_fixtures', '022_catalog_identities', '050_check_ingest', '060_production_replay']) run(['-f', path.join(FIX, f + '.sql')], '');
   exec(HELPERS_SQL);
   exec(`do $$ declare y record; p mi.pack_purpose; begin
           for y in select subject_id from mi.version_market_year order by subject_id loop
@@ -841,6 +841,106 @@ t(56, 'пакет на VMY: лише пакет того самого бренд
   end;
   ${A(`ok`, 'a package of another brand was accepted')}
   end;`);
+
+/* ---- MI Research v1 (міграція 028): наявне MI перед пошуком, знахідки через той самий gate ----
+   GTS з production replay: версія підтверджена, VMY немає (частковий шлях). */
+
+const RVIN = "'WP1ZZZ92ZDLA45155'";
+const rfind = (scope, ktype, text, ev, extra = '') => `{"scope":"${scope}","knowledge_type":"${ktype}","text_en":"${text}","confidence":"medium","buyer_importance":4,"buyer_implication_en":"Check it.","causal_status":"observed_association"${extra},"evidence":[${ev}]}`;
+const rev = (url, type, quality, excerpt, extra = '') => `{"url":"${url}","title":"t","source_type":"${type}","quality":"${quality}","stance":"supports","excerpt":"${excerpt}"${extra}}`;
+/* JSON у SQL-літерал */
+const sq = j => "'" + String(j).replace(/'/g, "''") + "'";
+
+t(57, 'контекст дослідження: ідентичність і наявне знання ПЕРЕД пошуком, останнє дослідження з кандидатів', `
+  declare c jsonb;
+  begin
+  perform mi_test.seed_production_replay();
+  c := mi.research_context(${RVIN});
+  ${A(`(c->>'available')::boolean and c->>'identity_precision' = 'partial' and c->'identity_summary'->>'version' like 'Porsche Cayenne GTS%'`, 'the GTS did not resolve to its version')}
+  ${A(`(c->>'knowledge_count')::int >= 10 and exists (select 1 from jsonb_array_elements(c->'knowledge') k where k->>'kind' = 'comparisons')`, 'existing knowledge, including version-level facts, is not exposed to research')}
+  ${A(`exists (select 1 from jsonb_array_elements(c->'knowledge') k where k->>'status' = 'CONDITIONAL' and k->>'condition' is not null)`, 'conditional knowledge lost its condition text')}
+  ${A(`c->>'last_research_at' is null and (c->>'open_candidates')::int = 0`, 'a fresh identity already looks researched')}
+  perform mi_test.seed_check('WVWZZZ1KZAW0S0004', 'Volkswagen', 'Golf', 'GTI', 'GTI', 2010, 'mobile', 'EU', 9000, 210000, null, null, null);
+  ${A(`mi.research_context('WVWZZZ1KZAW0S0004')->>'reason' = 'brand_not_in_catalog'`, 'a brand outside the catalogue did not refuse before the bridge')}
+  ${A(`(select count(*) from mi_vm.resolved_identity where vin = 'WVWZZZ1KZAW0S0004') = 0`, 'the refusal still ran the bridge')}
+  ${A(`mi.research_context('short')->>'reason' = 'no_vin'`, 'a short VIN did not refuse')}
+  end;`);
+
+t(58, 'офіційна знахідка проходить gate, публікується, перезбирає фрагменти і видна наступному дослідженню', `
+  declare r jsonb; c jsonb;
+  begin
+  perform mi_test.seed_production_replay();
+  r := mi.research_persist(${RVIN}, ('{"check_token":"t1","findings":[' || ${sq(rfind('version', 'official_fact', 'Porsche extended the transfer case warranty for this generation under a service campaign.', rev('https://www.porsche.com/usa/service/campaign/tc', 'official', 'primary', 'warranty extended')))} || ']}')::jsonb);
+  ${A(`(r->>'published')::int = 1 and r->'results'->0->>'status' = 'published' and (r->>'fragments_rebuilt')::int > 0`, 'an official finding was not published through the gate')}
+  ${A(`(select count(*) from mi.claim cl where cl.text_en like 'Porsche extended the transfer case warranty%' and cl.status = 'published' and cl.subject_id = (select subject_id from mi.vehicle_version where version_code = 'GTS')) = 1`, 'the claim is not on the version subject')}
+  ${A(`(select count(*) from mi.claim_applicability a join mi.claim cl on cl.id = a.claim_id where cl.text_en like 'Porsche extended the transfer case warranty%' and a.dimension = 'version') = 1`, 'applicability is not the exact version')}
+  ${A(`(select count(*) from mi.pack_fragment where not valid) = 0`, 'publication left invalidated fragments behind')}
+  c := mi.research_context(${RVIN});
+  ${A(`exists (select 1 from jsonb_array_elements(c->'knowledge') k where k->>'text' like 'Porsche extended the transfer case warranty%' and k->>'status' = 'APPLICABLE')`, 'the next research does not see the new knowledge')}
+  ${A(`c->>'last_research_at' is not null`, 'the research timestamp is not derived from the candidate')}
+  ${A(`(select count(*) from jsonb_array_elements(mi.compile_pack(mi_test.id_porsche(), 'report')->'pack'->'comparisons') e where e->>'text' like 'Porsche extended the transfer case warranty%') = 1`, 'the exact 2013 pack does not carry the published finding')}
+  end;`);
+
+t(59, 'той самий зміст ще раз: докази додаються, дубля знання немає; повтор опублікованого зливається', `
+  declare r1 jsonb; r2 jsonb; r3 jsonb;
+  begin
+  perform mi_test.seed_production_replay();
+  r1 := mi.research_persist(${RVIN}, ('{"check_token":"a","findings":[' || ${sq(rfind('version', 'known_issue', 'The transfer case of this version can shudder on tight turns between 100000 and 150000 km.', rev('https://rennlist.com/forums/cayenne/tc.html', 'owner', 'secondary', 'shudder on turns')))} || ']}')::jsonb);
+  r2 := mi.research_persist(${RVIN}, ('{"check_token":"b","findings":[' || ${sq(rfind('version', 'known_issue', 'The transfer case of this version can shudder on tight turns between 100000 and 150000 km.', rev('https://www.planet-9.com/threads/tc.1/', 'owner', 'secondary', 'same here')))} || ']}')::jsonb);
+  ${A(`r1->'results'->0->>'status' = 'candidate' and (r1->'results'->0->>'new_candidate')::boolean and r2->'results'->0->>'status' = 'candidate' and not (r2->'results'->0->>'new_candidate')::boolean`, 'a repeated finding created a second candidate')}
+  ${A(`(select count(*) from mi.candidate_claim where extractor = 'check_research' and text_en like 'The transfer case of this version can shudder%') = 1`, 'duplicate candidates')}
+  ${A(`(select count(*) from mi.candidate_evidence ce join mi.candidate_claim cc on cc.id = ce.candidate_id where cc.text_en like 'The transfer case of this version can shudder%') = 2`, 'the second source was not attached as evidence')}
+  ${A(`r2->'results'->0->'gate_failed' @> '["known_issue_evidence"]'::jsonb`, 'two owner groups without a specialist passed the known_issue gate')}
+  ${A(`(select count(*) from mi.claim where text_en like 'The transfer case of this version can shudder%') = 0`, 'weak evidence was published')}
+  perform mi.research_persist(${RVIN}, ('{"check_token":"c","findings":[' || ${sq(rfind('version', 'official_fact', 'Porsche extended the transfer case warranty for this generation under a service campaign.', rev('https://www.porsche.com/usa/service/campaign/tc', 'official', 'primary', 'warranty extended')))} || ']}')::jsonb);
+  r3 := mi.research_persist(${RVIN}, ('{"check_token":"d","findings":[' || ${sq(rfind('version', 'official_fact', 'Porsche extended the transfer case warranty for this generation under a service campaign.', rev('https://www.porsche.com/usa/service/campaign/tc', 'official', 'primary', 'warranty extended')))} || ']}')::jsonb);
+  ${A(`(r3->>'merged')::int = 1 and (r3->>'published')::int = 0 and (select count(*) from mi.claim where text_en like 'Porsche extended the transfer case warranty%') = 1`, 'republishing the same fact duplicated the claim')}
+  ${A(`(select count(*) from mi.source where url = 'https://www.porsche.com/usa/service/campaign/tc') = 1`, 'the same URL became two sources')}
+  end;`);
+
+t(60, 'gate не послаблений: слабкі докази лишаються кандидатом з названими правилами, override немає', `
+  declare r jsonb;
+  begin
+  perform mi_test.seed_production_replay();
+  r := mi.research_persist(${RVIN}, ('{"check_token":"g","findings":[' || ${sq(rfind('version', 'official_fact', 'A blog says the warranty was extended for the transfer case of this version.', rev('https://www.example-blog.com/cayenne', 'review', 'secondary', 'warranty extended')))} || ',' || ${sq(rfind('version', 'known_issue', 'Vendor page claims coolant pipes fail on every car of this version.', rev('https://www.pelicanparts.com/x', 'vendor', 'secondary', 'coolant pipes fail')))} || ']}')::jsonb);
+  ${A(`(r->>'published')::int = 0 and (r->>'candidates')::int = 2`, 'weak findings were published')}
+  ${A(`r->'results'->0->'gate_failed' @> '["official_source"]'::jsonb and r->'results'->1->'gate_failed' @> '["vendor_not_alone"]'::jsonb`, 'gate rule codes are not reported')}
+  ${A(`(select count(*) from mi.candidate_claim where extractor = 'check_research' and coalesce(review_note, '') like '%override%') = 0 and (select count(*) from mi.claim cl where cl.review_note like '%override%') = 0`, 'an override appeared')}
+  ${A(`(select bool_and(review_status = 'gate_pending' and gate_result is not null) from mi.candidate_claim where extractor = 'check_research')`, 'blocked candidates do not carry their gate result')}
+  end;`);
+
+t(61, 'знахідка про VIN у MI не пише; область не ширша і не точніша за підтверджену ідентичність', `
+  declare r jsonb;
+  begin
+  perform mi_test.seed_production_replay();
+  r := mi.research_persist(${RVIN}, ('{"check_token":"s","findings":[' || ${sq(rfind('vehicle', 'official_fact', 'This VIN was sold in Germany in 2022 according to a dealer listing.', rev('https://x.example/v', 'market', 'low', 'sold in Germany')))} || ',' || ${sq(rfind('component', 'known_issue', 'The 4.8 V8 of this car scores its bores.', rev('https://www.example-shop.example/x', 'specialist', 'primary', 'bores'), ',"component_role":"engine"'))} || ',' || ${sq(rfind('generation', 'owner_pattern', 'Owners of this generation report the panoramic roof drains clogging and wetting the carpets.', rev('https://rennlist.com/x', 'owner', 'secondary', 'wet carpets', ',"mileage_km":120000')))} || ']}')::jsonb);
+  ${A(`r->'results'->0->>'status' = 'skipped' and r->'results'->0->>'reason' = 'vehicle_scope_not_mi'`, 'a VIN-specific finding entered MI')}
+  ${A(`r->'results'->1->>'status' = 'skipped' and r->'results'->1->>'reason' = 'scope_not_resolved'`, 'an engine finding was attached although the engine of this car is unresolved (no VMY, no fitment)')}
+  ${A(`r->'results'->2->>'status' = 'candidate' and (r->'results'->2->>'subject_id')::bigint = (select subject_id from mi.generation where platform_code = '958' and phase = 'base')`, 'a generation finding did not land on the generation subject')}
+  ${A(`(select count(*) from mi.candidate_claim where extractor = 'check_research') = 1`, 'skipped findings still created candidates')}
+  ${A(`(select count(*) from public.vehicle_identity_observation where vin = ${RVIN} and dimension not in ('model_year','version','market_operated','mileage_km','market_sold','production_date')) = 0`, 'research wrote unexpected VIN observations')}
+  end;`);
+
+t(62, 'компонентна знахідка на точній ідентичності лягає на варіант мотора; на частковій лишається поза MI', `
+  declare r jsonb; c jsonb;
+  begin
+  perform mi_test.seed_production_replay();
+  -- ринок продажу з аукціонної події робить ідентичність точною: VMY, комплектація, заводський M48.02 (сильне припущення)
+  perform mi.vm_record_identity(${RVIN}, 'market_sold', 'auction', 'US', null, null, null, now(), 'high', 'auction:test:1', 'copart');
+  c := mi.research_context(${RVIN});
+  ${A(`c->>'identity_precision' = 'exact' and exists (select 1 from jsonb_array_elements(c->'identity'->'components') x where x->>'role' = 'engine' and x->>'status' = 'assumed_factory')`, 'the exact GTS identity has no assumed factory engine')}
+  r := mi.research_persist(${RVIN}, ('{"check_token":"e","findings":[' || ${sq(rfind('component', 'known_issue', 'The 4.8 V8 of this version can score its bores; the Alusil bores cannot be rebored.', rev('https://www.example-shop.example/x', 'specialist', 'primary', 'bores'), ',"component_role":"engine"'))} || ']}')::jsonb);
+  ${A(`r->'results'->0->>'status' = 'candidate' and (r->'results'->0->>'subject_id')::bigint = (select subject_id from mi.component_variant where variant_code = 'M48_02')`, 'the engine finding did not land on the resolved engine variant')}
+  ${A(`(select proposed_applicability->0->>'dimension' from mi.candidate_claim where extractor = 'check_research' and text_en like 'The 4.8 V8 of this version can score%') = 'component_variant'`, 'the component finding is not anchored to the variant')}
+  ${A(`r->'results'->0->'gate_failed' @> '["known_issue_evidence"]'::jsonb`, 'one specialist source alone passed the known_issue gate')}
+  end;`);
+
+t(63, 'входи для продукту: лише службова роль, security definer, фіксований search_path', `
+  ${A(`(select bool_and(p.prosecdef and array_to_string(p.proconfig, ',') like 'search_path=pg_catalog, mi, mi_vm, public%'
+               and not exists (select 1 from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a where a.grantee = 0 and a.privilege_type = 'EXECUTE'))
+          from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+         where n.nspname = 'public' and p.proname in ('mi_research_context', 'mi_research_persist')
+        having count(*) = 2)`, 'a research entry is missing, not a security definer or executable by public')}`);
 
 /* ---- Підсумок ---- */
 
