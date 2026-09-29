@@ -21,11 +21,15 @@ import { resolveAccidentEvents, sanitizeFindingsV3, zoneClasses } from './score-
 import { ownerEventsConsistent } from './history-owners.js';
 
 export const SCORE_CONFIG_V4 = {
-  CONFIG_TAG: 'v4-prod-2026-09-30b',
+  CONFIG_TAG: 'v4-prod-2026-09-30c',
   STARTING_SCORE: 10,
   /* 2026-09-30: відремонтоване ДТП середньої тяжкості 1.2 -> 0.7: історія
      лишається негативом, але не домінує над нинішнім фізичним станом */
-  ACCIDENT: { light: 0.4, medium: 0.7, heavy: 2.5, total: 5.0, unknown: 1.5, unrepaired_seller: 2.5, earlier_events: 1.0, flood: 2.5, fire: 3.0 },
+  /* 2026-09-30: UNKNOWN != BAD. Невідома тяжкість 1.5 -> 0.5 (не важча за
+     підтверджене середнє 0.7). earlier_events це одна строка за всі
+     додаткові події, чия тяжкість не оцінюється: 1.0 -> 0.5, не вище за
+     середнє. Тяжке, тотал, пожежа, повінь, невідновлене зі слів продавця без змін */
+  ACCIDENT: { light: 0.4, medium: 0.7, heavy: 2.5, total: 5.0, unknown: 0.5, unrepaired_seller: 2.5, earlier_events: 0.5, flood: 2.5, fire: 3.0 },
   BODY: { dent: 0.5, corrosion: 0.6, headlight: 0.4, broken_element: 0.3, missing_part: 0.3, wheel: 0.15, wheel_max: 0.3, panel_misalignment: 0.4 },
   /* лобове скло пропорційно: маленький скол, суттєвий скол, тріщина */
   GLASS: { chip_minor: 0.15, chip: 0.3, crack: 0.6 },

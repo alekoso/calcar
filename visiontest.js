@@ -124,6 +124,9 @@ const errs = [];
   if (stats.dropped_message_noise !== 2 || stats.dropped_message_weak !== 2 || stats.messages !== 1) errs.push('лічильники повідомлень: ' + JSON.stringify({ n: stats.dropped_message_noise, w: stats.dropped_message_weak, m: stats.messages }));
   for (const noise of ['27 Август 2026', '531 kHz', 'Медиа/Радио', '19:51', 'Навигация', 'ConnectedDrive', 'Мой автомобиль', 'Громкость 12', '107.9 FM']) if (!CV.UI_NOISE_RE.test(noise)) errs.push('UI-шум не відсіюється: ' + noise);
   for (const real of ['Service due in 1200 km', 'Oil level low', 'Автопілот на шосе, Пакет включен', 'Обновление доступно', 'Ключ. Возьмите с собой!', 'Запас ходу 194 km']) if (CV.UI_NOISE_RE.test(real)) errs.push('справжнє повідомлення відсіяне як шум: ' + real);
+  /* 2026-09-30: сидіння оглядаються по рядах незалежно, у тому самому одному виклику Vision */
+  if (!/ОГЛЯД СИДІНЬ ПО РЯДАХ \(обовʼязково, незалежно один від одного\)/.test(CV.CURRENT_VISUAL_RULES) || !/Знахідка по одному ряду не замінює огляду іншого ряду/.test(CV.CURRENT_VISUAL_RULES)
+    || !/Якщо ряд чистий або не видний, знахідку для нього не створюй/.test(CV.CURRENT_VISUAL_RULES)) errs.push('правила без незалежного огляду рядів сидінь');
   /* 2026-09-30: дефект із summary мусить бути знахідкою; скло із салону пишеться у front/windshield */
   if (!/УЗГОДЖЕНІСТЬ SUMMARY І ЗНАХІДОК/.test(CV.CURRENT_VISUAL_RULES) || !/Summary не містить дефектів, яких немає у findings/.test(CV.CURRENT_VISUAL_RULES)) errs.push('правила без узгодженості summary і знахідок');
   if (!/СКЛО: скол чи тріщина лобового скла \(навіть якщо кадр знятий із салону\) записуй у зону front з component windshield/.test(CV.CURRENT_VISUAL_RULES)) errs.push('правила без запису скла');

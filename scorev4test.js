@@ -61,7 +61,7 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     const r1 = run({ evidence: { ...weak, seller_text_chars: 20 }, listingText: 'Не заводится.', sellerDisclosures: [{ category: 'vehicle_not_running_or_unit_replacement', unit: 'vehicle', quote: 'Не заводится', negated: false, vague: false, seller_favor: false }] });
     eq(r1.score_eligible, true, 'сильний негатив мав відкрити число'); eq(r1.final, 5, 'не заводиться = 5.0');
     const r2 = run({ evidence: weak, accidentRecord: { recorded: true, note: 'ДТП на території США в 2021 році' } });
-    eq(r2.score_eligible, true, 'відмітка ДТП мала відкрити число'); eq(r2.final, 8.5, 'U1 = 8.5');
+    eq(r2.score_eligible, true, 'відмітка ДТП мала відкрити число'); eq(r2.final, 9.5, 'U1 = 9.5 (невідома тяжкість 0.5 з 2026-09-30)');
     const r3 = run({ evidence: { ...weak, photos_count: 15, seller_text_chars: 300 } });
     eq(r3.score_eligible, true, '15 фото і текст eligible');
     const r4 = run({ evidence: { ...weak, photos_count: 20, cv_status: 'ok', cv_zones_sufficient: 6 }, currentVisual: cv() });
@@ -147,12 +147,12 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
       finding('AIRBAGS_DEPLOYED', 'accident_2016', { evidence: [{ source: 'registry', ref: 'reg', description: 'подушки 2016' }] }),
     ] });
     const earlier = two.items.filter(i => i.key === 'accident_earlier_events');
-    eq(earlier.length, 1, 'ранні події: одна строка'); eq(earlier[0].amount, 1, 'ранні = 1.0'); eq(earlier[0].params.count, 2, 'count ранніх');
+    eq(earlier.length, 1, 'ранні події: одна строка'); eq(earlier[0].amount, 0.5, 'ранні = 0.5 (не вище за середнє)'); eq(earlier[0].params.count, 2, 'count ранніх');
     const latest = two.events.find(e => e.latest);
     eq(latest.anchored, true, 'останнє = змістовне якірне, а не LLM-група з роком');
     eq(latest.v4_category, 'medium', 'категорія останнього від HV');
     const five = run({ auctionMeta: lot(), historicalVisual: hv(), findings: [2015, 2016, 2017, 2018, 2019].map(y => finding('AIRBAGS_DEPLOYED', 'accident_' + y, { evidence: [{ source: 'registry', ref: 'reg', description: 'ДТП ' + y }] })) });
-    eq(five.items.filter(i => i.key === 'accident_earlier_events')[0].amount, 1, 'пʼять ранніх теж 1.0');
+    eq(five.items.filter(i => i.key === 'accident_earlier_events')[0].amount, 0.5, 'пʼять ранніх теж одна строка 0.5');
     eq(sum(five), sum(two), 'кількість ранніх не змінює суму');
     /* trusted year: лот 2024 проти відмітки 2021 з іншими зонами (окрема подія) */
     const ty = run({ auctionMeta: lot({ sale_date: '2024-03-01', primary_damage: 'FRONT END' }), historicalVisual: hv(), accidentRecord: { recorded: true, note: 'ДТП в 2021 році із пошкодженням задньої частини' } });
@@ -163,7 +163,7 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
   /* запис площадки без якоря + єдина LLM-група = одна подія */
   {
     const r = run({ accidentRecord: { recorded: true, note: 'Зафіксовано ДТП' }, findings: [{ type: 'MAJOR_REPAIR_UNVERIFIED', event_id: 'current_rear_collision', evidence: [{ source: 'current_photos', ref: 'photo_2', description: 'розбите заднє скло і кришка багажника' }] }] });
-    eq(r.events.length, 1, 'запис площадки і LLM-група без якоря мали злитись'); eq(itemsOf(r, 'accident_history').length, 1, 'одна аварійна строка'); eq(sum(r), 1.5, 'одна подія 1.5, без ранньої');
+    eq(r.events.length, 1, 'запис площадки і LLM-група без якоря мали злитись'); eq(itemsOf(r, 'accident_history').length, 1, 'одна аварійна строка'); eq(sum(r), 0.5, 'одна подія невідомої тяжкості 0.5, без ранньої');
     const r2 = run({ accidentRecord: { recorded: true, note: 'ДТП в 2019 році' }, findings: [{ type: 'AIRBAGS_DEPLOYED', event_id: 'accident_2023', evidence: [{ source: 'registry', ref: 'reg', description: 'подушки 2023' }] }] });
     eq(r2.events.length, 2, 'різні роки не зливаються');
   }
@@ -453,6 +453,18 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     const gap = { kind: 'panel_gap_alignment', severity: 'moderate', confidence: 'high', component: 'panel', photo: 13, sign: 'Між передньою кромкою капота та бампером нерівний зазор.' };
     const twice = run({ currentVisual: { zones: cvZones, condition_findings: [{ zone: 'front', ...gap }, { zone: 'left_front', ...gap }] } });
     eq(twice.items.filter(i => i.type === 'panel_misalignment').length, 1, 'дубль дефекту у двох зонах рахується раз');
+    /* 2026-09-30: UNKNOWN != BAD. Невідома тяжкість 0.5 і не важча за підтверджене середнє;
+       ранні події не вище за середнє; тяжкі рівні без змін */
+    eq(C.ACCIDENT.unknown, 0.5, 'невідома тяжкість 0.5'); ok(C.ACCIDENT.unknown <= C.ACCIDENT.medium, 'невідома не важча за середнє');
+    ok(C.ACCIDENT.earlier_events <= C.ACCIDENT.medium, 'ранні події не важчі за середнє');
+    for (const [k, v] of [['medium', 0.7], ['heavy', 2.5], ['total', 5.0], ['fire', 3.0], ['flood', 2.5], ['unrepaired_seller', 2.5], ['light', 0.4]]) eq(C.ACCIDENT[k], v, 'рівень ДТП ' + k + ' не змінений');
+    /* сидіння по рядах: знахідка переднього ряду, заднього, обох; чистий ряд без знахідки; дублі кадрів ряду не множать */
+    const seatRowF = (zone, photo) => cvf(zone, 'stain', { component: 'seat', photo, sign: 'помітні плями на подушці ' + zone + ' ' + photo });
+    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [seatRowF('front_seats', 31)] } })), 0.4, 'лише передній ряд = 0.4');
+    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [seatRowF('rear_seats', 32)] } })), 0.4, 'лише задній ряд = 0.4');
+    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [seatRowF('front_seats', 31), seatRowF('rear_seats', 32)] } })), 0.8, 'обидва ряди = 0.8');
+    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [] } })), 0, 'чисті ряди без знахідок = 0');
+    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [seatRowF('rear_seats', 32), seatRowF('rear_seats', 33), seatRowF('rear_seats', 34)] } })), 0.4, 'кілька кадрів одного ряду = 0.4');
     /* страховий випадок без деталей: у unresolved, без штрафу */
     const ins = run({ evidence: { ...baseEv, insurance_case_recorded: true } });
     ok(ins.unresolved.some(u => u.key === 'insurance_case_recorded') && sum(ins) === sum(run({})), 'страховий випадок: позначка без штрафу');
@@ -468,7 +480,7 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
        того ж дня сидіння рахуються по рядах (без подвійного рахунку), тег v4-prod-2026-09-29b.
        2026-09-30: нинішній стан сильніше (сидіння рядами, поширені дефекти, скло), середнє ДТП 0.7, тег v4-prod-2026-09-30;
        того ж дня дрібний зазор панелі в накопиченні, тег v4-prod-2026-09-30b */
-    const EXPECTED = '5cea344066df705286c2cdf7f61edea0';
+    const EXPECTED = 'a7b3765a37ce41fd8322ef74a1d1e0b9';
     if (hash !== EXPECTED) errs.push('SCORE_CONFIG_V4 змінився (md5 ' + hash + '), онови CONFIG_TAG і хеш у тесті');
   }
 
