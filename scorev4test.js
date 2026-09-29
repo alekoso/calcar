@@ -444,6 +444,10 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [minorF('front_seats', 'stain', { component: 'seat' }), minorF('rear_seats', 'stain', { component: 'seat' })] } })), 0.8, 'C: плями переднього і заднього ряду = 0.8');
     /* дрібний зазор панелі (Vision оцінив як minor) не губиться: це незалежний дефект у накопиченні */
     eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [minorF('front', 'panel_gap_alignment'), minorF('front', 'chip'), minorF('rear', 'chip')] } })), 0.45, 'дрібний зазор панелі входить у накопичення');
+    /* суттєва потертість без поштучного рядка не губиться: входить у накопичення (реальний прогін Camry) */
+    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [cvf('rear', 'scratch_scuff', { component: 'bumper', photo: 41, sign: 'потертість бампера 41' }), minorF('rear', 'chip'), minorF('front', 'chip')] } })), 0.45, 'moderate потертість у накопиченні');
+    /* суттєва вмʼятина має поштучний рядок і в накопичення вдруге не йде */
+    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [cvf('rear', 'dent', { photo: 42, sign: 'вмʼятина 42' }), minorF('rear', 'chip'), minorF('front', 'chip')] } })), 0.5, 'вмʼятина окремо, без подвійного рахунку');
     /* G: скло пропорційно, з будь-якої зони кадру, не входить у косметичне накопичення */
     eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [minorF('front', 'chip', { component: 'windshield' })] } })), 0.15, 'G: маленький скол лобового 0.15');
     eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [minorF('dashboard', 'chip', { component: 'windshield' })] } })), 0.15, 'G: скол лобового з кадру салону теж рахується');
@@ -483,7 +487,7 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
        того ж дня сидіння рахуються по рядах (без подвійного рахунку), тег v4-prod-2026-09-29b.
        2026-09-30: нинішній стан сильніше (сидіння рядами, поширені дефекти, скло), середнє ДТП 0.7, тег v4-prod-2026-09-30;
        того ж дня дрібний зазор панелі в накопиченні, тег v4-prod-2026-09-30b */
-    const EXPECTED = 'c86cd5b6e6d3030fb34eb82ed46c0920';
+    const EXPECTED = '8c58bc3c51b287819abc63843fbf6cf5';
     if (hash !== EXPECTED) errs.push('SCORE_CONFIG_V4 змінився (md5 ' + hash + '), онови CONFIG_TAG і хеш у тесті');
   }
 

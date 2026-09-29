@@ -21,7 +21,7 @@ import { resolveAccidentEvents, sanitizeFindingsV3, zoneClasses } from './score-
 import { ownerEventsConsistent } from './history-owners.js';
 
 export const SCORE_CONFIG_V4 = {
-  CONFIG_TAG: 'v4-prod-2026-09-30d',
+  CONFIG_TAG: 'v4-prod-2026-09-30e',
   STARTING_SCORE: 10,
   /* 2026-09-30: відремонтоване ДТП середньої тяжкості 1.2 -> 0.7: історія
      лишається негативом, але не домінує над нинішнім фізичним станом */
@@ -455,7 +455,11 @@ function currentConditionInputs(inp, cfg) {
   const minor = uniq.filter(f => f && !isMaterial(f) && f.confidence !== 'low');
   const W = cfg.WEAR;
   const extDistinct = new Map();
-  for (const f of minor) {
+  /* косметичні знахідки кузова без поштучного штрафу незалежно від тяжкості:
+     суттєва потертість (moderate scratch_scuff) раніше не мала ні поштучного
+     рядка, ні місця в накопиченні і губилась */
+  const cosmeticPool = uniq.filter(f => f && f.confidence !== 'low' && (!isMaterial(f) || !mapBodyFinding(f)));
+  for (const f of cosmeticPool) {
     if (!EXTERIOR_ZONES.has(f.zone) || !W.exterior.kinds.includes(f.kind)) continue;
     if (['windshield', 'glass_other'].includes(f.component || 'other')) continue;   /* скло рахується окремо */
     const z = f.zone === 'engine_bay' ? 'front' : f.zone;
