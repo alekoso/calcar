@@ -21,17 +21,25 @@ import { resolveAccidentEvents, sanitizeFindingsV3, zoneClasses } from './score-
 import { ownerEventsConsistent } from './history-owners.js';
 
 export const SCORE_CONFIG_V4 = {
-  CONFIG_TAG: 'v4-prod-2026-09-29c',
+  CONFIG_TAG: 'v4-prod-2026-09-30',
   STARTING_SCORE: 10,
-  ACCIDENT: { light: 0.4, medium: 1.2, heavy: 2.5, total: 5.0, unknown: 1.5, unrepaired_seller: 2.5, earlier_events: 1.0, flood: 2.5, fire: 3.0 },
-  BODY: { dent: 0.5, corrosion: 0.6, headlight: 0.4, windshield: 0.3, broken_element: 0.3, missing_part: 0.3, wheel: 0.15, wheel_max: 0.3, panel_misalignment: 0.4 },
-  INTERIOR: { seat_damage: 0.4, driver_seat_wear: 0.25, steering_wheel_wear: 0.2 },
+  /* 2026-09-30: відремонтоване ДТП середньої тяжкості 1.2 -> 0.7: історія
+     лишається негативом, але не домінує над нинішнім фізичним станом */
+  ACCIDENT: { light: 0.4, medium: 0.7, heavy: 2.5, total: 5.0, unknown: 1.5, unrepaired_seller: 2.5, earlier_events: 1.0, flood: 2.5, fire: 3.0 },
+  BODY: { dent: 0.5, corrosion: 0.6, headlight: 0.4, broken_element: 0.3, missing_part: 0.3, wheel: 0.15, wheel_max: 0.3, panel_misalignment: 0.4 },
+  /* лобове скло пропорційно: маленький скол, суттєвий скол, тріщина */
+  GLASS: { chip_minor: 0.15, chip: 0.3, crack: 0.6 },
+  /* 2026-09-30: стан сидінь по рядах. Одна дрібна пляма 0; помітний знос
+     чи плями в одному ряду 0.4, в обох рядах 0.8; тяжке фізичне
+     пошкодження (розрив, severe) +0.4; весь салон не більше 1.2 */
+  INTERIOR: { seat_row: 0.4, seat_severe_extra: 0.4, steering_wheel_wear: 0.2, max: 1.2 },
   /* 2026-09-29: накопичення дрібних ознак зношеності. Одна дрібна знахідка
      штрафу не дає; кілька НЕЗАЛЕЖНИХ дрібних дефектів по кузову (різні зони
      чи види) або плями і знос сидінь у кількох зонах салону це вже стан авто */
   WEAR: {
-    exterior: { kinds: ['scratch_scuff', 'chip', 'dent', 'paint_mismatch', 'corrosion', 'plastic_damage', 'trim_damage'], min_distinct: 3, per_distinct: 0.15, max: 0.8 },
-    interior: { kinds: ['stain', 'wear', 'tear'], components: ['seat', 'steering_wheel', 'door_card', 'dashboard', 'headliner'], min_zones: 2, min_findings: 3, amount: 0.5 },
+    /* 2026-09-30: від 3 незалежних дефектів 0.15 за кожен; поширені по 3+
+       зонах кузова +0.3; кап 1.2 (явно поганий косметичний стан) */
+    exterior: { kinds: ['scratch_scuff', 'chip', 'dent', 'paint_mismatch', 'corrosion', 'plastic_damage', 'trim_damage'], min_distinct: 3, per_distinct: 0.15, widespread_zones: 3, widespread_bonus: 0.3, max: 1.2 },
   },
   MILEAGE_NORM_KM_YEAR: { petrol: 12000, diesel: 18000, hev: 12000, phev: 15000, bev: 16000, unknown: 14000 },
   /* 2026-09-26, погоджена крива власника: штраф за АНОМАЛЬНО інтенсивне
@@ -350,7 +358,6 @@ export function mapBodyFinding(f) {
   if (k === 'corrosion') return 'corrosion';
   /* запотіла або матова фара приходить як wear + headlight */
   if ((k === 'crack' || k === 'other_visible_damage' || k === 'wear') && (c === 'headlight' || c === 'taillight')) return 'headlight';
-  if ((k === 'crack' || k === 'chip') && c === 'windshield') return 'windshield';
   if ((k === 'broken_component' || k === 'plastic_damage' || k === 'crack') && ['bumper', 'mirror', 'grille', 'trim', 'glass_other'].includes(c)) return 'broken_element';
   if (k === 'missing_component') return 'missing_part';
   if (k === 'wheel_damage' && f.zone === 'wheels') return 'wheel';
@@ -359,18 +366,19 @@ export function mapBodyFinding(f) {
   if (k === 'panel_gap_alignment' && c === 'panel') return 'panel_misalignment';
   return null;
 }
+/* поштучно в салоні лишився тільки знос керма; сидіння рахуються рядами
+   окремо (seatingInput) */
 export function mapInteriorFinding(f) {
   if (!isMaterial(f) || !INTERIOR_ZONES.has(f.zone)) return null;
   const c = f.component || 'other';
-  if ((f.kind === 'tear' || f.kind === 'stain') && c === 'seat' && SEAT_ZONES.has(f.zone)) return 'seat_damage';
-  if (f.kind === 'wear' && c === 'seat' && (f.zone === 'driver_area' || f.zone === 'front_seats')) return 'driver_seat_wear';
   if (f.kind === 'wear' && c === 'steering_wheel' && (f.zone === 'driver_area' || f.zone === 'dashboard')) return 'steering_wheel_wear';
   return null;
 }
+const isSeatFinding = f => SEAT_ZONES.has(f.zone) && (f.component || 'other') === 'seat' && ['stain', 'wear', 'tear'].includes(f.kind) && f.confidence !== 'low';
 const BODY_LABELS = { dent: 'Body: large dent or panel deformation', corrosion: 'Body: visible corrosion', headlight: 'Body: cracked or fogged headlight',
   windshield: 'Body: cracked or chipped windshield', broken_element: 'Body: broken exterior element', missing_part: 'Body: missing part', wheel: 'Body: damaged wheel',
   panel_misalignment: 'Body: panel misalignment or open gap' };
-const INTERIOR_LABELS = { seat_damage: 'Interior: seat upholstery damage', driver_seat_wear: 'Interior: pronounced driver seat wear', steering_wheel_wear: 'Interior: worn steering wheel' };
+const INTERIOR_LABELS = { steering_wheel_wear: 'Interior: worn steering wheel', seating: 'Interior: worn, stained or damaged seats' };
 
 function currentConditionInputs(inp, cfg) {
   const cv = inp.currentVisual || null;
@@ -400,6 +408,15 @@ function currentConditionInputs(inp, cfg) {
     uniq.push(f);
   }
   for (const f of uniq) {
+    /* лобове скло (навіть із кадру салону): одна позиція, найсильніша ознака */
+    if ((f.component || 'other') === 'windshield' && (f.kind === 'chip' || f.kind === 'crack') && f.confidence !== 'low') {
+      const amt = f.kind === 'crack' ? cfg.GLASS.crack : (isMaterial(f) ? cfg.GLASS.chip : cfg.GLASS.chip_minor);
+      const cur = byKey.get('input2:glass:windshield');
+      if (!cur || cur.amount < amt) byKey.set('input2:glass:windshield', { key: 'input2:glass:windshield', input: 'body_condition', amount: amt, label_key: BODY_LABELS.windshield, params: { kind: f.kind, severity: f.severity || null }, zone: 'front', zone_classes: ['front'], type: 'windshield',
+        evidence: [{ source: 'current_photos', ref: 'photo_' + f.photo, description: f.sign }] });
+      continue;
+    }
+    if (isSeatFinding(f)) continue;   /* сидіння рахуються рядами нижче */
     const bt = mapBodyFinding(f);
     if (bt === 'wheel') {
       const pos = WHEEL_POSITIONS.includes(f.wheel_position) ? f.wheel_position : 'unknown';
@@ -419,8 +436,7 @@ function currentConditionInputs(inp, cfg) {
     }
     const it = mapInteriorFinding(f);
     if (it) {
-      /* пошкодження оббивки рахується раз на ряд сидінь, не раз на зону */
-      const key = it === 'seat_damage' ? 'input3:seat_damage:' + seatRow(f.zone) : 'input3:' + it;
+      const key = 'input3:' + it;
       const cur = byKey.get(key);
       if (cur) { cur.evidence.push({ source: 'current_photos', ref: 'photo_' + f.photo, description: f.sign }); continue; }
       byKey.set(key, { key, input: 'interior_condition', amount: cfg.INTERIOR[it], label_key: INTERIOR_LABELS[it], params: { zone: f.zone, type: it }, zone: f.zone, type: it,
@@ -436,23 +452,32 @@ function currentConditionInputs(inp, cfg) {
   const extDistinct = new Map();
   for (const f of minor) {
     if (!EXTERIOR_ZONES.has(f.zone) || !W.exterior.kinds.includes(f.kind)) continue;
+    if (['windshield', 'glass_other'].includes(f.component || 'other')) continue;   /* скло рахується окремо */
     const z = f.zone === 'engine_bay' ? 'front' : f.zone;
     const key = z + '|' + f.kind;
     if (!extDistinct.has(key)) extDistinct.set(key, f);
   }
   if (extDistinct.size >= W.exterior.min_distinct) {
-    const amount = Math.min(W.exterior.max, round2(W.exterior.per_distinct * extDistinct.size));
-    byKey.set('input2:cosmetic_wear', { key: 'input2:cosmetic_wear', input: 'body_condition', amount, label_key: 'Body: multiple cosmetic defects', params: { distinct: extDistinct.size, zones: [...new Set([...extDistinct.keys()].map(k => k.split('|')[0]))].join(',') }, zone: 'multiple', zone_classes: [], type: 'cosmetic_wear',
+    const extZones = new Set([...extDistinct.keys()].map(k => k.split('|')[0]));
+    const widespread = extZones.size >= W.exterior.widespread_zones;
+    const amount = Math.min(W.exterior.max, round2(W.exterior.per_distinct * extDistinct.size + (widespread ? W.exterior.widespread_bonus : 0)));
+    byKey.set('input2:cosmetic_wear', { key: 'input2:cosmetic_wear', input: 'body_condition', amount, label_key: 'Body: multiple cosmetic defects', params: { distinct: extDistinct.size, zones: [...extZones].join(','), widespread }, zone: 'multiple', zone_classes: [], type: 'cosmetic_wear',
       evidence: [...extDistinct.values()].map(f => ({ source: 'current_photos', ref: 'photo_' + f.photo, description: f.sign })) });
   }
-  /* салон: ряд сидінь (чи інша зона) з уже порахованою суттєвою знахідкою
-     не рахується вдруге */
-  const interiorTaken = new Set([...byKey.values()].filter(i => i.input === 'interior_condition').map(i => seatRow(i.zone)));
-  const intWear = minor.filter(f => INTERIOR_ZONES.has(f.zone) && W.interior.kinds.includes(f.kind) && W.interior.components.includes(f.component || 'other') && !interiorTaken.has(seatRow(f.zone)));
-  const intZones = new Set(intWear.map(f => seatRow(f.zone)));
-  if (intZones.size >= W.interior.min_zones || intWear.length >= W.interior.min_findings) {
-    byKey.set('input3:upholstery_wear', { key: 'input3:upholstery_wear', input: 'interior_condition', amount: W.interior.amount, label_key: 'Interior: visibly worn or stained upholstery', params: { findings: intWear.length, zones: [...intZones].join(',') }, zone: 'multiple', type: 'upholstery_wear',
-      evidence: intWear.map(f => ({ source: 'current_photos', ref: 'photo_' + f.photo, description: f.sign })) });
+  /* сидіння рядами (передній: driver_area, front_passenger, front_seats;
+     задній: rear_seats). Одна дрібна пляма на весь салон 0; інакше 0.4 за
+     кожен ряд із плямами чи зносом, +0.4 за тяжке пошкодження; салон разом
+     зі зносом керма не більше INTERIOR.max */
+  const I = cfg.INTERIOR;
+  const seatF = uniq.filter(isSeatFinding);
+  const seatRows = new Set(seatF.map(f => seatRow(f.zone)));
+  const isolated = seatF.length === 1 && !isMaterial(seatF[0]);
+  if (seatF.length && !isolated) {
+    const severe = seatF.some(f => f.severity === 'severe' || (f.kind === 'tear' && isMaterial(f)));
+    const other = [...byKey.values()].filter(i => i.input === 'interior_condition').reduce((sum, i) => sum + i.amount, 0);
+    const amount = round2(Math.max(0, Math.min(I.seat_row * Math.min(2, seatRows.size) + (severe ? I.seat_severe_extra : 0), I.max - other)));
+    if (amount > 0) byKey.set('input3:seating', { key: 'input3:seating', input: 'interior_condition', amount, label_key: INTERIOR_LABELS.seating, params: { rows: [...seatRows].join(','), findings: seatF.length, severe }, zone: seatRows.size > 1 ? 'multiple' : [...seatRows][0], type: 'seating',
+      evidence: seatF.map(f => ({ source: 'current_photos', ref: 'photo_' + f.photo, description: f.sign })) });
   }
   /* диски: gallery_index не ідентичність колеса. Відомі позиції рахуються
      по позиціях (не більше двох), невідома позиція це одне колесо */
@@ -467,6 +492,32 @@ function currentConditionInputs(inp, cfg) {
   out.body.status = out.body.available ? (out.body.items.length ? 'applied' : 'clean') : 'unavailable';
   out.interior.status = out.interior.available ? (out.interior.items.length ? 'applied' : 'clean') : 'unavailable';
   return out;
+}
+
+/* ---------- 2/3б. нинішній стан для основного аналізу ----------
+   Компактний детермінований опис із ТИХ САМИХ знахідок Vision і тих самих
+   правил, що дають бал (дедуп, ряди сидінь, накопичення). Без сум штрафів
+   і формули: модель лише має знати, що кузов чи салон нижче доброго */
+export function currentConditionSummary(currentVisual, cfg = SCORE_CONFIG_V4) {
+  if (!currentVisual) return null;
+  const c = currentConditionInputs({ currentVisual, cvStatus: 'ok' }, cfg);
+  if (!c.body.available && !c.interior.available) return null;
+  const cos = c.body.items.find(i => i.type === 'cosmetic_wear');
+  const glass = c.body.items.find(i => i.type === 'windshield');
+  const notable = c.body.items.filter(i => i.type !== 'cosmetic_wear' && i.type !== 'windshield').map(i => i.type + (i.zone && i.zone !== 'multiple' ? '@' + i.zone : ''));
+  const exterior = !c.body.available ? 'not_shown'
+    : ((cos && (cos.params.widespread || cos.amount >= 0.6)) || notable.length >= 3) ? 'below_good'
+      : (cos || notable.length) ? 'visible_defects' : 'no_notable_issues';
+  const seat = c.interior.items.find(i => i.type === 'seating');
+  const rows = seat ? String(seat.params.rows).split(',').filter(Boolean) : [];
+  const interior = !c.interior.available ? 'not_shown'
+    : (seat && (seat.params.severe || rows.length >= 2)) ? 'below_good'
+      : c.interior.items.length ? 'visible_wear' : 'no_notable_issues';
+  return {
+    exterior: { state: exterior, cosmetic_defects: cos ? cos.params.distinct : 0, areas: cos ? String(cos.params.zones).split(',') : [], other_defects: notable },
+    interior: { state: interior, seat_rows_affected: rows, severe_damage: !!(seat && seat.params.severe) },
+    glass: glass ? { windshield: glass.params.kind } : null,
+  };
 }
 
 /* ---------- 4. інтенсивність пробігу ---------- */

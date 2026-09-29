@@ -19,7 +19,7 @@
 
 import { photoIdentity, photoSetFingerprint, photoVariantWidth } from './vehicle-memory.js';
 
-export const CURRENT_VISUAL_VERSION = 'cv-2026-09-10-v1';
+export const CURRENT_VISUAL_VERSION = 'cv-2026-09-29-v1';
 export const MAX_FRAMES = 24;
 
 export const EXTERIOR_ZONES = ['front', 'rear', 'left_front', 'left_side', 'left_rear', 'right_front', 'right_side', 'right_rear', 'roof', 'wheels'];
@@ -130,7 +130,7 @@ export function buildCurrentVisualSchema() {
       warning_lights: ARR(OBJ({ light: S('string'), gallery_index: GI, sign: S('string'), confidence: E(CONFIDENCE) })),
       readable_messages: ARR(OBJ({ text: S('string'), sign: S('string', 'де саме на кадрі це написано'), gallery_index: GI, confidence: E(CONFIDENCE) })),
     }),
-    summary: S('string', '2-3 речення лише про побачене'),
+    summary: S('string', '2-3 речення лише про побачене; кожен названий тут дефект уже є у findings'),
   });
   schema.$defs = { finding: FINDING, zone: zoneDef };
   return schema;
@@ -170,6 +170,9 @@ frames: gallery_index кадрів, де зона видна. Зона sufficien
 ОДОМЕТР НЕЗАЛЕЖНИЙ: читай цифри з кадру як є; жодних даних оголошення про пробіг у тебе немає і підганяти показання ні під що не треба. Сумнівні цифри: confidence low, а не вигадане число. ОДИНИЦЯ (km чи mi) зараховується ЛИШЕ коли вона написана на самому кадрі поруч із числом, і ти цитуєш її в sign («TOTAL 151975 km»). Якщо одиниці не видно, став unit: "unknown": вгадувати за ринком, країною чи виглядом шкали ЗАБОРОНЕНО.
 
 СТАН ДВИГУНА (engine_state): running лише за прямою ознакою роботи (стрілка тахометра вище нуля, обертів > 0, напис READY/ON у гібрида чи електромобіля); ignition_on_engine_off, коли панель світиться, а тахометр на нулі і горить типовий набір ламп самоперевірки; інакше unknown. Індикатор на панелі це ЛИШЕ спостереження «лампа горить»: несправністю ти його не називаєш і причину не пояснюєш.
+
+УЗГОДЖЕНІСТЬ SUMMARY І ЗНАХІДОК: кожен конкретний видимий фізичний дефект, який ти називаєш у summary, мусить бути окремою знахідкою у findings відповідної зони з кадром і ознакою. Summary не містить дефектів, яких немає у findings.
+СКЛО: скол чи тріщина лобового скла (навіть якщо кадр знятий із салону) записуй у зону front з component windshield: kind chip для маленького локального сколу, kind crack для тріщини; severity minor для маленького сколу поза зоною огляду, moderate або severe для тріщини чи великого пошкодження. Бічне і заднє скло: component glass_other у зоні відповідної сторони.
 
 ДОКАЗОВІСТЬ: будь-яка знахідка, опція, модифікація чи показання панелі БЕЗ конкретного кадру і конкретної видимої ознаки не існує. sign описує те, що видно ("глибока подряпина до ґрунту на задньому лівому бампері"), а не висновок ("бампер ремонтували"). Краще пропустити сумнівне, ніж впевнено вигадати. Мова значень: українська, коротко.`;
 

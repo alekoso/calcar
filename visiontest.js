@@ -124,6 +124,15 @@ const errs = [];
   if (stats.dropped_message_noise !== 2 || stats.dropped_message_weak !== 2 || stats.messages !== 1) errs.push('лічильники повідомлень: ' + JSON.stringify({ n: stats.dropped_message_noise, w: stats.dropped_message_weak, m: stats.messages }));
   for (const noise of ['27 Август 2026', '531 kHz', 'Медиа/Радио', '19:51', 'Навигация', 'ConnectedDrive', 'Мой автомобиль', 'Громкость 12', '107.9 FM']) if (!CV.UI_NOISE_RE.test(noise)) errs.push('UI-шум не відсіюється: ' + noise);
   for (const real of ['Service due in 1200 km', 'Oil level low', 'Автопілот на шосе, Пакет включен', 'Обновление доступно', 'Ключ. Возьмите с собой!', 'Запас ходу 194 km']) if (CV.UI_NOISE_RE.test(real)) errs.push('справжнє повідомлення відсіяне як шум: ' + real);
+  /* 2026-09-30: дефект із summary мусить бути знахідкою; скло із салону пишеться у front/windshield */
+  if (!/УЗГОДЖЕНІСТЬ SUMMARY І ЗНАХІДОК/.test(CV.CURRENT_VISUAL_RULES) || !/Summary не містить дефектів, яких немає у findings/.test(CV.CURRENT_VISUAL_RULES)) errs.push('правила без узгодженості summary і знахідок');
+  if (!/СКЛО: скол чи тріщина лобового скла \(навіть якщо кадр знятий із салону\) записуй у зону front з component windshield/.test(CV.CURRENT_VISUAL_RULES)) errs.push('правила без запису скла');
+  /* блок доказів для основної моделі лишається лише з суттєвими знахідками, дрібні йдуть тільки в Score */
+  {
+    const cvx = { zones: { front: { visibility: 'sufficient', findings: [{ kind: 'chip', severity: 'minor', material: false, component: 'bumper', confidence: 'high', gallery_index: 1, sign: 'скол' }] } } };
+    if (CV.compactCurrentVisual(cvx).condition_findings.length !== 0) errs.push('дрібні знахідки потрапили в блок для основної моделі');
+    if (CV.compactCurrentVisual(cvx, { includeMinor: true }).condition_findings.length !== 1) errs.push('дрібні знахідки не доходять до Score');
+  }
   if (!/ПОВІДОМЛЕННЯ \(readable_messages\)/.test(CV.CURRENT_VISUAL_RULES) || !/ЗАБОРОНЕНО: дата, час/.test(CV.CURRENT_VISUAL_RULES)) errs.push('правила без гейта повідомлень');
   if (cv.coverage.quality_flags.join() !== 'studio' || cv.coverage.note !== null) errs.push('gate coverage');
   if (cv.modification_candidates.length !== 1 || cv.modification_candidates[0].confirmed !== true || cv.notable_visual_features !== undefined) errs.push('gate модифікацій (confirmed) / notable прибрано');

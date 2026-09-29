@@ -125,6 +125,18 @@ const PERSONAL_MARKERS = ['30 000', '50 000', '30000', '50000', 'Бюджет д
   ok(pA.system && pA.system.length > 5000 && pA.user, 'промпт основного виклику не зібрався');
   ok(/purchase_decision/.test(pA.system), 'промпт без purchase_decision');
 
+  /* ---------- нинішній стан: обʼєктивний факт про авто доходить до висновку ---------- */
+  {
+    const cond = { exterior: { state: 'below_good', cosmetic_defects: 4, areas: ['front', 'rear', 'left_side'], other_defects: ['panel_misalignment@right_front'] }, interior: { state: 'below_good', seat_rows_affected: ['front', 'rear'], severe_damage: false }, glass: { windshield: 'chip' } };
+    const dc = C.objectiveDecisionContext({ mileage, condition: cond, ...USER_30K });
+    ok(dc && Object.keys(dc).sort().join() === 'condition,mileage', 'обʼєктивний контекст без стану авто або з особистим: ' + JSON.stringify(Object.keys(dc || {})));
+    const block = C.__renderDecisionContext(dc);
+    ok(/CURRENT_CONDITION/.test(block) && block.includes('below_good') && block.includes('windshield'), 'стан авто не доходить до основного аналізу');
+    ok(/decisionContext = objectiveDecisionContext\(\{ mileage: decisionContext && decisionContext\.mileage, condition \}\)/.test(src) && /currentConditionSummary\(compactCurrentVisual\(cvFeed\.current_visual, \{ includeMinor: true \}\)\)/.test(src), 'зведення стану не підключене перед основним викликом');
+    ok(/НИНІШНІЙ СТАН ЯК ФАКТОР: якщо в контексті є CURRENT_CONDITION зі state below_good/.test(src), 'нема правила: поганий стан не можна описувати як добрий');
+    for (const mk of PERSONAL_MARKERS) ok(!block.includes(mk), 'у контекст зі станом потрапило особисте: ' + mk);
+  }
+
   /* ---------- CTA чату ---------- */
   ok(/<span>Discuss with CalCar AI<\/span><\/button>/.test(page) && /<span class="pd-cta-hint">Discuss the car with your preferences in mind\.<\/span>/.test(page), 'CTA чату без нового тексту');
   const ru = fs.readFileSync('i18n/ru.js', 'utf8'), ua = fs.readFileSync('i18n/ua.js', 'utf8');

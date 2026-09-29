@@ -5,7 +5,7 @@ import { mainResponseFormat, schemaProse } from './check-schema.js';
 import { resolveLocale, languageDirective, errText } from './locale.js';
 import { computeScoreV3, resolveVehicleAge } from './score-v3.js';
 /* Score v4: тінь за замовчуванням, активна лише через CALCAR_SCORE_VERSION=v4 */
-import { computeScoreV4, resolvePowertrainClass, mileageNormKmYear, SCORE_CONFIG_V4, validateDisclosures } from './score-v4.js';
+import { computeScoreV4, resolvePowertrainClass, mileageNormKmYear, SCORE_CONFIG_V4, validateDisclosures, currentConditionSummary } from './score-v4.js';
 /* повнота перевірки (Confidence v1): знімок у момент Check, Score не змінює */
 import { buildConfidenceInput, computeConfidenceV1, CONFIDENCE_CONFIG_V1 } from './confidence.js';
 /* надійність Current Vision: передзавантаження кадрів, обмежений ретрай, gate фіналізації */
@@ -1139,8 +1139,13 @@ export function buildMileageContext(input = {}) {
    взагалі: це не фільтр слів після генерації, а відсутність даних на вході.
    Контекст рішення будується ЛИШЕ з обʼєктивних фактів про авто, і поля
    тіла запиту сюди не читаються. */
-export function objectiveDecisionContext({ mileage = null } = {}) {
-  return mileage ? { mileage } : null;
+export function objectiveDecisionContext({ mileage = null, condition = null } = {}) {
+  /* condition: нинішній фізичний стан із тих самих знахідок Vision, що й бал
+     (currentConditionSummary): теж факт про авто, не про людину */
+  const out = {};
+  if (mileage) out.mileage = mileage;
+  if (condition) out.condition = condition;
+  return Object.keys(out).length ? out : null;
 }
 
 /* ---------- 4г3. Мова висновку: тяжкість і жаргон ----------
@@ -2051,6 +2056,8 @@ const DECISION_RULES = `
 
 ОБʼЄКТИВНІСТЬ ВИСНОВКУ: висновок оцінює ЛИШЕ сам автомобіль і пропозицію, а не те, чи підходить він конкретній людині. Звіт можуть переслати іншій людині з іншим бюджетом і іншими вподобаннями, і висновок мусить лишатися правильним для неї. Тому ЗАБОРОНЕНО згадувати чи припускати бюджет покупця, його вподобання (тип кузова, паливо, динаміка, комфорт), сценарій використання, сімʼю, інші авто, які людина розглядає, і писати "вам", "ваш бюджет", "для вас". Ціну оцінюй лише відносно ринку і цінності самого авто (structured price_context), а не відносно чийогось бюджету. Персональне "чи підходить саме мені" це робота чату CalCar AI, не звіту.
 
+НИНІШНІЙ СТАН ЯК ФАКТОР: якщо в контексті є CURRENT_CONDITION зі state below_good для кузова чи салону, висновок НЕ може описувати нинішній стан як добрий чи доглянутий: коротко назви, що саме нижче доброго (численні дрібні дефекти кузова, плями чи знос сидінь, пошкодження лобового скла), і за потреби додай це в перевірки на огляді. Стан і ДТП в історії це різні речі: відремонтоване ДТП не робить нинішній стан поганим, а чиста історія не робить добрим.
+
 ОЦІНКА CALCAR НЕ Є ВЕРДИКТОМ ПРО ПОКУПКУ: вона міряє ризик і якість самого екземпляра, а не цінність його комплектації чи вигідність ціни. ЗАБОРОНЕНО механічно виводити "низький бал = погана покупка" чи "високий бал = хороша покупка". Низький бал через тяжке ДТП сумісний із висновком "варто розглядати за умов", якщо конфігурація сильна, ціна це вже враховує і рівноцінну заміну знайти важко. Високий бал із бідною комплектацією і зависокою ціною сумісний з "нецікава пропозиція". Якщо це доречно, коротко поясни різницю читачу.
 
 СМІЛИВІСТЬ: не закінчуй кожен висновок універсальним "перевірте на СТО" чи "краще пошукати інший варіант". Машина цікава: прямо скажи, що її варто продовжувати розглядати, і чому. Машина погана: прямо скажи, що плюси не компенсують ризики. Рішення умовне: назви умови конкретно. Перевірки мусять випливати з конкретних проблем ЦІЄЇ машини.
@@ -2076,6 +2083,7 @@ function renderDecisionContext(dc) {
   if (!dc) return '';
   const parts = [];
   if (dc.mileage) parts.push('- MILEAGE_CONTEXT (той самий канонічний вхід, що й вісь Пробіг: одометр, вік, км/рік, референс типу двигуна, смуга використання, історичні точки): ' + JSON.stringify(dc.mileage));
+  if (dc.condition) parts.push('- CURRENT_CONDITION (нинішній фізичний стан, зведений кодом із тих самих знахідок CURRENT_VISUAL, що й Оцінка CalCar; state: no_notable_issues | visible_defects/visible_wear | below_good | not_shown): ' + JSON.stringify(dc.condition));
   if (!parts.length) return '';
   return 'КОНТЕКСТ РІШЕННЯ (зібраний кодом, детермінований; це ВХІД для purchase_decision, а не текст для копіювання у звіт):\n'
     + parts.join('\n')
@@ -3228,6 +3236,11 @@ async function runCheck(req, res, job) {
       cvEvidence = decisionEvidenceBlock(cvFeed.current_visual, cvFeed.photos ? cvFeed.photos.total : null, lang);
       cvConcepts = currentVisualConcepts(cvFeed.current_visual);
       cvFeedCompact = compactCurrentVisual(cvFeed.current_visual);
+      /* нинішній стан у висновок: той самий детермінований розбір, що й у балі */
+      try {
+        const condition = currentConditionSummary(compactCurrentVisual(cvFeed.current_visual, { includeMinor: true }));
+        if (condition) decisionContext = objectiveDecisionContext({ mileage: decisionContext && decisionContext.mileage, condition });
+      } catch (e) { console.log('[decision-context]', JSON.stringify({ op: 'current_condition_summary', error: String((e && e.message) || e).slice(0, 120) })); }
       const typesForContext = (photoSelectorMeta && Array.isArray(photoSelectorMeta.types)) ? photoSelectorMeta.types : null;
       cvContextPositions = contextualPhotoPositions(typesForContext, CONTEXT_PHOTOS_DEFAULT, photoUrls.length);
     }
