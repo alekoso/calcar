@@ -442,6 +442,8 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     const frontOnly = run({ currentVisual: { zones: cvZones, condition_findings: [cvf('driver_area', 'stain', { component: 'seat', photo: 6 }), cvf('front_seats', 'stain', { component: 'seat', photo: 8 })] } });
     eq(sum(frontOnly), 0.4, 'плями лише переднього ряду (у двох зонах Vision) = 0.4');
     eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [minorF('front_seats', 'stain', { component: 'seat' }), minorF('rear_seats', 'stain', { component: 'seat' })] } })), 0.8, 'C: плями переднього і заднього ряду = 0.8');
+    /* дрібний зазор панелі (Vision оцінив як minor) не губиться: це незалежний дефект у накопиченні */
+    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [minorF('front', 'panel_gap_alignment'), minorF('front', 'chip'), minorF('rear', 'chip')] } })), 0.45, 'дрібний зазор панелі входить у накопичення');
     /* G: скло пропорційно, з будь-якої зони кадру, не входить у косметичне накопичення */
     eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [minorF('front', 'chip', { component: 'windshield' })] } })), 0.15, 'G: маленький скол лобового 0.15');
     eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [minorF('dashboard', 'chip', { component: 'windshield' })] } })), 0.15, 'G: скол лобового з кадру салону теж рахується');
@@ -464,8 +466,9 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
        того ж дня hybrid без plug-in = HEV, тег v4-prod-2026-09-26-hev.
        2026-09-29: накопичення дрібних дефектів (WEAR) і перекіс панелі, тег v4-prod-2026-09-29;
        того ж дня сидіння рахуються по рядах (без подвійного рахунку), тег v4-prod-2026-09-29b.
-       2026-09-30: нинішній стан сильніше (сидіння рядами, поширені дефекти, скло), середнє ДТП 0.7, тег v4-prod-2026-09-30 */
-    const EXPECTED = '43ff0f6bf37ac81d149b9a7336f0da85';
+       2026-09-30: нинішній стан сильніше (сидіння рядами, поширені дефекти, скло), середнє ДТП 0.7, тег v4-prod-2026-09-30;
+       того ж дня дрібний зазор панелі в накопиченні, тег v4-prod-2026-09-30b */
+    const EXPECTED = '5cea344066df705286c2cdf7f61edea0';
     if (hash !== EXPECTED) errs.push('SCORE_CONFIG_V4 змінився (md5 ' + hash + '), онови CONFIG_TAG і хеш у тесті');
   }
 

@@ -21,7 +21,7 @@ import { resolveAccidentEvents, sanitizeFindingsV3, zoneClasses } from './score-
 import { ownerEventsConsistent } from './history-owners.js';
 
 export const SCORE_CONFIG_V4 = {
-  CONFIG_TAG: 'v4-prod-2026-09-30',
+  CONFIG_TAG: 'v4-prod-2026-09-30b',
   STARTING_SCORE: 10,
   /* 2026-09-30: відремонтоване ДТП середньої тяжкості 1.2 -> 0.7: історія
      лишається негативом, але не домінує над нинішнім фізичним станом */
@@ -39,7 +39,8 @@ export const SCORE_CONFIG_V4 = {
   WEAR: {
     /* 2026-09-30: від 3 незалежних дефектів 0.15 за кожен; поширені по 3+
        зонах кузова +0.3; кап 1.2 (явно поганий косметичний стан) */
-    exterior: { kinds: ['scratch_scuff', 'chip', 'dent', 'paint_mismatch', 'corrosion', 'plastic_damage', 'trim_damage'], min_distinct: 3, per_distinct: 0.15, widespread_zones: 3, widespread_bonus: 0.3, max: 1.2 },
+    /* дрібний нерівний зазор панелі теж незалежний видимий дефект (суттєвий рахується окремо як panel_misalignment) */
+    exterior: { kinds: ['scratch_scuff', 'chip', 'dent', 'paint_mismatch', 'corrosion', 'plastic_damage', 'trim_damage', 'panel_gap_alignment'], min_distinct: 3, per_distinct: 0.15, widespread_zones: 3, widespread_bonus: 0.3, max: 1.2 },
   },
   MILEAGE_NORM_KM_YEAR: { petrol: 12000, diesel: 18000, hev: 12000, phev: 15000, bev: 16000, unknown: 14000 },
   /* 2026-09-26, погоджена крива власника: штраф за АНОМАЛЬНО інтенсивне
