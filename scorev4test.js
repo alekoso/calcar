@@ -147,12 +147,12 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
       finding('AIRBAGS_DEPLOYED', 'accident_2016', { evidence: [{ source: 'registry', ref: 'reg', description: 'подушки 2016' }] }),
     ] });
     const earlier = two.items.filter(i => i.key === 'accident_earlier_events');
-    eq(earlier.length, 1, 'ранні події: одна строка'); eq(earlier[0].amount, 0.5, 'ранні = 0.5 (не вище за середнє)'); eq(earlier[0].params.count, 2, 'count ранніх');
+    eq(earlier.length, 1, 'ранні події: одна строка'); eq(earlier[0].amount, 1, 'K: додаткова рання аварія = 1.0 (відновлено 2026-10-01)'); eq(earlier[0].params.count, 2, 'count ранніх');
     const latest = two.events.find(e => e.latest);
     eq(latest.anchored, true, 'останнє = змістовне якірне, а не LLM-група з роком');
     eq(latest.v4_category, 'medium', 'категорія останнього від HV');
     const five = run({ auctionMeta: lot(), historicalVisual: hv(), findings: [2015, 2016, 2017, 2018, 2019].map(y => finding('AIRBAGS_DEPLOYED', 'accident_' + y, { evidence: [{ source: 'registry', ref: 'reg', description: 'ДТП ' + y }] })) });
-    eq(five.items.filter(i => i.key === 'accident_earlier_events')[0].amount, 0.5, 'пʼять ранніх теж одна строка 0.5');
+    eq(five.items.filter(i => i.key === 'accident_earlier_events')[0].amount, 1, 'пʼять ранніх теж одна строка 1.0');
     eq(sum(five), sum(two), 'кількість ранніх не змінює суму');
     /* trusted year: лот 2024 проти відмітки 2021 з іншими зонами (окрема подія) */
     const ty = run({ auctionMeta: lot({ sale_date: '2024-03-01', primary_damage: 'FRONT END' }), historicalVisual: hv(), accidentRecord: { recorded: true, note: 'ДТП в 2021 році із пошкодженням задньої частини' } });
@@ -210,11 +210,12 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
   {
     const r = run({ currentVisual: cv([cvf('driver_area', 'wear', { component: 'seat', photo: 1 }), cvf('front_seats', 'wear', { component: 'seat', photo: 2 }), cvf('driver_area', 'wear', { component: 'steering_wheel', photo: 3 }), cvf('rear_seats', 'tear', { component: 'seat' })]) });
     /* 2026-09-30: сидіння рядами (передній + задній 0.8, розрив +0.4), кермо окремо, салон разом не більше 1.2 */
-    eq(itemsOf(r, 'interior_condition').length, 2, 'сидіння одним рядком + кермо');
-    ok(near(sum(r), 1.2, 1.2), 'салон упирається в кап 1.2: ' + sum(r));
+    /* 2026-10-01: обидва ряди 1.0 + кермо 0.2 + значне пошкодження (розрив) до капу салону 1.5 */
+    eq(itemsOf(r, 'interior_condition').length, 3, 'сидіння, кермо, значне пошкодження');
+    ok(near(sum(r), 1.5, 1.5), 'D: салон упирається в кап 1.5: ' + sum(r));
     const pass = run({ currentVisual: cv([cvf('front_passenger', 'wear', { component: 'seat', photo: 21, sign: 'потертість валика пасажирського сидіння' }), cvf('front_seats', 'wear', { component: 'seat', photo: 21, sign: 'потертість валика пасажирського сидіння' })]) });
     /* той самий знос пасажирського сидіння у двох зонах: один дефект, один ряд = 0.4 */
-    eq(sum(pass), 0.4, 'суттєвий знос одного ряду = 0.4, дубль зон не подвоює');
+    eq(sum(pass), 0.6, 'суттєвий знос одного ряду = 0.6, дубль зон не подвоює');
     const ns = run({ currentVisual: cv([], { zones: { sufficient: ['front', 'rear'], partial: [], not_visible: ['driver_area', 'front_seats'] } }) });
     eq(ns.inputs.interior_condition.status, 'unavailable', 'салон не показаний'); ok(ns.unresolved.some(u => u.key === 'interior_not_shown'), 'unresolved interior_not_shown');
   }
@@ -411,8 +412,8 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     eq(V4.currentConditionSummary({ zones: cvZones, condition_findings: [] }).exterior.state, 'no_notable_issues', 'зведення: чисте авто');
     eq(V4.currentConditionSummary({ zones: cvZones, condition_findings: [minorF('front', 'chip')] }).exterior.state, 'no_notable_issues', 'зведення: один скол не робить стан поганим');
     const ck = k => Cc.items.find(i => i.key === k);
-    eq(ck('input2:cosmetic_wear') && ck('input2:cosmetic_wear').amount, 0.9, 'C: 4 незалежні дрібні дефекти у 3 зонах (дубль зони і виду не рахується) = 0.6 + 0.3');
-    eq(ck('input3:seating') && ck('input3:seating').amount, 0.8, 'C: плями переднього і заднього ряду = 0.8');
+    eq(ck('input2:cosmetic_wear') && ck('input2:cosmetic_wear').amount, 1.1, 'G: 4 незалежні дефекти у 3 зонах (дубль зони і виду не рахується) = 0.8 + 0.3');
+    eq(ck('input3:seating') && ck('input3:seating').amount, 1, 'C: плями переднього і заднього ряду = 1.0');
     eq(ck('input2:panel_misalignment:right_front') && ck('input2:panel_misalignment:right_front').amount, 0.4, 'C: перекіс панелі = 0.4');
     eq(Cc.items.filter(i => i.input === 'accident_history').length, B.items.filter(i => i.input === 'accident_history').length, 'стан не дублює ту саму аварію');
     /* D: старе авто з віковим пробігом у відмінному стані: лише вік, без штрафу за пробіг */
@@ -426,10 +427,10 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
       eq(sum(e), 0, 'E: поодинокі дрібні дефекти (чи багато кадрів одного дефекту) без штрафу: ' + few.length);
     }
     /* поріг: три незалежні дефекти = 0.45; кап 0.8; низька впевненість не рахується */
-    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [minorF('front', 'chip'), minorF('front', 'scratch_scuff'), minorF('rear', 'chip')] } })), 0.45, 'кілька незалежних у 2 зонах = 0.45');
-    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [minorF('front', 'chip'), minorF('rear', 'chip'), minorF('left_side', 'scratch_scuff')] } })), 0.75, 'поширені по 3 зонах = 0.45 + 0.3');
+    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [minorF('front', 'chip'), minorF('front', 'scratch_scuff'), minorF('rear', 'chip')] } })), 0.6, 'кілька незалежних у 2 зонах = 0.6');
+    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [minorF('front', 'chip'), minorF('rear', 'chip'), minorF('left_side', 'scratch_scuff')] } })), 0.9, 'F: 3 незалежні у 3 зонах = 0.6 + 0.3');
     const many = ['front', 'rear', 'left_side', 'right_side', 'left_front', 'right_front'].flatMap(z => [minorF(z, 'chip'), minorF(z, 'scratch_scuff')]);
-    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: many } })), 1.2, 'кап накопичення кузова 1.2');
+    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: many } })), 1.5, 'H: кап накопичення кузова 1.5');
     eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [minorF('front', 'chip', { confidence: 'low' }), minorF('rear', 'chip', { confidence: 'low' }), minorF('left_side', 'chip', { confidence: 'low' })] } })), 0, 'низька впевненість не накопичується');
     /* суттєва пляма сидіння вже рахується поштучно: та сама зона в накопиченні не рахується вдруге */
     const seatMat = run({ currentVisual: { zones: cvZones, condition_findings: [cvf('front_seats', 'tear', { component: 'seat' }), minorF('front_seats', 'stain', { component: 'seat' }), minorF('rear_seats', 'stain', { component: 'seat' })] } });
@@ -438,14 +439,14 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
        дрібні плями на вже порахованому ряду не накопичуються (реальний повторний прогін Camry) */
     const rows = run({ currentVisual: { zones: cvZones, condition_findings: [cvf('driver_area', 'stain', { component: 'seat', photo: 6 }), cvf('front_seats', 'stain', { component: 'seat', photo: 8 }),
       minorF('front_passenger', 'stain', { component: 'seat', photo: 9 }), minorF('rear_seats', 'stain', { component: 'seat', photo: 10, confidence: 'medium' })] } });
-    eq(rows.items.filter(i => i.input === 'interior_condition').map(i => i.key + '=' + i.amount).join(), 'input3:seating=0.8', 'передній ряд раз + задній ряд = 0.8');
+    eq(rows.items.filter(i => i.input === 'interior_condition').map(i => i.key + '=' + i.amount).join(), 'input3:seating=1', 'передній ряд раз + задній ряд = 1.0');
     const frontOnly = run({ currentVisual: { zones: cvZones, condition_findings: [cvf('driver_area', 'stain', { component: 'seat', photo: 6 }), cvf('front_seats', 'stain', { component: 'seat', photo: 8 })] } });
-    eq(sum(frontOnly), 0.4, 'плями лише переднього ряду (у двох зонах Vision) = 0.4');
-    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [minorF('front_seats', 'stain', { component: 'seat' }), minorF('rear_seats', 'stain', { component: 'seat' })] } })), 0.8, 'C: плями переднього і заднього ряду = 0.8');
+    eq(sum(frontOnly), 0.6, 'плями лише переднього ряду (у двох зонах Vision) = 0.6');
+    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [minorF('front_seats', 'stain', { component: 'seat' }), minorF('rear_seats', 'stain', { component: 'seat' })] } })), 1, 'C: плями переднього і заднього ряду = 1.0');
     /* дрібний зазор панелі (Vision оцінив як minor) не губиться: це незалежний дефект у накопиченні */
-    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [minorF('front', 'panel_gap_alignment'), minorF('front', 'chip'), minorF('rear', 'chip')] } })), 0.45, 'дрібний зазор панелі входить у накопичення');
+    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [minorF('front', 'panel_gap_alignment'), minorF('front', 'chip'), minorF('rear', 'chip')] } })), 0.6, 'дрібний зазор панелі входить у накопичення');
     /* суттєва потертість без поштучного рядка не губиться: входить у накопичення (реальний прогін Camry) */
-    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [cvf('rear', 'scratch_scuff', { component: 'bumper', photo: 41, sign: 'потертість бампера 41' }), minorF('rear', 'chip'), minorF('front', 'chip')] } })), 0.45, 'moderate потертість у накопиченні');
+    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [cvf('rear', 'scratch_scuff', { component: 'bumper', photo: 41, sign: 'потертість бампера 41' }), minorF('rear', 'chip'), minorF('front', 'chip')] } })), 0.6, 'moderate потертість у накопиченні');
     /* суттєва вмʼятина має поштучний рядок і в накопичення вдруге не йде */
     eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [cvf('rear', 'dent', { photo: 42, sign: 'вмʼятина 42' }), minorF('rear', 'chip'), minorF('front', 'chip')] } })), 0.5, 'вмʼятина окремо, без подвійного рахунку');
     /* G: скло пропорційно, з будь-якої зони кадру, не входить у косметичне накопичення */
@@ -460,18 +461,25 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     /* 2026-09-30: UNKNOWN != BAD. Невідома тяжкість 0.5 і не важча за підтверджене середнє;
        ранні події не вище за середнє; тяжкі рівні без змін */
     eq(C.ACCIDENT.unknown, 0.5, 'невідома тяжкість 0.5'); ok(C.ACCIDENT.unknown <= C.ACCIDENT.medium, 'невідома не важча за середнє');
-    ok(C.ACCIDENT.earlier_events <= C.ACCIDENT.medium, 'ранні події не важчі за середнє');
+    eq(C.ACCIDENT.earlier_events, 1, 'K: додаткова рання аварія 1.0'); eq(C.ACCIDENT.unknown, 0.5, 'L: одна подія невідомої тяжкості 0.5'); eq(C.ACCIDENT.medium, 0.7, 'M: підтверджене середнє 0.7');
     for (const [k, v] of [['medium', 0.7], ['heavy', 2.5], ['total', 5.0], ['fire', 3.0], ['flood', 2.5], ['unrepaired_seller', 2.5], ['light', 0.4]]) eq(C.ACCIDENT[k], v, 'рівень ДТП ' + k + ' не змінений');
     /* сидіння по рядах: знахідка переднього ряду, заднього, обох; чистий ряд без знахідки; дублі кадрів ряду не множать */
     const seatRowF = (zone, photo) => cvf(zone, 'stain', { component: 'seat', photo, sign: 'помітні плями на подушці ' + zone + ' ' + photo });
-    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [seatRowF('front_seats', 31)] } })), 0.4, 'лише передній ряд = 0.4');
-    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [seatRowF('rear_seats', 32)] } })), 0.4, 'лише задній ряд = 0.4');
-    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [seatRowF('front_seats', 31), seatRowF('rear_seats', 32)] } })), 0.8, 'обидва ряди = 0.8');
+    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [seatRowF('front_seats', 31)] } })), 0.6, 'B: лише передній ряд = 0.6');
+    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [seatRowF('rear_seats', 32)] } })), 0.6, 'B: лише задній ряд = 0.6');
+    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [seatRowF('front_seats', 31), seatRowF('rear_seats', 32)] } })), 1, 'C: обидва ряди = 1.0');
     eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [] } })), 0, 'чисті ряди без знахідок = 0');
     /* ряд, де модель окремо підтвердила помітний знос (row_confirmed), не є поодинокою дрібною плямою */
-    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [minorF('rear_seats', 'stain', { component: 'seat', row_confirmed: true })] } })), 0.4, 'підтверджений ряд = 0.4');
+    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [minorF('rear_seats', 'stain', { component: 'seat', row_confirmed: true })] } })), 0.6, 'підтверджений ряд = 0.6');
     eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [minorF('rear_seats', 'stain', { component: 'seat' })] } })), 0, 'одна дрібна пляма без підтвердження ряду = 0');
-    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [seatRowF('rear_seats', 32), seatRowF('rear_seats', 33), seatRowF('rear_seats', 34)] } })), 0.4, 'кілька кадрів одного ряду = 0.4');
+    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [seatRowF('rear_seats', 32), seatRowF('rear_seats', 33), seatRowF('rear_seats', 34)] } })), 0.6, 'кілька кадрів одного ряду = 0.6');
+    /* 2026-10-01: D значне фізичне пошкодження салону окремо, звичайна пляма ним не є; E 1-2 дефекти кузова 0; J вмʼятина/зазор не вдруге */
+    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [cvf('doors', 'broken_component', { component: 'door_card', photo: 51, sign: 'зламана накладка дверної карти' })] } })), 0.5, 'D: зламана оздоба салону = 0.5');
+    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [cvf('front_seats', 'stain', { component: 'seat', photo: 52, sign: 'помітна пляма 52' })] } })), 0.6, 'D: суттєва пляма це ряд, а не значне пошкодження');
+    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [cvf('front_seats', 'tear', { component: 'seat', photo: 53, sign: 'розрив 53' }), cvf('rear_seats', 'stain', { component: 'seat', photo: 54, sign: 'плями 54' }), cvf('dashboard', 'wear', { component: 'steering_wheel', photo: 55, sign: 'знос керма 55' })] } })), 1.5, 'D: кап салону 1.5');
+    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [minorF('front', 'chip'), minorF('rear', 'scratch_scuff')] } })), 0, 'E: два звичайні дефекти без накопичення');
+    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [cvf('front', 'panel_gap_alignment', { photo: 56, sign: 'зазор 56' }), minorF('front', 'chip'), minorF('rear', 'chip')] } })), 0.4, 'J: суттєвий зазор окремо, у накопичення не йде');
+    for (const [k, v] of [['heavy', 2.5], ['total', 5.0], ['fire', 3.0], ['flood', 2.5]]) eq(C.ACCIDENT[k], v, 'N: ' + k + ' без змін');
     /* страховий випадок без деталей: у unresolved, без штрафу */
     const ins = run({ evidence: { ...baseEv, insurance_case_recorded: true } });
     ok(ins.unresolved.some(u => u.key === 'insurance_case_recorded') && sum(ins) === sum(run({})), 'страховий випадок: позначка без штрафу');
@@ -487,7 +495,7 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
        того ж дня сидіння рахуються по рядах (без подвійного рахунку), тег v4-prod-2026-09-29b.
        2026-09-30: нинішній стан сильніше (сидіння рядами, поширені дефекти, скло), середнє ДТП 0.7, тег v4-prod-2026-09-30;
        того ж дня дрібний зазор панелі в накопиченні, тег v4-prod-2026-09-30b */
-    const EXPECTED = '8c58bc3c51b287819abc63843fbf6cf5';
+    const EXPECTED = '7242787dc7c20af750da1c4ea057d299';
     if (hash !== EXPECTED) errs.push('SCORE_CONFIG_V4 змінився (md5 ' + hash + '), онови CONFIG_TAG і хеш у тесті');
   }
 
