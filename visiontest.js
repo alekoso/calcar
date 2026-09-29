@@ -124,6 +124,32 @@ const errs = [];
   if (stats.dropped_message_noise !== 2 || stats.dropped_message_weak !== 2 || stats.messages !== 1) errs.push('лічильники повідомлень: ' + JSON.stringify({ n: stats.dropped_message_noise, w: stats.dropped_message_weak, m: stats.messages }));
   for (const noise of ['27 Август 2026', '531 kHz', 'Медиа/Радио', '19:51', 'Навигация', 'ConnectedDrive', 'Мой автомобиль', 'Громкость 12', '107.9 FM']) if (!CV.UI_NOISE_RE.test(noise)) errs.push('UI-шум не відсіюється: ' + noise);
   for (const real of ['Service due in 1200 km', 'Oil level low', 'Автопілот на шосе, Пакет включен', 'Обновление доступно', 'Ключ. Возьмите с собой!', 'Запас ходу 194 km']) if (CV.UI_NOISE_RE.test(real)) errs.push('справжнє повідомлення відсіяне як шум: ' + real);
+  /* 2026-09-30: структурна відповідь по рядах seat_rows стає знахідкою ряду, якщо її нема */
+  {
+    const frames = [5, 7, 9].map(gi => ({ gallery_index: gi, identity: 'cdn/x' + gi + '.webp' }));
+    const row = (o = {}) => ({ visible: true, meaningful_deterioration: true, kind: 'stain', gallery_index: 5, sign: 'темні плями на подушці сидіння водія', confidence: 'high', ...o });
+    const clean = { visible: true, meaningful_deterioration: false, kind: 'none', gallery_index: null, sign: null, confidence: 'high' };
+    const seatZ = (cv, z) => cv.zones[z].findings.filter(f => f.component === 'seat');
+    const g = seat_rows => CV.gateCurrentVisual({ zones: {}, seat_rows }, frames).current_visual;
+    let cv1 = g({ front: row(), rear: clean });
+    if (seatZ(cv1, 'front_seats').length !== 1 || !seatZ(cv1, 'front_seats')[0].row_confirmed || seatZ(cv1, 'rear_seats').length) errs.push('seat_rows: передній ряд не став знахідкою або задній вигаданий');
+    cv1 = g({ front: clean, rear: row({ gallery_index: 9, sign: 'плями на задньому дивані' }) });
+    if (seatZ(cv1, 'rear_seats').length !== 1 || seatZ(cv1, 'front_seats').length) errs.push('seat_rows: задній ряд не став знахідкою');
+    cv1 = g({ front: row(), rear: row({ gallery_index: 9, sign: 'плями на задньому дивані' }) });
+    if (seatZ(cv1, 'front_seats').length !== 1 || seatZ(cv1, 'rear_seats').length !== 1) errs.push('seat_rows: обидва ряди не стали знахідками');
+    cv1 = g({ front: clean, rear: clean });
+    if (seatZ(cv1, 'front_seats').length || seatZ(cv1, 'rear_seats').length) errs.push('seat_rows: чисті ряди дали знахідки');
+    /* ряд уже має знахідку моделі: нова не додається, наявна позначається */
+    const cv2 = CV.gateCurrentVisual({ zones: { driver_area: { visibility: 'sufficient', frames: [5], findings: [{ kind: 'stain', severity: 'minor', component: 'seat', wheel_position: null, sign: 'темна пляма на подушці водія', gallery_index: 5, confidence: 'high' }] } }, seat_rows: { front: row(), rear: clean } }, frames).current_visual;
+    if (seatZ(cv2, 'front_seats').length || seatZ(cv2, 'driver_area').length !== 1 || !seatZ(cv2, 'driver_area')[0].row_confirmed) errs.push('seat_rows: дубль при наявній знахідці ряду');
+    /* кадр не з набору: відповідь без доказу знахідкою не стає */
+    if (seatZ(g({ front: row({ gallery_index: 99 }), rear: clean }), 'front_seats').length) errs.push('seat_rows: знахідка без реального кадру');
+    if (!CV.buildCurrentVisualSchema().properties.seat_rows) errs.push('схема Vision без seat_rows');
+    if (!/ОБОВʼЯЗКОВО заповни в seat_rows\.front і seat_rows\.rear/.test(CV.CURRENT_VISUAL_RULES)) errs.push('правила без відповіді seat_rows');
+    const comp = CV.compactCurrentVisual(g({ front: row(), rear: row({ gallery_index: 9, sign: 'плями на задньому дивані' }) }), { includeMinor: true });
+    const seatsC = comp.condition_findings.filter(f => f.component === 'seat');
+    if (seatsC.length !== 2 || !seatsC.every(f => f.row_confirmed === true)) errs.push('row_confirmed не доходить до Score');
+  }
   /* 2026-09-30: сидіння оглядаються по рядах незалежно, у тому самому одному виклику Vision */
   if (!/ОГЛЯД СИДІНЬ ПО РЯДАХ \(обовʼязково, незалежно один від одного\)/.test(CV.CURRENT_VISUAL_RULES) || !/Знахідка по одному ряду не замінює огляду іншого ряду/.test(CV.CURRENT_VISUAL_RULES)
     || !/Якщо ряд чистий або не видний, знахідку для нього не створюй/.test(CV.CURRENT_VISUAL_RULES)) errs.push('правила без незалежного огляду рядів сидінь');

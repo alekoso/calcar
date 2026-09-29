@@ -21,7 +21,7 @@ import { resolveAccidentEvents, sanitizeFindingsV3, zoneClasses } from './score-
 import { ownerEventsConsistent } from './history-owners.js';
 
 export const SCORE_CONFIG_V4 = {
-  CONFIG_TAG: 'v4-prod-2026-09-30c',
+  CONFIG_TAG: 'v4-prod-2026-09-30d',
   STARTING_SCORE: 10,
   /* 2026-09-30: відремонтоване ДТП середньої тяжкості 1.2 -> 0.7: історія
      лишається негативом, але не домінує над нинішнім фізичним станом */
@@ -476,7 +476,9 @@ function currentConditionInputs(inp, cfg) {
   const I = cfg.INTERIOR;
   const seatF = uniq.filter(isSeatFinding);
   const seatRows = new Set(seatF.map(f => seatRow(f.zone)));
-  const isolated = seatF.length === 1 && !isMaterial(seatF[0]);
+  /* одна дрібна пляма на весь салон не рахується, якщо лише модель не
+     підтвердила помітний знос цього ряду окремою відповіддю (row_confirmed) */
+  const isolated = seatF.length === 1 && !isMaterial(seatF[0]) && seatF[0].row_confirmed !== true;
   if (seatF.length && !isolated) {
     const severe = seatF.some(f => f.severity === 'severe' || (f.kind === 'tear' && isMaterial(f)));
     const other = [...byKey.values()].filter(i => i.input === 'interior_condition').reduce((sum, i) => sum + i.amount, 0);

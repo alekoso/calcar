@@ -19,7 +19,7 @@
 
 import { photoIdentity, photoSetFingerprint, photoVariantWidth } from './vehicle-memory.js';
 
-export const CURRENT_VISUAL_VERSION = 'cv-2026-09-30-v1';
+export const CURRENT_VISUAL_VERSION = 'cv-2026-09-30-v2';
 export const MAX_FRAMES = 24;
 
 export const EXTERIOR_ZONES = ['front', 'rear', 'left_front', 'left_side', 'left_rear', 'right_front', 'right_side', 'right_rear', 'roof', 'wheels'];
@@ -84,6 +84,16 @@ const FINDING = OBJ({
   gallery_index: GI,
   confidence: E(CONFIDENCE),
 });
+/* обовʼязкова відповідь по рядах сидінь: окреме структуроване питання для
+   кожного ряду, щоб огляд не залежав від того, чи модель згадала ряд */
+const SEAT_ROW = OBJ({
+  visible: S('boolean', 'чи видно цей ряд хоча б на одному кадрі'),
+  meaningful_deterioration: S('boolean', 'чи видно на цьому ряду помітні плями, знебарвлення, потертості чи знос оббивки'),
+  kind: E(['stain', 'wear', 'tear', 'none']),
+  gallery_index: { type: ['integer', 'null'], description: 'найкращий кадр цього ряду або null' },
+  sign: NS('конкретна видима ознака на цьому кадрі або null'),
+  confidence: E(CONFIDENCE),
+});
 const ZONE = OBJ({
   visibility: E(VISIBILITY),
   frames: ARR(S('integer'), 'gallery_index кадрів, де ця зона видна'),
@@ -105,6 +115,7 @@ export function buildCurrentVisualSchema() {
       note: NS('1 речення про обмеження зйомки або null'),
     }),
     zones: OBJ(zones),
+    seat_rows: OBJ({ front: SEAT_ROW, rear: SEAT_ROW }),
     equipment_visual: ARR(OBJ({
       normalized_name: S('string', 'коротка нормалізована назва: "Harman Kardon", "панорамний дах", "HUD"'),
       visible_label_or_feature: S('string', 'що саме видно: логотип, кнопка, елемент'),
@@ -159,7 +170,7 @@ frames: gallery_index кадрів, де зона видна. Зона sufficien
 Різнотон і перефарбування: відблиск, різне освітлення чи кут зйомки НЕ є ознакою. Якщо єдине, що ти бачиш, це "виглядає інакше через світло", знахідку не створюй або став confidence low.
 
 ЩО ШУКАТИ ВСЕРЕДИНІ: помітний знос керма (полірована шкіра, протертості), знос/тріщини/розриви сидінь, пошкодження пластику, дверних карт і накладок, помітні плями, пошкодження стелі, зламані чи відсутні елементи, інші очевидні візуальні проблеми. Дуже виражений знос фіксуй як факт (kind wear, severity за видимим ступенем), але НЕ роби висновків про реальний пробіг.
-ОГЛЯД СИДІНЬ ПО РЯДАХ (обовʼязково, незалежно один від одного): окремо переглянь ПЕРЕДНІЙ ряд (сидіння водія і пасажира) і ЗАДНІЙ ряд (задній диван) по ВСІХ кадрах, де цей ряд видно. Для кожного ряду окремо: якщо видно помітні плями, знебарвлення, потертості чи знос оббивки, створи знахідку kind stain або wear, component seat, у зоні front_seats для переднього ряду (driver_area чи front_passenger, якщо стосується лише одного сидіння) або rear_seats для заднього, з кадром і конкретною ознакою. Знахідка по одному ряду не замінює огляду іншого ряду. Якщо ряд чистий або не видний, знахідку для нього не створюй і нічого не вигадуй. Кілька кадрів того самого ряду це одна знахідка з найкращим кадром.
+ОГЛЯД СИДІНЬ ПО РЯДАХ (обовʼязково, незалежно один від одного): окремо переглянь ПЕРЕДНІЙ ряд (сидіння водія і пасажира) і ЗАДНІЙ ряд (задній диван) по ВСІХ кадрах, де цей ряд видно. Для кожного ряду окремо: якщо видно помітні плями, знебарвлення, потертості чи знос оббивки, створи знахідку kind stain або wear, component seat, у зоні front_seats для переднього ряду (driver_area чи front_passenger, якщо стосується лише одного сидіння) або rear_seats для заднього, з кадром і конкретною ознакою. Знахідка по одному ряду не замінює огляду іншого ряду. Якщо ряд чистий або не видний, знахідку для нього не створюй і нічого не вигадуй. Кілька кадрів того самого ряду це одна знахідка з найкращим кадром. Відповідь по кожному ряду ОБОВʼЯЗКОВО заповни в seat_rows.front і seat_rows.rear: visible, meaningful_deterioration, kind, найкращий кадр і ознака (для чистого чи невидимого ряду: kind none, кадр і ознака null).
 
 КОМПЛЕКТАЦІЯ (equipment_visual): опції, які можна ПІДТВЕРДИТИ фото: читабельний бренд акустики (Harman Kardon, Burmester, Bang & Olufsen, Bose, Bowers & Wilkins), панорамний дах, HUD (проектор на торпедо або проекція на склі), кнопки вентиляції/підігріву/масажу/памʼяті сидінь, електроприводи сидінь, апаратура чи кнопки адаптивного круїзу, індикатори контролю сліпих зон у дзеркалах, камери кругового огляду (обʼєктиви у дзеркалах, решітці, кришці багажника), задній клімат, цифрова приладова панель, спортивні сидіння, карбонові вставки, алькантара (лише за читабельним маркуванням чи однозначною фактурою), брендовані елементи інтерʼєру, інші явно видимі важливі опції. Для кожної: normalized_name, що саме видно, кадр, ознака, confidence. Бренд називай ЛИШЕ за читабельним логотипом; інакше клас ("преміум-акустика з окремими твітерами"). Ти НЕ вирішуєш, чи опція базова, платна, пакетна, рідкісна чи дорога: лише "видно ось це".
 
@@ -266,6 +277,28 @@ export function gateCurrentVisual(raw, frames) {
     let visibility = VISIBILITY.includes(zi.visibility) ? zi.visibility : 'not_visible';
     if (visibility !== 'not_visible' && !frs.length && !findings.length) visibility = 'not_visible';
     out.zones[z] = { visibility, frames: frs, findings };
+  }
+  /* ряди сидінь: підтверджений моделлю помітний знос ряду стає знахідкою цього
+     ряду, якщо її ще нема; наявні знахідки ряду позначаються row_confirmed */
+  const ROW_ZONES = { front: ['front_seats', 'driver_area', 'front_passenger'], rear: ['rear_seats'] };
+  const seatRowsIn = r.seat_rows && typeof r.seat_rows === 'object' ? r.seat_rows : {};
+  out.seat_rows = {};
+  for (const row of ['front', 'rear']) {
+    const q = seatRowsIn[row] && typeof seatRowsIn[row] === 'object' ? seatRowsIn[row] : {};
+    const kind = ['stain', 'wear', 'tear'].includes(q.kind) ? q.kind : 'none';
+    const meaningful = q.visible === true && q.meaningful_deterioration === true && kind !== 'none' && conf(q.confidence) !== 'low';
+    out.seat_rows[row] = { visible: q.visible === true, meaningful, kind, gallery_index: Number.isInteger(q.gallery_index) ? q.gallery_index : null };
+    if (!meaningful) continue;
+    const rowFindings = ROW_ZONES[row].flatMap(z => (out.zones[z] ? out.zones[z].findings : []).filter(f => f.component === 'seat' && ['stain', 'wear', 'tear'].includes(f.kind)));
+    if (rowFindings.length) { for (const f of rowFindings) f.row_confirmed = true; continue; }
+    const rf = withRef(q);
+    if (!rf) continue;
+    const zone = row === 'front' ? 'front_seats' : 'rear_seats';
+    const z = out.zones[zone];
+    z.findings.push({ kind, severity: 'minor', component: 'seat', wheel_position: null, sign: str(q.sign).slice(0, 240), ...rf, confidence: conf(q.confidence), material: false, row_confirmed: true });
+    if (!z.frames.includes(rf.gallery_index)) z.frames.push(rf.gallery_index);
+    if (z.visibility === 'not_visible') z.visibility = 'partial';
+    stats.findings++; stats.seat_rows_filled = (stats.seat_rows_filled || 0) + 1;
   }
   for (const e of Array.isArray(r.equipment_visual) ? r.equipment_visual : []) {
     if (!e || !str(e.normalized_name)) continue;
@@ -667,7 +700,7 @@ export function compactCurrentVisual(cv, { includeMinor = false } = {}) {
   for (const [zone, z] of zones) {
     for (const f of z.findings || []) {
       if (!f.material && !includeMinor) continue;
-      findings.push({ zone, kind: f.kind, severity: f.severity, component: f.component || 'other', wheel_position: f.wheel_position || null, photo: f.gallery_index + 1, sign: f.sign, confidence: f.confidence });
+      findings.push({ zone, kind: f.kind, severity: f.severity, component: f.component || 'other', wheel_position: f.wheel_position || null, photo: f.gallery_index + 1, sign: f.sign, ...(f.row_confirmed ? { row_confirmed: true } : {}), confidence: f.confidence });
     }
   }
   const equipment = (cv.equipment_visual || []).map(e => ({ concept: e.concept, name: e.normalized_name, photo: e.gallery_index + 1, sign: e.sign, confidence: e.confidence }));

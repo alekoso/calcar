@@ -464,6 +464,9 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [seatRowF('rear_seats', 32)] } })), 0.4, 'лише задній ряд = 0.4');
     eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [seatRowF('front_seats', 31), seatRowF('rear_seats', 32)] } })), 0.8, 'обидва ряди = 0.8');
     eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [] } })), 0, 'чисті ряди без знахідок = 0');
+    /* ряд, де модель окремо підтвердила помітний знос (row_confirmed), не є поодинокою дрібною плямою */
+    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [minorF('rear_seats', 'stain', { component: 'seat', row_confirmed: true })] } })), 0.4, 'підтверджений ряд = 0.4');
+    eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [minorF('rear_seats', 'stain', { component: 'seat' })] } })), 0, 'одна дрібна пляма без підтвердження ряду = 0');
     eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [seatRowF('rear_seats', 32), seatRowF('rear_seats', 33), seatRowF('rear_seats', 34)] } })), 0.4, 'кілька кадрів одного ряду = 0.4');
     /* страховий випадок без деталей: у unresolved, без штрафу */
     const ins = run({ evidence: { ...baseEv, insurance_case_recorded: true } });
@@ -480,7 +483,7 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
        того ж дня сидіння рахуються по рядах (без подвійного рахунку), тег v4-prod-2026-09-29b.
        2026-09-30: нинішній стан сильніше (сидіння рядами, поширені дефекти, скло), середнє ДТП 0.7, тег v4-prod-2026-09-30;
        того ж дня дрібний зазор панелі в накопиченні, тег v4-prod-2026-09-30b */
-    const EXPECTED = 'a7b3765a37ce41fd8322ef74a1d1e0b9';
+    const EXPECTED = 'c86cd5b6e6d3030fb34eb82ed46c0920';
     if (hash !== EXPECTED) errs.push('SCORE_CONFIG_V4 змінився (md5 ' + hash + '), онови CONFIG_TAG і хеш у тесті');
   }
 
