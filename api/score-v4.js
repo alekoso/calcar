@@ -21,7 +21,7 @@ import { resolveAccidentEvents, sanitizeFindingsV3, zoneClasses } from './score-
 import { ownerEventsConsistent } from './history-owners.js';
 
 export const SCORE_CONFIG_V4 = {
-  CONFIG_TAG: 'v4-prod-2026-09-29',
+  CONFIG_TAG: 'v4-prod-2026-09-29b',
   STARTING_SCORE: 10,
   ACCIDENT: { light: 0.4, medium: 1.2, heavy: 2.5, total: 5.0, unknown: 1.5, unrepaired_seller: 2.5, earlier_events: 1.0, flood: 2.5, fire: 3.0 },
   BODY: { dent: 0.5, corrosion: 0.6, headlight: 0.4, windshield: 0.3, broken_element: 0.3, missing_part: 0.3, wheel: 0.15, wheel_max: 0.3, panel_misalignment: 0.4 },
@@ -325,6 +325,9 @@ const ACCIDENT_LABELS = {
 const EXTERIOR_ZONES = new Set(['front', 'rear', 'left_front', 'left_side', 'left_rear', 'right_front', 'right_side', 'right_rear', 'roof', 'wheels', 'engine_bay', 'underbody']);
 const INTERIOR_ZONES = new Set(['driver_area', 'front_passenger', 'front_seats', 'rear_seats', 'dashboard', 'center_console', 'doors', 'trunk']);
 const SEAT_ZONES = new Set(['front_seats', 'rear_seats', 'driver_area', 'front_passenger']);
+/* ряд сидінь: driver_area, front_passenger і front_seats це той самий
+   передній ряд (Vision кладе одну пляму то в одну, то в іншу зону) */
+const seatRow = zone => (zone === 'rear_seats' ? 'rear' : (zone === 'driver_area' || zone === 'front_passenger' || zone === 'front_seats') ? 'front' : zone);
 export function cvZoneClasses(zone) {
   const s = new Set();
   const z = String(zone || '');
@@ -405,7 +408,8 @@ function currentConditionInputs(inp, cfg) {
     }
     const it = mapInteriorFinding(f);
     if (it) {
-      const key = it === 'seat_damage' ? 'input3:seat_damage:' + f.zone : 'input3:' + it;
+      /* пошкодження оббивки рахується раз на ряд сидінь, не раз на зону */
+      const key = it === 'seat_damage' ? 'input3:seat_damage:' + seatRow(f.zone) : 'input3:' + it;
       const cur = byKey.get(key);
       if (cur) { cur.evidence.push({ source: 'current_photos', ref: 'photo_' + f.photo, description: f.sign }); continue; }
       byKey.set(key, { key, input: 'interior_condition', amount: cfg.INTERIOR[it], label_key: INTERIOR_LABELS[it], params: { zone: f.zone, type: it }, zone: f.zone, type: it,
@@ -430,10 +434,11 @@ function currentConditionInputs(inp, cfg) {
     byKey.set('input2:cosmetic_wear', { key: 'input2:cosmetic_wear', input: 'body_condition', amount, label_key: 'Body: multiple cosmetic defects', params: { distinct: extDistinct.size, zones: [...new Set([...extDistinct.keys()].map(k => k.split('|')[0]))].join(',') }, zone: 'multiple', zone_classes: [], type: 'cosmetic_wear',
       evidence: [...extDistinct.values()].map(f => ({ source: 'current_photos', ref: 'photo_' + f.photo, description: f.sign })) });
   }
-  /* салон: зони з уже порахованою суттєвою знахідкою не рахуються вдруге */
-  const interiorTaken = new Set([...byKey.values()].filter(i => i.input === 'interior_condition').map(i => i.zone));
-  const intWear = minor.filter(f => INTERIOR_ZONES.has(f.zone) && W.interior.kinds.includes(f.kind) && W.interior.components.includes(f.component || 'other') && !interiorTaken.has(f.zone));
-  const intZones = new Set(intWear.map(f => f.zone === 'driver_area' ? 'front_seats' : f.zone));
+  /* салон: ряд сидінь (чи інша зона) з уже порахованою суттєвою знахідкою
+     не рахується вдруге */
+  const interiorTaken = new Set([...byKey.values()].filter(i => i.input === 'interior_condition').map(i => seatRow(i.zone)));
+  const intWear = minor.filter(f => INTERIOR_ZONES.has(f.zone) && W.interior.kinds.includes(f.kind) && W.interior.components.includes(f.component || 'other') && !interiorTaken.has(seatRow(f.zone)));
+  const intZones = new Set(intWear.map(f => seatRow(f.zone)));
   if (intZones.size >= W.interior.min_zones || intWear.length >= W.interior.min_findings) {
     byKey.set('input3:upholstery_wear', { key: 'input3:upholstery_wear', input: 'interior_condition', amount: W.interior.amount, label_key: 'Interior: visibly worn or stained upholstery', params: { findings: intWear.length, zones: [...intZones].join(',') }, zone: 'multiple', type: 'upholstery_wear',
       evidence: intWear.map(f => ({ source: 'current_photos', ref: 'photo_' + f.photo, description: f.sign })) });

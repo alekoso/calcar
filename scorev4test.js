@@ -417,6 +417,11 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     /* суттєва пляма сидіння вже рахується поштучно: та сама зона в накопиченні не рахується вдруге */
     const seatMat = run({ currentVisual: { zones: cvZones, condition_findings: [cvf('front_seats', 'tear', { component: 'seat' }), minorF('front_seats', 'stain', { component: 'seat' }), minorF('rear_seats', 'stain', { component: 'seat' })] } });
     ok(!seatMat.items.some(i => i.key === 'input3:upholstery_wear'), 'зона з суттєвим пошкодженням сидіння не рахується двічі');
+    /* той самий стан передніх сидінь у зонах driver_area і front_seats: один ряд, один штраф;
+       дрібні плями на вже порахованому ряду не накопичуються (реальний повторний прогін Camry) */
+    const rows = run({ currentVisual: { zones: cvZones, condition_findings: [cvf('driver_area', 'stain', { component: 'seat', photo: 6 }), cvf('front_seats', 'stain', { component: 'seat', photo: 8 }),
+      minorF('front_passenger', 'stain', { component: 'seat', photo: 9 }), minorF('rear_seats', 'stain', { component: 'seat', photo: 10, confidence: 'medium' })] } });
+    eq(rows.items.filter(i => i.input === 'interior_condition').map(i => i.key + '=' + i.amount).join(), 'input3:seat_damage:front=0.4', 'передній ряд рахується раз');
     /* страховий випадок без деталей: у unresolved, без штрафу */
     const ins = run({ evidence: { ...baseEv, insurance_case_recorded: true } });
     ok(ins.unresolved.some(u => u.key === 'insurance_case_recorded') && sum(ins) === sum(run({})), 'страховий випадок: позначка без штрафу');
@@ -428,8 +433,9 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     /* 2026-09-25: у ELIGIBILITY додано listing_identity_photos (v4-prod-2026-09-25).
        2026-09-26: погоджена крива інтенсивності пробігу, тег v4-prod-2026-09-26;
        того ж дня hybrid без plug-in = HEV, тег v4-prod-2026-09-26-hev.
-       2026-09-29: накопичення дрібних дефектів (WEAR) і перекіс панелі, тег v4-prod-2026-09-29 */
-    const EXPECTED = '9634696a8257649218f1de26f5a679a5';
+       2026-09-29: накопичення дрібних дефектів (WEAR) і перекіс панелі, тег v4-prod-2026-09-29;
+       того ж дня сидіння рахуються по рядах (без подвійного рахунку), тег v4-prod-2026-09-29b */
+    const EXPECTED = '14dc312090a252006e9e4ac301d24596';
     if (hash !== EXPECTED) errs.push('SCORE_CONFIG_V4 змінився (md5 ' + hash + '), онови CONFIG_TAG і хеш у тесті');
   }
 
