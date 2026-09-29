@@ -21,11 +21,18 @@ import { resolveAccidentEvents, sanitizeFindingsV3, zoneClasses } from './score-
 import { ownerEventsConsistent } from './history-owners.js';
 
 export const SCORE_CONFIG_V4 = {
-  CONFIG_TAG: 'v4-prod-2026-09-26-hev',
+  CONFIG_TAG: 'v4-prod-2026-09-29',
   STARTING_SCORE: 10,
   ACCIDENT: { light: 0.4, medium: 1.2, heavy: 2.5, total: 5.0, unknown: 1.5, unrepaired_seller: 2.5, earlier_events: 1.0, flood: 2.5, fire: 3.0 },
-  BODY: { dent: 0.5, corrosion: 0.6, headlight: 0.4, windshield: 0.3, broken_element: 0.3, missing_part: 0.3, wheel: 0.15, wheel_max: 0.3 },
+  BODY: { dent: 0.5, corrosion: 0.6, headlight: 0.4, windshield: 0.3, broken_element: 0.3, missing_part: 0.3, wheel: 0.15, wheel_max: 0.3, panel_misalignment: 0.4 },
   INTERIOR: { seat_damage: 0.4, driver_seat_wear: 0.25, steering_wheel_wear: 0.2 },
+  /* 2026-09-29: накопичення дрібних ознак зношеності. Одна дрібна знахідка
+     штрафу не дає; кілька НЕЗАЛЕЖНИХ дрібних дефектів по кузову (різні зони
+     чи види) або плями і знос сидінь у кількох зонах салону це вже стан авто */
+  WEAR: {
+    exterior: { kinds: ['scratch_scuff', 'chip', 'dent', 'paint_mismatch', 'corrosion', 'plastic_damage', 'trim_damage'], min_distinct: 3, per_distinct: 0.15, max: 0.8 },
+    interior: { kinds: ['stain', 'wear', 'tear'], components: ['seat', 'steering_wheel', 'door_card', 'dashboard', 'headliner'], min_zones: 2, min_findings: 3, amount: 0.5 },
+  },
   MILEAGE_NORM_KM_YEAR: { petrol: 12000, diesel: 18000, hev: 12000, phev: 15000, bev: 16000, unknown: 14000 },
   /* 2026-09-26, погоджена крива власника: штраф за АНОМАЛЬНО інтенсивне
      використання відносно віку і типу двигуна (не ринкове порівняння, не
@@ -344,6 +351,9 @@ export function mapBodyFinding(f) {
   if ((k === 'broken_component' || k === 'plastic_damage' || k === 'crack') && ['bumper', 'mirror', 'grille', 'trim', 'glass_other'].includes(c)) return 'broken_element';
   if (k === 'missing_component') return 'missing_part';
   if (k === 'wheel_damage' && f.zone === 'wheels') return 'wheel';
+  /* суттєвий перекіс чи відкритий зазор кузовної панелі: раніше Vision його
+     бачив, але Score мовчки відкидав */
+  if (k === 'panel_gap_alignment' && c === 'panel') return 'panel_misalignment';
   return null;
 }
 export function mapInteriorFinding(f) {
@@ -355,7 +365,8 @@ export function mapInteriorFinding(f) {
   return null;
 }
 const BODY_LABELS = { dent: 'Body: large dent or panel deformation', corrosion: 'Body: visible corrosion', headlight: 'Body: cracked or fogged headlight',
-  windshield: 'Body: cracked or chipped windshield', broken_element: 'Body: broken exterior element', missing_part: 'Body: missing part', wheel: 'Body: damaged wheel' };
+  windshield: 'Body: cracked or chipped windshield', broken_element: 'Body: broken exterior element', missing_part: 'Body: missing part', wheel: 'Body: damaged wheel',
+  panel_misalignment: 'Body: panel misalignment or open gap' };
 const INTERIOR_LABELS = { seat_damage: 'Interior: seat upholstery damage', driver_seat_wear: 'Interior: pronounced driver seat wear', steering_wheel_wear: 'Interior: worn steering wheel' };
 
 function currentConditionInputs(inp, cfg) {
@@ -402,6 +413,30 @@ function currentConditionInputs(inp, cfg) {
       continue;
     }
     out.dropped++;
+  }
+  /* накопичення дрібних дефектів: лише не суттєві знахідки (суттєві вже
+     пораховані поштучно), без низької впевненості */
+  const minor = all.filter(f => f && !isMaterial(f) && f.confidence !== 'low');
+  const W = cfg.WEAR;
+  const extDistinct = new Map();
+  for (const f of minor) {
+    if (!EXTERIOR_ZONES.has(f.zone) || !W.exterior.kinds.includes(f.kind)) continue;
+    const z = f.zone === 'engine_bay' ? 'front' : f.zone;
+    const key = z + '|' + f.kind;
+    if (!extDistinct.has(key)) extDistinct.set(key, f);
+  }
+  if (extDistinct.size >= W.exterior.min_distinct) {
+    const amount = Math.min(W.exterior.max, round2(W.exterior.per_distinct * extDistinct.size));
+    byKey.set('input2:cosmetic_wear', { key: 'input2:cosmetic_wear', input: 'body_condition', amount, label_key: 'Body: multiple cosmetic defects', params: { distinct: extDistinct.size, zones: [...new Set([...extDistinct.keys()].map(k => k.split('|')[0]))].join(',') }, zone: 'multiple', zone_classes: [], type: 'cosmetic_wear',
+      evidence: [...extDistinct.values()].map(f => ({ source: 'current_photos', ref: 'photo_' + f.photo, description: f.sign })) });
+  }
+  /* салон: зони з уже порахованою суттєвою знахідкою не рахуються вдруге */
+  const interiorTaken = new Set([...byKey.values()].filter(i => i.input === 'interior_condition').map(i => i.zone));
+  const intWear = minor.filter(f => INTERIOR_ZONES.has(f.zone) && W.interior.kinds.includes(f.kind) && W.interior.components.includes(f.component || 'other') && !interiorTaken.has(f.zone));
+  const intZones = new Set(intWear.map(f => f.zone === 'driver_area' ? 'front_seats' : f.zone));
+  if (intZones.size >= W.interior.min_zones || intWear.length >= W.interior.min_findings) {
+    byKey.set('input3:upholstery_wear', { key: 'input3:upholstery_wear', input: 'interior_condition', amount: W.interior.amount, label_key: 'Interior: visibly worn or stained upholstery', params: { findings: intWear.length, zones: [...intZones].join(',') }, zone: 'multiple', type: 'upholstery_wear',
+      evidence: intWear.map(f => ({ source: 'current_photos', ref: 'photo_' + f.photo, description: f.sign })) });
   }
   /* диски: gallery_index не ідентичність колеса. Відомі позиції рахуються
      по позиціях (не більше двох), невідома позиція це одне колесо */
@@ -744,6 +779,9 @@ export function computeScoreV4(input, cfg = SCORE_CONFIG_V4) {
     seller_disclosures: state(!!(inp.listingText && String(inp.listingText).trim()), sellerItems),
   };
   const unresolved = [...acc.unresolved, ...cur.unresolved, ...roll.unresolved, ...sel.unresolved];
+  /* страховий випадок в Україні зафіксований площадкою без деталей: подія
+     є, але тип і тяжкість невідомі; до рішення власника без штрафу */
+  if (ev.insurance_case_recorded === true) unresolved.push({ key: 'insurance_case_recorded', input: 'accident_history', note_key: 'Insurance case recorded without details' });
 
   return {
     score_v: 4,

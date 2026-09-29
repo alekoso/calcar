@@ -651,7 +651,9 @@ export const CV_FEED_EXCLUDES_ODOMETER = true;
 export function currentVisualConcepts(cv) {
   return [...new Set(((cv && cv.equipment_visual) || []).map(e => e.concept).filter(Boolean))];
 }
-export function compactCurrentVisual(cv) {
+/* includeMinor: лише для Score v4 (накопичення дрібних дефектів); блок
+   доказів для основної моделі лишається тільки з суттєвими знахідками */
+export function compactCurrentVisual(cv, { includeMinor = false } = {}) {
   if (!cv) return null;
   const zones = Object.entries(cv.zones || {});
   const seen = zones.filter(([, z]) => z.visibility === 'sufficient').map(([k]) => k);
@@ -660,7 +662,7 @@ export function compactCurrentVisual(cv) {
   const findings = [];
   for (const [zone, z] of zones) {
     for (const f of z.findings || []) {
-      if (!f.material) continue;
+      if (!f.material && !includeMinor) continue;
       findings.push({ zone, kind: f.kind, severity: f.severity, component: f.component || 'other', wheel_position: f.wheel_position || null, photo: f.gallery_index + 1, sign: f.sign, confidence: f.confidence });
     }
   }

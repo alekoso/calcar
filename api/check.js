@@ -1035,6 +1035,8 @@ export function extractHistoryFacts(text) {
     mileage_mismatch_flag: false,
     accident_recorded,
     accident_note,
+    /* "Страхові випадки в Україні: Виявлено" без деталей: окремий факт, не ДТП */
+    insurance_case_recorded: /Страхові випадки в Україні\s+Виявлено/i.test(t) || /Страховые случаи в Украине\s+Обнаружен/i.test(t),
     us_import_record: /Пригнано з США|Ввезено з США|Пригнано зі США/i.test(t),
     /* ввезення з-за кордону БЕЗ конкретної країни: imported_used, НЕ США.
        Архітектура глобальна: US-сигнал лишається окремим */
@@ -3564,7 +3566,8 @@ async function runCheck(req, res, job) {
           historicalVisual: parsed.historical_visual || null,
           accidentRecord: hf.accident_recorded === true ? { recorded: true, note: hf.accident_note || null } : null,
           auctionChecked: !!(auctionSearch && auctionSearch.status),
-          currentVisual: cvOk ? compactCurrentVisual(cvFinal.current_visual) : null,
+          /* зі дрібними знахідками: Score накопичує кілька незалежних дрібних дефектів */
+          currentVisual: cvOk ? compactCurrentVisual(cvFinal.current_visual, { includeMinor: true }) : null,
           vehicle: { odometer_km: vehicleV3.odometer_km, age_months: vehicleV3.age_months, age_source: vehicleV3.age_source,
             powertrain_class: resolvePowertrainClass({ nhtsa, fuel: parsed?.vehicle?.fuel || null }) },
           mileagePoints,
@@ -3582,6 +3585,7 @@ async function runCheck(req, res, job) {
             auction_record_exists: coverageInputs.auction_record_exists, registry_present: hf.registry_present === true,
             historical_listings_count: coverageInputs.historical_listings_count,
             cv_status: cvFinal ? cvFinal.status : 'absent', cv_zones_sufficient: cvSufficient, listing_vin: listing.vin || null,
+            insurance_case_recorded: hf.insurance_case_recorded === true,
           },
         });
       } catch (e) {
