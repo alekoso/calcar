@@ -21,7 +21,7 @@ import { resolveAccidentEvents, sanitizeFindingsV3, zoneClasses } from './score-
 import { ownerEventsConsistent } from './history-owners.js';
 
 export const SCORE_CONFIG_V4 = {
-  CONFIG_TAG: 'v4-prod-2026-09-29b',
+  CONFIG_TAG: 'v4-prod-2026-09-29c',
   STARTING_SCORE: 10,
   ACCIDENT: { light: 0.4, medium: 1.2, heavy: 2.5, total: 5.0, unknown: 1.5, unrepaired_seller: 2.5, earlier_events: 1.0, flood: 2.5, fire: 3.0 },
   BODY: { dent: 0.5, corrosion: 0.6, headlight: 0.4, windshield: 0.3, broken_element: 0.3, missing_part: 0.3, wheel: 0.15, wheel_max: 0.3, panel_misalignment: 0.4 },
@@ -387,8 +387,19 @@ function currentConditionInputs(inp, cfg) {
   /* знос сидіння, який Vision поклав і в front_seats, і в front_passenger
      (той самий кадр і ознака), це пасажирське сидіння, не водійське */
   const passengerDup = new Set(all.filter(f => f.zone === 'front_passenger').map(f => f.photo + '|' + f.sign));
+  /* той самий дефект (той самий кадр і та сама ознака), який Vision поклав
+     у дві зони, це один дефект: інакше перекіс капота рахувався двічі */
+  const seenDefect = new Set();
+  const uniq = [];
   for (const f of all) {
     if (f.zone === 'front_seats' && f.kind === 'wear' && passengerDup.has(f.photo + '|' + f.sign)) { out.dropped++; continue; }
+    const sig = String(f.sign || '').trim().replace(/\s+/g, ' ').toLowerCase();
+    const id = sig ? f.photo + '|' + f.kind + '|' + sig : null;
+    if (id && seenDefect.has(id)) { out.dropped++; continue; }
+    if (id) seenDefect.add(id);
+    uniq.push(f);
+  }
+  for (const f of uniq) {
     const bt = mapBodyFinding(f);
     if (bt === 'wheel') {
       const pos = WHEEL_POSITIONS.includes(f.wheel_position) ? f.wheel_position : 'unknown';
@@ -420,7 +431,7 @@ function currentConditionInputs(inp, cfg) {
   }
   /* накопичення дрібних дефектів: лише не суттєві знахідки (суттєві вже
      пораховані поштучно), без низької впевненості */
-  const minor = all.filter(f => f && !isMaterial(f) && f.confidence !== 'low');
+  const minor = uniq.filter(f => f && !isMaterial(f) && f.confidence !== 'low');
   const W = cfg.WEAR;
   const extDistinct = new Map();
   for (const f of minor) {

@@ -376,7 +376,9 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
      кузова чи плями і знос сидінь у кількох зонах салону накопичуються.
      Суттєвий перекіс або відкритий зазор панелі тепер рахується. */
   {
-    const minorF = (zone, kind, o = {}) => cvf(zone, kind, { severity: 'minor', ...o });
+    /* різні дефекти: власний кадр і власна ознака (той самий кадр + ознака = один дефект) */
+    let nth = 100;
+    const minorF = (zone, kind, o = {}) => { nth++; return cvf(zone, kind, { severity: 'minor', photo: nth, sign: 'ознака ' + zone + ' ' + kind + ' ' + nth, ...o }); };
     const camryVeh = { odometer_km: 200000, age_months: 147, age_source: 'model_year_midpoint', powertrain_class: 'petrol' };
     const cvZones = { sufficient: ['front', 'rear', 'left_side', 'right_side', 'left_front', 'right_front', 'wheels', 'driver_area', 'front_seats', 'rear_seats', 'dashboard'], partial: [], not_visible: [] };
     const tired = [
@@ -422,6 +424,10 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     const rows = run({ currentVisual: { zones: cvZones, condition_findings: [cvf('driver_area', 'stain', { component: 'seat', photo: 6 }), cvf('front_seats', 'stain', { component: 'seat', photo: 8 }),
       minorF('front_passenger', 'stain', { component: 'seat', photo: 9 }), minorF('rear_seats', 'stain', { component: 'seat', photo: 10, confidence: 'medium' })] } });
     eq(rows.items.filter(i => i.input === 'interior_condition').map(i => i.key + '=' + i.amount).join(), 'input3:seat_damage:front=0.4', 'передній ряд рахується раз');
+    /* той самий дефект (кадр + ознака), покладений Vision у дві зони, рахується раз (реальний третій прогін Camry) */
+    const gap = { kind: 'panel_gap_alignment', severity: 'moderate', confidence: 'high', component: 'panel', photo: 13, sign: 'Між передньою кромкою капота та бампером нерівний зазор.' };
+    const twice = run({ currentVisual: { zones: cvZones, condition_findings: [{ zone: 'front', ...gap }, { zone: 'left_front', ...gap }] } });
+    eq(twice.items.filter(i => i.type === 'panel_misalignment').length, 1, 'дубль дефекту у двох зонах рахується раз');
     /* страховий випадок без деталей: у unresolved, без штрафу */
     const ins = run({ evidence: { ...baseEv, insurance_case_recorded: true } });
     ok(ins.unresolved.some(u => u.key === 'insurance_case_recorded') && sum(ins) === sum(run({})), 'страховий випадок: позначка без штрафу');
@@ -435,7 +441,7 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
        того ж дня hybrid без plug-in = HEV, тег v4-prod-2026-09-26-hev.
        2026-09-29: накопичення дрібних дефектів (WEAR) і перекіс панелі, тег v4-prod-2026-09-29;
        того ж дня сидіння рахуються по рядах (без подвійного рахунку), тег v4-prod-2026-09-29b */
-    const EXPECTED = '14dc312090a252006e9e4ac301d24596';
+    const EXPECTED = '72220ed63e9aa5d0cd4a0eed0a9bc4ea';
     if (hash !== EXPECTED) errs.push('SCORE_CONFIG_V4 змінився (md5 ' + hash + '), онови CONFIG_TAG і хеш у тесті');
   }
 
