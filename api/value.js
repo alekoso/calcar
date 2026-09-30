@@ -125,24 +125,32 @@ export function curvePoints(c, nowMs) {
 const PRICE_MIN = 300, PRICE_MAX = 5000000;
 const sanePrice = v => { const n = num(v); return n !== null && n >= PRICE_MIN && n <= PRICE_MAX ? n : null; };
 
-/* current_market_price = marketplace_average ?? listing_price.
-   Середня береться лише у валюті оголошення: інакше порівняння і маркер
-   були б у різних грошах. */
+/* Графік про конкретне авто, яке людина розглядає, тому якір "сьогодні"
+   це НИЖЧА з двох цін: ціна оголошення і середня площадки. Прогноз
+   продовжується від неї. Друга ціна лишається контекстом окремою позначкою
+   і криву не зміщує:
+     - якір це ціна оголошення -> average: середня площадки;
+     - якір це середня -> listing: ціна оголошення з відхиленням.
+   Є лише одна з цін: вона і є якорем. Порівнюються тільки ціни в одній
+   валюті. Ціна оголошення, що відрізняється від середньої більш ніж утричі,
+   вважається хибною: якорем лишається середня, позначки немає. Ціни, які
+   після округлення до сотні збігаються, другої позначки не дають. */
 export function resolveCurrentPrice({ price, currency, price_context } = {}) {
   const listing = sanePrice(price);
   const cur = currency || (price_context && price_context.currency) || null;
   const pc = price_context && typeof price_context === 'object' ? price_context : null;
   const avg = pc ? sanePrice(pc.average_price) : null;
   const sameCurrency = pc && (!currency || !pc.currency || pc.currency === currency);
-  if (avg !== null && sameCurrency) {
-    let marker = null;
-    if (listing !== null && listing / avg >= 0.3 && listing / avg <= 3) {
-      marker = { value: listing, delta_percent: Math.round((listing - avg) / avg * 100) };
-    }
-    return { value: avg, source: 'marketplace_average', source_name: pc.source_name || null, currency: pc.currency || cur, listing: marker };
+  const name = (pc && pc.source_name) || null;
+  const fromListing = { value: listing, source: 'listing_price', source_name: null, currency: cur, listing: null, average: null };
+  if (avg === null || !sameCurrency) return listing !== null ? fromListing : null;
+  const fromAverage = { value: avg, source: 'marketplace_average', source_name: name, currency: pc.currency || cur, listing: null, average: null };
+  if (listing === null || listing / avg < 0.3 || listing / avg > 3) return fromAverage;
+  const sameShown = Math.round(listing / 100) === Math.round(avg / 100);
+  if (listing <= avg) {
+    return { ...fromListing, currency: pc.currency || cur, average: sameShown ? null : { value: avg, source_name: name } };
   }
-  if (listing !== null) return { value: listing, source: 'listing_price', source_name: null, currency: cur, listing: null };
-  return null;
+  return { ...fromAverage, listing: sameShown ? null : { value: listing, delta_percent: Math.round((listing - avg) / avg * 100) } };
 }
 
 /* ---------- Валюта сторонніх цін ---------- */
@@ -302,6 +310,7 @@ export function buildValueCurve({ price = null, currency = null, price_context =
     start_year: parseInt(year, 10),
     current: { value: Math.round(cur.value), source: cur.source, source_name: cur.source_name },
     listing: cur.listing,
+    average: cur.average,
     new_price: {
       value: np.value, approx: np.approx, basis: np.basis,
       /* яким режимом ввезення локалізовано MSRP ринку-джерела */

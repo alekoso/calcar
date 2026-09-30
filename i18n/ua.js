@@ -969,4 +969,6 @@ window.CALCAR_DICTS.ua = {
   'The new-car price is the US list price plus import costs to Ukraine.': 'Ціна нового авто: прайс-ціна у США плюс витрати на ввезення в Україну.',
   'The new-car price is the list price in Ukraine.': 'Ціна нового авто: прайс-ціна в Україні.',
   'The forecast is a model estimate, not a guarantee.': 'Прогноз це розрахункова оцінка, а не гарантія.',
+  '{name} average': 'Середня {name}',
+  'Marketplace average': 'Середня на площадці',
 };

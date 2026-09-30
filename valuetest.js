@@ -130,15 +130,36 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
     ok('4a. F: якір це середня площадки', above.status === 'ok' && above.current.value === 45000 && above.current.source === 'marketplace_average' && above.current.source_name === 'AUTO.RIA');
     ok('4b. F: позначка оголошення +30% над кривою', above.listing && above.listing.value === 58500 && above.listing.delta_percent === 30);
     ok('4c. F: завищена ціна продавця криву не зміщує', JSON.stringify(above.points) === JSON.stringify(same.points));
+    /* якір "сьогодні" це нижча з двох цін; друга лишається контекстом */
     const below = V.buildValueCurve({ ...base, price: 41000, price_context: RIA(45000) });
-    ok('4d. G: позначка нижче середньої', below.listing && below.listing.delta_percent === -9 && below.current.value === 45000);
+    ok('4d. A: оголошення дешевше за середню: якір це ціна оголошення', below.status === 'ok' && below.current.value === 41000 && below.current.source === 'listing_price' && below.listing === null);
+    ok('4d1. F: середня площадки стає другою позначкою з назвою джерела', below.average && below.average.value === 45000 && below.average.source_name === 'AUTO.RIA');
+    const belowAlone = V.buildValueCurve({ ...base, price: 41000, price_context: null });
+    ok('4d2. F: друга позначка криву не зміщує', JSON.stringify(below.points) === JSON.stringify(belowAlone.points) && belowAlone.average === null);
+    ok('4d3. G: якір реально змінює Pc кривої', JSON.stringify(below.points) !== JSON.stringify(same.points) && below.points.find(p => p.today).value === 41000 && same.points.find(p => p.today).value === 45000);
+    ok('4d4. G: прогноз через 5 років нижчий за сьогодні', below.future.value < 41000 && above.future.value < 45000 && below.future.value < above.future.value);
+    ok('4d5. B: оголошення дорожче: якір це середня, оголошення окремо', above.current.source === 'marketplace_average' && above.average === null && above.listing.value === 58500);
+    const onlyAvg = V.buildValueCurve({ ...base, price: null, price_context: RIA(45000) });
+    ok('4d6. D: є лише середня: вона і якір, позначок немає', onlyAvg.status === 'ok' && onlyAvg.current.value === 45000 && onlyAvg.current.source === 'marketplace_average' && onlyAvg.listing === null && onlyAvg.average === null);
+    const twin = V.buildValueCurve({ ...base, price: 44980, price_context: RIA(45010) });
+    ok('4d7. однакові після округлення ціни не дають другої позначки', twin.current.value === 44980 && twin.current.source === 'listing_price' && twin.average === null && twin.listing === null);
+    /* приймальний випадок: нова близько 52 тис., середня 23 200, оголошення 19 000 */
+    const accept = V.buildValueCurve({ price: 19000, currency: 'USD', price_context: RIA(23200), country: 'UA', year: 2021, nowMs: NOW,
+      candidates: [{ amount: 50400, currency: 'USD', market: 'US', price_kind: 'source_msrp', trim_match: 'unknown', model_year: 2021, source_url: 'https://example.com/p', source_host: 'example.com', source_excerpt: 'x', confidence: 'medium' }],
+      vehicle: { fuel: 'electric', battery_kwh: 88 } });
+    ok('4d8. приймальний випадок: сьогодні 19 000, середня контекстом, прогноз нижчий', accept.status === 'ok' && accept.current.value === 19000 && accept.current.source === 'listing_price'
+      && accept.average.value === 23200 && near(accept.new_price.value, 50000, 54000) && accept.future.value < 19000);
+    const reverse = V.buildValueCurve({ price: 27000, currency: 'USD', price_context: RIA(23200), country: 'UA', year: 2021, nowMs: NOW });
+    ok('4d9. зворотний випадок: сьогодні 23 200, оголошення 27 000 окремо', reverse.current.value === 23200 && reverse.current.source === 'marketplace_average' && reverse.listing.value === 27000 && reverse.listing.delta_percent === 16 && reverse.average === null);
     const none = V.buildValueCurve({ ...base, price: 41000, price_context: null });
     ok('4e. H: без середньої якір це ціна оголошення, позначки немає', none.status === 'ok' && none.current.value === 41000 && none.current.source === 'listing_price' && none.listing === null);
     const otherCur = V.buildValueCurve({ ...base, price: 1700000, currency: 'UAH', price_context: RIA(45000) });
-    ok('4f. середня в іншій валюті не змішується з ціною оголошення', otherCur.current.source === 'listing_price' && otherCur.market.currency === 'UAH' && otherCur.new_price.basis === 'reverse_estimate');
+    ok('4f. E: середня в іншій валюті не порівнюється з ціною оголошення', otherCur.current.source === 'listing_price' && otherCur.current.value === 1700000 && otherCur.average === null && otherCur.market.currency === 'UAH' && otherCur.new_price.basis === 'reverse_estimate');
     ok('4g. ринок і валюта явні у контракті', above.market.country === 'UA' && above.market.currency === 'USD' && above.version === V.VALUE_VERSION);
     const wild = V.buildValueCurve({ ...base, price: 450000, price_context: RIA(45000) });
-    ok('4h. очевидно хибна ціна оголошення позначкою не стає', wild.status === 'ok' && wild.listing === null);
+    ok('4h. очевидно хибна ціна оголошення ні якорем, ні позначкою не стає', wild.status === 'ok' && wild.listing === null && wild.current.value === 45000);
+    const tiny = V.buildValueCurve({ ...base, price: 5000, price_context: RIA(45000) });
+    ok('4h1. оголошення утричі дешевше за середню якорем не стає', tiny.current.value === 45000 && tiny.current.source === 'marketplace_average' && tiny.average === null);
   }
   ok('4i. без ціни графіка немає', V.buildValueCurve({ currency: 'USD', year: 2019, nowMs: NOW }).status === 'hidden');
   ok('4j. без року графіка немає', V.buildValueCurve({ price: 20000, currency: 'USD', nowMs: NOW }).reason === 'no_vehicle_year');
@@ -319,6 +340,10 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
     ok('9h. основна схема відповіді не змінена секцією', !/market_value|liquidity/.test(read('api/check-schema.js')));
     const S = await import('./api/share.js');
     const pub = S.publicReport({ vehicle: { title: 'x' }, market_value: { liquidity: { level: 'high', reasons: ['a'] }, price_factors: [] }, _meta: { value_curve: { status: 'ok' }, timings: { value_section: {} } } });
+    const pub2 = S.publicReport({ vehicle: { title: 'x' }, score_breakdown: { final: 6.3 }, confidence: { overall_internal: 80, text_key: 'Studied in detail' }, market_value: { liquidity: { level: 'high', reasons: ['a'] }, price_factors: ['b'] },
+      _meta: { value_curve: { status: 'ok', current: { value: 19000, source: 'listing_price' }, average: { value: 23200, source_name: 'AUTO.RIA' } }, price_context: { average_price: 23200 } } });
+    ok('9i0. L: публічний звіт несе все для ряду рішення: бал, впевненість, графік з обома цінами, тексти', pub2.score_breakdown.final === 6.3 && pub2.confidence.text_key === 'Studied in detail' && pub2._meta.value_curve.average.value === 23200
+      && pub2._meta.price_context.average_price === 23200 && pub2.market_value.price_factors.length === 1);
     ok('9i. публічний звіт віддає секцію, але не тайминги', pub.market_value && pub._meta.value_curve && pub._meta.timings === undefined);
     for (const f of ['api/value.js', 'value-chart.js', 'valuetest.js']) ok('9j. ' + f + ' без довгого тире', !read(f).includes(String.fromCharCode(0x2014)));
     ok('9k. розрахована оцінка не пишеться в MI', !/rpc\(|research_persist|candidate_claim|supabase/i.test(read('api/value.js')));
@@ -328,21 +353,29 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
   {
     const page = fs.readFileSync('result-check.html', 'utf8');
     const iVerdict = page.indexOf('<div class="card" id="verdictCard"'), iValue = page.indexOf('id="valueCard"'), iRisks = page.indexOf('id="risksCard"');
-    ok('10a. секція стоїть одразу після висновку і перед ризиками', iVerdict > 0 && iVerdict < iValue && iValue < iRisks);
-    const between = page.slice(iVerdict, iValue);
-    ok('10b. між висновком і секцією немає іншої картки', (between.match(/<div class="card[ "]/g) || []).length === 1);
-    const sec = page.slice(page.indexOf('<div class="val-sec" id="valueCard"'), iRisks);
-    ok('10b1. три незалежні картки без спільної рамки', /^<div class="val-sec"/.test(sec) && (sec.match(/<div class="card val-(main|box)"/g) || []).length === 3 && !/class="card val-card"/.test(page));
-    const vcss = page.slice(page.indexOf('/* ---- ринкова вартість'), page.indexOf('/* висновок CalCar це головна'));
-    ok('10b2. без внутрішніх розділювачів між частинами', !/\.val-(side|box|main)[^{]*\{[^}]*border-(left|top)/.test(vcss));
-    ok('10b3. праві картки природної висоти, графік близько 69%', /\.val-grid\{[^}]*grid-template-columns:minmax\(0,2\.2fr\) minmax\(0,1fr\)[^}]*align-items:start/.test(vcss));
-    ok('10b4. чіп ринку: просто країна, тихий', /mk\.textContent = t\('Ukraine'\)/.test(page) && !/Market: Ukraine/.test(page) && /\.val-chip\{[^}]*color:var\(--muted\)/.test(vcss));
+    const iRow = page.indexOf('<div class="dv-row" id="decisionRow">'), iSlot = page.indexOf('<div class="sc-slot" id="scoreSlot"></div>'), iPair = page.indexOf('<div class="val-pair" id="valPair"');
+    ok('10a. ряд рішення: графік і картка оцінки в одному контейнері', iRow > 0 && iRow < iValue && iValue < iSlot && iSlot < iPair);
+    ok('10b. ліквідність і чинники ціни окремим рядом одразу під ним, перед висновком і ризиками', iPair < iVerdict && iVerdict < iRisks && page.indexOf('id="valLiqBox"') > iPair && page.indexOf('id="valWhyBox"') > iPair && page.indexOf('id="valWhyBox"') < iVerdict);
+    ok('10b1. L: одна картка оцінки і одна секція вартості, без дублів', page.split('id="scoreSlot"').length === 2 && page.split('id="valueCard"').length === 2 && page.split('id="valLiqBox"').length === 2 && page.split('id="valWhyBox"').length === 2
+      && (page.match(/renderScoreBlock\(D\);/g) || []).length === 1 && (page.match(/renderValueSection\(D\);/g) || []).length === 1);
+    const vcss = page.slice(page.indexOf('/* ---- рішення і вартість'), page.indexOf('/* висновок CalCar це головна'));
+    ok('10b2. без спільної рамки і внутрішніх розділювачів', !/\.val-(pair|box|main)[^{]*\{[^}]*border-(left|top)/.test(vcss) && !/class="card val-card"|val-sec/.test(page));
+    ok('10b3. графік близько 69%, права колонка на висоту графіка', /\.dv-row\.has-chart\{display:grid;grid-template-columns:minmax\(0,2\.2fr\) minmax\(0,1fr\);gap:20px;align-items:stretch/.test(vcss));
+    ok('10b4. чіп ринку: просто країна, тихий, у шапці картки графіка', /mk\.textContent = t\('Ukraine'\)/.test(page) && !/Market: Ukraine/.test(page) && /\.val-chip\{[^}]*color:var\(--muted\)/.test(vcss)
+      && /id="valueCard"[^>]*>\s*<div class="val-head">\s*<h2>Market value<\/h2>\s*<span class="val-chip" id="valMarket"/.test(page));
     ok('10b5. прогноз справжнім пунктиром, не крапками', /\.vc-forecast\{[^}]*stroke-linecap:butt[^}]*stroke-dasharray:7 5/.test(vcss));
     ok('10b6. лаймова заливка ледь помітна', /\.vc-area\{fill:var\(--brand\);opacity:\.1\}/.test(vcss));
+    ok('10b7. у правій колонці бал над впевненістю: та сама картка, лише складена вертикально', /@media\(min-width:861px\)\{[\s\S]*?\.dv-row\.has-chart \.sc-card\{grid-template-columns:minmax\(0,1fr\);grid-template-rows:minmax\(0,1fr\) 1px minmax\(0,1fr\)/.test(vcss));
+    ok('10b8. ліквідність і чинники: дві рівні картки', /\.val-pair\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\);gap:20px/.test(vcss));
+    ok('10b9. K: вузький екран: оцінка, графік, далі картки в один стовпчик', /@media\(max-width:860px\)\{[\s\S]*?\.dv-row\.has-chart\{grid-template-columns:minmax\(0,1fr\)[^}]*\}\s*\.dv-row\.has-chart \.sc-slot\{order:-1\}\s*\.val-pair\{grid-template-columns:minmax\(0,1fr\)/.test(vcss));
+    /* I, J: рендер оцінки і впевненості не змінений цією задачею */
+    const fnSrc = name => { const a = page.indexOf('function ' + name + '('); let d = 0; for (let k = page.indexOf('{', a); k < page.length; k++) { if (page[k] === '{') d++; else if (page[k] === '}') { d--; if (d === 0) return page.slice(a, k + 1); } } return ''; };
+    const scoreFn = fnSrc('renderScoreBlock');
+    ok('10b10. I, J: бал і впевненість беруться зі збережених даних звіту, без вартості', /bd && typeof bd\.final === 'number' \? bd\.final/.test(scoreFn) && /D\.confidence\.overall_internal/.test(scoreFn) && !/value_curve|market_value|valueCard/.test(scoreFn));
+    ok('10b11. рендер вартості не чіпає бал і впевненість', !/score_breakdown|confidence|scoreSlot|scoreCard/.test(fnSrc('renderValueSection')));
     ok('10c. графік, ліквідність і чинники в одній картці', /id="valChart"/.test(page) && /id="valLiqBox"/.test(page) && /id="valWhyBox"/.test(page));
     ok('10d. value-chart.js підключений', /<script src="\/value-chart\.js"><\/script>/.test(page));
     ok('10e. рендер викликається після висновку', /renderValueSection\(D\);/.test(page) && page.indexOf('renderValueSection(D);') > page.indexOf('renderScoreBlock(D);'));
-    ok('10f. мобільна розкладка в один стовпчик', /@media\(max-width:860px\)\{\s*\.val-grid\{grid-template-columns:1fr\}/.test(page) && /\.val-side\{display:flex;flex-direction:column/.test(page));
     ok('10g. дотик: вертикальний скрол лишається сторінці', /\.vc-plot\{[^}]*touch-action:pan-y/.test(page));
     ok('10h. нових кольорів немає: лише токени', !/\.(val|vc)-[a-z-]+[^{]*\{[^}]*#(?!fff\b)[0-9a-fA-F]{3,6}/.test(page.slice(page.indexOf('/* ---- ринкова вартість'), page.indexOf('/* висновок CalCar це головна'))));
     ok('10i. відсоток знецінення за роки не показується', !/за \d+ років|% over|percent over/.test(fs.readFileSync('value-chart.js', 'utf8')));
@@ -360,6 +393,11 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
       ok('11e. ширина ' + width + ': "сьогодні" це остання суцільна точка', vc.points[L.todayIdx].today === true);
       const yL = L.Y(vc.listing.value);
       ok('11f. ширина ' + width + ': позначка оголошення вище кривої і в межах полотна', yL < L.py[L.todayIdx] && yL >= L.pad.t);
+    }
+    {
+      const vcA = V.buildValueCurve({ price: 19000, currency: 'USD', price_context: RIA(23200), country: 'UA', year: 2021, nowMs: NOW });
+      const La = C.layout(vcA, 640, 260);
+      ok('11f1. середня як друга позначка стоїть вище точки "сьогодні"', C.usable(vcA) && La.listing === 23200 && La.Y(23200) < La.py[La.todayIdx]);
     }
     /* D: вісь Y від нуля з ефективною верхньою межею */
     for (const max of [30000, 53000, 60000, 63000, 140000, 300000, 411000, 7500, 1250000]) {
@@ -388,6 +426,8 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
     /* F: формат головних чисел */
     const chartSrc = fs.readFileSync('value-chart.js', 'utf8');
     ok('11q. F: середня площадки округлена до сотні з позначкою приблизності', /curTxt = isAvg \? '\\u2248\\u00a0' \+ money\(Math\.round\(vc\.current\.value \/ 100\) \* 100, cur\) : money\(vc\.current\.value, cur\)/.test(chartSrc));
+    ok('11q1. середній показник підписаний просто "Сьогодні"', !/Average today/.test(chartSrc) && /esc\(t\('Today'\)\) \+ '<\/span><\/div>'/.test(chartSrc));
+    ok('11q2. середня як контекст: назва джерела або нейтральний підпис, значення приблизне', /vc\.average\.source_name \? t\('\{name\} average'\)\.replace\('\{name\}', vc\.average\.source_name\) : t\('Marketplace average'\)/.test(chartSrc) && !/AUTO\.RIA/.test(chartSrc));
     ok('11r. F: ціна оголошення точна, без знака приблизності', /esc\(money\(vc\.listing\.value, cur\)\)/.test(chartSrc));
     ok('11s. F: прогноз лишається приблизним', /futTxt = '≈\\u00a0' \+ money\(roundApprox\(vc\.future\.value\), cur\)/.test(chartSrc));
     ok('11t. підказка на сьогодні показує точне значення джерела', /var exact = active === L\.todayIdx/.test(chartSrc));
@@ -408,7 +448,7 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
     /* словники */
     const dicts = { CALCAR_DICTS: {} };
     for (const f of ['i18n/ru.js', 'i18n/ua.js']) vm.runInNewContext(fs.readFileSync(f, 'utf8'), { window: dicts });
-    const keys = ['Market value', 'Liquidity', 'Why this car costs what it does', 'Easy to resell', 'Average resale', 'Hard to resell', 'Not enough data', 'Ukraine', 'When new', 'Today', 'Average today', 'In 5 years',
+    const keys = ['Market value', 'Liquidity', 'Why this car costs what it does', 'Easy to resell', 'Average resale', 'Hard to resell', 'Not enough data', 'Ukraine', 'When new', 'Today', '{name} average', 'Marketplace average', 'In 5 years',
       'Forecast', 'This listing', '{pct} vs average', 'Value over time', 'The new-car price is estimated from the current price and age.', 'The new-car price is the US list price plus import costs to Ukraine.',
       'The new-car price is the list price in Ukraine.', 'The forecast is a model estimate, not a guarantee.'];
     for (const lang of ['ru', 'ua']) {

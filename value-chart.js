@@ -138,7 +138,9 @@
     var pad = { l: narrow ? 44 : 52, r: 20, t: 30, b: 28 };
     var iw = Math.max(40, width - pad.l - pad.r), ih = Math.max(40, height - pad.t - pad.b);
     var tMax = pts[n - 1].t;
-    var listing = vc.listing && isFinite(vc.listing.value) ? vc.listing.value : null;
+    /* друга ціна як контекст: ціна оголошення або середня площадки */
+    var second = vc.listing || vc.average || null;
+    var listing = second && typeof second.value === 'number' && isFinite(second.value) && second.value > 0 ? second.value : null;
     var maxV = Math.max(vc.new_price.value, vc.current.value, listing || 0);
     for (var i = 0; i < n; i++) if (pts[i].value > maxV) maxV = pts[i].value;
     var ys = yScale(maxV, narrow ? 5 : 7);
@@ -175,12 +177,16 @@
 
     var html = '<div class="vc-stats">'
       + '<div class="vc-stat"><span class="vc-num">' + esc(newTxt) + '</span><span class="vc-lbl">' + esc(t('When new')) + '</span></div>'
-      + '<div class="vc-stat"><span class="vc-num">' + esc(curTxt) + '</span><span class="vc-lbl">' + esc(t(isAvg ? 'Average today' : 'Today')) + '</span></div>'
+      + '<div class="vc-stat"><span class="vc-num">' + esc(curTxt) + '</span><span class="vc-lbl">' + esc(t('Today')) + '</span></div>'
       + '<div class="vc-stat"><span class="vc-num">' + esc(futTxt) + '</span><span class="vc-lbl">' + esc(t('In 5 years')) + '</span></div>'
       + '</div>';
     if (vc.listing) {
       html += '<div class="vc-listing"><span class="vc-dot" aria-hidden="true"></span><span>' + esc(t('This listing')) + '</span><b>' + esc(money(vc.listing.value, cur)) + '</b>'
         + '<span class="vc-delta">' + esc(t('{pct} vs average').replace('{pct}', delta)) + '</span></div>';
+    } else if (vc.average && typeof vc.average.value === 'number' && isFinite(vc.average.value)) {
+      /* якір це ціна оголошення: середня площадки лишається контекстом */
+      var avgName = vc.average.source_name ? t('{name} average').replace('{name}', vc.average.source_name) : t('Marketplace average');
+      html += '<div class="vc-listing"><span class="vc-dot" aria-hidden="true"></span><span>' + esc(avgName) + '</span><b>' + esc('≈\u00a0' + money(Math.round(vc.average.value / 100) * 100, cur)) + '</b></div>';
     }
     html += '<div class="vc-plot" tabindex="0" role="group" aria-label="' + esc(t('Value over time')) + '"><div class="vc-tip" hidden></div></div>';
     host.innerHTML = html;
@@ -230,7 +236,7 @@
       svg.appendChild(el('path', { d: pathThrough(L.px, L.py, m, ti, last), 'class': 'vc-line vc-forecast' }));
       svg.appendChild(el('circle', { cx: L.px[0], cy: L.py[0], r: 4, 'class': 'vc-end' }));
       svg.appendChild(el('circle', { cx: L.px[last], cy: L.py[last], r: 4, 'class': 'vc-end vc-end-f' }));
-      /* ціна цього оголошення: окрема позначка на лінії "сьогодні", криву не зміщує */
+      /* друга ціна: окрема позначка на лінії "сьогодні", криву не зміщує */
       if (L.listing !== null) {
         var ly = L.Y(L.listing);
         /* на великій шкалі близькі ціни злились би в одну точку: позначка
@@ -256,7 +262,7 @@
       dot.setAttribute('cx', x); dot.setAttribute('cy', y); dot.setAttribute('visibility', 'visible');
       var exact = active === L.todayIdx || (active === 0 && !vc.new_price.approx);
       var val = (exact ? '' : '≈\u00a0') + money(exact ? p.value : roundPoint(p.value), cur);
-      var label = active === 0 ? t('When new') : active === L.todayIdx ? t(isAvg ? 'Average today' : 'Today') : p.forecast ? t('Forecast') : '';
+      var label = active === 0 ? t('When new') : active === L.todayIdx ? t('Today') : p.forecast ? t('Forecast') : '';
       tip.innerHTML = '<span class="vc-tip-d">' + esc(monthLabel(p, locale)) + '</span><b>' + esc(val) + '</b>' + (label ? '<span class="vc-tip-f">' + esc(label) + '</span>' : '');
       tip.hidden = false;
       var w = plot.clientWidth, tw = tip.offsetWidth || 120;
