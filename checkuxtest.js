@@ -356,10 +356,18 @@ const page = fs.readFileSync('result-check.html', 'utf8');
       if (/@property --eq-ang/.test(src) || /eq-hv-turn/.test(src)) errs.push(where + ': лишилась стара залежність від @property/--eq-ang');
       if (/mask-composite/.test(src.slice(src.indexOf(sel), src.indexOf(sel) + 900))) errs.push(where + ': рамка знову залежить від mask-composite');
     };
-    check(page, '.eq-chip.hv', 'Check');
+    /* Check: спокійний лаймовий акцент без руху (рішення власника); Import
+       поки лишається з рухомою рамкою */
+    {
+      const hv = page.slice(page.indexOf('.eq-chip.hv{'), page.indexOf('}', page.indexOf('.eq-chip.hv{')) + 1);
+      if (!/background:var\(--brand-soft\);border-color:var\(--brand-hover\)/.test(hv)) errs.push('Check: дорога опція без лаймового акценту');
+      if (/animation|gradient|box-shadow|#7C3AED/.test(hv)) errs.push('Check: дорога опція знову рухома чи з градієнтом');
+      if (!/\.sec-meta\.hv-legend::before\{[^}]*background:var\(--brand-soft\);border:1px solid var\(--brand-hover\)/.test(page)) errs.push('Check: легенда без того самого маркера');
+      if (/eq-hv-flow/.test(page)) errs.push('Check: лишилась анімація рамки');
+    }
     check(imp, '.chip.gold', 'Import');
     /* легенда рухається так само, тому людина бачить, що означає рамка */
-    for (const [src, where] of [[page, 'Check'], [imp, 'Import']]) {
+    for (const [src, where] of [[imp, 'Import']]) {
       const i = src.indexOf('.sec-meta.hv-legend');
       if (!/\.sec-meta\.hv-legend\{padding:2\.5px 9\.5px\}/.test(src)) errs.push(where + ': легенда не компенсує товщу рамки');
       if (i < 0) errs.push(where + ': нема легенди дорогих опцій');
@@ -408,6 +416,40 @@ const page = fs.readFileSync('result-check.html', 'utf8');
     if (!/id="eqLegend" hidden>Expensive options<\/span>/.test(page)) errs.push('легенда дорогих опцій показується за замовчуванням');
     if (!/const anyHv = eqV2\.some\(o => CalCarEquipmentValue\.isHighValue\(o\)\);\n\s*\$\('eqLegend'\)\.hidden = !anyHv;/.test(page)) errs.push('легенда не залежить від наявності дорогих опцій');
     if (!/\.sec-meta\[hidden\]\{display:none\}/.test(page)) errs.push('display класу перебиває hidden у легенди');
+    /* дорогі опції: підсвічуються в будь-якій групі джерела (фото, дані
+       оголошення), звичайні ні; легенда лише коли є хоч одна; три мови */
+    if (EV) {
+      const eqItems = [
+        { name: 'Камера кругового обзора', confidence_level: 'visual', value_tier: 'standard' },
+        { name: 'Аудиосистема BOSE', confidence_level: 'listing_data', value_tier: 'high_value' },
+        { name: 'Круиз-контроль', confidence_level: 'listing_data', value_tier: 'standard' },
+      ];
+      if (!EV.isHighValue(eqItems[0]) || !EV.isHighValue(eqItems[1])) errs.push('дорога опція з фото чи з даних оголошення не підсвічена');
+      if (EV.isHighValue(eqItems[2])) errs.push('звичайна опція підсвічена');
+      if (!eqItems.some(o => EV.isHighValue(o))) errs.push('легенда не зʼявиться при дорогій опції');
+      if ([eqItems[2], { name: 'CarPlay', value_tier: 'notable' }].some(o => EV.isHighValue(o))) errs.push('легенда зʼявиться без дорогих опцій');
+    }
+    if (!/return '<span class="eq-chip' \+ \(hv \? ' hv' : ''\) \+ '"/.test(page)) errs.push('клас дорогої опції не залежить від цінності');
+    {
+      const d = { CALCAR_DICTS: {} };
+      for (const f of ['i18n/ru.js', 'i18n/ua.js']) vm.runInNewContext(fs.readFileSync(f, 'utf8'), { window: d });
+      if (d.CALCAR_DICTS.ru['Expensive options'] !== 'Дорогие опции' || d.CALCAR_DICTS.ua['Expensive options'] !== 'Дорогі опції') errs.push('легенда дорогих опцій не перекладена');
+    }
+    /* привід на сторінці: сирі значення мовою інтерфейсу, фірмові як є */
+    {
+      const a = page.indexOf('const DRIVE_CANON = '), b = page.indexOf('\n}', page.indexOf('function driveLabel(')) + 2;
+      const d = { CALCAR_DICTS: {} };
+      for (const f of ['i18n/ru.js', 'i18n/ua.js']) vm.runInNewContext(fs.readFileSync(f, 'utf8'), { window: d });
+      for (const [lang, want] of [['ru', ['Полный', 'Передний', 'Задний']], ['ua', ['Повний', 'Передній', 'Задній']], ['en', ['AWD', 'FWD', 'RWD']]]) {
+        const tt = k => (lang === 'en' ? k : (d.CALCAR_DICTS[lang][k] || k));
+        const driveLabel = new Function('t', 'clean', page.slice(a, b) + '; return driveLabel;')(tt, x => String(x == null ? '' : x));
+        const got = ['full', 'awd', '4wd', '4x4', 'AWD', 'front', 'fwd', 'rear', 'rwd'].map(driveLabel);
+        const exp = [want[0], want[0], want[0], want[0], want[0], want[1], want[1], want[2], want[2]];
+        if (got.join('|') !== exp.join('|')) errs.push('привід ' + lang + ': ' + got.join('|'));
+        if (driveLabel('xDrive') !== 'xDrive' || driveLabel('4MATIC') !== '4MATIC' || driveLabel('полный') !== 'полный' || driveLabel('щось незвичне') !== 'щось незвичне') errs.push('привід ' + lang + ': фірмова чи вже локалізована назва змінена');
+      }
+      if (!/if \(v\.drive\) spec\.push\(\[t\('Drivetrain'\), driveLabel\(v\.drive\)\]\);/.test(page)) errs.push('картка авто показує сирий привід');
+    }
     if (!/<script src="\/equipment-value\.js"><\/script>/.test(page)) errs.push('equipment-value.js не підключений');
 
     /* підказка про добір відео: працює і по тапу, не лише по наведенню */

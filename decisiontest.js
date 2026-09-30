@@ -27,6 +27,7 @@ const VALID = {
   const {
     sanitizePurchaseDecision, buildMileageContext, objectiveDecisionContext,
     calibrateSeverityWording, humanizeDecisionJargon, applyDecisionLanguage, maxResolvedSeverity,
+    directiveVerdictHits, localizeDrive,
   } = await import('file://' + path.join(dir, 'api', 'check.js'));
   const quiet = fn => { const l = console.log; console.log = () => {}; try { return fn(); } finally { console.log = l; } };
 
@@ -58,13 +59,61 @@ const VALID = {
   /* 5. промпт: структура, стиль, заборони, узгодженість, два варіанти */
   const src = fs.readFileSync('api/check.js', 'utf8');
   for (const k of ['"purchase_decision"', 'recommendation": buy | go_see | negotiate | skip',
-    'покупця-перекупника', 'без страхувальної ковдри', 'пасує будь-якому авто цієї моделі, це брак',
+    'покупця-перекупника', 'без страхувальної ковдри', 'ЗВІТ ОЦІНЮЄ АВТО, А НЕ РАДИТЬ ЛЮДИНІ ДІЮ', 'пасує будь-якому авто цієї моделі, це брак',
     'ПРИНЦИПИ РІШЕННЯ', 'decision_style', 'DECISION_STYLE',
     '"історія чиста", коли джерела історії не підтверджені, це брак']) {
     if (!src.includes(k)) errs.push('check.js: нема "' + k.slice(0, 40) + '"');
   }
   if (!/decisionStyle === 'a' \? DECISION_PRINCIPLES : ''/.test(src)) errs.push('check.js: варіант B не вимикає принципи рішення');
   if (/DECISION_FEWSHOT|ПРИКЛАДИ СТИЛЮ МІРКУВАННЯ/.test(src)) errs.push('check.js: старий конфліктний few-shot повернувся');
+
+  /* 5b. висновок звіту оцінює авто, а не радить людині дію */
+  {
+    const rules = src.slice(src.indexOf('const DECISION_RULES = `'), src.indexOf('export function compactHistoricalVisual'));
+    for (const bad of ['як жива порада', 'так, їхати дивитись', 'краще розглянути інший екземпляр', 'варто поїхати на огляд', 'цей екземпляр варто розглядати',
+      'чи варто розглядати САМЕ ЦЕЙ', 'чи варто далі розглядати', 'мусять підтвердитись до купівлі', 'прямо скажи, що її варто продовжувати розглядати']) {
+      if (rules.includes(bad)) errs.push('правила висновку досі радять дію: "' + bad + '"');
+    }
+    if (!/headline": ОЦІНКА ЕКЗЕМПЛЯРА одним рядком/.test(rules)) errs.push('headline не описаний як оцінка екземпляра');
+    if (!/Що це означає для конкретної людини, обговорює чат CalCar AI, не звіт/.test(rules)) errs.push('нема межі звіт проти чату');
+    if (!/"лучше рассмотреть другой экземпляр"/.test(rules) || !/"look for another"/.test(rules)) errs.push('заборона не покриває RU і EN');
+    const schemaSrc = fs.readFileSync('api/check-schema.js', 'utf8');
+    if (/чи варто розглядати/.test(schemaSrc) || !/загальна оцінка екземпляра без порад людині/.test(schemaSrc)) errs.push('verdict.summary у схемі досі про пораду');
+
+    /* детектор поради: високий ризик, змішаний, чистий; RU, UA, EN */
+    const directive = [
+      'Лучше рассмотреть другой экземпляр: подтверждённое затопление и отрицание этого факта продавцом перевешивают плюсы.',
+      'Краще розглянути інший екземпляр через підтверджене затоплення.',
+      'Можно брать после проверки подвески.', 'Можна брати після діагностики.', 'Не берите эту машину.',
+      'Стоит покупать: сильный экземпляр.', 'Варто їхати дивитись, але спершу два питання продавцю.', 'Ищите другую машину.',
+      'Хороший выбор для вас.', 'Рекомендуем отказаться от покупки.', 'Worth buying if the service history checks out.', 'Better to look for another car.', 'Walk away from this one.',
+    ];
+    for (const t of directive) if (!directiveVerdictHits({ headline: t }).length) errs.push('детектор пропустив пораду: ' + t);
+    const descriptive = [
+      'Экземпляр с высоким риском: подтверждённое затопление и отрицание этого факта продавцом существенно ухудшают оценку автомобиля.',
+      'Серьёзные риски: подтверждённое затопление и противоречие в описании продавца перевешивают положительные стороны экземпляра.',
+      'В целом сильный экземпляр, но остаются вопросы, требующие проверки.',
+      'Сильний екземпляр без підтверджених серйозних ризиків.', 'Екземпляр з високим рівнем підтверджених ризиків.',
+      'A strong example with no confirmed serious risks.', 'Mixed example: solid history, but the mileage is not confirmed.',
+      'Ціна нижча за середню площадки, стан кузова потребує підтвердження на огляді.',
+    ];
+    for (const t of descriptive) if (directiveVerdictHits({ headline: t, summary_short: t, reasoning: t }).length) errs.push('детектор зачепив оцінку авто: ' + t);
+    const hits = directiveVerdictHits({ headline: 'Сильный экземпляр.', summary_short: 'Можно брать.', reasoning: 'ok', value_context: null });
+    if (hits.length !== 1 || hits[0].field !== 'summary_short') errs.push('детектор не каже, в якому полі порада');
+    if (!/directiveHits = directiveVerdictHits\(/.test(src) || !/console\.log\('\[decision-directive\]'/.test(src) || !/decision_directive: directiveHits\.length \? directiveHits : null/.test(src)) errs.push('порада у висновку не логується і не пишеться в _meta');
+  }
+
+  /* 5c. привід для людини: сирі значення не йдуть у звіт */
+  {
+    const T = { full: ['повний', 'полный', 'AWD'], awd: ['повний', 'полный', 'AWD'], '4wd': ['повний', 'полный', 'AWD'], AWD: ['повний', 'полный', 'AWD'],
+      front: ['передній', 'передний', 'FWD'], fwd: ['передній', 'передний', 'FWD'], rear: ['задній', 'задний', 'RWD'], rwd: ['задній', 'задний', 'RWD'], 'all-wheel drive': ['повний', 'полный', 'AWD'] };
+    for (const [raw, [ua, ru, en]] of Object.entries(T)) {
+      if (localizeDrive(raw, 'ua') !== ua || localizeDrive(raw, 'ru') !== ru || localizeDrive(raw, 'en') !== en) errs.push('привід ' + raw + ' не локалізований: ' + [localizeDrive(raw, 'ua'), localizeDrive(raw, 'ru'), localizeDrive(raw, 'en')].join('/'));
+    }
+    for (const keep of ['xDrive', '4MATIC', 'quattro', 'полный', 'Повний', 'передний']) if (localizeDrive(keep, 'ru') !== keep) errs.push('привід змінено без потреби: ' + keep);
+    if (localizeDrive(null, 'ru') !== null || localizeDrive(undefined, 'ru') !== undefined || localizeDrive('', 'ru') !== '') errs.push('порожній привід ламається');
+    if (!/if \(parsed\.vehicle && typeof parsed\.vehicle\.drive === 'string'\) parsed\.vehicle\.drive = localizeDrive\(parsed\.vehicle\.drive, lang\);/.test(src)) errs.push('Check не нормалізує привід у звіті');
+  }
 
   /* 6. рендер: шари, фолбек без порожніх секцій, рядки в словниках */
   const page = fs.readFileSync('result-check.html', 'utf8');

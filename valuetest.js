@@ -213,7 +213,9 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
     ok('5x. A: BEV 2021 доходить до якоря історичним режимом', bevCurve.basis === 'localized_msrp' && bevCurve.localization === 'ua_bev_2019_2025' && bevCurve.value === Math.round(bev.value));
     /* рік кандидата важливіший за рік авто: режим того року, до якого належить ціна */
     const byCandYear = np({ pc: 23700, T: 5.2, candidates: [cand(45000, { market: 'US', price_kind: 'source_msrp', model_year: 2021 })], vehicle: { fuel: 'electric', battery_kwh: 88, year: 2026 } });
-    ok('5y. режим береться за роком ціни', byCandYear.localization === 'ua_bev_2019_2025');
+    ok('5y. MSRP іншого модельного року не якір', byCandYear.basis === 'reverse_estimate' && byCandYear.rejected.some(r => r.reason === 'msrp_other_model_year'));
+    const byMy = np({ pc: 23700, T: 5.2, candidates: [cand(45000, { market: 'US', price_kind: 'source_msrp', model_year: 2022 })], vehicle: { fuel: 'electric', battery_kwh: 88, year: 2021, model_year: 2022 } });
+    ok('5y1. модельний рік з декодера чи аналізу теж підходить', byMy.basis === 'localized_msrp' && byMy.localization === 'ua_bev_2019_2025');
 
     /* C: режим невідомий: сьогоднішні правила історичною правдою не стають */
     ok('5z. C: рік без відомого режиму: локалізації немає', V.localizeUsMsrpToUA(45000, { fuel: 'electric', battery_kwh: 60, year: 2016 }) === null
@@ -285,6 +287,57 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
       && provCurve.new_price.source.currency === 'UAH' && provCurve.new_price.source.date === '12 бер. 2021 р.' && provCurve.new_price.source.price_year === 2021 && provCurve.new_price.source.market === 'UA'
       && provCurve.new_price.rejection_reason === null && provCurve.new_price.basis === 'local_list');
     ok('6w. без курсів і без мереж: узгодженість рахується з уже зібраного', !/fetch\(|exchange|nbu|bank\.gov/i.test(fs.readFileSync('api/value.js', 'utf8').replace(/searchSerper|deps\.callModel/g, '')));
+  }
+
+  /* ===== MSRP як запобіжник правдоподібності: точна версія і діапазон року ===== */
+  {
+    /* офіційний прайс модельного року з кількома версіями в одному джерелі */
+    const results = [{ ref: 'S1', url: 'https://media.example.com/2014-model-suggested-retail-prices', host: 'media.example.com', title: '2014 Model Suggested Retail Prices',
+      snippet: 'V350 AWD $63,000 · V450 AWD $64,550 · V550 AWD $88,600 · V63 $118,160', date: 'Oct 14, 2013' }];
+    const raw = [['V350 AWD', 63000], ['V450 AWD', 64550], ['V550 AWD', 88600], ['V63', 118160]].map(([v, a]) => ({ result_ref: 'S1', amount: a, currency: 'USD', market: 'US', price_kind: 'source_msrp', trim_match: 'unknown', model_year: 2014, version: v }));
+    const v = V.validateCandidates(raw, results, { brand: 'Brand', year: 2014, nowYear: 2026 });
+    ok('13a. усі ціни версій з одного джерела проходять з назвами версій', v.candidates.length === 4 && v.candidates.map(c => c.version).join('|') === 'V350 AWD|V450 AWD|V550 AWD|V63');
+    const gl = (trim, cands, extra) => V.buildValueCurve({ price: 20900, currency: 'USD', country: 'UA', year: 2014, nowMs: NOW, candidates: cands,
+      vehicle: { fuel: 'petrol', displacement_l: 3, make: 'Brand', model: 'Model', trim, model_year: 2015, ...(extra || {}) } });
+    const rev = gl(null, []);
+    ok('13b. D: без MSRP працює зворотна оцінка (і вона нижча за найдешевшу версію року)', rev.new_price.basis === 'reverse_estimate' && rev.new_price.msrp === null && rev.new_price.value < 63000);
+    const band = gl(null, v.candidates);
+    ok('13c. A: версія невідома: зворотна оцінка не нижча за найдешевшу версію модельного року', band.status === 'ok' && band.new_price.basis === 'msrp_range' && band.new_price.value === 63000
+      && band.new_price.approx === true && band.new_price.fact === null);
+    ok('13d. діапазон записаний з походженням', band.new_price.msrp.range.min === 63000 && band.new_price.msrp.range.max === 118160 && band.new_price.msrp.range.prices === 4
+      && band.new_price.msrp.range.model_year === 2014 && /media\.example\.com/.test(band.new_price.msrp.range.source_url) && band.new_price.msrp.range.applied === 'floor' && band.new_price.msrp.range.localization === null);
+    ok('13e. прогноз від нового якоря нижчий за сьогодні', band.current.value === 20900 && band.future.value < 20900 && band.points[0].value === 63000);
+    const exact = gl('V450', v.candidates);
+    ok('13f. C: відома версія: точна MSRP версії важить більше за діапазон', exact.new_price.basis === 'source_msrp' && exact.new_price.value === 64550
+      && exact.new_price.msrp.exact.version === 'V450 AWD' && exact.new_price.msrp.range === null && exact.new_price.fact.amount === 64550);
+    const single = gl('V450', [v.candidates[1]]);
+    ok('13g. одна MSRP саме цієї версії без відомого режиму ввезення: береться як є', single.new_price.basis === 'source_msrp' && single.new_price.value === 64550 && !single.new_price.localization);
+    const singleUnknown = gl(null, [v.candidates[1]]);
+    ok('13h. одна MSRP невідомої версії без режиму ввезення: не якір і не діапазон', singleUnknown.new_price.basis === 'reverse_estimate' && singleUnknown.new_price.rejection_reason === 'historical_localization_unknown');
+    /* стеля: зворотна оцінка вища за найдорожчу версію року */
+    const high = V.buildValueCurve({ price: 60000, currency: 'USD', country: 'UA', year: 2014, nowMs: NOW, candidates: v.candidates, vehicle: { fuel: 'petrol', displacement_l: 3, model_year: 2014 } });
+    ok('13i. зворотна оцінка вища за найдорожчу версію: стеля діапазону', high.new_price.basis === 'msrp_range' && high.new_price.value === 118160 && high.new_price.msrp.range.applied === 'ceiling');
+    /* дорога конфігурація: поточна ціна вища за стелю, стелю не застосовуємо */
+    const optioned = V.buildValueCurve({ price: 170000, currency: 'USD', country: 'UA', year: 2025, nowMs: NOW,
+      candidates: v.candidates.map(c => ({ ...c, model_year: 2025 })), vehicle: { fuel: 'petrol', displacement_l: 3, model_year: 2025 } });
+    ok('13j. стеля нижча за поточну ціну: не застосовується, графік не йде вгору', optioned.status === 'ok' && optioned.new_price.msrp.range.ceiling_used === false && optioned.points.every((p, i) => i === 0 || p.value < optioned.points[i - 1].value));
+    /* B: авто, що тримає ціну: запобіжник не роздуває якір */
+    const rav = [['LE', 26250], ['XLE', 28960], ['Limited', 36380]].map(([ver, a]) => ({ amount: a, currency: 'USD', market: 'US', price_kind: 'source_msrp', trim_match: 'unknown', model_year: 2021, version: ver,
+      source_url: 'https://example.com/rav', source_host: 'example.com', source_excerpt: 'x', confidence: 'medium', source_date: null, source_year: null, text_years: [2021], price_ladder: false }));
+    const ravPlain = V.buildValueCurve({ price: 27000, currency: 'USD', country: 'UA', year: 2021, nowMs: NOW, vehicle: { fuel: 'petrol', displacement_l: 2.5 } });
+    const ravBand = V.buildValueCurve({ price: 27000, currency: 'USD', country: 'UA', year: 2021, nowMs: NOW, candidates: rav, vehicle: { fuel: 'petrol', displacement_l: 2.5 } });
+    ok('13k. B: зворотна оцінка всередині діапазону лишається як є', ravBand.new_price.value === ravPlain.new_price.value && ravBand.new_price.basis === 'reverse_estimate' && ravBand.new_price.msrp.range.applied === null
+      && ravBand.new_price.msrp.range.localization === 'ua_ice_2019');
+    const other = V.buildValueCurve({ price: 20900, currency: 'USD', country: 'UA', year: 2014, nowMs: NOW, candidates: v.candidates.map(c => ({ ...c, model_year: 2017 })), vehicle: { fuel: 'petrol', model_year: 2014 } });
+    ok('13l. ціни іншого модельного року діапазоном не стають', other.new_price.basis === 'reverse_estimate' && other.new_price.rejected.every(r => r.reason === 'msrp_other_model_year'));
+    const mixed = V.resolveNewPrice({ market: 'UA', currency: 'USD', pc: 20900, T: 12.25, vehicle: { year: 2014 }, candidates: [
+      { ...v.candidates[0], source_url: 'https://a.example/1' }, { ...v.candidates[3], source_url: 'https://b.example/2' }] });
+    ok('13m. ціни з різних джерел не складаються в діапазон', mixed.basis === 'reverse_estimate' && mixed.msrp === null);
+    ok('13n. зіставлення версій: привід і назва моделі не заважають, інша версія не збігається', V.trimMatches('GL 450 4MATIC', 'GL450', { model: 'GL-Class' }) && V.trimMatches('Highlander Limited AWD', 'Limited', { model: 'Highlander' })
+      && !V.trimMatches('Limited Platinum', 'Limited', {}) && !V.trimMatches('V450', 'V350', {}) && !V.trimMatches(null, 'X', {}) && !V.trimMatches('X', '', {}));
+    ok('13o. у модулі немає цін моделей і марок', !/mercedes|gl-class|gl450|63,?000|64,?550/i.test(fs.readFileSync('api/value.js', 'utf8')));
+    ok('13q. пояснення джерела ціни нового авто для кожного методу', ['reverse_estimate', 'localized_msrp', 'local_list', 'source_msrp', 'msrp_range'].every(k => new RegExp('\\b' + k + ': t\\(').test(fs.readFileSync('result-check.html', 'utf8'))));
+    ok('13p. правило витягу: кожна версія окремим записом з назвою', /return EVERY version price as a separate entry/.test(V.VALUE_RULES) && V.valueResponseFormat().json_schema.schema.properties.new_price_candidates.items.required.includes('version'));
   }
 
   /* ===== 5. кандидати зі сниппетів ===== */
@@ -419,11 +472,28 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
     /* 15: ліквідність і чинники ціни однієї будови */
     const pairHtml = page.slice(iPair, iRisks);
     ok('10b9. 15: дві картки однієї будови: той самий клас, заголовок і рядки', (pairHtml.match(/<div class="card mk-card"/g) || []).length === 2 && (pairHtml.match(/<h3>/g) || []).length === 2 && (pairHtml.match(/class="mk-rows"/g) || []).length === 2 && !/<ul|<li/.test(pairHtml));
-    ok('10b12. 15: рядки обох карток малюються тим самим шаблоном', (page.match(/'<div class="mk-row">' \+ esc\(clean\(/g) || []).length === 2);
+    ok('10b12. 15: рядки обох карток малюються тим самим шаблоном з іконкою', (page.match(/\.map\(mkRow\)\.join\(''\)/g) || []).length === 2
+      && /function mkRow\(text\) \{\s*return '<div class="mk-row"><span class="mk-ic">' \+ mkIcon\(text\) \+ '<\/span><span class="mk-tx">' \+ esc\(clean\(text\)\) \+ '<\/span><\/div>';/.test(page));
+    ok('10b12a. стан ліквідності в рядку заголовка тихим статусом', /<div class="mk-head"><h3>Liquidity<\/h3><span class="mk-state" id="valLiqLevel"><\/span><\/div>/.test(page)
+      && /\.mk-state\{display:inline-flex[^}]*border-radius:999px[^}]*font-size:12\.5px/.test(vcss) && !/\.mk-state:hover|cursor:pointer/.test(vcss.slice(vcss.indexOf('.mk-state{'), vcss.indexOf('.mk-state{') + 400)));
+    ok('10b12b. обидві картки мають ту саму шапку і ті самі рядки', (pairHtml.match(/<div class="mk-head"><h3>/g) || []).length === 2 && /\.mk-row\{display:grid;grid-template-columns:32px minmax\(0,1fr\)/.test(vcss)
+      && /\.mk-ic\{[^}]*width:32px;height:32px/.test(vcss));
+    {
+      const fn = (() => { const a = page.indexOf('function mkIcon('); let d = 0; for (let k = page.indexOf('{', a); k < page.length; k++) { if (page[k] === '{') d++; else if (page[k] === '}') { d--; if (d === 0) return page.slice(a, k + 1); } } return ''; })();
+      const mkIcon = new Function(fn + '; return mkIcon;')();
+      const kind = txt => { const svg = mkIcon(txt); return svg; };
+      const same = (a, b) => kind(a) === kind(b);
+      ok('10b12c. іконки за змістом: попит, ціна, утримання, привід, вік, електро; невпізнане нейтральне',
+        same('Популярная модель с широким кругом покупателей.', 'Широка аудиторія покупців.') && same('Цена ниже средней по площадке.', 'Ціна нижча за середню.')
+        && same('Высокая стоимость содержания', 'Дороге обслуговування') && same('Полный привод', 'Повний привід') && same('Возраст модели', 'Вік моделі')
+        && same('Неопределённость по ресурсу батареи', 'Battery degradation') && !same('Полный привод', 'Цена ниже средней') && same('Что-то совсем иное', 'Something unrelated')
+        && /<svg viewBox="0 0 24 24"[^>]*aria-hidden="true">/.test(kind('x')) && !/[<>]script/i.test(kind('<script>')));
+    }
+    ok('10b12d. чинників ціни не більше чотирьох рядків, причин ліквідності не більше трьох', /price_factors\.filter\(x => typeof x === 'string' && x\.trim\(\)\)\.slice\(0, 4\)/.test(page) && /lq\.reasons\.filter\(x => typeof x === 'string' && x\.trim\(\)\)\.slice\(0, 3\)/.test(page));
     ok('10b13. без яскравих лаймових маркерів списку', !/\.mk-[a-z]+[^{]*\{[^}]*var\(--brand\)/.test(vcss) && /\.mk-row \+ \.mk-row\{border-top:1px solid var\(--line\)\}/.test(vcss));
     ok('10b14. дві рівні картки поруч, на вузькому екрані одна під одною; числа над графіком', /\.val-pair\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\);gap:20px/.test(vcss)
       && /@media\(max-width:860px\)\{[\s\S]*?\.vc-body\{grid-template-columns:minmax\(0,1fr\)[\s\S]*?\.vc-rail\{order:-1[\s\S]*?\.val-pair\{grid-template-columns:minmax\(0,1fr\)/.test(vcss));
-    ok('10b15. тексти карток: лише наявні причини і чинники, без переписування', /reasons\.map\(r => '<div class="mk-row">' \+ esc\(clean\(r\)\)/.test(page) && /factors\.map\(f => '<div class="mk-row">' \+ esc\(clean\(f\)\)/.test(page));
+    ok('10b15. тексти карток: лише наявні причини і чинники, без переписування', /reasons\.map\(mkRow\)/.test(page) && /factors\.map\(mkRow\)/.test(page) && /esc\(clean\(text\)\)/.test(page));
     /* I, J: рендер оцінки і впевненості не змінений цією задачею */
     const fnSrc = name => { const a = page.indexOf('function ' + name + '('); let d = 0; for (let k = page.indexOf('{', a); k < page.length; k++) { if (page[k] === '{') d++; else if (page[k] === '}') { d--; if (d === 0) return page.slice(a, k + 1); } } return ''; };
     const scoreFn = fnSrc('renderScoreBlock');
@@ -504,7 +574,7 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
     /* словники */
     const dicts = { CALCAR_DICTS: {} };
     for (const f of ['i18n/ru.js', 'i18n/ua.js']) vm.runInNewContext(fs.readFileSync(f, 'utf8'), { window: dicts });
-    const keys = ['Market value', 'Liquidity', 'Why this car costs what it does', 'Easy to resell', 'Average resale', 'Hard to resell', 'Not enough data', 'Ukraine', 'When new', 'Today', '{name} average', 'Marketplace average', 'Estimated when new', 'Forecast in 5 years',
+    const keys = ['Market value', 'Liquidity', 'Why this car costs what it does', 'Easy to resell', 'Average resale', 'Hard to resell', 'Not enough data', 'Ukraine', 'When new', 'Today', '{name} average', 'Marketplace average', 'Estimated when new', 'Forecast in 5 years', 'The new-car price is the US list price of this version.', 'The new-car price is estimated from the current price and age, within the list prices of this model year.',
       'Forecast', 'This listing', '{pct} vs average', 'Value over time', 'The new-car price is estimated from the current price and age.', 'The new-car price is the US list price plus import costs to Ukraine.',
       'The new-car price is the list price in Ukraine.', 'The forecast is a model estimate, not a guarantee.'];
     for (const lang of ['ru', 'ua']) {

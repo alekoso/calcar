@@ -753,28 +753,13 @@
   /* комплектація v2: компактні білі chips у source-групах */
   .eq-src{font-size:12.5px;font-weight:600;color:var(--ink);margin-bottom:8px}
   .eq-chip{position:relative;display:inline-flex;align-items:center;font-size:13px;font-weight:500;color:var(--text);background:var(--card);border:1px solid var(--line);border-radius:9px;padding:5px 11px}
-  /* Дорога опція відрізняється ЛИШЕ рамкою, і рамка повільно тече.
-     Механіка навмисно найпростіша і найсумісніша: прозора рамка, білий фон
-     по padding-box і градієнт по border-box, рухається лише
-     background-position. Ні маски, ні @property, ні псевдоелемента: раніше
-     рухоме кільце лежало ПОВЕРХ статичної рамки і майже не читалось.
-     Плитка 220px повторюється і зсувається рівно на свою ширину, тому цикл
-     безшовний за будь-якої ширини chip. Рамка 1.5px, але padding зменшений
-     рівно на 0.5px, тож габарити і текст лишаються ті самі, що в звичайного
-     chip. Кольори ті самі: violet -> magenta -> warm gold -> violet */
-  .eq-chip.hv,
-  .sec-meta.hv-legend{
-    border-color:transparent;border-width:1.5px;
-    background-image:linear-gradient(var(--card),var(--card)),linear-gradient(90deg,#7C3AED 0%,#C026D3 33%,#E8A33D 66%,#7C3AED 100%);
-    background-origin:padding-box,border-box;background-clip:padding-box,border-box;
-    background-repeat:no-repeat,repeat;background-size:auto,220px 100%;background-position:0 0,0 0;
-    animation:eq-hv-flow 6s linear infinite;
-  }
-  .eq-chip.hv{padding:4.5px 10.5px}
-  .sec-meta.hv-legend{padding:2.5px 9.5px}
-  @keyframes eq-hv-flow{to{background-position:0 0,220px 0}}
-  /* без руху: та сама рамка, просто нерухома */
-  @media (prefers-reduced-motion:reduce){.eq-chip.hv,.sec-meta.hv-legend{animation:none}}
+  /* Дорога опція: та сама геометрія chip, спокійний лаймовий акцент
+     (легкий лаймовий фон, лаймова рамка, трохи щільніший текст). Без руху і
+     свічення. Легенда в шапці картки з тим самим маркером пояснює, що
+     означає акцент, і показується лише коли така опція є у звіті */
+  .eq-chip.hv{background:var(--brand-soft);border-color:var(--brand-hover);color:var(--ink);font-weight:600}
+  .sec-meta.hv-legend{gap:7px;color:var(--ink-2)}
+  .sec-meta.hv-legend::before{content:'';flex:0 0 auto;width:10px;height:10px;border-radius:3px;background:var(--brand-soft);border:1px solid var(--brand-hover)}
   /* міжчипові відступи більші, щоб маркер не наїжджав на сусідів і рядки */
   .eq-chips{gap:8px 12px}
   .eq-chips{margin-top:2px}
@@ -1030,18 +1015,25 @@
   .val-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin-bottom:20px}
   .val-pair.one{grid-template-columns:minmax(0,1fr)}
   .val-pair .card{margin-bottom:0}
-  .mk-card{padding:24px 28px 22px;min-width:0}
+  .mk-card{padding:22px 24px 20px;min-width:0}
+  .mk-head{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:28px}
   .mk-card h3{font-size:16px;font-weight:700;color:var(--ink)}
-  .mk-state{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:15px;font-weight:600;color:var(--ink)}
-  .mk-state::before{content:'';flex:0 0 auto;width:8px;height:8px;border-radius:50%;background:var(--faint)}
+  /* стан ліквідності: тихий статус у рядку заголовка, не кнопка; текст
+     обовʼязковий, колір лише підсилює */
+  .mk-state{display:inline-flex;align-items:center;gap:7px;flex:0 0 auto;padding:3px 10px;border:1px solid var(--line);border-radius:999px;background:var(--card);font-size:12.5px;font-weight:600;color:var(--ink-2);white-space:nowrap}
+  .mk-state::before{content:'';flex:0 0 auto;width:7px;height:7px;border-radius:50%;background:var(--faint)}
   .mk-state.high::before{background:var(--green)}
   .mk-state.medium::before{background:var(--amber)}
   .mk-state.low::before{background:var(--red)}
-  .mk-rows{margin-top:14px}
-  .mk-row{padding:12px 0;font-size:14.5px;line-height:1.5;color:var(--text)}
+  /* рядки сигналів: однакова іконка в однаковому контейнері і текст,
+     тонкі розділювачі. Та сама будова в обох картках */
+  .mk-rows{margin-top:12px}
+  .mk-row{display:grid;grid-template-columns:32px minmax(0,1fr);column-gap:12px;align-items:start;padding:12px 0;font-size:14px;line-height:1.5;color:var(--text)}
   .mk-row + .mk-row{border-top:1px solid var(--line)}
-  .mk-row:first-child{border-top:1px solid var(--line)}
   .mk-row:last-child{padding-bottom:0}
+  .mk-ic{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:var(--surface-2);color:var(--ink-2)}
+  .mk-ic svg{width:17px;height:17px}
+  .mk-tx{padding-top:5px;min-width:0;overflow-wrap:anywhere}
   @media(max-width:860px){
     /* вузький екран: числа компактним рядом над графіком, картки одна під одною */
     .vc-body{grid-template-columns:minmax(0,1fr);row-gap:18px}
@@ -1319,12 +1311,11 @@
        картки однієї будови -->
   <div class="val-pair" id="valPair" style="display:none">
     <div class="card mk-card" id="valLiqBox" hidden>
-      <h3>Liquidity</h3>
-      <div class="mk-state" id="valLiqLevel"></div>
+      <div class="mk-head"><h3>Liquidity</h3><span class="mk-state" id="valLiqLevel"></span></div>
       <div class="mk-rows" id="valLiqReasons"></div>
     </div>
     <div class="card mk-card" id="valWhyBox" hidden>
-      <h3>Why this car costs what it does</h3>
+      <div class="mk-head"><h3>Why this car costs what it does</h3></div>
       <div class="mk-rows" id="valWhyList"></div>
     </div>
   </div>
@@ -1542,6 +1533,16 @@ function isLocalAuthor(token){ return !!token && localRecent().some(x => x && x.
 /* довге тире вичищаємо всюди: правило продукту */
 function esc(s){ return String(s ?? '').replace(/\s*\u2014\s*/g, ', ').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function clean(s){ return String(s ?? '').replace(/\u2014/g, ','); }
+/* привід: канонічні значення ("full", "awd", "fwd") мовою інтерфейсу;
+   фірмові назви (xDrive, 4MATIC) і вже локалізований текст як є. Те саме
+   відображення робить сервер (localizeDrive в api/check.js) для нових звітів */
+const DRIVE_CANON = { AWD: ['full', 'awd', '4wd', '4x4', 'allwheeldrive', 'allwheel', 'fourwheeldrive', 'fullwheeldrive'], FWD: ['front', 'fwd', 'frontwheeldrive', 'frontwheel'], RWD: ['rear', 'rwd', 'rearwheeldrive', 'rearwheel'] };
+function driveLabel(raw) {
+  const s = clean(raw).trim();
+  const key = s.toLowerCase().replace(/[\s_-]+/g, '');
+  for (const k of Object.keys(DRIVE_CANON)) if (DRIVE_CANON[k].includes(key)) return t(k);
+  return s;
+}
 const $ = id => document.getElementById(id);
 const nf = n => Number(n).toLocaleString(window.calcarLocale());
 const st = s => ['ok','warn','bad','unknown'].includes(s) ? s : 'unknown';
@@ -1834,6 +1835,45 @@ async function translateNow(){
    market_value двома картками під ним. Немає правдоподібної кривої:
    картки графіка немає, тексти лишаються. На Оцінку CalCar і впевненість
    секція не впливає */
+/* Іконка рядка ліквідності чи чинника ціни: лише подача. Тип береться з
+   ключових слів уже згенерованого речення; текст не змінюється. Не
+   впізнано: нейтральна іконка. Порядок від вужчого до ширшого */
+function mkIcon(text) {
+  const P = {
+    ev: '<rect x="3" y="7" width="16" height="10" rx="2"/><path d="M21 11v2"/><path d="M7 10v4M10.5 10v4"/>',
+    cost: '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><path d="M16 14.5h2"/>',
+    fuel: '<path d="M4 20V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v15"/><path d="M3 20h12"/><path d="M4 9h10"/><path d="m14 8 3 3v6a1.5 1.5 0 0 0 3 0V9l-3-3"/>',
+    drive: '<circle cx="6" cy="6" r="2.2"/><circle cx="18" cy="6" r="2.2"/><circle cx="6" cy="18" r="2.2"/><circle cx="18" cy="18" r="2.2"/><path d="M8.2 6h7.6M8.2 18h7.6M12 6v12"/>',
+    history: '<path d="M12 4 2.8 19.5h18.4z"/><path d="M12 10v4.5"/><path d="M12 17.2h.01"/>',
+    reliability: '<path d="M12 3l7 3v5c0 5-3 8.5-7 10-4-1.5-7-5-7-10V6z"/><path d="m9 12 2 2 4-4"/>',
+    premium: '<path d="M6 4h12l3 5-9 11L3 9z"/><path d="M3 9h18"/><path d="m9 4 3 5 3-5"/>',
+    price: '<path d="M3 12V4h8l9 9-8 8z"/><circle cx="7.5" cy="8.5" r="1.3"/>',
+    age: '<path d="m3 7 6 6 4-4 8 8"/><path d="M21 11v6h-6"/>',
+    audience: '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 5.2a3 3 0 0 1 0 5.6"/><path d="M17.5 13.6A5 5 0 0 1 20.5 19"/>',
+    body: '<path d="M5 16l1.5-5.5A2 2 0 0 1 8.4 9h7.2a2 2 0 0 1 1.9 1.5L19 16"/><rect x="3" y="16" width="18" height="4" rx="1.5"/>',
+    info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6h.01"/>',
+  };
+  const R = [
+    ['ev', /електро|электро|батаре|акумулятор|аккумулятор|запас\s+ход|battery|\bev\b|electric/i],
+    ['cost', /утрим|содерж|витрат|расход|обслуг|обслуж|ремонт|запчаст|repair|maintenance|running\s+cost|ownership|upkeep/i],
+    ['fuel', /палив|топлив|бензин|дизел|гібрид|гибрид|витрат[аи]\s+пал|fuel|petrol|diesel|hybrid|economy/i],
+    ['drive', /повн\S*\s+привід|полн\S*\s+привод|привод|привід|awd|4wd|4x4|quattro|xdrive|4matic|all-wheel/i],
+    ['history', /дтп|авар|затоп|утопл|flood|accident|аукціон|аукцион|auction|битий|битый|salvage/i],
+    ['reliability', /надійн|надежн|репутац|reliab|reputation|ресурс|durab/i],
+    ['price', /(?:^|[^\p{L}])(?:цін|цен)|price|вартіст|стоимост|дешев|дорожч|дороже/iu],
+    ['audience', /покуп|аудитор|попит|спрос|востреб|попул|ліквідн|ликвидн|demand|buyer|popular|audience/i],
+    ['premium', /преміал|премиал|premium|luxury|престиж|розкіш|роскош|бренд|brand/i],
+    ['age', /вік|возраст|старш|покол|знецін|удешев|застар|устар|depreciat|\bage\b|older|generation/i],
+    ['body', /кузов|практич|сімейн|семейн|кросовер|кроссовер|позашлях|внедорож|седан|універсал|универсал|місткі|вместим|багажн|suv|sedan|practical|family|space/i],
+  ];
+  const s = String(text || '');
+  const hit = R.find(r => r[1].test(s));
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + P[hit ? hit[0] : 'info'] + '</svg>';
+}
+function mkRow(text) {
+  return '<div class="mk-row"><span class="mk-ic">' + mkIcon(text) + '</span><span class="mk-tx">' + esc(clean(text)) + '</span></div>';
+}
+
 function renderValueSection(D) {
   const card = $('valueCard');
   const vc = M.value_curve || null;
@@ -1841,17 +1881,17 @@ function renderValueSection(D) {
   const hasChart = !!(window.CalCarValueChart && CalCarValueChart.usable(vc));
   const lq = mv && mv.liquidity && typeof mv.liquidity === 'object' ? mv.liquidity : null;
   const reasons = lq && Array.isArray(lq.reasons) ? lq.reasons.filter(x => typeof x === 'string' && x.trim()).slice(0, 3) : [];
-  const factors = mv && Array.isArray(mv.price_factors) ? mv.price_factors.filter(x => typeof x === 'string' && x.trim()).slice(0, 5) : [];
+  const factors = mv && Array.isArray(mv.price_factors) ? mv.price_factors.filter(x => typeof x === 'string' && x.trim()).slice(0, 4) : [];
   const LEVEL = { high: t('Easy to resell'), medium: t('Average resale'), low: t('Hard to resell'), unknown: t('Not enough data') };
   const level = lq && LEVEL[lq.level] ? lq.level : 'unknown';
   $('valLiqBox').hidden = !reasons.length;
   if (reasons.length) {
     $('valLiqLevel').className = 'mk-state ' + level;
     $('valLiqLevel').textContent = LEVEL[level];
-    $('valLiqReasons').innerHTML = reasons.map(r => '<div class="mk-row">' + esc(clean(r)) + '</div>').join('');
+    $('valLiqReasons').innerHTML = reasons.map(mkRow).join('');
   }
   $('valWhyBox').hidden = !factors.length;
-  if (factors.length) $('valWhyList').innerHTML = factors.map(f => '<div class="mk-row">' + esc(clean(f)) + '</div>').join('');
+  if (factors.length) $('valWhyList').innerHTML = factors.map(mkRow).join('');
   const pair = $('valPair');
   pair.style.display = (reasons.length || factors.length) ? '' : 'none';
   pair.classList.toggle('one', !(reasons.length && factors.length));
@@ -1863,6 +1903,8 @@ function renderValueSection(D) {
     reverse_estimate: t('The new-car price is estimated from the current price and age.'),
     localized_msrp: t('The new-car price is the US list price plus import costs to Ukraine.'),
     local_list: t('The new-car price is the list price in Ukraine.'),
+    source_msrp: t('The new-car price is the US list price of this version.'),
+    msrp_range: t('The new-car price is estimated from the current price and age, within the list prices of this model year.'),
   };
   const note = $('valNote');
   note.hidden = false;
@@ -2090,7 +2132,7 @@ function boot2(D){
   if (milPrimary) spec.push([t('Mileage'), milPrimary, null, miBtn]);
   if (v.engine) spec.push([t('Engine'), clean(v.engine)]);
   if (v.transmission) spec.push([t('Gearbox'), clean(v.transmission)]);
-  if (v.drive) spec.push([t('Drivetrain'), clean(v.drive)]);
+  if (v.drive) spec.push([t('Drivetrain'), driveLabel(v.drive)]);
   /* покоління: ЛИШЕ канонічне значення з _meta.model_identity (там уже
      зійшлися площадка, Model Intelligence і висновок аналізу). Свого поля
      у vehicle сторінка не читає, щоб у звіті не було двох поколінь.

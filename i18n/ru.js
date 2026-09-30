@@ -973,4 +973,6 @@ window.CALCAR_DICTS.ru = {
   'Marketplace average': 'Средняя на площадке',
   'Estimated when new': 'Оценка новой',
   'Forecast in 5 years': 'Прогноз через 5 лет',
+  'The new-car price is the US list price of this version.': 'Цена новой: прайс-цена этой версии в США.',
+  'The new-car price is estimated from the current price and age, within the list prices of this model year.': 'Цена новой оценена по текущей цене и возрасту в пределах прайс-цен этого модельного года.',
 };

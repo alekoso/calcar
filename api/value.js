@@ -265,19 +265,73 @@ export function priceTimeCoherence(c, vehicleYear) {
   return { ok: false, reason: years.some(x => x > y + 1) ? 'source_date_mismatch' : 'price_date_unknown' };
 }
 
+/* Чи та сама версія: назва версії з джерела проти версії цього авто.
+   Порівнюються злиті токени без слів про привід і кузов, з назвою моделі і
+   без неї: "X 450 AWD" і "X450" збігаються, "Limited Platinum" і
+   "Limited" ні. */
+const TRIM_NOISE = new Set(['4matic', 'awd', '4wd', 'fwd', 'rwd', '2wd', 'xdrive', 'sdrive', 'quattro', '4motion', '4x4', '4x2', 'all', 'wheel', 'drive',
+  'sedan', 'suv', 'coupe', 'wagon', 'hatchback', 'crossover']);
+const trimTokens = s => String(s || '').normalize('NFKD').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(' ').filter(x => x && !TRIM_NOISE.has(x));
+export function trimMatches(version, trim, { make = null, model = null } = {}) {
+  if (!version || !trim) return false;
+  const skip = new Set([...trimTokens(make), ...trimTokens(model)]);
+  const forms = s => { const all = trimTokens(s); return new Set([all.join(''), all.filter(x => !skip.has(x)).join('')].filter(x => x.length >= 2)); };
+  const a = forms(version), b = forms(trim);
+  for (const x of a) if (b.has(x)) return true;
+  return false;
+}
+
+/* MSRP про той самий модельний рік: рік авто з оголошення або модельний
+   рік з декодера чи аналізу (вони можуть відрізнятись на рік); без року
+   ціни текст джерела не повинен казати про інший рік */
+function msrpYearOk(c, years) {
+  if (!years.length) return false;
+  if (c.model_year) return years.includes(c.model_year);
+  const inText = Array.isArray(c.text_years) ? c.text_years : [];
+  return !(inText.length && !inText.some(y => years.includes(y)));
+}
+
+/* candidates: уже перевірені (validateCandidates) ціни з джерел.
+   Порядок:
+   A. сильна локальна ціна того самого ринку, узгоджена в часі;
+   B. MSRP ринку-джерела саме цієї версії того самого модельного року;
+      режим ввезення року відомий: локалізується, інакше лишається як є
+      (підпис у звіті і так "Оцінка новою");
+   C. слабка локальна ціна;
+   D. діапазон MSRP модельного року з одного джерела (кілька версій) або
+      стартова ціна: зворотна оцінка лишається, але не виходить за межі
+      діапазону. Це запобіжник правдоподібності, а не пошук точної ціни;
+   E. одна MSRP невідомої версії з відомим режимом ввезення (як раніше);
+   F. зворотна оцінка.
+   max(MSRP, зворотна) свідомо НЕ застосовується. */
 export function resolveNewPrice({ candidates = [], pc, T, market = null, currency = null, vehicle = {} } = {}) {
   const reverse = reverseNewPrice(pc, T);
   const rejected = [];
+  let msrpInfo = null;
   const fallback = reason => ({
-    value: reverse !== null ? Math.round(reverse) : null, approx: true, basis: 'reverse_estimate', strength: null, fact: null, rejected,
+    value: reverse !== null ? Math.round(reverse) : null, approx: true, basis: 'reverse_estimate', strength: null, fact: null, rejected, msrp: msrpInfo,
     ...(reason ? { reason } : {}),
   });
   if (reverse === null) return fallback('no_current_price');
   /* сторонні ціни приводяться до USD; графік в іншій валюті їх не бере */
   if (currency !== 'USD' || market !== 'UA') return fallback(candidates.length ? 'sourced_price_needs_ua_usd_market' : null);
 
-  const prepared = [];
-  const reject = (c, reason, extra) => rejected.push({ ref: c.source_url || null, reason, amount: c.amount, currency: c.currency, source_date: c.source_date || null, ...(extra || {}) });
+  const vy = parseInt(vehicle.year, 10) || null;
+  const vYears = [vy, parseInt(vehicle.model_year, 10) || null].filter(Boolean);
+  const minOk = pc * minNewToCurrentRatio(T);
+  const reject = (c, reason, extra) => rejected.push({ ref: c.source_url || null, reason, amount: c.amount, currency: c.currency, source_date: c.source_date || null, ...(c.version ? { version: c.version } : {}), ...(extra || {}) });
+  const localize = (usd, year) => localizeUsMsrpToUA(usd, { ...vehicle, year });
+  const sourced = (p, extra) => ({ value: Math.round(p.value), approx: p.strength !== 'strong', basis: p.basis, strength: p.strength, rejected, msrp: msrpInfo,
+    fact: { ...p.c, amount_usd: Math.round(p.usd), price_year: p.price_year }, ...(p.localization ? { localization: p.localization } : {}), ...(extra || {}) });
+  const plausible = p => {
+    if (p.value < minOk) { reject(p.c, 'incompatible_with_current_value', { value: Math.round(p.value) }); return false; }
+    if (p.value > reverse * MAX_OVER_REVERSE) { reject(p.c, 'implausibly_high', { value: Math.round(p.value) }); return false; }
+    return true;
+  };
+
+  /* ---- локальні ціни ---- */
+  const locals = [];
+  const msrps = [];
   for (const c of Array.isArray(candidates) ? candidates : []) {
     if (c.price_kind === 'local_list' && c.market === 'UA') {
       /* Локальна ціна це якір лише коли зрозуміло, ДО ЯКОГО ЧАСУ вона
@@ -291,36 +345,76 @@ export function resolveNewPrice({ candidates = [], pc, T, market = null, currenc
       if (c.price_ladder) { reject(c, 'ambiguous_trim_ladder'); continue; }
       const usd = toUsd(c.amount, c.currency, tc.price_year);
       if (usd === null) { reject(c, 'currency_not_convertible'); continue; }
-      prepared.push({ rank: 0, value: usd, basis: 'local_list', strength: c.trim_match === 'exact' && tc.evidence !== 'none' ? 'strong' : 'weak', c, usd, price_year: tc.price_year });
-      continue;
-    }
-    const usd = toUsd(c.amount, c.currency, c.model_year || vehicle.year);
-    if (usd === null) { reject(c, 'currency_not_convertible'); continue; }
-    if (c.price_kind === 'source_msrp' && c.market === 'US') {
-      /* режим ввезення року, коли авто було новим */
-      const loc = localizeUsMsrpToUA(usd, { ...vehicle, year: c.model_year || vehicle.year });
-      if (loc !== null) prepared.push({ rank: 1, value: loc.value, basis: 'localized_msrp', strength: 'weak', c, usd, price_year: c.model_year || parseInt(vehicle.year, 10) || null, localization: loc.regime });
-      else reject(c, 'historical_localization_unknown');
+      locals.push({ value: usd, usd, basis: 'local_list', strength: c.trim_match === 'exact' && tc.evidence !== 'none' ? 'strong' : 'weak', c, price_year: tc.price_year });
+    } else if (c.price_kind === 'source_msrp' && c.market === 'US') {
+      const usd = toUsd(c.amount, c.currency, c.model_year || vy);
+      if (usd === null) { reject(c, 'currency_not_convertible'); continue; }
+      if (!msrpYearOk(c, vYears)) { reject(c, 'msrp_other_model_year'); continue; }
+      msrps.push({ c, usd, price_year: c.model_year || vy });
     } else {
       reject(c, 'market_not_supported');
     }
   }
-  const strengthRank = p => (p.strength === 'strong' ? 0 : 1);
   const trimRank = p => (p.c.trim_match === 'exact' ? 0 : p.c.trim_match === 'unknown' ? 1 : 2);
   const confRank = p => (p.c.confidence === 'high' ? 0 : 1);
-  prepared.sort((a, b) => (a.rank - b.rank) || (strengthRank(a) - strengthRank(b)) || (trimRank(a) - trimRank(b)) || (confRank(a) - confRank(b)));
+  locals.sort((a, b) => (trimRank(a) - trimRank(b)) || (confRank(a) - confRank(b)));
 
-  for (const p of prepared) {
-    const fact = { ...p.c, amount_usd: Math.round(p.usd), price_year: p.price_year };
-    if (p.strength === 'strong') {
-      /* точна локальна ціна нижча за ринок: джерело не підробляємо і криву
-         не вигадуємо, графік ховається */
-      if (p.value <= pc) return { value: Math.round(p.value), approx: false, basis: p.basis, strength: 'strong', fact, rejected, reason: 'strong_anchor_not_above_market' };
-      return { value: Math.round(p.value), approx: false, basis: p.basis, strength: 'strong', fact, rejected };
-    }
-    if (p.value < pc * minNewToCurrentRatio(T)) { reject(p.c, 'incompatible_with_current_value', { value: Math.round(p.value) }); continue; }
-    if (p.value > reverse * MAX_OVER_REVERSE) { reject(p.c, 'implausibly_high', { value: Math.round(p.value) }); continue; }
-    return { value: Math.round(p.value), approx: true, basis: p.basis, strength: 'weak', fact, rejected, ...(p.localization ? { localization: p.localization } : {}) };
+  /* A. сильна локальна: точна локальна ціна нижча за ринок ховає графік,
+     джерело не підробляємо */
+  const strong = locals.find(p => p.strength === 'strong');
+  if (strong) {
+    if (strong.value <= pc) return sourced(strong, { reason: 'strong_anchor_not_above_market' });
+    return sourced(strong);
+  }
+
+  /* B. MSRP саме цієї версії */
+  const isExact = m => m.c.trim_match === 'exact' || trimMatches(m.c.version, vehicle.trim, vehicle);
+  const exact = msrps.filter(isExact).sort((a, b) => confRank(a) - confRank(b));
+  for (const m of exact) {
+    const loc = localize(m.usd, m.price_year);
+    const p = { c: m.c, usd: m.usd, price_year: m.price_year, strength: 'weak',
+      value: loc ? loc.value : m.usd, basis: loc ? 'localized_msrp' : 'source_msrp', localization: loc ? loc.regime : null };
+    msrpInfo = { exact: { amount: m.c.amount, currency: m.c.currency, version: m.c.version || null, model_year: m.price_year, source_url: m.c.source_url, localization: p.localization }, range: null };
+    if (plausible(p)) return sourced(p);
+    msrpInfo = null;
+  }
+
+  /* C. слабка локальна */
+  for (const p of locals) if (plausible(p)) return sourced(p);
+
+  /* D. діапазон модельного року з одного джерела */
+  const bySource = new Map();
+  for (const m of msrps) { const k = m.c.source_url || ''; if (!bySource.has(k)) bySource.set(k, []); bySource.get(k).push(m); }
+  let band = null;
+  for (const [url, list] of bySource) {
+    const amounts = [...new Set(list.map(m => Math.round(m.usd)))];
+    if (amounts.length >= 2 && (!band || amounts.length > band.n)) band = { url, n: amounts.length, lo: Math.min(...amounts), hi: Math.max(...amounts), year: list[0].price_year };
+  }
+  if (!band) {
+    const base = msrps.filter(m => m.c.trim_match === 'base').sort((a, b) => a.usd - b.usd)[0];
+    if (base) band = { url: base.c.source_url, n: 1, lo: Math.round(base.usd), hi: null, year: base.price_year };
+  }
+  if (band) {
+    const lo = localize(band.lo, band.year), hi = band.hi !== null ? localize(band.hi, band.year) : null;
+    const loV = lo ? lo.value : band.lo, hiV = band.hi === null ? null : (hi ? hi.value : band.hi);
+    /* стеля діапазону нижча за поточну ціну: це базові ціни під дорогою
+       конфігурацією, стелю не застосовуємо */
+    const useHi = hiV !== null && hiV >= minOk;
+    let value = reverse, applied = null;
+    if (value < loV) { value = loV; applied = 'floor'; }
+    else if (useHi && value > hiV) { value = hiV; applied = 'ceiling'; }
+    msrpInfo = { exact: null, range: { min: band.lo, max: band.hi, prices: band.n, model_year: band.year, source_url: band.url, localization: lo ? lo.regime : null,
+      min_anchor: Math.round(loV), max_anchor: hiV === null ? null : Math.round(hiV), ceiling_used: useHi, applied } };
+    if (applied) return { value: Math.round(value), approx: true, basis: 'msrp_range', strength: null, fact: null, rejected, msrp: msrpInfo };
+    return fallback(null);
+  }
+
+  /* E. одна MSRP невідомої версії: лише з відомим режимом ввезення */
+  for (const m of msrps.sort((a, b) => confRank(a) - confRank(b))) {
+    const loc = localize(m.usd, m.price_year);
+    if (!loc) { reject(m.c, 'historical_localization_unknown'); continue; }
+    const p = { c: m.c, usd: m.usd, price_year: m.price_year, strength: 'weak', value: loc.value, basis: 'localized_msrp', localization: loc.regime };
+    if (plausible(p)) return sourced(p);
   }
   return fallback(rejected.length ? 'sourced_price_unsuitable' : null);
 }
@@ -358,6 +452,9 @@ export function buildValueCurve({ price = null, currency = null, price_context =
         date: np.fact.source_date || null, price_year: np.fact.price_year || null, market: np.fact.market,
       } : null,
       rejection_reason: np.basis === 'reverse_estimate' && np.rejected.length ? np.rejected[0].reason : null,
+      /* MSRP ринку-джерела: точна версія або діапазон модельного року як
+         межі правдоподібності зворотної оцінки */
+      msrp: np.msrp || null,
       /* факт із джерела у контракті Model Intelligence (область: марка,
          модель, покоління, версія, рік, ринок, валюта, джерело, довіра).
          Зворотна оцінка фактом не є: fact лишається null */
@@ -454,6 +551,7 @@ export function validateCandidates(raw, results, { brand = null, year = null, no
     out.push({
       amount, currency: c.currency, market: c.market, price_kind: c.price_kind,
       trim_match: trim, model_year: my,
+      version: c.version ? noDash(c.version).slice(0, 60) : null,
       source_url: r.url, source_host: cls.host || hostOf(r.url), source_excerpt: String(r.snippet || r.title || '').slice(0, 240),
       confidence: cls.source_type === 'official' ? 'high' : 'medium',
       /* до якого часу належить ціна: дата сторінки від пошуку і роки в
@@ -507,6 +605,7 @@ export function valueResponseFormat() {
     new_price_candidates: S('array', { items: OBJ({
       result_ref: S('string'), amount: S('number'), currency: S('string', { enum: CUR }), market: S('string', { enum: MKT }),
       price_kind: S('string', { enum: KIND }), trim_match: S('string', { enum: TRIM }), model_year: S(['integer', 'null']),
+      version: S(['string', 'null']),
     }) }),
   }) } };
 }
@@ -527,6 +626,7 @@ Three outputs.
 3. new_price_candidates: prices of this model when NEW found in SEARCH_RESULTS.
    Take a price only if the number is literally written in that result's title or snippet. result_ref is the result id (S1, S2...). amount is the number as written, without conversion.
    price_kind "local_list": an official or dealer list price of a new car in Ukraine. price_kind "source_msrp": manufacturer list price in another market (US MSRP and so on). market: UA, US, EU or OTHER.
+   When a result lists prices of several versions of the same model year, return EVERY version price as a separate entry; version is the version name exactly as written next to that price (null when there is none).
    trim_match "exact" only when the result clearly names the same version as VEHICLE; "base" for a starting or base price ("from", "starting at"); otherwise "unknown".
    model_year: the model year the price refers to, or null. Skip used-car prices, prices of other generations, monthly payments and price ranges without a concrete number. No suitable price: empty array. Never supply a price from memory.
 
