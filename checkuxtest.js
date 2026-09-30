@@ -381,9 +381,10 @@ const page = fs.readFileSync('result-check.html', 'utf8');
     const EV = ev.CalCarEquipmentValue;
     if (!EV) errs.push('equipment-value.js не публікує CalCarEquipmentValue');
     else {
-      /* каталог MI головний в обидва боки */
-      if (!EV.isHighValue({ name: 'Люк', value_tier: 'standard', mi: { confirmed: true, value_tier: 'high_value' } })) errs.push('MI high_value не виграв');
-      if (EV.isHighValue({ name: 'Пневмоподвеска', value_tier: 'high_value', mi: { confirmed: true, value_tier: 'standard' } })) errs.push('загальний список перебив MI, який сказав "звичайна"');
+      /* премиум вирішує лише таксономія за назвою: ні value_tier моделі,
+         ні позначка каталогу MI підсвітку не змінюють */
+      if (EV.isHighValue({ name: 'Люк', value_tier: 'high_value', mi: { confirmed: true, value_tier: 'high_value' } })) errs.push('value_tier чи MI зробили звичайну опцію премиумом');
+      if (!EV.isHighValue({ name: 'Пневмоподвеска', value_tier: 'standard', mi: { confirmed: true, value_tier: 'standard' } })) errs.push('value_tier чи MI зняли премиум з пневмопідвіски');
       /* каталог мовчить: працює загальний список */
       if (!EV.isHighValue({ name: 'Пневмоподвеска', value_tier: 'standard' })) errs.push('без каталогу дорога опція не підсвічена');
       if (!EV.isHighValue({ name: 'Проекционный дисплей', value_tier: 'standard', mi: { confirmed: false, value_tier: 'high_value' } })) errs.push('непідтверджений каталог мав пустити загальний список');
@@ -405,7 +406,7 @@ const page = fs.readFileSync('result-check.html', 'utf8');
       if (EV.conceptFor('Пневмоподвеска') !== EV.conceptFor('Air suspension')) errs.push('синоніми пневмопідвіски не зводяться до одного поняття');
     }
     /* легенда лише коли в цьому звіті є хоч одна дорога опція */
-    if (!/id="eqLegend" hidden>Expensive options<\/span>/.test(page)) errs.push('легенда дорогих опцій показується за замовчуванням');
+    if (!/id="eqLegend" hidden>Premium options<\/span>/.test(page)) errs.push('легенда дорогих опцій показується за замовчуванням');
     if (!/const anyHv = eqV2\.some\(o => CalCarEquipmentValue\.isHighValue\(o\)\);\n\s*\$\('eqLegend'\)\.hidden = !anyHv;/.test(page)) errs.push('легенда не залежить від наявності дорогих опцій');
     if (!/\.sec-meta\[hidden\]\{display:none\}/.test(page)) errs.push('display класу перебиває hidden у легенди');
     /* дорогі опції: підсвічуються в будь-якій групі джерела (фото, дані
@@ -425,7 +426,7 @@ const page = fs.readFileSync('result-check.html', 'utf8');
     {
       const d = { CALCAR_DICTS: {} };
       for (const f of ['i18n/ru.js', 'i18n/ua.js']) vm.runInNewContext(fs.readFileSync(f, 'utf8'), { window: d });
-      if (d.CALCAR_DICTS.ru['Expensive options'] !== 'Дорогие опции' || d.CALCAR_DICTS.ua['Expensive options'] !== 'Дорогі опції') errs.push('легенда дорогих опцій не перекладена');
+      if (d.CALCAR_DICTS.ru['Premium options'] !== 'Премиум-опции' || d.CALCAR_DICTS.ua['Premium options'] !== 'Преміум-опції') errs.push('легенда премиум-опцій не перекладена');
     }
     /* привід на сторінці: сирі значення мовою інтерфейсу, фірмові як є */
     {

@@ -1277,7 +1277,7 @@
   <div class="card" id="eqCard" style="display:none">
     <div class="card-head">
       <h2>Equipment</h2>
-      <span class="sec-meta hv-legend" id="eqLegend" hidden>Expensive options</span>
+      <span class="sec-meta hv-legend" id="eqLegend" hidden>Premium options</span>
     </div>
     <div class="card-body"><div id="eqList"></div></div>
   </div>
@@ -2388,15 +2388,17 @@ function boot2(D){
       const meta = (o.evidence || []).map(e => [e.ref ? humanRef(e.ref) : null, e.sign].filter(Boolean).join(': ')).filter(Boolean).join(' · ');
       /* premium-опція: та сама геометрія, інша лише рамка; tooltip каже
          про цінність, не про грошову вартість */
-      /* цінність: каталог MI по цьому авто головний, інакше загальний
-         список очевидно дорогого обладнання (equipment-value.js) */
+      /* премиум-обладнання: детермінована таксономія за назвою
+         (equipment-value.js), однакова для всіх авто; value_tier моделі і
+         позначка каталогу MI лишаються метаданими */
       const hv = CalCarEquipmentValue.isHighValue(o);
       /* пояснення, чому опція виділена; без грошових цифр, бо надійних
          цінових даних нема */
       const tip = hv
-        ? (t('Expensive option') + '. ' + t('This option usually has a noticeable impact on the car price or on the cost of its repair or replacement.') + (meta ? ' · ' + meta : ''))
+        ? (t('Premium option') + '. ' + t('High-end equipment that noticeably sets this car apart.') + (meta ? ' · ' + meta : ''))
         : meta;
-      return '<span class="eq-chip' + (hv ? ' hv' : '') + '"' + (tip ? ' title="' + esc(tip) + '"' : '') + '>' + esc(o.name) + '</span>';
+      /* data-premium: поняття таксономії, за яким опцію підсвічено (діагностика) */
+      return '<span class="eq-chip' + (hv ? ' hv' : '') + '"' + (hv ? ' data-premium="' + esc(CalCarEquipmentValue.premiumConcept(o)) + '"' : '') + (tip ? ' title="' + esc(tip) + '"' : '') + '>' + esc(o.name) + '</span>';
     };
     const byNotable = (a, b) => (b.highlight === true) - (a.highlight === true);
     const EQ_SRC_GROUPS = [
@@ -2415,7 +2417,7 @@ function boot2(D){
     const retro = eqV2.filter(o => o.retrofit).sort(byNotable);
     if (retro.length) eqHtml2 += '<div class="eq-group"><div class="eq-src">' + esc(t('Installed later / retrofit')) + '</div><div class="eq-chips">' + retro.map(chipHtml).join('') + '</div></div>';
     if (eqHtml2) { $('eqCard').style.display = ''; $('eqList').innerHTML = eqHtml2; }
-    /* підпис про дорогі опції показуємо ЛИШЕ коли хоч одна така є у звіті */
+    /* підпис про премиум-опції показуємо ЛИШЕ коли хоч одна така є у звіті */
     const anyHv = eqV2.some(o => CalCarEquipmentValue.isHighValue(o));
     $('eqLegend').hidden = !anyHv;
   } else {

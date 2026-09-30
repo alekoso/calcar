@@ -975,4 +975,7 @@ window.CALCAR_DICTS.ua = {
   'Forecast in 5 years': 'Прогноз через 5 років',
   'The new-car price is the US list price of this version.': 'Ціна нового авто: прайс-ціна цієї версії у США.',
   'The new-car price is estimated from the current price and age, within the list prices of this model year.': 'Ціну нового авто оцінено за поточною ціною і віком у межах прайс-цін цього модельного року.',
+  'Premium options': 'Преміум-опції',
+  'Premium option': 'Преміум-опція',
+  'High-end equipment that noticeably sets this car apart.': 'Оснащення високого класу, яке помітно вирізняє цю машину.',
 };

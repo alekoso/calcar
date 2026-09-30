@@ -143,12 +143,13 @@ function grab(src, name) {
     && it('Аудіосистема Harman Kardon').value_tier === 'standard' && it('Аудіосистема Harman Kardon').confidence_level === 'seller');
   ok('4e. лічильники', res.stats.matched === 4 && res.stats.confirmed === 3 && res.stats.confirmed_high_value === 3 && res.stats.seller_only === 1, JSON.stringify(res.stats));
   /* рамка .eq-chip.hv у result-check.html вмикається спільним рішенням
-     equipment-value.js: каталог MI головний, запасний список працює лише
-     там, де каталог опцію не покриває */
+     equipment-value.js. З Premium options v2 премиум визначає лише
+     детермінована таксономія за назвою: позначка каталогу MI і value_tier
+     моделі лишаються метаданими звіту, але підсвітку не вирішують */
   const page = fs.readFileSync('result-check.html', 'utf8');
   ok('4f. рамка преміуму читає спільне рішення цінності', /const hv = CalCarEquipmentValue\.isHighValue\(o\);/.test(page) && /\.eq-chip\.hv/.test(page));
   const ev = fs.readFileSync('equipment-value.js', 'utf8');
-  ok('4g. каталог MI має пріоритет над запасним списком', /if \(mi && mi\.confirmed === true && mi\.value_tier\) return mi\.value_tier === 'high_value';/.test(ev));
+  ok('4g. підсвітку вирішує лише таксономія за назвою', /function isHighValue\(item\) \{ return premiumConcept\(item\) !== null; \}/.test(ev) && !/mi\.value_tier|item\.value_tier/.test(ev));
   const hvFromMi = items.filter(x => x.mi && x.value_tier === 'high_value' && before.find(b => b.name === x.name).value_tier !== 'high_value');
   ok('4g. маркер каталогу дістався лише підтвердженим пунктам', hvFromMi.length === 3 && hvFromMi.every(x => x.mi.confirmed === true));
   ok('6. відкритий пошук: пункти поза каталогом без змін', JSON.stringify(it('Підігрів керма')) === JSON.stringify(before.find(b => b.name === 'Підігрів керма'))
