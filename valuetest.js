@@ -468,7 +468,7 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
     ok('10b6. заливка ледь помітна, сітка і осі тихі', /\.vc-area\{fill:var\(--brand\);opacity:\.07\}/.test(vcss) && /\.vc-grid\{stroke:var\(--surface-2\)/.test(vcss) && /\.vc-tick\{[^}]*fill:var\(--faint\)/.test(vcss));
     ok('10b7. числа у стовпчику без окремих рамок: лише тонкі розділювачі; друга ціна тихіша', /\.vc-kpi \+ \.vc-kpi\{border-top:1px solid var\(--line\)\}/.test(vcss) && !/\.vc-kpi\{[^}]*(border-radius|background|box-shadow)/.test(vcss)
       && /\.vc-kpi\.ctx \.vc-num\{font-size:16px/.test(vcss) && /\.vc-num\{font-size:24px/.test(vcss));
-    ok('10b8. друга позначка на графіку мала і тиха', /\.vc-listing-dot\{fill:var\(--card\);stroke:var\(--muted\);stroke-width:1\.5\}/.test(vcss));
+    ok('10b8. другої позначки на графіку немає: ні стилю, ні малювання', !/vc-listing-dot|vc-link/.test(page) && !/vc-listing-dot|vc-link|L\.listing/.test(fs.readFileSync('value-chart.js', 'utf8')));
     /* 15: ліквідність і чинники ціни однієї будови */
     const pairHtml = page.slice(iPair, iRisks);
     ok('10b9. 15: дві картки однієї будови: той самий клас, заголовок і рядки', (pairHtml.match(/<div class="card mk-card"/g) || []).length === 2 && (pairHtml.match(/<h3>/g) || []).length === 2 && (pairHtml.match(/class="mk-rows"/g) || []).length === 2 && !/<ul|<li/.test(pairHtml));
@@ -517,13 +517,12 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
       ok('11c. ширина ' + width + ': усі точки в межах полотна', inside);
       ok('11d. ширина ' + width + ': x зростає, y після першої точки не піднімається', L.px.every((x, i) => i === 0 || x > L.px[i - 1]) && L.py.every((y, i) => i === 0 || y >= L.py[i - 1] - 0.01));
       ok('11e. ширина ' + width + ': "сьогодні" це остання суцільна точка', vc.points[L.todayIdx].today === true);
-      const yL = L.Y(vc.listing.value);
-      ok('11f. ширина ' + width + ': позначка оголошення вище кривої і в межах полотна', yL < L.py[L.todayIdx] && yL >= L.pad.t);
+      ok('11f. ширина ' + width + ': у розкладці графіка немає другої ціни', !('listing' in L));
     }
     {
       const vcA = V.buildValueCurve({ price: 19000, currency: 'USD', price_context: RIA(23200), country: 'UA', year: 2021, nowMs: NOW });
       const La = C.layout(vcA, 640, 260);
-      ok('11f1. середня як друга позначка стоїть вище точки "сьогодні"', C.usable(vcA) && La.listing === 23200 && La.Y(23200) < La.py[La.todayIdx]);
+      ok('11f1. друга ціна лишається в даних для стовпчика чисел, графік її не малює', C.usable(vcA) && vcA.average.value === 23200 && vcA.current.value === 19000 && !('listing' in La));
     }
     /* D: вісь Y від нуля з ефективною верхньою межею */
     for (const max of [30000, 53000, 60000, 63000, 140000, 300000, 411000, 7500, 1250000]) {
@@ -538,7 +537,7 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
     ok('11h2. дешеве і дороге авто мають різні шкали', C.yScale(30000, 7).step < C.yScale(300000, 7).step);
     const over = V.buildValueCurve({ price: 120000, currency: 'USD', price_context: RIA(45000), country: 'UA', year: 2024, nowMs: NOW });
     const Lo = C.layout(over, 640, 260);
-    ok('11i. позначка оголошення поза кривою розширює шкалу', Lo.ys.top >= 120000 && Lo.Y(120000) >= Lo.pad.t && Lo.Y(0) === Lo.pad.t + Lo.ih);
+    ok('11i. шкала за кривою: друга ціна поза кривою шкалу не розширює', over.listing.value === 120000 && Lo.ys.top >= over.new_price.value && Lo.ys.top < 120000 && Lo.Y(0) === Lo.pad.t + Lo.ih);
     ok('11j. підписи осі і сум', C.axisMoney(20000, 'USD') === '$20k' && C.axisMoney(100000, 'USD') === '$100k' && C.axisMoney(1500000, 'USD') === '$1.5M' && C.axisMoney(12500, 'USD') === '$12.5k' && C.money(23600, 'USD') === '$23\u00a0600' && C.money(23600, 'UAH') === '23\u00a0600\u00a0UAH');
     /* E: вісь X: рік кінця прогнозу підписаний на правому краю */
     for (const [age, maxLabels] of [[0.5, 8], [1.25, 8], [5, 8], [13.25, 8], [25, 8], [25, 5], [40, 4]]) {
@@ -555,6 +554,11 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
     ok('11q1. невизначеність несе підпис: оцінка новою, сьогодні, прогноз', /t\(vc\.new_price\.approx \? 'Estimated when new' : 'When new'\)/.test(chartSrc) && /item\(curTxt, t\('Today'\), 'now'\)/.test(chartSrc) && /item\(futTxt, t\('Forecast in 5 years'\)\)/.test(chartSrc));
     ok('11q2. середня як контекст: назва джерела або нейтральний підпис', /vc\.average\.source_name \? t\('\{name\} average'\)\.replace\('\{name\}', vc\.average\.source_name\) : t\('Marketplace average'\)/.test(chartSrc) && !/AUTO\.RIA/.test(chartSrc));
     ok('11r. ціна оголошення точна; середня і прогноз округлені', /money\(vc\.listing\.value, cur\)/.test(chartSrc) && /curTxt = money\(isAvg \? r100\(vc\.current\.value\) : vc\.current\.value, cur\)/.test(chartSrc) && /futTxt = money\(r100\(vc\.future\.value\), cur\)/.test(chartSrc));
+    {
+      const todayCircles = chartSrc.match(/el\('circle', \{ cx: L\.px\[ti\][^}]*\}\)/g) || [];
+      ok('11w. на лінії "сьогодні" рівно одна позначка: лаймовий якір кривої', todayCircles.length === 1 && /'class': 'vc-today'/.test(todayCircles[0]));
+      ok('11x. друга ціна лишається у стовпчику праворуч (оголошення або середня)', /rail \+= item\(money\(vc\.listing\.value, cur\)/.test(chartSrc) && /rail \+= item\(money\(r100\(vc\.average\.value\), cur\)/.test(chartSrc));
+    }
     ok('11s. числа винесені зі шапки графіка у стовпчик праворуч', /'<div class="vc-rail">' \+ rail \+ '<\/div><\/div>'/.test(chartSrc) && !/vc-stats|class="vc-listing"/.test(chartSrc));
     ok('11t. підказка на сьогодні показує точне значення джерела', /var exact = active === L\.todayIdx/.test(chartSrc));
     ok('11u. підпис "Сьогодні" біля вертикальної лінії', /'class': 'vc-now-lbl' \}, t\('Today'\)\)/.test(chartSrc));

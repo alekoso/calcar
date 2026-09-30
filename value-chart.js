@@ -138,17 +138,16 @@
     var pad = { l: narrow ? 44 : 52, r: 20, t: 30, b: 28 };
     var iw = Math.max(40, width - pad.l - pad.r), ih = Math.max(40, height - pad.t - pad.b);
     var tMax = pts[n - 1].t;
-    /* друга ціна як контекст: ціна оголошення або середня площадки */
-    var second = vc.listing || vc.average || null;
-    var listing = second && typeof second.value === 'number' && isFinite(second.value) && second.value > 0 ? second.value : null;
-    var maxV = Math.max(vc.new_price.value, vc.current.value, listing || 0);
+    /* друга ціна (оголошення чи середня площадки) живе лише у стовпчику
+       чисел праворуч; на графіку і в шкалі її немає */
+    var maxV = Math.max(vc.new_price.value, vc.current.value);
     for (var i = 0; i < n; i++) if (pts[i].value > maxV) maxV = pts[i].value;
     var ys = yScale(maxV, narrow ? 5 : 7);
     var X = function (t) { return pad.l + (t / tMax) * iw; };
     var Y = function (v) { return pad.t + ih - (v / ys.top) * ih; };
     var todayIdx = 0;
     for (i = 0; i < n; i++) if (!pts[i].forecast) todayIdx = i;
-    return { pad: pad, iw: iw, ih: ih, tMax: tMax, ys: ys, X: X, Y: Y, todayIdx: todayIdx, narrow: narrow, listing: listing,
+    return { pad: pad, iw: iw, ih: ih, tMax: tMax, ys: ys, X: X, Y: Y, todayIdx: todayIdx, narrow: narrow,
       px: pts.map(function (p) { return X(p.t); }), py: pts.map(function (p) { return Y(p.value); }) };
   }
 
@@ -241,16 +240,7 @@
       svg.appendChild(el('path', { d: pathThrough(L.px, L.py, m, ti, last), 'class': 'vc-line vc-forecast' }));
       svg.appendChild(el('circle', { cx: L.px[0], cy: L.py[0], r: 4, 'class': 'vc-end' }));
       svg.appendChild(el('circle', { cx: L.px[last], cy: L.py[last], r: 4, 'class': 'vc-end vc-end-f' }));
-      /* друга ціна: окрема позначка на лінії "сьогодні", криву не зміщує */
-      if (L.listing !== null) {
-        var ly = L.Y(L.listing);
-        /* на великій шкалі близькі ціни злились би в одну точку: позначка
-           тримає мінімальний видимий відступ у свій бік від кривої */
-        var gap = ly - L.py[ti];
-        if (Math.abs(gap) < 12 && L.listing !== vc.current.value) ly = L.py[ti] + (L.listing > vc.current.value ? -12 : 12);
-        /* мала порожня позначка: контекст, а не друга головна точка */
-        svg.appendChild(el('circle', { cx: L.px[ti], cy: ly, r: 4, 'class': 'vc-listing-dot' }));
-      }
+      /* на лінії "сьогодні" одна позначка: якір кривої */
       svg.appendChild(el('circle', { cx: L.px[ti], cy: L.py[ti], r: 5.5, 'class': 'vc-today' }));
       cross = el('line', { x1: 0, x2: 0, y1: L.pad.t, y2: base, 'class': 'vc-cross', visibility: 'hidden' });
       dot = el('circle', { cx: 0, cy: 0, r: 5, 'class': 'vc-active', visibility: 'hidden' });
