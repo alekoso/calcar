@@ -753,13 +753,28 @@
   /* комплектація v2: компактні білі chips у source-групах */
   .eq-src{font-size:12.5px;font-weight:600;color:var(--ink);margin-bottom:8px}
   .eq-chip{position:relative;display:inline-flex;align-items:center;font-size:13px;font-weight:500;color:var(--text);background:var(--card);border:1px solid var(--line);border-radius:9px;padding:5px 11px}
-  /* Дорога опція: та сама геометрія chip, спокійний лаймовий акцент
-     (легкий лаймовий фон, лаймова рамка, трохи щільніший текст). Без руху і
-     свічення. Легенда в шапці картки з тим самим маркером пояснює, що
-     означає акцент, і показується лише коли така опція є у звіті */
-  .eq-chip.hv{background:var(--brand-soft);border-color:var(--brand-hover);color:var(--ink);font-weight:600}
-  .sec-meta.hv-legend{gap:7px;color:var(--ink-2)}
-  .sec-meta.hv-legend::before{content:'';flex:0 0 auto;width:10px;height:10px;border-radius:3px;background:var(--brand-soft);border:1px solid var(--brand-hover)}
+  /* Дорога опція відрізняється ЛИШЕ рамкою, і рамка повільно тече.
+     Механіка навмисно найпростіша і найсумісніша: прозора рамка, білий фон
+     по padding-box і градієнт по border-box, рухається лише
+     background-position. Ні маски, ні @property, ні псевдоелемента: раніше
+     рухоме кільце лежало ПОВЕРХ статичної рамки і майже не читалось.
+     Плитка 220px повторюється і зсувається рівно на свою ширину, тому цикл
+     безшовний за будь-якої ширини chip. Рамка 1.5px, але padding зменшений
+     рівно на 0.5px, тож габарити і текст лишаються ті самі, що в звичайного
+     chip. Кольори ті самі: violet -> magenta -> warm gold -> violet */
+  .eq-chip.hv,
+  .sec-meta.hv-legend{
+    border-color:transparent;border-width:1.5px;
+    background-image:linear-gradient(var(--card),var(--card)),linear-gradient(90deg,#7C3AED 0%,#C026D3 33%,#E8A33D 66%,#7C3AED 100%);
+    background-origin:padding-box,border-box;background-clip:padding-box,border-box;
+    background-repeat:no-repeat,repeat;background-size:auto,220px 100%;background-position:0 0,0 0;
+    animation:eq-hv-flow 6s linear infinite;
+  }
+  .eq-chip.hv{padding:4.5px 10.5px}
+  .sec-meta.hv-legend{padding:2.5px 9.5px}
+  @keyframes eq-hv-flow{to{background-position:0 0,220px 0}}
+  /* без руху: та сама рамка, просто нерухома */
+  @media (prefers-reduced-motion:reduce){.eq-chip.hv,.sec-meta.hv-legend{animation:none}}
   /* міжчипові відступи більші, щоб маркер не наїжджав на сусідів і рядки */
   .eq-chips{gap:8px 12px}
   .eq-chips{margin-top:2px}

@@ -356,18 +356,10 @@ const page = fs.readFileSync('result-check.html', 'utf8');
       if (/@property --eq-ang/.test(src) || /eq-hv-turn/.test(src)) errs.push(where + ': лишилась стара залежність від @property/--eq-ang');
       if (/mask-composite/.test(src.slice(src.indexOf(sel), src.indexOf(sel) + 900))) errs.push(where + ': рамка знову залежить від mask-composite');
     };
-    /* Check: спокійний лаймовий акцент без руху (рішення власника); Import
-       поки лишається з рухомою рамкою */
-    {
-      const hv = page.slice(page.indexOf('.eq-chip.hv{'), page.indexOf('}', page.indexOf('.eq-chip.hv{')) + 1);
-      if (!/background:var\(--brand-soft\);border-color:var\(--brand-hover\)/.test(hv)) errs.push('Check: дорога опція без лаймового акценту');
-      if (/animation|gradient|box-shadow|#7C3AED/.test(hv)) errs.push('Check: дорога опція знову рухома чи з градієнтом');
-      if (!/\.sec-meta\.hv-legend::before\{[^}]*background:var\(--brand-soft\);border:1px solid var\(--brand-hover\)/.test(page)) errs.push('Check: легенда без того самого маркера');
-      if (/eq-hv-flow/.test(page)) errs.push('Check: лишилась анімація рамки');
-    }
+    check(page, '.eq-chip.hv', 'Check');
     check(imp, '.chip.gold', 'Import');
     /* легенда рухається так само, тому людина бачить, що означає рамка */
-    for (const [src, where] of [[imp, 'Import']]) {
+    for (const [src, where] of [[page, 'Check'], [imp, 'Import']]) {
       const i = src.indexOf('.sec-meta.hv-legend');
       if (!/\.sec-meta\.hv-legend\{padding:2\.5px 9\.5px\}/.test(src)) errs.push(where + ': легенда не компенсує товщу рамки');
       if (i < 0) errs.push(where + ': нема легенди дорогих опцій');
