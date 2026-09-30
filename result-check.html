@@ -1039,6 +1039,10 @@
   .mk-state.high::before{background:var(--green)}
   .mk-state.medium::before{background:var(--amber)}
   .mk-state.low::before{background:var(--red)}
+  /* сохранність вартості моделі: той самий тихий статус у заголовку */
+  .mk-state.r-heavy::before{background:var(--amber)}
+  .mk-state.r-strong::before{background:var(--green)}
+  .mk-state[hidden]{display:none}
   /* рядки сигналів: однакова іконка в однаковому контейнері і текст,
      тонкі розділювачі. Та сама будова в обох картках */
   .mk-rows{margin-top:12px}
@@ -1329,7 +1333,7 @@
       <div class="mk-rows" id="valLiqReasons"></div>
     </div>
     <div class="card mk-card" id="valWhyBox" hidden>
-      <div class="mk-head"><h3>Why this car costs what it does</h3></div>
+      <div class="mk-head"><h3>Why this car costs what it does</h3><span class="mk-state" id="valWhyState" hidden></span></div>
       <div class="mk-rows" id="valWhyList"></div>
     </div>
   </div>
@@ -1868,7 +1872,7 @@ function mkIcon(text) {
     info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6h.01"/>',
   };
   const R = [
-    ['ev', /електро|электро|батаре|акумулятор|аккумулятор|запас\s+ход|battery|\bev\b|electric/i],
+    ['ev', /електромоб|электромоб|електрокар|электрокар|батаре|акумулятор|аккумулятор|запас\s+ход|battery|\bev\b|electric\s+(?:car|vehicle|motor)/i],
     ['cost', /утрим|содерж|витрат|расход|обслуг|обслуж|ремонт|запчаст|repair|maintenance|running\s+cost|ownership|upkeep/i],
     ['fuel', /палив|топлив|бензин|дизел|гібрид|гибрид|витрат[аи]\s+пал|fuel|petrol|diesel|hybrid|economy/i],
     ['drive', /повн\S*\s+привід|полн\S*\s+привод|привод|привід|awd|4wd|4x4|quattro|xdrive|4matic|all-wheel/i],
@@ -1895,7 +1899,9 @@ function renderValueSection(D) {
   const hasChart = !!(window.CalCarValueChart && CalCarValueChart.usable(vc));
   const lq = mv && mv.liquidity && typeof mv.liquidity === 'object' ? mv.liquidity : null;
   const reasons = lq && Array.isArray(lq.reasons) ? lq.reasons.filter(x => typeof x === 'string' && x.trim()).slice(0, 3) : [];
-  const factors = mv && Array.isArray(mv.price_factors) ? mv.price_factors.filter(x => typeof x === 'string' && x.trim()).slice(0, 4) : [];
+  /* нові звіти: історія ціни, обрана станом сохранності; старі: price_factors */
+  const whyRaw = mv && mv.why_price && Array.isArray(mv.why_price.reasons) ? mv.why_price.reasons : (mv && Array.isArray(mv.price_factors) ? mv.price_factors : []);
+  const factors = whyRaw.filter(x => typeof x === 'string' && x.trim()).slice(0, 4);
   const LEVEL = { high: t('Easy to resell'), medium: t('Average resale'), low: t('Hard to resell'), unknown: t('Not enough data') };
   const level = lq && LEVEL[lq.level] ? lq.level : 'unknown';
   $('valLiqBox').hidden = !reasons.length;
@@ -1906,6 +1912,12 @@ function renderValueSection(D) {
   }
   $('valWhyBox').hidden = !factors.length;
   if (factors.length) $('valWhyList').innerHTML = factors.map(mkRow).join('');
+  /* стан сохранності рахує сервер (value_curve.retention, _meta не
+     перекладається); невідомий стан статусу не показує */
+  const RET = { heavy_depreciation: ['r-heavy', t('Lost much of its value')], normal_depreciation: ['r-normal', t('Typical depreciation')], strong_retention: ['r-strong', t('Holds its value well')] };
+  const retState = vc && vc.retention && RET[vc.retention.state] && mv && mv.why_price ? RET[vc.retention.state] : null;
+  $('valWhyState').hidden = !retState;
+  if (retState) { $('valWhyState').className = 'mk-state ' + retState[0]; $('valWhyState').textContent = retState[1]; }
   const pair = $('valPair');
   pair.style.display = (reasons.length || factors.length) ? '' : 'none';
   pair.classList.toggle('one', !(reasons.length && factors.length));

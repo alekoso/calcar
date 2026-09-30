@@ -48,7 +48,7 @@ import { fetchMiEquipmentCandidates, candidatePromptBlock, visionHintBlock, supp
 /* Model Intelligence Research v1: наявне MI плюс малий паралельний веб-пошук
    у контекст поточного звіту, придатні знахідки у конвеєр MI */
 import { startCheckResearch, researchBlock, researchMeta, guardModelNotes } from './mi-research.js';
-import { startValueResearch, buildValueCurve } from './value.js';
+import { startValueResearch, buildValueCurve, composeMarketValue } from './value.js';
 
 /* ============================================================
    CalCar Check, рушій v1: посилання на оголошення -> звіт.
@@ -3365,9 +3365,12 @@ async function runCheck(req, res, job) {
         year: listing.year || (nhtsa && parseInt(nhtsa.ModelYear, 10)) || null, generation: listing.generation || null,
         trim: (nhtsa && (nhtsa.Trim || nhtsa.Series)) || null, body: (nhtsa && nhtsa.BodyClass) || null,
         fuel: (nhtsa && nhtsa.FuelTypePrimary) || null, engine_l: (nhtsa && nhtsa.DisplacementL) || null,
-        drive: (nhtsa && nhtsa.DriveType) || null, odometer_km: listing.odometer_km || null,
+        drive: (nhtsa && nhtsa.DriveType) || null,
+        age_years: listing.year ? Math.max(0, new Date().getUTCFullYear() - parseInt(listing.year, 10)) : null,
       },
-      market: { country: listing.country || null, currency: listing.currency || null, listing_price: listing.price || null, price_context: listing.price_context || null },
+      /* ліквідність і сохранність вартості описують МОДЕЛЬ і версію: ціна
+         оголошення, середня площадки і стан цього авто сюди не йдуть */
+      market: { country: listing.country || null },
       modelContext: miResearchBlock ? miResearchBlock.split('\nSOURCE_REF:')[0].slice(0, 9000) : null,
     });
     let mainSystem = mainMsg.system;
@@ -3999,7 +4002,9 @@ async function runCheck(req, res, job) {
         identity: { make: listing.make || (nhtsa && nhtsa.Make) || null, model: listing.model || (nhtsa && nhtsa.Model) || null, generation: genResolved.generation, trim: (nhtsa && (nhtsa.Trim || nhtsa.Series)) || (parsed.vehicle && parsed.vehicle.trim) || null },
       });
     } catch (e) { console.log('[value]', JSON.stringify({ op: 'build_curve', error: String((e && e.message) || e).slice(0, 160) })); }
-    if (valueResult && valueResult.market_value) parsed.market_value = valueResult.market_value;
+    /* тексти карток: історію "Чому це авто коштує стільки" обирає детермінований
+       стан сохранності з кривої, модель дала лише сили з напрямком */
+    if (valueResult && valueResult.market_value) parsed.market_value = composeMarketValue(valueResult.market_value, valueCurve && valueCurve.retention);
     {
       const vs = valueResearch.state;
       mark('value_section', vs.ms || 0, vs.status === 'ok' ? 'executed' : vs.status === 'running' ? 'pending' : 'skipped', {

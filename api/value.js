@@ -419,6 +419,32 @@ export function resolveNewPrice({ candidates = [], pc, T, market = null, currenc
   return fallback(rejected.length ? 'sourced_price_unsuitable' : null);
 }
 
+/* ---------- Сохранність вартості моделі ---------- */
+
+/* Наскільки ця модель і версія зберегла ціну до свого віку, порівняно з
+   тією самою базовою кривою, що і зворотна оцінка (retentionFactor).
+   Друга наука про знецінення тут не створюється. Пороги практичні, V1,
+   без марок. Стан лише описує історію для картки "Чому це авто коштує
+   стільки" і НЕ йде ні в Оцінку CalCar, ні у впевненість, ні в MI. */
+export const RETENTION_THRESHOLDS = { heavy: 0.80, strong: 1.20 };
+export const RETENTION_STATES = ['heavy_depreciation', 'normal_depreciation', 'strong_retention', 'unknown'];
+
+/* representative: середня площадки, коли вона є і в тій самій валюті,
+   інакше ціна оголошення. Це наближення поточної ціни МОДЕЛІ, а не цього
+   оголошення; якір "сьогодні" графіка лишається своїм (нижча з двох).
+   Ціна нового авто, відновлена зворотною оцінкою з тієї самої базової
+   кривої, незалежного висновку не дає: стан unknown */
+export function retentionContext({ newPrice, basis, representative, representativeSource, T }) {
+  const p0 = num(newPrice), pc = num(representative), t = num(T);
+  const out = { state: 'unknown', basis: basis || null, representative_current_value: pc !== null ? Math.round(pc) : null, representative_current_value_source: representativeSource || null };
+  if (p0 === null || pc === null || t === null || t <= 0 || p0 <= 0 || pc <= 0) return { ...out, reason: 'insufficient_inputs' };
+  const observed = pc / p0, expected = retentionFactor(t), index = observed / expected;
+  const metrics = { observed_retention: Math.round(observed * 1000) / 1000, expected_retention: Math.round(expected * 1000) / 1000, retention_index: Math.round(index * 1000) / 1000 };
+  if (basis === 'reverse_estimate') return { ...out, ...metrics, reason: 'new_price_from_reverse_estimate' };
+  const state = index < RETENTION_THRESHOLDS.heavy ? 'heavy_depreciation' : index > RETENTION_THRESHOLDS.strong ? 'strong_retention' : 'normal_depreciation';
+  return { ...out, ...metrics, state };
+}
+
 /* ---------- Збірка секції ---------- */
 
 /* Повертає обʼєкт для _meta.value_curve. status 'hidden' означає: графік не
@@ -470,6 +496,10 @@ export function buildValueCurve({ price = null, currency = null, price_context =
       rejected: np.rejected,
     },
   };
+  /* сохранність моделі: середня площадки, інакше ціна оголошення */
+  const rep = cur.source === 'marketplace_average' ? { value: cur.value, source: 'marketplace_average' }
+    : cur.average ? { value: cur.average.value, source: 'marketplace_average' } : { value: cur.value, source: cur.source };
+  out.retention = retentionContext({ newPrice: np.value, basis: np.basis, representative: rep.value, representativeSource: rep.source, T });
   if (np.reason === 'strong_anchor_not_above_market') return { ...out, status: 'hidden', reason: np.reason };
   const c = fitCurve(np.value, cur.value, T);
   if (!c) return { ...out, status: 'hidden', reason: 'curve_not_credible' };
@@ -568,6 +598,7 @@ export function validateCandidates(raw, results, { brand = null, year = null, no
 /* ---------- Тексти: ліквідність і чинники ціни ---------- */
 
 const LIQ = ['high', 'medium', 'low', 'unknown'];
+const FORCE_DIR = ['supports', 'reduces'];
 /* довге тире у продукті заборонене: модель могла його поставити */
 const noDash = s => String(s || '').replace(/\s*[\u2014\u2013]\s*/g, ', ').replace(/\s+/g, ' ').trim();
 const cleanList = (arr, max, maxLen) => {
@@ -589,9 +620,46 @@ export function sanitizeMarketValue(raw) {
   const reasons = cleanList(lq.reasons, 3, 200);
   const reasonKeys = new Set(reasons.map(r => r.toLowerCase()));
   /* дві картки не повторюють одне речення */
-  const factors = cleanList(raw.price_factors, 5, 120).filter(f => !reasonKeys.has(f.toLowerCase()));
-  if (!reasons.length && !factors.length) return null;
-  return { liquidity: { level: reasons.length ? level : 'unknown', reasons }, price_factors: factors };
+  const seen = new Set();
+  const forces = [];
+  for (const f of Array.isArray(raw.price_forces) ? raw.price_forces : []) {
+    if (!f || typeof f !== 'object' || !FORCE_DIR.includes(f.direction)) continue;
+    const text = noDash(f.text).slice(0, 200);
+    const key = text.toLowerCase();
+    if (text.length < 4 || seen.has(key) || reasonKeys.has(key)) continue;
+    seen.add(key); forces.push({ direction: f.direction, text });
+    if (forces.length >= 6) break;
+  }
+  if (!reasons.length && !forces.length) return null;
+  return { liquidity: { level: reasons.length ? level : 'unknown', reasons }, price_forces: forces };
+}
+
+/* Картка "Чому це авто коштує стільки": детермінований стан сохранності
+   обирає, яку історію розповідати, модель лише дає сили з напрямком.
+   Сильна амортизація: насамперед те, що знижує; хороша сохранність: що
+   підтримує; звичайна чи невідома: обидві сторони. Не більше чотирьох */
+export const WHY_PRICE_MAX = 4;
+export function composeWhyPrice(forces, state) {
+  const list = Array.isArray(forces) ? forces : [];
+  const up = list.filter(f => f.direction === 'supports').map(f => f.text);
+  const down = list.filter(f => f.direction === 'reduces').map(f => f.text);
+  let out;
+  if (state === 'heavy_depreciation') out = down.slice(0, WHY_PRICE_MAX).concat(down.length < 3 ? up.slice(0, 1) : []);
+  else if (state === 'strong_retention') out = up.slice(0, WHY_PRICE_MAX).concat(up.length < 3 ? down.slice(0, 1) : []);
+  else {
+    out = [];
+    for (let i = 0; out.length < WHY_PRICE_MAX && (i < up.length || i < down.length); i++) {
+      if (i < up.length && out.length < WHY_PRICE_MAX) out.push(up[i]);
+      if (i < down.length && out.length < WHY_PRICE_MAX) out.push(down[i]);
+    }
+  }
+  return out.slice(0, WHY_PRICE_MAX);
+}
+export function composeMarketValue(mv, retention) {
+  if (!mv || typeof mv !== 'object') return null;
+  const state = retention && RETENTION_STATES.includes(retention.state) ? retention.state : 'unknown';
+  const reasons = composeWhyPrice(mv.price_forces, state);
+  return { liquidity: mv.liquidity, why_price: { retention_state: state, reasons } };
 }
 
 /* ---------- Виклик моделі ---------- */
@@ -601,7 +669,7 @@ const OBJ = properties => ({ type: 'object', properties, required: Object.keys(p
 export function valueResponseFormat() {
   return { type: 'json_schema', json_schema: { name: 'calcar_value_section', strict: true, schema: OBJ({
     liquidity: OBJ({ level: S('string', { enum: LIQ }), reasons: S('array', { items: S('string') }) }),
-    price_factors: S('array', { items: S('string') }),
+    price_forces: S('array', { items: OBJ({ direction: S('string', { enum: FORCE_DIR }), text: S('string') }) }),
     new_price_candidates: S('array', { items: OBJ({
       result_ref: S('string'), amount: S('number'), currency: S('string', { enum: CUR }), market: S('string', { enum: MKT }),
       price_kind: S('string', { enum: KIND }), trim_match: S('string', { enum: TRIM }), model_year: S(['integer', 'null']),
@@ -614,14 +682,17 @@ export const VALUE_RULES = `You write the market context block of a used-car rep
 
 Three outputs.
 
-1. liquidity: how easy this model and version is to resell on the LOCAL market named in VEHICLE.
-   level: high, medium, low, or unknown. reasons: 2 or 3 short sentences.
-   Base it on what the input gives: segment and body style, powertrain type, age, price class, ownership-cost class, breadth of buyer audience, the price position against the marketplace average when given, and MODEL_CONTEXT.
+1. liquidity: how easy it normally is to sell THIS MODEL AND VERSION on the LOCAL used-car market (named in MARKET) at a reasonable market price. This is marketability of the model and version, not of this particular listing.
+   level: high, medium, low, or unknown. reasons: 2 or 3 sentences; each one must explain why reselling this kind of car is easier or harder.
+   Reason about the combination, not one attribute: breadth of the buyer audience and body format against running costs (fuel, maintenance), perceived risk of expensive repairs as the car ages, complexity of aging technology, niche or high-performance positioning, powertrain desirability, and model reputation. A practical format alone does not make a car liquid when running costs and repair risk narrow the audience.
+   Never use: this listing's price, any discount or the marketplace average, the seller, or this car's condition, mileage, accident, flood or history. None of that is in the input and none of it changes the liquidity of the model.
    No numeric ratings and no invented statistics (days to sell, shares, counts). If the input is not enough to judge, use level "unknown" with one neutral reason.
 
-2. price_factors: 3 to 5 short noun-phrase factors explaining why the market values this MODEL and VERSION roughly at this level (model economics, not defects of this particular car).
-   Reliability, failure and repair claims about specific units (engine, gearbox, suspension, electronics, battery) are allowed ONLY when MODEL_CONTEXT supports them. Without that support stay with structural facts that follow from the identity itself: segment, body practicality, powertrain type and its running costs, age of a premium car, buyer audience breadth, demand class.
-   Do not repeat a liquidity reason. Do not mention this car's condition, accident history, mileage or seller.
+2. price_forces: 4 to 6 forces that explain how well THIS MODEL AND VERSION keeps its original value as it ages (why a car like this is worth a large or a small share of its new price at its age).
+   Each item: direction "supports" (helps it keep value) or "reduces" (makes it lose value faster), and text: one short sentence that names the factor AND its effect on retained value, for example "High running costs of premium technology cut demand as the car ages." A bare attribute ("All-wheel drive", "Premium positioning", "Practical body") is not acceptable.
+   Give at least two forces of each direction when the context allows it. Reliability, failure and repair claims about specific units (engine, gearbox, suspension, electronics, battery) are allowed ONLY when MODEL_CONTEXT supports them; without that support stay with facts that follow from the identity itself: segment and price class, body practicality, powertrain type and its running costs, age of a premium car, technology obsolescence, buyer audience breadth.
+   Never mention this listing's price, any discount, the marketplace average, the seller, or this car's condition, mileage, accident, flood or history.
+   Do not repeat a liquidity sentence: the same underlying factor may appear in both, but liquidity explains ease of resale and price_forces explains retained value.
 
 3. new_price_candidates: prices of this model when NEW found in SEARCH_RESULTS.
    Take a price only if the number is literally written in that result's title or snippet. result_ref is the result id (S1, S2...). amount is the number as written, without conversion.

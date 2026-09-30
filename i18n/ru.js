@@ -978,4 +978,7 @@ window.CALCAR_DICTS.ru = {
   'Premium options': 'Премиум-опции',
   'Premium option': 'Премиум-опция',
   'High-end equipment that noticeably sets this car apart.': 'Оснащение высокого класса, которое заметно выделяет эту машину.',
+  'Lost much of its value': 'Сильно потеряла в цене',
+  'Typical depreciation': 'Обычная амортизация',
+  'Holds its value well': 'Хорошо держит цену',
 };
