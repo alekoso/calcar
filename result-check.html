@@ -977,93 +977,88 @@
   .score-tip span{display:block;font-size:12.5px;line-height:1.5;color:var(--text);font-weight:400}
   .score-tip span + span{margin-top:6px;color:var(--muted)}
 
-  /* ---- рішення і вартість (Value v1) ----
-     Перший ряд: графік ринкової вартості ліворуч, праворуч та сама картка
-     "Оцінка CalCar + впевненість" (#scoreSlot, renderScoreBlock), лише
-     складена вертикально. Другий ряд: ліквідність і чинники ціни, дві рівні
-     картки. Без графіка картка оцінки лишається у звичному горизонтальному
-     вигляді. Числа і точки кривої рахує сервер (api/value.js), графік малює
+  /* ---- ринкова вартість (Value v1) ----
+     Одна картка на всю ширину одразу після висновку: графік ліворуч
+     (близько 3/4), праворуч стовпчик головних чисел без рамок навколо
+     кожного. Нижче ліквідність і чинники ціни: дві рівні картки однієї
+     будови. Числа і точки кривої рахує сервер (api/value.js), графік малює
      value-chart.js; тут лише розкладка і кольори з наявних токенів ---- */
-  .dv-row .card,.val-pair .card{margin-bottom:0}
-  .dv-row.has-chart{display:grid;grid-template-columns:minmax(0,2.2fr) minmax(0,1fr);gap:20px;align-items:stretch;margin-bottom:20px}
-  .dv-row.has-chart .sc-card{margin:0}
-  /* звіт без балу: графік на всю ширину ряду */
-  .dv-row.has-chart:has(.sc-slot:empty){grid-template-columns:minmax(0,1fr)}
-  .val-main{padding:22px 24px 24px;min-width:0}
-  .val-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:16px}
-  .val-head h2{font-size:16px;font-weight:700}
+  .val-card{padding:26px 28px 24px}
+  .val-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:18px}
+  .val-head h2{font-size:17px;font-weight:700}
   .val-chip{font-size:12.5px;font-weight:600;color:var(--muted);padding:3px 10px;border:1px solid var(--line);border-radius:12px;background:var(--card);white-space:nowrap}
   .val-chip[hidden]{display:none}
-  @media(min-width:861px){
-    /* права колонка: бал зверху, впевненість знизу, на всю висоту графіка */
-    .dv-row.has-chart .sc-card{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) 1px minmax(0,1fr);height:100%;padding:0;column-gap:0;align-items:stretch}
-    .dv-row.has-chart .sc-card.solo{grid-template-rows:minmax(0,1fr)}
-    .dv-row.has-chart .sc-sep{width:auto;height:1px}
-    .dv-row.has-chart .sc-col{justify-content:center;padding:22px 22px 24px}
-    .dv-row.has-chart .sc-card .sc-meter,.dv-row.has-chart .sc-card .sc-scale{max-width:none}
-  }
-  .val-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin-bottom:20px}
-  .val-pair.one{grid-template-columns:minmax(0,1fr)}
-  .val-box{padding:20px 22px;min-width:0}
-  .val-box h3{font-size:12.5px;font-weight:600;letter-spacing:.2px;color:var(--muted);margin-bottom:10px}
-  .val-level{display:flex;align-items:center;gap:8px;font-size:17px;font-weight:700;color:var(--ink);margin-bottom:8px}
-  .val-level::before{content:'';flex:0 0 auto;width:9px;height:9px;border-radius:50%;background:var(--faint)}
-  .val-level.high::before{background:var(--green)}
-  .val-level.medium::before{background:var(--amber)}
-  .val-level.low::before{background:var(--red)}
-  .val-box p{font-size:14px;line-height:1.55;color:var(--text);margin:0 0 6px}
-  .val-box p:last-child{margin-bottom:0}
-  .val-box ul{list-style:none;margin:0;padding:0}
-  .val-box li{position:relative;padding-left:16px;font-size:14px;line-height:1.5;margin-bottom:8px}
-  .val-box li:last-child{margin-bottom:0}
-  .val-box li::before{content:'';position:absolute;left:0;top:.55em;width:6px;height:6px;border-radius:50%;background:var(--brand);box-shadow:0 0 0 1px rgba(20,22,25,.18)}
-  .val-note{font-size:12.5px;line-height:1.5;color:var(--muted);margin-top:12px}
+  .val-note{font-size:12.5px;line-height:1.5;color:var(--faint);margin-top:14px}
   .val-note[hidden]{display:none}
-  .vc-stats{display:flex;flex-wrap:wrap;gap:10px 32px;margin-bottom:14px}
-  .vc-stat{display:flex;flex-direction:column;min-width:0}
-  .vc-num{font-size:17.5px;font-weight:700;line-height:1.3;color:var(--ink);font-variant-numeric:tabular-nums;white-space:nowrap}
-  .vc-lbl{font-size:12.5px;color:var(--muted)}
-  .vc-listing{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font-size:13.5px;margin-bottom:12px}
-  .vc-listing b{font-variant-numeric:tabular-nums;white-space:nowrap}
-  .vc-dot{flex:0 0 auto;width:11px;height:11px;border-radius:50%;background:var(--card);border:2.5px solid var(--ink)}
-  .vc-delta{color:var(--muted);white-space:nowrap}
-  .vc-plot{position:relative;touch-action:pan-y;cursor:crosshair;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+  .vc-body{display:grid;grid-template-columns:minmax(0,1fr) minmax(176px,24%);column-gap:36px;align-items:center}
+  .vc-rail{display:flex;flex-direction:column;min-width:0}
+  .vc-kpi{display:flex;flex-direction:column;gap:2px;padding:15px 0;min-width:0}
+  .vc-kpi:first-child{padding-top:0}
+  .vc-kpi:last-child{padding-bottom:0}
+  .vc-kpi + .vc-kpi{border-top:1px solid var(--line)}
+  .vc-num{font-size:24px;font-weight:700;line-height:1.2;letter-spacing:-.3px;color:var(--ink);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .vc-lbl{font-size:13px;line-height:1.35;color:var(--muted)}
+  /* друга ціна це контекст: помітно тихіша за три головні числа */
+  .vc-kpi.ctx .vc-num{font-size:16px;font-weight:600;letter-spacing:0;color:var(--ink-2)}
+  .vc-kpi.ctx .vc-lbl{font-size:12.5px}
+  .vc-plot{position:relative;min-width:0;touch-action:pan-y;cursor:crosshair;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
   .vc-plot:focus{outline:none}
   .vc-plot:focus-visible{outline:2px solid var(--ink);outline-offset:4px;border-radius:8px}
   .vc-svg{display:block;width:100%;height:auto}
-  .vc-grid{stroke:var(--line);stroke-width:1}
-  .vc-axis{stroke:var(--line-strong);stroke-width:1}
-  .vc-tick{font-size:11.5px;fill:var(--muted);font-variant-numeric:tabular-nums}
-  .vc-area{fill:var(--brand);opacity:.1}
+  .vc-grid{stroke:var(--surface-2);stroke-width:1}
+  .vc-axis{stroke:var(--line);stroke-width:1}
+  .vc-tick{font-size:11.5px;fill:var(--faint);font-variant-numeric:tabular-nums}
+  .vc-area{fill:var(--brand);opacity:.07}
   .vc-line{fill:none;stroke:var(--ink);stroke-width:2.25;stroke-linecap:round;stroke-linejoin:round}
   /* прогноз: та сама траєкторія справжнім пунктиром, трохи тихіша */
-  .vc-forecast{stroke:var(--muted);stroke-width:2;stroke-linecap:butt;stroke-dasharray:7 5}
-  .vc-now{stroke:var(--faint);stroke-width:1;stroke-dasharray:3 4}
+  .vc-forecast{stroke:var(--faint);stroke-width:2;stroke-linecap:butt;stroke-dasharray:7 5}
+  .vc-now{stroke:var(--line-strong);stroke-width:1;stroke-dasharray:3 4}
   .vc-now-lbl{font-size:11.5px;font-weight:600;fill:var(--muted)}
   .vc-end{fill:var(--ink)}
-  .vc-end-f{fill:var(--card);stroke:var(--muted);stroke-width:2}
+  .vc-end-f{fill:var(--card);stroke:var(--faint);stroke-width:2}
   .vc-today{fill:var(--brand);stroke:var(--ink);stroke-width:2}
-  .vc-listing-dot{fill:var(--card);stroke:var(--ink);stroke-width:2.5}
-  .vc-link{stroke:var(--ink);stroke-width:1;stroke-dasharray:2 3}
-  .vc-cross{stroke:var(--muted);stroke-width:1}
+  .vc-listing-dot{fill:var(--card);stroke:var(--muted);stroke-width:1.5}
+  .vc-cross{stroke:var(--line-strong);stroke-width:1}
   .vc-active{fill:var(--ink);stroke:var(--card);stroke-width:2}
   .vc-tip{position:absolute;z-index:2;display:flex;flex-direction:column;pointer-events:none;background:var(--ink);color:#fff;border-radius:8px;padding:7px 10px;font-size:12.5px;line-height:1.35;white-space:nowrap}
   .vc-tip[hidden]{display:none}
   .vc-tip b{font-size:14.5px;font-variant-numeric:tabular-nums}
   .vc-tip-d{opacity:.75}
   .vc-tip-f{color:var(--brand)}
+  /* ліквідність і чинники ціни: одна будова. Заголовок, для ліквідності
+     рядок стану, далі компактні рядки з тонкими розділювачами */
+  .val-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin-bottom:20px}
+  .val-pair.one{grid-template-columns:minmax(0,1fr)}
+  .val-pair .card{margin-bottom:0}
+  .mk-card{padding:24px 28px 22px;min-width:0}
+  .mk-card h3{font-size:16px;font-weight:700;color:var(--ink)}
+  .mk-state{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:15px;font-weight:600;color:var(--ink)}
+  .mk-state::before{content:'';flex:0 0 auto;width:8px;height:8px;border-radius:50%;background:var(--faint)}
+  .mk-state.high::before{background:var(--green)}
+  .mk-state.medium::before{background:var(--amber)}
+  .mk-state.low::before{background:var(--red)}
+  .mk-rows{margin-top:14px}
+  .mk-row{padding:12px 0;font-size:14.5px;line-height:1.5;color:var(--text)}
+  .mk-row + .mk-row{border-top:1px solid var(--line)}
+  .mk-row:first-child{border-top:1px solid var(--line)}
+  .mk-row:last-child{padding-bottom:0}
   @media(max-width:860px){
-    /* телефон і планшет: оцінка і впевненість, далі графік, далі дві картки */
-    .dv-row.has-chart{grid-template-columns:minmax(0,1fr);gap:12px}
-    .dv-row.has-chart .sc-slot{order:-1}
+    /* вузький екран: числа компактним рядом над графіком, картки одна під одною */
+    .vc-body{grid-template-columns:minmax(0,1fr);row-gap:18px}
+    .vc-rail{order:-1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));column-gap:14px}
+    .vc-kpi,.vc-kpi:first-child,.vc-kpi:last-child{padding:0}
+    .vc-kpi + .vc-kpi{border-top:none}
+    .vc-kpi.ctx{grid-column:1 / -1;flex-direction:row;align-items:baseline;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+    .vc-num{font-size:19px}
     .val-pair{grid-template-columns:minmax(0,1fr);gap:12px}
   }
   @media(max-width:480px){
-    .val-main{padding:18px 16px}
-    .val-box{padding:18px 16px}
-    .vc-stats{display:grid;grid-template-columns:repeat(3,auto);justify-content:space-between;gap:8px 10px}
-    .vc-num{font-size:15px}
-    .vc-lbl{font-size:12px;line-height:1.3}
+    .val-card{padding:20px 18px 18px}
+    .mk-card{padding:20px 18px 18px}
+    .vc-rail{column-gap:10px}
+    .vc-num{font-size:16.5px;letter-spacing:-.2px}
+    .vc-lbl{font-size:12px}
+    .vc-kpi.ctx .vc-num{font-size:15px}
   }
 
   /* висновок CalCar це головна точка рішення звіту. Картка лишається на
@@ -1281,32 +1276,7 @@
   </div>
 
   <!-- Оцінка CalCar + повнота перевірки: окрема компактна картка перед вердиктом -->
-  <!-- ряд рішення: графік ринкової вартості ліворуч, оцінка і впевненість
-       праворуч (на вузькому екрані оцінка перша). Без графіка в ряду лише
-       картка оцінки у звичному вигляді -->
-  <div class="dv-row" id="decisionRow">
-    <div class="card val-main" id="valueCard" style="display:none">
-      <div class="val-head">
-        <h2>Market value</h2>
-        <span class="val-chip" id="valMarket" hidden></span>
-      </div>
-      <div id="valChart"></div>
-      <p class="val-note" id="valNote" hidden></p>
-    </div>
   <div class="sc-slot" id="scoreSlot"></div>
-  </div>
-  <!-- економіка моделі на ринку: ліквідність і чинники ціни, дві рівні картки -->
-  <div class="val-pair" id="valPair" style="display:none">
-    <div class="card val-box" id="valLiqBox" hidden>
-      <h3>Liquidity</h3>
-      <div class="val-level" id="valLiqLevel"></div>
-      <div id="valLiqReasons"></div>
-    </div>
-    <div class="card val-box" id="valWhyBox" hidden>
-      <h3>Why this car costs what it does</h3>
-      <ul id="valWhyList"></ul>
-    </div>
-  </div>
 
   <!-- вердикт -->
   <div class="card" id="verdictCard" style="display:none">
@@ -1332,6 +1302,30 @@
         </div>
       </div>
       <div class="v-text" id="vText"></div>
+    </div>
+  </div>
+
+  <!-- ринкова вартість (Value v1): одна картка на всю ширину, графік і
+       праворуч стовпчик головних чисел; одразу після висновку -->
+  <div class="card val-card" id="valueCard" style="display:none">
+    <div class="val-head">
+      <h2>Market value</h2>
+      <span class="val-chip" id="valMarket" hidden></span>
+    </div>
+    <div id="valChart"></div>
+    <p class="val-note" id="valNote" hidden></p>
+  </div>
+  <!-- економіка моделі на ринку: ліквідність і чинники ціни, дві рівні
+       картки однієї будови -->
+  <div class="val-pair" id="valPair" style="display:none">
+    <div class="card mk-card" id="valLiqBox" hidden>
+      <h3>Liquidity</h3>
+      <div class="mk-state" id="valLiqLevel"></div>
+      <div class="mk-rows" id="valLiqReasons"></div>
+    </div>
+    <div class="card mk-card" id="valWhyBox" hidden>
+      <h3>Why this car costs what it does</h3>
+      <div class="mk-rows" id="valWhyList"></div>
     </div>
   </div>
 
@@ -1836,10 +1830,10 @@ async function translateNow(){
 
 /* ---------- ринкова вартість (Value v1) ----------
    Графік зі ЗБЕРЕЖЕНИХ точок _meta.value_curve (сторінка нічого не
-   перераховує) стоїть у ряду рішення поруч з карткою оцінки; тексти з
-   market_value окремим рядом під ним. Немає правдоподібної кривої: графіка
-   немає, картка оцінки на всю ширину. На Оцінку CalCar і впевненість
-   секція не впливає, їхній рендер той самий */
+   перераховує) окремою карткою одразу після висновку; тексти з
+   market_value двома картками під ним. Немає правдоподібної кривої:
+   картки графіка немає, тексти лишаються. На Оцінку CalCar і впевненість
+   секція не впливає */
 function renderValueSection(D) {
   const card = $('valueCard');
   const vc = M.value_curve || null;
@@ -1852,16 +1846,15 @@ function renderValueSection(D) {
   const level = lq && LEVEL[lq.level] ? lq.level : 'unknown';
   $('valLiqBox').hidden = !reasons.length;
   if (reasons.length) {
-    $('valLiqLevel').className = 'val-level ' + level;
+    $('valLiqLevel').className = 'mk-state ' + level;
     $('valLiqLevel').textContent = LEVEL[level];
-    $('valLiqReasons').innerHTML = reasons.map(r => '<p>' + esc(clean(r)) + '</p>').join('');
+    $('valLiqReasons').innerHTML = reasons.map(r => '<div class="mk-row">' + esc(clean(r)) + '</div>').join('');
   }
   $('valWhyBox').hidden = !factors.length;
-  if (factors.length) $('valWhyList').innerHTML = factors.map(f => '<li>' + esc(clean(f)) + '</li>').join('');
+  if (factors.length) $('valWhyList').innerHTML = factors.map(f => '<div class="mk-row">' + esc(clean(f)) + '</div>').join('');
   const pair = $('valPair');
   pair.style.display = (reasons.length || factors.length) ? '' : 'none';
   pair.classList.toggle('one', !(reasons.length && factors.length));
-  $('decisionRow').classList.toggle('has-chart', hasChart);
   if (!hasChart) { card.style.display = 'none'; $('valChart').innerHTML = ''; return; }
   const mk = $('valMarket');
   mk.hidden = !(vc.market && vc.market.country === 'UA');

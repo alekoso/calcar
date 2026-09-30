@@ -971,4 +971,6 @@ window.CALCAR_DICTS.ru = {
   'The forecast is a model estimate, not a guarantee.': 'Прогноз это расчётная оценка, а не гарантия.',
   '{name} average': 'Средняя {name}',
   'Marketplace average': 'Средняя на площадке',
+  'Estimated when new': 'Оценка новой',
+  'Forecast in 5 years': 'Прогноз через 5 лет',
 };

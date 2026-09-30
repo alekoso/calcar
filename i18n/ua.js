@@ -971,4 +971,6 @@ window.CALCAR_DICTS.ua = {
   'The forecast is a model estimate, not a guarantee.': 'Прогноз це розрахункова оцінка, а не гарантія.',
   '{name} average': 'Середня {name}',
   'Marketplace average': 'Середня на площадці',
+  'Estimated when new': 'Оцінка новою',
+  'Forecast in 5 years': 'Прогноз через 5 років',
 };

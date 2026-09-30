@@ -169,7 +169,7 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
 
   /* ===== 4. нова ціна ===== */
   const cand = (amount, o = {}) => ({ amount, currency: 'USD', market: 'UA', price_kind: 'local_list', trim_match: 'unknown', model_year: null, source_url: 'https://example.com/p', source_host: 'example.com', source_excerpt: 'x', confidence: 'medium', ...o });
-  const np = o => V.resolveNewPrice({ market: 'UA', currency: 'USD', ...o });
+  const np = o => V.resolveNewPrice({ market: 'UA', currency: 'USD', ...o, vehicle: { year: 2021, ...(o.vehicle || {}) } });
   {
     const r = np({ pc: 58500, T: 1, candidates: [] });
     ok('5a. I: без джерела зворотна оцінка, приблизна, не факт', r.basis === 'reverse_estimate' && r.approx === true && r.fact === null && near(r.value, 68000, 69500));
@@ -177,7 +177,7 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
     const T = 5, pc = 22000, rev = V.reverseNewPrice(pc, T);
     const rav = np({ pc, T, candidates: [cand(27000)] });
     ok('5b. max(MSRP, зворотна) не застосовується', rev > 35000 && rav.basis === 'local_list' && rav.value === 27000 && rav.approx === true);
-    const exact = np({ pc, T, candidates: [cand(27000, { trim_match: 'exact' })] });
+    const exact = np({ pc, T, candidates: [cand(27000, { trim_match: 'exact', text_years: [2021] })] });
     ok('5c. точна локальна ціна версії не позначена приблизною', exact.approx === false && exact.strength === 'strong' && exact.fact && exact.fact.amount === 27000);
     /* E: базовий MSRP нижчий за поточну ціну дорогої конфігурації */
     const porsche = np({ pc: 340000, T: 1.2, candidates: [cand(250000, { trim_match: 'base' })] });
@@ -185,7 +185,7 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
     const curve = V.buildValueCurve({ price: 340000, currency: 'USD', country: 'UA', year: 2025, nowMs: NOW, candidates: [cand(250000, { trim_match: 'base' })] });
     ok('5e. E: графік не стартує нижче поточної ціни', curve.status === 'ok' && curve.points[0].value > 340000 && curve.points.every((p, i) => i === 0 || p.value < curve.points[i - 1].value));
     /* §30 B: точна локальна ціна не вища за ринок */
-    const strongLow = V.buildValueCurve({ price: 30000, currency: 'USD', country: 'UA', year: 2024, nowMs: NOW, candidates: [cand(28000, { trim_match: 'exact' })] });
+    const strongLow = V.buildValueCurve({ price: 30000, currency: 'USD', country: 'UA', year: 2024, nowMs: NOW, candidates: [cand(28000, { trim_match: 'exact', source_year: 2024 })] });
     ok('5f. точна локальна ціна нижча за ринок: графік сховано, джерело не підроблено', strongLow.status === 'hidden' && strongLow.reason === 'strong_anchor_not_above_market' && strongLow.new_price.value === 28000 && !strongLow.points);
     const huge = np({ pc: 20000, T: 3, candidates: [cand(900000)] });
     ok('5g. зайвий нуль у джерелі відкинуто', huge.basis === 'reverse_estimate' && huge.rejected.some(x => x.reason === 'implausibly_high'));
@@ -229,15 +229,62 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
     ok('5l. ціна іншого ринку якорем не стає', eu.basis === 'reverse_estimate' && eu.rejected.some(x => x.reason === 'market_not_supported'));
     const de = V.resolveNewPrice({ market: 'DE', currency: 'EUR', pc: 40000, T: 3, candidates: [cand(62000)] });
     ok('5m. інший ринок чи валюта графіка: лише зворотна оцінка', de.basis === 'reverse_estimate' && de.fact === null);
-    const uah = np({ pc: 40000, T: 3, candidates: [cand(2300000, { currency: 'UAH', model_year: 2023 })] });
+    const uah = np({ pc: 40000, T: 3, candidates: [cand(2300000, { currency: 'UAH', model_year: 2023, source_year: 2023 })], vehicle: { year: 2023 } });
     ok('5n. гривнева ціна приводиться до USD за курсом року', uah.basis === 'local_list' && near(uah.value, 60000, 66000) && uah.fact.amount === 2300000 && uah.fact.currency === 'UAH');
     ok('5o. стара гривнева ціна без курсу не перераховується', V.toUsd(100000, 'UAH', 2001) === null && V.toUsd(100, 'GBP', 2020) === null && V.toUsd(100, 'USD', 2020) === 100);
-    const c2 = V.buildValueCurve({ price: 22000, currency: 'USD', country: 'UA', year: 2021, nowMs: NOW, candidates: [cand(27000, { trim_match: 'exact' })], identity: { make: 'Make', model: 'Model', generation: 'G1', trim: 'T1' } });
+    const c2 = V.buildValueCurve({ price: 22000, currency: 'USD', country: 'UA', year: 2021, nowMs: NOW, candidates: [cand(27000, { trim_match: 'exact', text_years: [2021] })], identity: { make: 'Make', model: 'Model', generation: 'G1', trim: 'T1' } });
     ok('5p. факт несе область MI: марка, модель, покоління, версія, рік, ринок, валюта, джерело, довіра',
       c2.new_price.fact && ['make', 'model', 'generation', 'trim', 'model_year', 'market', 'currency', 'amount', 'source_url', 'confidence'].every(k => c2.new_price.fact[k] !== undefined && c2.new_price.fact[k] !== null));
     const c3 = V.buildValueCurve({ price: 22000, currency: 'USD', country: 'UA', year: 2021, nowMs: NOW });
     ok('5q. розрахована оцінка фактом не стає', c3.new_price.basis === 'reverse_estimate' && c3.new_price.fact === null && c3.new_price.approx === true);
     ok('5r. запобіжник росте з віком і обмежений', V.minNewToCurrentRatio(0) === 1 && Math.abs(V.minNewToCurrentRatio(1) - 1.06) < 1e-9 && Math.abs(V.minNewToCurrentRatio(30) - 1.14) < 1e-9);
+  }
+
+  /* ===== походження ціни нового авто: узгодженість у часі і драбина цін ===== */
+  {
+    /* реальний випадок: авто 2021 року, жива сторінка цін дилера без дати,
+       чотири гривневі ціни без назв версій */
+    const results = [{ ref: 'S1', url: 'https://dealer.example.ua/auto/new-cars/model/prices-and-specs.html', host: 'dealer.example.ua', title: 'Ціни та комплектації',
+      snippet: 'офіційний дилер 608 300 грн ЗАВАНТАЖИТИ ・ 697 180 грн ЗАВАНТАЖИТИ ・ 790 740 грн ЗАВАНТАЖИТИ ・ 946 130 грн ЗАВАНТАЖИТИ', date: null }];
+    const raw = [{ result_ref: 'S1', amount: 697180, currency: 'UAH', market: 'UA', price_kind: 'local_list', trim_match: 'unknown', model_year: 2021 },
+      { result_ref: 'S1', amount: 608300, currency: 'UAH', market: 'UA', price_kind: 'local_list', trim_match: 'base', model_year: 2021 }];
+    const v = V.validateCandidates(raw, results, { brand: 'Brand', year: 2021, nowYear: 2026 });
+    ok('6g. кандидат несе факти про час джерела і драбину цін', v.candidates.length === 2 && v.candidates[0].source_year === null && v.candidates[0].text_years.length === 0 && v.candidates[0].price_ladder === true);
+    const xt = V.buildValueCurve({ price: 20700, currency: 'USD', price_context: RIA(24020), country: 'UA', year: 2021, nowMs: NOW, candidates: v.candidates, vehicle: { fuel: 'petrol', displacement_l: 2.5 } });
+    ok('6h. 1: гривнева ціна без дати не стає ціною року авто', xt.new_price.basis === 'reverse_estimate' && xt.new_price.fact === null && xt.new_price.source === null
+      && xt.new_price.rejected.length === 2 && xt.new_price.rejected.every(r => r.reason === 'price_date_unknown'));
+    ok('6i. 3: працює зворотна оцінка, і причина видна у звіті', xt.new_price.rejection_reason === 'price_date_unknown' && xt.new_price.approx === true
+      && xt.new_price.rejected[0].amount === 697180 && xt.new_price.rejected[0].currency === 'UAH' && /dealer\.example\.ua/.test(xt.new_price.rejected[0].ref));
+    const oldBad = Math.round(697180 / 27.29);
+    ok('6j. 19: якір більше не біля поточної ціни, траєкторія не пласка', xt.status === 'ok' && xt.new_price.value > oldBad * 1.25 && xt.new_price.value > 20700 * 1.5 && xt.current.value === 20700 && xt.future.value < 20700);
+    /* найбільше падіння на початку, далі повільніше */
+    const at = t => xt.points.reduce((b, p) => Math.abs(p.t - t) < Math.abs(b.t - t) ? p : b).value;
+    ok('6k. 19: перший рік втрачає більше, ніж кожен наступний', (xt.points[0].value - at(1)) > (at(1) - at(2)) && (at(1) - at(2)) > (at(4) - at(5)));
+
+    const dated = o => ({ amount: 946130, currency: 'UAH', market: 'UA', price_kind: 'local_list', trim_match: 'exact', model_year: 2021, source_url: 'https://example.com/a', source_host: 'example.com', source_excerpt: 'x', confidence: 'medium', source_date: null, source_year: null, text_years: [], price_ladder: false, ...o });
+    const good = np({ pc: 20700, T: 5.25, candidates: [dated({ source_date: '12 бер. 2021 р.', source_year: 2021 })] });
+    ok('6l. 2: та сама версія, дата джерела в році авто: сильний якір за курсом того року', good.basis === 'local_list' && good.strength === 'strong' && good.approx === false && near(good.value, 33000, 36000) && good.fact.price_year === 2021);
+    const later = np({ pc: 20700, T: 5.25, candidates: [dated({ source_date: '3 лют. 2023 р.', source_year: 2023 })] });
+    ok('6m. 1: сторінка помітно пізніша за рік авто: ціна не якір', later.basis === 'reverse_estimate' && later.rejected[0].reason === 'source_date_mismatch' && later.rejected[0].source_date === '3 лют. 2023 р.');
+    const inText = np({ pc: 20700, T: 5.25, candidates: [dated({ text_years: [2021] })] });
+    ok('6n. без дати, але рік авто стоїть у тексті джерела: приймається', inText.basis === 'local_list' && inText.fact.price_year === 2021);
+    const laterText = np({ pc: 20700, T: 5.25, candidates: [dated({ text_years: [2021, 2024] })] });
+    ok('6o. у тексті є пізніший рік: не приймається', laterText.basis === 'reverse_estimate' && laterText.rejected[0].reason === 'source_date_mismatch');
+    const ladder = np({ pc: 20700, T: 5.25, candidates: [dated({ trim_match: 'unknown', source_year: 2021, price_ladder: true })] });
+    ok('6p. драбина цін без назви версії: не якір навіть з датою', ladder.basis === 'reverse_estimate' && ladder.rejected[0].reason === 'ambiguous_trim_ladder');
+    const usdUndated = np({ pc: 20700, T: 5.25, candidates: [dated({ amount: 34000, currency: 'USD' })] });
+    ok('6q. ціна в USD без дати лишається слабким якорем, сильним не стає', usdUndated.basis === 'local_list' && usdUndated.strength === 'weak' && usdUndated.approx === true);
+    const usdLate = np({ pc: 20700, T: 5.25, candidates: [dated({ amount: 34000, currency: 'USD', source_year: 2025 })] });
+    ok('6r. ціна в USD з пізнішої сторінки: не якір', usdLate.basis === 'reverse_estimate' && usdLate.rejected[0].reason === 'source_date_mismatch');
+    ok('6s. рік з дати пошуковика', V.sourceYear('12 бер. 2022 р.', 2026) === 2022 && V.sourceYear('Mar 3, 2021', 2026) === 2021 && V.sourceYear('3 days ago', 2026) === 2026 && V.sourceYear(null, 2026) === null && V.sourceYear('', 2026) === null);
+    ok('6t. роки в тексті не плутаються з цінами', JSON.stringify(V.yearsInText('Nissan X-Trail 2021: від 697 180 грн, 2 021 000, оновлення 2023')) === JSON.stringify([2021, 2023]) && V.yearsInText('ціна 2 025 000 грн').length === 0);
+    ok('6u. драбина: три і більше цін одного порядку', V.pricesNear(697180, results[0].snippet) === 4 && V.pricesNear(39820, 'Starting MSRP $39,820 for 2025') === 1);
+    const prov = good.fact;
+    const provCurve = V.buildValueCurve({ price: 20700, currency: 'USD', country: 'UA', year: 2021, nowMs: NOW, candidates: [dated({ source_date: '12 бер. 2021 р.', source_year: 2021 })] });
+    ok('6v. походження у звіті: джерело, ціна, валюта, дата, рік ціни, ринок', prov && provCurve.new_price.source && provCurve.new_price.source.url === 'https://example.com/a' && provCurve.new_price.source.price === 946130
+      && provCurve.new_price.source.currency === 'UAH' && provCurve.new_price.source.date === '12 бер. 2021 р.' && provCurve.new_price.source.price_year === 2021 && provCurve.new_price.source.market === 'UA'
+      && provCurve.new_price.rejection_reason === null && provCurve.new_price.basis === 'local_list');
+    ok('6w. без курсів і без мереж: узгодженість рахується з уже зібраного', !/fetch\(|exchange|nbu|bank\.gov/i.test(fs.readFileSync('api/value.js', 'utf8').replace(/searchSerper|deps\.callModel/g, '')));
   }
 
   /* ===== 5. кандидати зі сниппетів ===== */
@@ -353,21 +400,30 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
   {
     const page = fs.readFileSync('result-check.html', 'utf8');
     const iVerdict = page.indexOf('<div class="card" id="verdictCard"'), iValue = page.indexOf('id="valueCard"'), iRisks = page.indexOf('id="risksCard"');
-    const iRow = page.indexOf('<div class="dv-row" id="decisionRow">'), iSlot = page.indexOf('<div class="sc-slot" id="scoreSlot"></div>'), iPair = page.indexOf('<div class="val-pair" id="valPair"');
-    ok('10a. ряд рішення: графік і картка оцінки в одному контейнері', iRow > 0 && iRow < iValue && iValue < iSlot && iSlot < iPair);
-    ok('10b. ліквідність і чинники ціни окремим рядом одразу під ним, перед висновком і ризиками', iPair < iVerdict && iVerdict < iRisks && page.indexOf('id="valLiqBox"') > iPair && page.indexOf('id="valWhyBox"') > iPair && page.indexOf('id="valWhyBox"') < iVerdict);
-    ok('10b1. L: одна картка оцінки і одна секція вартості, без дублів', page.split('id="scoreSlot"').length === 2 && page.split('id="valueCard"').length === 2 && page.split('id="valLiqBox"').length === 2 && page.split('id="valWhyBox"').length === 2
+    const iSlot = page.indexOf('<div class="sc-slot" id="scoreSlot"></div>'), iPair = page.indexOf('<div class="val-pair" id="valPair"');
+    ok('10a. 12: порядок: оцінка і впевненість, висновок, ринкова вартість, ліквідність і чинники, ризики', iSlot > 0 && iSlot < iVerdict && iVerdict < iValue && iValue < iPair && iPair < iRisks
+      && page.indexOf('id="valLiqBox"') > iPair && page.indexOf('id="valLiqBox"') < page.indexOf('id="valWhyBox"') && page.indexOf('id="valWhyBox"') < iRisks);
+    ok('10b. між висновком і ринковою вартістю немає іншої картки', (page.slice(iVerdict, iValue).match(/<div class="card[ "]/g) || []).length === 2);
+    ok('10b1. 11: одна картка оцінки і одна секція вартості, без дублів', page.split('id="scoreSlot"').length === 2 && page.split('id="valueCard"').length === 2 && page.split('id="valLiqBox"').length === 2 && page.split('id="valWhyBox"').length === 2
       && (page.match(/renderScoreBlock\(D\);/g) || []).length === 1 && (page.match(/renderValueSection\(D\);/g) || []).length === 1);
-    const vcss = page.slice(page.indexOf('/* ---- рішення і вартість'), page.indexOf('/* висновок CalCar це головна'));
-    ok('10b2. без спільної рамки і внутрішніх розділювачів', !/\.val-(pair|box|main)[^{]*\{[^}]*border-(left|top)/.test(vcss) && !/class="card val-card"|val-sec/.test(page));
-    ok('10b3. графік близько 69%, права колонка на висоту графіка', /\.dv-row\.has-chart\{display:grid;grid-template-columns:minmax\(0,2\.2fr\) minmax\(0,1fr\);gap:20px;align-items:stretch/.test(vcss));
-    ok('10b4. чіп ринку: просто країна, тихий, у шапці картки графіка', /mk\.textContent = t\('Ukraine'\)/.test(page) && !/Market: Ukraine/.test(page) && /\.val-chip\{[^}]*color:var\(--muted\)/.test(vcss)
+    const vcss = page.slice(page.indexOf('/* ---- ринкова вартість (Value v1) ----'), page.indexOf('/* висновок CalCar це головна'));
+    ok('10b2. оцінка повернута до горизонтального вигляду: жодної вертикальної розкладки', !/dv-row|decisionRow|has-chart/.test(page) && /\.sc-card\{display:grid;grid-template-columns:minmax\(170px,30%\) 1px minmax\(0,1fr\)/.test(page));
+    ok('10b3. 13: одна картка на всю ширину: графік і праворуч стовпчик чисел близько чверті', /<div class="card val-card" id="valueCard"/.test(page) && /\.vc-body\{display:grid;grid-template-columns:minmax\(0,1fr\) minmax\(176px,24%\)/.test(vcss));
+    ok('10b4. чіп ринку: просто країна, тихий, у шапці картки', /mk\.textContent = t\('Ukraine'\)/.test(page) && /\.val-chip\{[^}]*color:var\(--muted\)/.test(vcss)
       && /id="valueCard"[^>]*>\s*<div class="val-head">\s*<h2>Market value<\/h2>\s*<span class="val-chip" id="valMarket"/.test(page));
-    ok('10b5. прогноз справжнім пунктиром, не крапками', /\.vc-forecast\{[^}]*stroke-linecap:butt[^}]*stroke-dasharray:7 5/.test(vcss));
-    ok('10b6. лаймова заливка ледь помітна', /\.vc-area\{fill:var\(--brand\);opacity:\.1\}/.test(vcss));
-    ok('10b7. у правій колонці бал над впевненістю: та сама картка, лише складена вертикально', /@media\(min-width:861px\)\{[\s\S]*?\.dv-row\.has-chart \.sc-card\{grid-template-columns:minmax\(0,1fr\);grid-template-rows:minmax\(0,1fr\) 1px minmax\(0,1fr\)/.test(vcss));
-    ok('10b8. ліквідність і чинники: дві рівні картки', /\.val-pair\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\);gap:20px/.test(vcss));
-    ok('10b9. K: вузький екран: оцінка, графік, далі картки в один стовпчик', /@media\(max-width:860px\)\{[\s\S]*?\.dv-row\.has-chart\{grid-template-columns:minmax\(0,1fr\)[^}]*\}\s*\.dv-row\.has-chart \.sc-slot\{order:-1\}\s*\.val-pair\{grid-template-columns:minmax\(0,1fr\)/.test(vcss));
+    ok('10b5. прогноз справжнім пунктиром і тихіший за історію', /\.vc-forecast\{stroke:var\(--faint\)[^}]*stroke-linecap:butt[^}]*stroke-dasharray:7 5/.test(vcss));
+    ok('10b6. заливка ледь помітна, сітка і осі тихі', /\.vc-area\{fill:var\(--brand\);opacity:\.07\}/.test(vcss) && /\.vc-grid\{stroke:var\(--surface-2\)/.test(vcss) && /\.vc-tick\{[^}]*fill:var\(--faint\)/.test(vcss));
+    ok('10b7. числа у стовпчику без окремих рамок: лише тонкі розділювачі; друга ціна тихіша', /\.vc-kpi \+ \.vc-kpi\{border-top:1px solid var\(--line\)\}/.test(vcss) && !/\.vc-kpi\{[^}]*(border-radius|background|box-shadow)/.test(vcss)
+      && /\.vc-kpi\.ctx \.vc-num\{font-size:16px/.test(vcss) && /\.vc-num\{font-size:24px/.test(vcss));
+    ok('10b8. друга позначка на графіку мала і тиха', /\.vc-listing-dot\{fill:var\(--card\);stroke:var\(--muted\);stroke-width:1\.5\}/.test(vcss));
+    /* 15: ліквідність і чинники ціни однієї будови */
+    const pairHtml = page.slice(iPair, iRisks);
+    ok('10b9. 15: дві картки однієї будови: той самий клас, заголовок і рядки', (pairHtml.match(/<div class="card mk-card"/g) || []).length === 2 && (pairHtml.match(/<h3>/g) || []).length === 2 && (pairHtml.match(/class="mk-rows"/g) || []).length === 2 && !/<ul|<li/.test(pairHtml));
+    ok('10b12. 15: рядки обох карток малюються тим самим шаблоном', (page.match(/'<div class="mk-row">' \+ esc\(clean\(/g) || []).length === 2);
+    ok('10b13. без яскравих лаймових маркерів списку', !/\.mk-[a-z]+[^{]*\{[^}]*var\(--brand\)/.test(vcss) && /\.mk-row \+ \.mk-row\{border-top:1px solid var\(--line\)\}/.test(vcss));
+    ok('10b14. дві рівні картки поруч, на вузькому екрані одна під одною; числа над графіком', /\.val-pair\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\);gap:20px/.test(vcss)
+      && /@media\(max-width:860px\)\{[\s\S]*?\.vc-body\{grid-template-columns:minmax\(0,1fr\)[\s\S]*?\.vc-rail\{order:-1[\s\S]*?\.val-pair\{grid-template-columns:minmax\(0,1fr\)/.test(vcss));
+    ok('10b15. тексти карток: лише наявні причини і чинники, без переписування', /reasons\.map\(r => '<div class="mk-row">' \+ esc\(clean\(r\)\)/.test(page) && /factors\.map\(f => '<div class="mk-row">' \+ esc\(clean\(f\)\)/.test(page));
     /* I, J: рендер оцінки і впевненості не змінений цією задачею */
     const fnSrc = name => { const a = page.indexOf('function ' + name + '('); let d = 0; for (let k = page.indexOf('{', a); k < page.length; k++) { if (page[k] === '{') d++; else if (page[k] === '}') { d--; if (d === 0) return page.slice(a, k + 1); } } return ''; };
     const scoreFn = fnSrc('renderScoreBlock');
@@ -425,11 +481,11 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
     ok('11k1. молоде авто: підписи щороку, сьогодні теж підписане', C.xTicks(6.25, Date.UTC(2031, 8, 1), 8).some(x => x.year === 2026 && Math.abs(x.t - 1.25) < 1e-9));
     /* F: формат головних чисел */
     const chartSrc = fs.readFileSync('value-chart.js', 'utf8');
-    ok('11q. F: середня площадки округлена до сотні з позначкою приблизності', /curTxt = isAvg \? '\\u2248\\u00a0' \+ money\(Math\.round\(vc\.current\.value \/ 100\) \* 100, cur\) : money\(vc\.current\.value, cur\)/.test(chartSrc));
-    ok('11q1. середній показник підписаний просто "Сьогодні"', !/Average today/.test(chartSrc) && /esc\(t\('Today'\)\) \+ '<\/span><\/div>'/.test(chartSrc));
-    ok('11q2. середня як контекст: назва джерела або нейтральний підпис, значення приблизне', /vc\.average\.source_name \? t\('\{name\} average'\)\.replace\('\{name\}', vc\.average\.source_name\) : t\('Marketplace average'\)/.test(chartSrc) && !/AUTO\.RIA/.test(chartSrc));
-    ok('11r. F: ціна оголошення точна, без знака приблизності', /esc\(money\(vc\.listing\.value, cur\)\)/.test(chartSrc));
-    ok('11s. F: прогноз лишається приблизним', /futTxt = '≈\\u00a0' \+ money\(roundApprox\(vc\.future\.value\), cur\)/.test(chartSrc));
+    ok('11q. 8: знака приблизності в секції немає ніде', !/≈|≈/.test(chartSrc) && !/≈/.test(page.slice(page.indexOf('function renderValueSection'), page.indexOf('function fill('))));
+    ok('11q1. невизначеність несе підпис: оцінка новою, сьогодні, прогноз', /t\(vc\.new_price\.approx \? 'Estimated when new' : 'When new'\)/.test(chartSrc) && /item\(curTxt, t\('Today'\), 'now'\)/.test(chartSrc) && /item\(futTxt, t\('Forecast in 5 years'\)\)/.test(chartSrc));
+    ok('11q2. середня як контекст: назва джерела або нейтральний підпис', /vc\.average\.source_name \? t\('\{name\} average'\)\.replace\('\{name\}', vc\.average\.source_name\) : t\('Marketplace average'\)/.test(chartSrc) && !/AUTO\.RIA/.test(chartSrc));
+    ok('11r. ціна оголошення точна; середня і прогноз округлені', /money\(vc\.listing\.value, cur\)/.test(chartSrc) && /curTxt = money\(isAvg \? r100\(vc\.current\.value\) : vc\.current\.value, cur\)/.test(chartSrc) && /futTxt = money\(r100\(vc\.future\.value\), cur\)/.test(chartSrc));
+    ok('11s. числа винесені зі шапки графіка у стовпчик праворуч', /'<div class="vc-rail">' \+ rail \+ '<\/div><\/div>'/.test(chartSrc) && !/vc-stats|class="vc-listing"/.test(chartSrc));
     ok('11t. підказка на сьогодні показує точне значення джерела', /var exact = active === L\.todayIdx/.test(chartSrc));
     ok('11u. підпис "Сьогодні" біля вертикальної лінії', /'class': 'vc-now-lbl' \}, t\('Today'\)\)/.test(chartSrc));
     ok('11v. взаємодія збережена: миша, дотик, клавіатура', ['pointermove', 'pointerdown', 'pointerleave', 'touchmove', 'keydown'].every(e => chartSrc.includes("addEventListener('" + e + "'")));
@@ -448,7 +504,7 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
     /* словники */
     const dicts = { CALCAR_DICTS: {} };
     for (const f of ['i18n/ru.js', 'i18n/ua.js']) vm.runInNewContext(fs.readFileSync(f, 'utf8'), { window: dicts });
-    const keys = ['Market value', 'Liquidity', 'Why this car costs what it does', 'Easy to resell', 'Average resale', 'Hard to resell', 'Not enough data', 'Ukraine', 'When new', 'Today', '{name} average', 'Marketplace average', 'In 5 years',
+    const keys = ['Market value', 'Liquidity', 'Why this car costs what it does', 'Easy to resell', 'Average resale', 'Hard to resell', 'Not enough data', 'Ukraine', 'When new', 'Today', '{name} average', 'Marketplace average', 'Estimated when new', 'Forecast in 5 years',
       'Forecast', 'This listing', '{pct} vs average', 'Value over time', 'The new-car price is estimated from the current price and age.', 'The new-car price is the US list price plus import costs to Ukraine.',
       'The new-car price is the list price in Ukraine.', 'The forecast is a model estimate, not a guarantee.'];
     for (const lang of ['ru', 'ua']) {

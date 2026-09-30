@@ -244,6 +244,27 @@ export const MAX_OVER_REVERSE = 5;
 /* candidates: уже перевірені (validateCandidates) ціни з джерел.
    Порядок: A локальна ціна того самого ринку, B MSRP США з локалізацією,
    C зворотна оцінка. max(MSRP, зворотна оцінка) свідомо НЕ застосовується. */
+/* Чи узгоджена ціна з роком авто в часі.
+   - дата сторінки відома: вона мусить бути в межах року від року авто;
+   - дати немає: рік авто має стояти в тексті джерела, і пізнішого року там
+     бути не повинно;
+   - ціна в USD без жодної дати лишається слабким якорем (перерахунку
+     валюти немає, спотворити її курсом не можна);
+   - інакше джерело якорем не стає. */
+export function priceTimeCoherence(c, vehicleYear) {
+  const y = parseInt(vehicleYear, 10) || null;
+  if (!y) return { ok: false, reason: 'price_date_unknown' };
+  const sy = c.source_year || null;
+  const years = Array.isArray(c.text_years) ? c.text_years : [];
+  if (sy) {
+    if (Math.abs(sy - y) > 1) return { ok: false, reason: 'source_date_mismatch' };
+    return { ok: true, evidence: 'source_date', price_year: sy };
+  }
+  if (years.includes(y) && !years.some(x => x > y + 1)) return { ok: true, evidence: 'year_in_text', price_year: y };
+  if (c.currency === 'USD' && !years.some(x => x > y + 1)) return { ok: true, evidence: 'none', price_year: y };
+  return { ok: false, reason: years.some(x => x > y + 1) ? 'source_date_mismatch' : 'price_date_unknown' };
+}
+
 export function resolveNewPrice({ candidates = [], pc, T, market = null, currency = null, vehicle = {} } = {}) {
   const reverse = reverseNewPrice(pc, T);
   const rejected = [];
@@ -256,18 +277,32 @@ export function resolveNewPrice({ candidates = [], pc, T, market = null, currenc
   if (currency !== 'USD' || market !== 'UA') return fallback(candidates.length ? 'sourced_price_needs_ua_usd_market' : null);
 
   const prepared = [];
+  const reject = (c, reason, extra) => rejected.push({ ref: c.source_url || null, reason, amount: c.amount, currency: c.currency, source_date: c.source_date || null, ...(extra || {}) });
   for (const c of Array.isArray(candidates) ? candidates : []) {
-    const usd = toUsd(c.amount, c.currency, c.model_year || vehicle.year);
-    if (usd === null) { rejected.push({ ref: c.source_url || null, reason: 'currency_not_convertible' }); continue; }
     if (c.price_kind === 'local_list' && c.market === 'UA') {
-      prepared.push({ rank: 0, value: usd, basis: 'local_list', strength: c.trim_match === 'exact' ? 'strong' : 'weak', c });
-    } else if (c.price_kind === 'source_msrp' && c.market === 'US') {
+      /* Локальна ціна це якір лише коли зрозуміло, ДО ЯКОГО ЧАСУ вона
+         належить. Сторінка дилера з цінами "нових авто" без дати чи з
+         пізнішою датою показує прайс того дня, а не ціну року авто:
+         перерахунок такої гривневої ціни в долари за курсом року авто дав би
+         число, якого ніколи не існувало. Курси ми не моделюємо: неузгоджене
+         в часі джерело просто не стає якорем */
+      const tc = priceTimeCoherence(c, vehicle.year);
+      if (!tc.ok) { reject(c, tc.reason); continue; }
+      if (c.price_ladder) { reject(c, 'ambiguous_trim_ladder'); continue; }
+      const usd = toUsd(c.amount, c.currency, tc.price_year);
+      if (usd === null) { reject(c, 'currency_not_convertible'); continue; }
+      prepared.push({ rank: 0, value: usd, basis: 'local_list', strength: c.trim_match === 'exact' && tc.evidence !== 'none' ? 'strong' : 'weak', c, usd, price_year: tc.price_year });
+      continue;
+    }
+    const usd = toUsd(c.amount, c.currency, c.model_year || vehicle.year);
+    if (usd === null) { reject(c, 'currency_not_convertible'); continue; }
+    if (c.price_kind === 'source_msrp' && c.market === 'US') {
       /* режим ввезення року, коли авто було новим */
       const loc = localizeUsMsrpToUA(usd, { ...vehicle, year: c.model_year || vehicle.year });
-      if (loc !== null) prepared.push({ rank: 1, value: loc.value, basis: 'localized_msrp', strength: 'weak', c, localization: loc.regime });
-      else rejected.push({ ref: c.source_url || null, reason: 'historical_localization_unknown' });
+      if (loc !== null) prepared.push({ rank: 1, value: loc.value, basis: 'localized_msrp', strength: 'weak', c, usd, price_year: c.model_year || parseInt(vehicle.year, 10) || null, localization: loc.regime });
+      else reject(c, 'historical_localization_unknown');
     } else {
-      rejected.push({ ref: c.source_url || null, reason: 'market_not_supported' });
+      reject(c, 'market_not_supported');
     }
   }
   const strengthRank = p => (p.strength === 'strong' ? 0 : 1);
@@ -276,15 +311,15 @@ export function resolveNewPrice({ candidates = [], pc, T, market = null, currenc
   prepared.sort((a, b) => (a.rank - b.rank) || (strengthRank(a) - strengthRank(b)) || (trimRank(a) - trimRank(b)) || (confRank(a) - confRank(b)));
 
   for (const p of prepared) {
-    const fact = { ...p.c, amount_usd: Math.round(toUsd(p.c.amount, p.c.currency, p.c.model_year || vehicle.year)) };
+    const fact = { ...p.c, amount_usd: Math.round(p.usd), price_year: p.price_year };
     if (p.strength === 'strong') {
       /* точна локальна ціна нижча за ринок: джерело не підробляємо і криву
          не вигадуємо, графік ховається */
       if (p.value <= pc) return { value: Math.round(p.value), approx: false, basis: p.basis, strength: 'strong', fact, rejected, reason: 'strong_anchor_not_above_market' };
       return { value: Math.round(p.value), approx: false, basis: p.basis, strength: 'strong', fact, rejected };
     }
-    if (p.value < pc * minNewToCurrentRatio(T)) { rejected.push({ ref: p.c.source_url || null, reason: 'incompatible_with_current_value', value: Math.round(p.value) }); continue; }
-    if (p.value > reverse * MAX_OVER_REVERSE) { rejected.push({ ref: p.c.source_url || null, reason: 'implausibly_high', value: Math.round(p.value) }); continue; }
+    if (p.value < pc * minNewToCurrentRatio(T)) { reject(p.c, 'incompatible_with_current_value', { value: Math.round(p.value) }); continue; }
+    if (p.value > reverse * MAX_OVER_REVERSE) { reject(p.c, 'implausibly_high', { value: Math.round(p.value) }); continue; }
     return { value: Math.round(p.value), approx: true, basis: p.basis, strength: 'weak', fact, rejected, ...(p.localization ? { localization: p.localization } : {}) };
   }
   return fallback(rejected.length ? 'sourced_price_unsuitable' : null);
@@ -315,15 +350,24 @@ export function buildValueCurve({ price = null, currency = null, price_context =
       value: np.value, approx: np.approx, basis: np.basis,
       /* яким режимом ввезення локалізовано MSRP ринку-джерела */
       ...(np.localization ? { localization: np.localization } : {}),
+      /* походження числа одним поглядом: що за джерело, яка ціна і валюта в
+         ньому стояли, до якого року віднесено. Для зворотної оцінки source
+         це null, а rejection_reason каже, чому знайдені ціни не підійшли */
+      source: np.fact ? {
+        url: np.fact.source_url, host: np.fact.source_host || null, price: np.fact.amount, currency: np.fact.currency,
+        date: np.fact.source_date || null, price_year: np.fact.price_year || null, market: np.fact.market,
+      } : null,
+      rejection_reason: np.basis === 'reverse_estimate' && np.rejected.length ? np.rejected[0].reason : null,
       /* факт із джерела у контракті Model Intelligence (область: марка,
          модель, покоління, версія, рік, ринок, валюта, джерело, довіра).
          Зворотна оцінка фактом не є: fact лишається null */
       fact: np.fact ? {
         make: identity.make || null, model: identity.model || null, generation: identity.generation || null,
-        trim: identity.trim || null, model_year: np.fact.model_year || parseInt(year, 10) || null,
+        trim: identity.trim || null, model_year: np.fact.model_year || np.fact.price_year || parseInt(year, 10) || null,
         market: np.fact.market, currency: np.fact.currency, amount: np.fact.amount, amount_usd: np.fact.amount_usd,
         price_kind: np.fact.price_kind, trim_match: np.fact.trim_match,
         source_url: np.fact.source_url, source_host: np.fact.source_host || null, source_excerpt: np.fact.source_excerpt || null,
+        source_date: np.fact.source_date || null,
         confidence: np.fact.confidence || 'medium',
       } : null,
       rejected: np.rejected,
@@ -360,6 +404,30 @@ export function amountInText(amount, text) {
   return numbersInText(text).some(n => Math.abs(n - a) <= Math.max(1, a * 0.005));
 }
 
+/* рік сторінки з дати пошуковика: "12 бер. 2022 р.", "Mar 12, 2022";
+   відносна дата ("3 days ago") це поточний рік; без дати null */
+export function sourceYear(date, nowYear) {
+  const s = String(date || '').trim();
+  if (!s) return null;
+  const m = /\b(19[89]\d|20[0-4]\d)\b/.exec(s);
+  if (m) return parseInt(m[1], 10);
+  return /\d/.test(s) ? nowYear : null;
+}
+export function yearsInText(text) {
+  const out = [];
+  for (const m of String(text || '').matchAll(/(?<![\d.,])(19[89]\d|20[0-4]\d)(?![\d]|[ .,]\d{3})/g)) {
+    const y = parseInt(m[1], 10);
+    if (!out.includes(y)) out.push(y);
+  }
+  return out;
+}
+/* скільки різних цін того самого порядку (від половини до подвійної) у тексті */
+export function pricesNear(amount, text) {
+  const seen = new Set();
+  for (const n of numbersInText(text)) if (n >= amount * 0.5 && n <= amount * 2 && !(n >= 1980 && n <= 2049)) seen.add(n);
+  return seen.size;
+}
+
 const CUR = ['USD', 'EUR', 'UAH'];
 const MKT = ['UA', 'US', 'EU', 'OTHER'];
 const KIND = ['local_list', 'source_msrp'];
@@ -368,7 +436,7 @@ const TRIM = ['exact', 'base', 'unknown'];
 /* Модель лише вказує, у якому результаті пошуку стоїть ціна. Код перевіряє:
    результат існує, число справді є в його тексті, ринок і валюта зі схеми.
    Довіру ставить код за класом домену, а не модель. */
-export function validateCandidates(raw, results, { brand = null, year = null } = {}) {
+export function validateCandidates(raw, results, { brand = null, year = null, nowYear = new Date().getUTCFullYear() } = {}) {
   const byRef = new Map((results || []).map(r => [r.ref, r]));
   const out = [], dropped = [];
   for (const c of Array.isArray(raw) ? raw.slice(0, 8) : []) {
@@ -381,11 +449,19 @@ export function validateCandidates(raw, results, { brand = null, year = null } =
     /* ціна іншого модельного року (далі ніж на 1) цій машині не якір */
     if (my && year && Math.abs(my - parseInt(year, 10)) > 1) { dropped.push({ ref: r.ref, reason: 'other_model_year' }); continue; }
     const cls = classifySource(r.url, brand);
+    const text = r.title + ' ' + r.snippet;
+    const trim = TRIM.includes(c.trim_match) ? c.trim_match : 'unknown';
     out.push({
       amount, currency: c.currency, market: c.market, price_kind: c.price_kind,
-      trim_match: TRIM.includes(c.trim_match) ? c.trim_match : 'unknown', model_year: my,
+      trim_match: trim, model_year: my,
       source_url: r.url, source_host: cls.host || hostOf(r.url), source_excerpt: String(r.snippet || r.title || '').slice(0, 240),
       confidence: cls.source_type === 'official' ? 'high' : 'medium',
+      /* до якого часу належить ціна: дата сторінки від пошуку і роки в
+         тексті джерела. Це факти про джерело, рішення приймає resolveNewPrice */
+      source_date: r.date || null, source_year: sourceYear(r.date, nowYear), text_years: yearsInText(text),
+      /* кілька цін одного порядку без назви версії: це драбина комплектацій,
+         і яка з них стосується цієї машини, з тексту не видно */
+      price_ladder: trim !== 'exact' && pricesNear(amount, text) >= 3,
     });
   }
   return { candidates: out, dropped };
@@ -463,7 +539,7 @@ export function valueUserMessage({ langDirective, vehicle, market, results, mode
   lines.push('MARKET: ' + JSON.stringify(market));
   lines.push('MODEL_CONTEXT (CalCar knowledge base and sourced web findings about this model; may be empty):\n' + (modelContext || 'empty'));
   lines.push('SEARCH_RESULTS (web search snippets about the new-car price):\n' + (results.length
-    ? results.map(r => r.ref + '. [' + r.host + '] ' + r.title + ' | ' + r.snippet).join('\n')
+    ? results.map(r => r.ref + '. [' + r.host + (r.date ? ', ' + r.date : '') + '] ' + r.title + ' | ' + r.snippet).join('\n')
     : 'none'));
   return lines.join('\n\n');
 }
@@ -504,7 +580,7 @@ export function startValueResearch(input = {}, deps = {}) {
       const url = String((it && it.link) || '');
       if (!/^https?:\/\//.test(url) || seen.has(url) || results.length >= 14) continue;
       seen.add(url);
-      results.push({ ref: 'S' + (results.length + 1), url, host: hostOf(url), title: String(it.title || '').slice(0, 160), snippet: String(it.snippet || '').slice(0, 320) });
+      results.push({ ref: 'S' + (results.length + 1), url, host: hostOf(url), title: String(it.title || '').slice(0, 160), snippet: String(it.snippet || '').slice(0, 320), date: it.date ? String(it.date).slice(0, 40) : null });
     }
     state.search = { queries: queries.length, ok: rs.filter(r => r && r.ok).length, results: results.length, ms: Date.now() - t0, reasons: rs.filter(r => r && !r.ok).map(r => r.reason) };
     return results;

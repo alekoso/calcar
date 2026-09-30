@@ -168,37 +168,42 @@
     var cur = vc.market && vc.market.currency;
     var pts = vc.points;
     var isAvg = vc.current.source === 'marketplace_average';
-    var newTxt = (vc.new_price.approx ? '≈\u00a0' : '') + money(vc.new_price.approx ? roundApprox(vc.new_price.value) : vc.new_price.value, cur);
-    /* середня площадки це оцінка ринку: показуємо до сотні з "≈"; ціна
-       продавця це реальне число оголошення, вона лишається точною */
-    var curTxt = isAvg ? '\u2248\u00a0' + money(Math.round(vc.current.value / 100) * 100, cur) : money(vc.current.value, cur);
-    var futTxt = '≈\u00a0' + money(roundApprox(vc.future.value), cur);
-    var delta = vc.listing ? ((vc.listing.delta_percent > 0 ? '+' : vc.listing.delta_percent < 0 ? '−' : '') + Math.abs(vc.listing.delta_percent) + '%') : '';
-
-    var html = '<div class="vc-stats">'
-      + '<div class="vc-stat"><span class="vc-num">' + esc(newTxt) + '</span><span class="vc-lbl">' + esc(t('When new')) + '</span></div>'
-      + '<div class="vc-stat"><span class="vc-num">' + esc(curTxt) + '</span><span class="vc-lbl">' + esc(t('Today')) + '</span></div>'
-      + '<div class="vc-stat"><span class="vc-num">' + esc(futTxt) + '</span><span class="vc-lbl">' + esc(t('In 5 years')) + '</span></div>'
-      + '</div>';
+    /* до сотні; для шестизначних сум до тисячі */
+    var r100 = function (n) { var step = n >= 100000 ? 1000 : 100; return Math.round(n / step) * step; };
+    /* Головні числа без знака приблизності: невизначеність каже підпис
+       ("Оцінка новою", "Прогноз через 5 років"). Розрахункові значення
+       округлені; ціна оголошення це реальне число і лишається точною */
+    var newTxt = money(vc.new_price.approx ? roundApprox(vc.new_price.value) : vc.new_price.value, cur);
+    var curTxt = money(isAvg ? r100(vc.current.value) : vc.current.value, cur);
+    var futTxt = money(r100(vc.future.value), cur);
+    var item = function (value, label, cls) {
+      return '<div class="vc-kpi' + (cls ? ' ' + cls : '') + '"><span class="vc-num">' + esc(value) + '</span><span class="vc-lbl">' + esc(label) + '</span></div>';
+    };
+    /* праворуч від графіка: нова, сьогодні, через 5 років; нижче тихіше
+       друга ціна як контекст (середня площадки або ціна оголошення) */
+    var rail = item(newTxt, t(vc.new_price.approx ? 'Estimated when new' : 'When new'))
+      + item(curTxt, t('Today'), 'now')
+      + item(futTxt, t('Forecast in 5 years'));
     if (vc.listing) {
-      html += '<div class="vc-listing"><span class="vc-dot" aria-hidden="true"></span><span>' + esc(t('This listing')) + '</span><b>' + esc(money(vc.listing.value, cur)) + '</b>'
-        + '<span class="vc-delta">' + esc(t('{pct} vs average').replace('{pct}', delta)) + '</span></div>';
+      var delta = (vc.listing.delta_percent > 0 ? '+' : vc.listing.delta_percent < 0 ? '−' : '') + Math.abs(vc.listing.delta_percent) + '%';
+      rail += item(money(vc.listing.value, cur), t('This listing') + ', ' + t('{pct} vs average').replace('{pct}', delta), 'ctx');
     } else if (vc.average && typeof vc.average.value === 'number' && isFinite(vc.average.value)) {
       /* якір це ціна оголошення: середня площадки лишається контекстом */
-      var avgName = vc.average.source_name ? t('{name} average').replace('{name}', vc.average.source_name) : t('Marketplace average');
-      html += '<div class="vc-listing"><span class="vc-dot" aria-hidden="true"></span><span>' + esc(avgName) + '</span><b>' + esc('≈\u00a0' + money(Math.round(vc.average.value / 100) * 100, cur)) + '</b></div>';
+      rail += item(money(r100(vc.average.value), cur), vc.average.source_name ? t('{name} average').replace('{name}', vc.average.source_name) : t('Marketplace average'), 'ctx');
     }
-    html += '<div class="vc-plot" tabindex="0" role="group" aria-label="' + esc(t('Value over time')) + '"><div class="vc-tip" hidden></div></div>';
-    host.innerHTML = html;
+    host.innerHTML = '<div class="vc-body"><div class="vc-plot" tabindex="0" role="group" aria-label="' + esc(t('Value over time')) + '"><div class="vc-tip" hidden></div></div>'
+      + '<div class="vc-rail">' + rail + '</div></div>';
     var plot = host.querySelector('.vc-plot');
     var tip = host.querySelector('.vc-tip');
     var active = -1;
     var svg = null, L = null, cross = null, dot = null;
 
     function draw() {
-      var width = Math.round(plot.clientWidth || host.clientWidth || 600);
+      /* картка ще не видима (звіт під скелетоном): ширини немає, малювати
+         нема за чим; ResizeObserver намалює, щойно вона зʼявиться */
+      var width = Math.round(plot.clientWidth || 0);
       if (width < 120) return;
-      var height = width < 480 ? 220 : 270;
+      var height = width < 480 ? 220 : 300;
       if (svg) plot.removeChild(svg);
       L = layout(vc, width, height);
       svg = el('svg', { viewBox: '0 0 ' + width + ' ' + height, width: width, height: height, 'class': 'vc-svg', 'aria-hidden': 'true' });
@@ -242,9 +247,9 @@
         /* на великій шкалі близькі ціни злились би в одну точку: позначка
            тримає мінімальний видимий відступ у свій бік від кривої */
         var gap = ly - L.py[ti];
-        if (Math.abs(gap) < 13 && L.listing !== vc.current.value) ly = L.py[ti] + (L.listing > vc.current.value ? -13 : 13);
-        svg.appendChild(el('line', { x1: L.px[ti], x2: L.px[ti], y1: L.py[ti], y2: ly, 'class': 'vc-link' }));
-        svg.appendChild(el('circle', { cx: L.px[ti], cy: ly, r: 5.5, 'class': 'vc-listing-dot' }));
+        if (Math.abs(gap) < 12 && L.listing !== vc.current.value) ly = L.py[ti] + (L.listing > vc.current.value ? -12 : 12);
+        /* мала порожня позначка: контекст, а не друга головна точка */
+        svg.appendChild(el('circle', { cx: L.px[ti], cy: ly, r: 4, 'class': 'vc-listing-dot' }));
       }
       svg.appendChild(el('circle', { cx: L.px[ti], cy: L.py[ti], r: 5.5, 'class': 'vc-today' }));
       cross = el('line', { x1: 0, x2: 0, y1: L.pad.t, y2: base, 'class': 'vc-cross', visibility: 'hidden' });
@@ -261,7 +266,7 @@
       cross.setAttribute('x1', x); cross.setAttribute('x2', x); cross.setAttribute('visibility', 'visible');
       dot.setAttribute('cx', x); dot.setAttribute('cy', y); dot.setAttribute('visibility', 'visible');
       var exact = active === L.todayIdx || (active === 0 && !vc.new_price.approx);
-      var val = (exact ? '' : '≈\u00a0') + money(exact ? p.value : roundPoint(p.value), cur);
+      var val = money(exact ? p.value : roundPoint(p.value), cur);
       var label = active === 0 ? t('When new') : active === L.todayIdx ? t('Today') : p.forecast ? t('Forecast') : '';
       tip.innerHTML = '<span class="vc-tip-d">' + esc(monthLabel(p, locale)) + '</span><b>' + esc(val) + '</b>' + (label ? '<span class="vc-tip-f">' + esc(label) + '</span>' : '');
       tip.hidden = false;
@@ -288,6 +293,7 @@
     plot.addEventListener('pointerleave', function (e) { if (e.pointerType === 'mouse') clear(); });
     plot.addEventListener('touchmove', function (e) { if (e.touches && e.touches[0]) fromEvent(e.touches[0]); }, { passive: true });
     plot.addEventListener('keydown', function (e) {
+      if (!L) return;
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); select((active < 0 ? L.todayIdx : active) + (e.key === 'ArrowRight' ? 1 : -1)); }
       else if (e.key === 'Escape') clear();
     });
