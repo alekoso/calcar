@@ -393,11 +393,11 @@ const page = fs.readFileSync('result-check.html', 'utf8');
         'Ночное видение', 'Камера 360', 'Камера кругового обзора', 'Матричные фары', 'Лазерные фары',
         'Head-Up Display', 'HUD', 'Проекционный дисплей', 'Проєкційний дисплей',
         'Массаж сидений', 'Вентиляция сидений', 'Вентильовані сидіння',
-        'Аудиосистема Burmester', 'Bang & Olufsen', 'Mark Levinson', 'Bowers & Wilkins', 'Доводчики дверей']) {
+        'Аудиосистема Burmester', 'Bang & Olufsen', 'Mark Levinson', 'Bowers & Wilkins', 'Доводчики дверей', 'Adaptive cruise control']) {
         if (!EV.genericHighValue(n)) errs.push('дорога опція не впізнана: ' + n);
       }
       /* звичайне лишається звичайним */
-      for (const n of ['Apple CarPlay', 'Подогрев сидений', 'Парктроники', 'Круиз-контроль', 'Adaptive cruise control',
+      for (const n of ['Apple CarPlay', 'Подогрев сидений', 'Парктроники', 'Круиз-контроль',
         'Безключевой доступ', 'Навигация', 'Климат-контроль', 'Камера заднего вида', 'Люк', 'Подогрев руля']) {
         if (EV.genericHighValue(n)) errs.push('звичайна опція названа дорогою: ' + n);
       }

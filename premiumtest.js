@@ -42,11 +42,21 @@ const ok = (name, cond, detail) => { checks++; if (!cond) errs.push(name + (deta
     brand: ['harman/kardon', 'Burmester 4D', 'Bowers & Wilkins Diamond', 'Bang & Olufsen', 'Mark Levinson', 'Meridian', 'Bose', 'E-ACTIVE BODY CONTROL', 'AIRMATIC', 'Airscarf', 'Chauffeur Package', 'Executive rear seats', 'Integral Active Steering'],
   };
   const FALSE = ['Память сидений и зеркал', 'Памʼять сидінь і дзеркал', 'Memory seats and mirrors', 'Apple CarPlay и Android Auto', 'Подогрев передних сидений', 'Підігрів сидінь', 'Heated seats',
-    'Парктроники', 'Park Assist sensors', 'Круиз-контроль', 'Адаптивный круиз-контроль', 'Бесключевой доступ', 'Навигационная система', 'Климат-контроль', 'Климат для задних пассажиров',
+    'Парктроники', 'Park Assist sensors', 'Круиз-контроль', 'Бесключевой доступ', 'Навигационная система', 'Климат-контроль', 'Климат для задних пассажиров',
     'Камера заднего вида', 'Панорамная крыша или люк', 'Атмосферная подсветка салона', 'Электропривод крышки багажника', 'Электропривод двери багажника', 'Электрорегулировка сидений',
     'Премиальная аудиосистема', 'Мультимедийный дисплей', 'Цифровая приборная панель', 'Светодиодные фары', 'Датчики света и дождя', 'Bluetooth', 'ABS', 'Сигнализация', 'Бортовой компьютер'];
   for (const [group, list] of Object.entries(TRUE)) for (const n of list) ok('1. ' + group + ': премиум "' + n + '"', prem(n), EV.conceptFor(n));
   for (const n of FALSE) ok('1. звичайне "' + n + '"', !prem(n), EV.conceptFor(n));
+  /* адаптивний круїз (радарний контроль дистанції) премиум, звичайний круїз ні */
+  for (const n of ['Круиз-контроль', 'Круїз-контроль', 'Cruise control', 'Кнопки круиз-контроля на руле', 'Accessories'])
+    ok('1g. звичайний круїз не премиум: "' + n + '"', !prem(n), EV.conceptFor(n));
+  for (const n of ['Адаптивный круиз-контроль', 'Адаптивний круїз-контроль', 'Adaptive Cruise Control', 'ACC', 'Круиз-контроль адаптивный', 'Радарный круиз-контроль', 'Круиз-контроль с радаром',
+    'Active Cruise Control', 'Dynamic Radar Cruise Control', 'Smart Cruise Control'])
+    ok('1h. адаптивний круїз премиум: "' + n + '"', prem(n) && EV.conceptFor(n) === 'adaptive_cruise', EV.conceptFor(n));
+  for (const n of ['Адаптивный круиз-контроль со Stop&Go', 'Адаптивний круїз-контроль зі Stop&Go', 'Adaptive cruise control with Stop & Go', 'Cruise control with Stop&Go'])
+    ok('1i. адаптивний круїз зі Stop&Go премиум: "' + n + '"', prem(n) && EV.conceptFor(n) === 'adaptive_cruise', EV.conceptFor(n));
+  for (const n of ['DISTRONIC', 'DISTRONIC PLUS', 'Дистроник', 'Дистронік'])
+    ok('1j. DISTRONIC премиум: "' + n + '"', prem(n) && EV.conceptFor(n) === 'adaptive_cruise', EV.conceptFor(n));
   ok('1a. синоніми сходяться до одного поняття', EV.conceptFor('Камеры кругового обзора') === EV.conceptFor('Surround View') && EV.conceptFor('Surround View') === EV.conceptFor('Камери кругового огляду')
     && EV.conceptFor('Harman Kardon') === EV.conceptFor('Burmester') && EV.conceptFor('Ассистент автоматической парковки') === EV.conceptFor('Parking Assistant Plus'));
   /* value_tier моделі і каталог MI підсвітку не вирішують */
