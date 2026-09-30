@@ -1,0 +1,290 @@
+/* CalCar: графік вартості авто для звіту Check.
+
+   Формули тут НЕМА. Якорі і точки кривої (кожні 6 місяців, від нового авто
+   через сьогодні і ще на 5 років) рахує api/value.js і кладе в
+   _meta.value_curve. Цей файл лише малює їх у SVG і дає взаємодію:
+   наведення мишею, дотик і рух пальцем, стрілки клавіатури; вибір завжди
+   прилипає до найближчої піврічної точки. Лінія до "сьогодні" суцільна,
+   прогноз пунктирний, математично це одна крива. */
+(function () {
+  var NS = 'http://www.w3.org/2000/svg';
+  var YEAR_MS = 365.25 * 24 * 3600 * 1000;
+
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function group(n) { return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0'); }
+
+  /* повна сума: "$23 600"; інша валюта кодом після числа */
+  function money(n, currency) {
+    var s = group(n);
+    if (currency === 'USD') return '$' + s;
+    if (currency === 'EUR') return '€' + s;
+    return s + '\u00a0' + (currency || '');
+  }
+  /* приблизні значення не вдають точність до долара */
+  function roundApprox(n) {
+    var step = n >= 20000 ? 1000 : n >= 5000 ? 500 : 100;
+    return Math.round(n / step) * step;
+  }
+  function roundPoint(n) {
+    var step = n >= 10000 ? 100 : 50;
+    return Math.round(n / step) * step;
+  }
+  /* підпис осі: "$20k", "$1.5M" */
+  function axisMoney(n, currency) {
+    var sym = currency === 'USD' ? '$' : currency === 'EUR' ? '€' : '';
+    var s;
+    if (n >= 1000000) s = (Math.round(n / 100000) / 10) + 'M';
+    else if (n >= 1000) s = (Math.round(n / 100) / 10) + 'k';
+    else s = String(Math.round(n));
+    return sym + s;
+  }
+
+  /* "гарний" крок осі: 1, 2, 2.5, 5 на степінь десяти */
+  function niceStep(max, target) {
+    var raw = max / Math.max(1, target);
+    var pow = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10));
+    var steps = [1, 2, 2.5, 5, 10];
+    for (var i = 0; i < steps.length; i++) if (steps[i] * pow >= raw) return steps[i] * pow;
+    return 10 * pow;
+  }
+  function yScale(maxValue, target) {
+    var step = niceStep(maxValue * 1.04, target || 4);
+    var top = Math.ceil(maxValue * 1.04 / step) * step;
+    var ticks = [];
+    for (var v = 0; v <= top + step / 2; v += step) ticks.push(Math.round(v));
+    return { top: top, step: step, ticks: ticks };
+  }
+
+  /* підписи років: не більше maxLabels, крок 1, 2, 5, 10 років */
+  function yearTicks(startMs, endMs, maxLabels) {
+    var y0 = new Date(startMs).getUTCFullYear(), y1 = new Date(endMs).getUTCFullYear();
+    var first = Date.UTC(y0, 0, 1) < startMs ? y0 + 1 : y0;
+    var span = Math.max(1, y1 - first + 1);
+    var steps = [1, 2, 5, 10, 20], step = 20;
+    for (var i = 0; i < steps.length; i++) if (Math.ceil(span / steps[i]) <= maxLabels) { step = steps[i]; break; }
+    var out = [];
+    for (var y = first; y <= y1; y++) if ((y - first) % step === 0) out.push(y);
+    return out;
+  }
+
+  function pointMs(p) {
+    var m = /^(\d{4})-(\d{2})$/.exec(String(p.date || ''));
+    return m ? Date.UTC(parseInt(m[1], 10), parseInt(m[2], 10) - 1, 1) : null;
+  }
+  function monthLabel(p, locale) {
+    var ms = pointMs(p);
+    if (ms === null) return '';
+    var s;
+    try { s = new Intl.DateTimeFormat(locale || 'en', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(ms)); }
+    catch (e) { s = p.date; }
+    s = s.replace(/\s*(г\.|р\.)$/, '');
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+
+  /* монотонна кубічна інтерполяція (Fritsch-Carlson): гладка лінія через
+     піврічні точки без викидів і без зламу на "сьогодні" */
+  function tangents(xs, ys) {
+    var n = xs.length, d = [], m = [], i;
+    for (i = 0; i < n - 1; i++) d.push((ys[i + 1] - ys[i]) / ((xs[i + 1] - xs[i]) || 1e-9));
+    m.push(d[0]);
+    for (i = 1; i < n - 1; i++) m.push(d[i - 1] * d[i] <= 0 ? 0 : (d[i - 1] + d[i]) / 2);
+    m.push(d[n - 2]);
+    for (i = 0; i < n - 1; i++) {
+      if (d[i] === 0) { m[i] = 0; m[i + 1] = 0; continue; }
+      var a = m[i] / d[i], b = m[i + 1] / d[i], h = a * a + b * b;
+      if (h > 9) { var tau = 3 / Math.sqrt(h); m[i] = tau * a * d[i]; m[i + 1] = tau * b * d[i]; }
+    }
+    return m;
+  }
+  function pathThrough(xs, ys, m, from, to) {
+    var r = function (v) { return Math.round(v * 100) / 100; };
+    var s = 'M' + r(xs[from]) + ' ' + r(ys[from]);
+    for (var i = from; i < to; i++) {
+      var h = (xs[i + 1] - xs[i]) / 3;
+      s += 'C' + r(xs[i] + h) + ' ' + r(ys[i] + m[i] * h) + ' ' + r(xs[i + 1] - h) + ' ' + r(ys[i + 1] - m[i + 1] * h) + ' ' + r(xs[i + 1]) + ' ' + r(ys[i + 1]);
+    }
+    return s;
+  }
+
+  /* чи придатні збережені дані до малювання: жодних NaN у розмітці */
+  function usable(vc) {
+    if (!vc || vc.status !== 'ok' || !Array.isArray(vc.points) || vc.points.length < 3) return false;
+    for (var i = 0; i < vc.points.length; i++) {
+      var p = vc.points[i];
+      if (!p || typeof p.t !== 'number' || !isFinite(p.t) || typeof p.value !== 'number' || !isFinite(p.value) || p.value <= 0) return false;
+      if (i && p.t <= vc.points[i - 1].t) return false;
+    }
+    return !!(vc.current && isFinite(vc.current.value) && vc.new_price && isFinite(vc.new_price.value));
+  }
+
+  function el(name, attrs, text) {
+    var e = document.createElementNS(NS, name);
+    for (var k in attrs) if (Object.prototype.hasOwnProperty.call(attrs, k)) e.setAttribute(k, attrs[k]);
+    if (text != null) e.textContent = text;
+    return e;
+  }
+
+  /* геометрія окремо від DOM: її перевіряє тест */
+  function layout(vc, width, height) {
+    var pts = vc.points, n = pts.length;
+    var narrow = width < 480;
+    var pad = { l: narrow ? 44 : 52, r: 18, t: 18, b: 28 };
+    var iw = Math.max(40, width - pad.l - pad.r), ih = Math.max(40, height - pad.t - pad.b);
+    var tMax = pts[n - 1].t;
+    var listing = vc.listing && isFinite(vc.listing.value) ? vc.listing.value : null;
+    var maxV = Math.max(vc.new_price.value, vc.current.value, listing || 0);
+    for (var i = 0; i < n; i++) if (pts[i].value > maxV) maxV = pts[i].value;
+    var ys = yScale(maxV, narrow ? 3 : 4);
+    var X = function (t) { return pad.l + (t / tMax) * iw; };
+    var Y = function (v) { return pad.t + ih - (v / ys.top) * ih; };
+    var todayIdx = 0;
+    for (i = 0; i < n; i++) if (!pts[i].forecast) todayIdx = i;
+    return { pad: pad, iw: iw, ih: ih, tMax: tMax, ys: ys, X: X, Y: Y, todayIdx: todayIdx, narrow: narrow, listing: listing,
+      px: pts.map(function (p) { return X(p.t); }), py: pts.map(function (p) { return Y(p.value); }) };
+  }
+
+  function nearestIndex(px, x) {
+    var best = 0, bd = Infinity;
+    for (var i = 0; i < px.length; i++) { var d = Math.abs(px[i] - x); if (d < bd) { bd = d; best = i; } }
+    return best;
+  }
+
+  function render(host, vc, opts) {
+    opts = opts || {};
+    var t = opts.t || function (s) { return s; };
+    var locale = opts.locale || 'en';
+    if (!host) return false;
+    if (!usable(vc)) { host.innerHTML = ''; host.hidden = true; return false; }
+    host.hidden = false;
+    var cur = vc.market && vc.market.currency;
+    var pts = vc.points;
+    var isAvg = vc.current.source === 'marketplace_average';
+    var newTxt = (vc.new_price.approx ? '≈\u00a0' : '') + money(vc.new_price.approx ? roundApprox(vc.new_price.value) : vc.new_price.value, cur);
+    var futTxt = '≈\u00a0' + money(roundApprox(vc.future.value), cur);
+    var delta = vc.listing ? ((vc.listing.delta_percent > 0 ? '+' : vc.listing.delta_percent < 0 ? '−' : '') + Math.abs(vc.listing.delta_percent) + '%') : '';
+
+    var html = '<div class="vc-stats">'
+      + '<div class="vc-stat"><span class="vc-num">' + esc(newTxt) + '</span><span class="vc-lbl">' + esc(t('When new')) + '</span></div>'
+      + '<div class="vc-stat"><span class="vc-num">' + esc(money(vc.current.value, cur)) + '</span><span class="vc-lbl">' + esc(t(isAvg ? 'Average today' : 'Today')) + '</span></div>'
+      + '<div class="vc-stat"><span class="vc-num">' + esc(futTxt) + '</span><span class="vc-lbl">' + esc(t('In 5 years')) + '</span></div>'
+      + '</div>';
+    if (vc.listing) {
+      html += '<div class="vc-listing"><span class="vc-dot" aria-hidden="true"></span><span>' + esc(t('This listing')) + '</span><b>' + esc(money(vc.listing.value, cur)) + '</b>'
+        + '<span class="vc-delta">' + esc(t('{pct} vs average').replace('{pct}', delta)) + '</span></div>';
+    }
+    html += '<div class="vc-plot" tabindex="0" role="group" aria-label="' + esc(t('Value over time')) + '"><div class="vc-tip" hidden></div></div>';
+    host.innerHTML = html;
+    var plot = host.querySelector('.vc-plot');
+    var tip = host.querySelector('.vc-tip');
+    var active = -1;
+    var svg = null, L = null, cross = null, dot = null;
+
+    function draw() {
+      var width = Math.round(plot.clientWidth || host.clientWidth || 600);
+      if (width < 120) return;
+      var height = width < 480 ? 220 : 270;
+      if (svg) plot.removeChild(svg);
+      L = layout(vc, width, height);
+      svg = el('svg', { viewBox: '0 0 ' + width + ' ' + height, width: width, height: height, 'class': 'vc-svg', 'aria-hidden': 'true' });
+      var base = L.pad.t + L.ih, i;
+      /* сітка і підписи осі Y */
+      for (i = 0; i < L.ys.ticks.length; i++) {
+        var v = L.ys.ticks[i], y = L.Y(v);
+        svg.appendChild(el('line', { x1: L.pad.l, x2: L.pad.l + L.iw, y1: y, y2: y, 'class': v === 0 ? 'vc-axis' : 'vc-grid' }));
+        svg.appendChild(el('text', { x: L.pad.l - 8, y: y + 4, 'text-anchor': 'end', 'class': 'vc-tick' }, axisMoney(v, cur)));
+      }
+      /* підписи років */
+      var startMs = pointMs(pts[0]), nowMs = pointMs(pts[L.todayIdx]);
+      if (startMs !== null && nowMs !== null) {
+        var T = pts[L.todayIdx].t;
+        var endMs = nowMs + (L.tMax - T) * YEAR_MS;
+        var years = yearTicks(startMs, endMs, L.narrow ? 5 : 8);
+        for (i = 0; i < years.length; i++) {
+          var ty = T + (Date.UTC(years[i], 0, 1) - nowMs) / YEAR_MS;
+          if (ty < 0 || ty > L.tMax) continue;
+          var x = L.X(ty);
+          svg.appendChild(el('line', { x1: x, x2: x, y1: base, y2: base + 4, 'class': 'vc-axis' }));
+          svg.appendChild(el('text', { x: Math.min(Math.max(x, L.pad.l + 14), L.pad.l + L.iw - 14), y: base + 18, 'text-anchor': 'middle', 'class': 'vc-tick' }, String(years[i])));
+        }
+      }
+      var m = tangents(L.px, L.py), last = pts.length - 1, ti = L.todayIdx;
+      var solid = pathThrough(L.px, L.py, m, 0, ti);
+      svg.appendChild(el('path', { d: solid + 'L' + L.px[ti] + ' ' + base + 'L' + L.px[0] + ' ' + base + 'Z', 'class': 'vc-area' }));
+      svg.appendChild(el('line', { x1: L.px[ti], x2: L.px[ti], y1: L.pad.t, y2: base, 'class': 'vc-now' }));
+      svg.appendChild(el('path', { d: solid, 'class': 'vc-line' }));
+      svg.appendChild(el('path', { d: pathThrough(L.px, L.py, m, ti, last), 'class': 'vc-line vc-forecast' }));
+      svg.appendChild(el('circle', { cx: L.px[0], cy: L.py[0], r: 4, 'class': 'vc-end' }));
+      svg.appendChild(el('circle', { cx: L.px[last], cy: L.py[last], r: 4, 'class': 'vc-end vc-end-f' }));
+      /* ціна цього оголошення: окрема позначка на лінії "сьогодні", криву не зміщує */
+      if (L.listing !== null) {
+        var ly = L.Y(L.listing);
+        /* на великій шкалі близькі ціни злились би в одну точку: позначка
+           тримає мінімальний видимий відступ у свій бік від кривої */
+        var gap = ly - L.py[ti];
+        if (Math.abs(gap) < 13 && L.listing !== vc.current.value) ly = L.py[ti] + (L.listing > vc.current.value ? -13 : 13);
+        svg.appendChild(el('line', { x1: L.px[ti], x2: L.px[ti], y1: L.py[ti], y2: ly, 'class': 'vc-link' }));
+        svg.appendChild(el('circle', { cx: L.px[ti], cy: ly, r: 5.5, 'class': 'vc-listing-dot' }));
+      }
+      svg.appendChild(el('circle', { cx: L.px[ti], cy: L.py[ti], r: 5.5, 'class': 'vc-today' }));
+      cross = el('line', { x1: 0, x2: 0, y1: L.pad.t, y2: base, 'class': 'vc-cross', visibility: 'hidden' });
+      dot = el('circle', { cx: 0, cy: 0, r: 5, 'class': 'vc-active', visibility: 'hidden' });
+      svg.appendChild(cross); svg.appendChild(dot);
+      plot.insertBefore(svg, tip);
+      if (active >= 0) select(active);
+    }
+
+    function select(i) {
+      if (!L) return;
+      active = Math.max(0, Math.min(pts.length - 1, i));
+      var p = pts[active], x = L.px[active], y = L.py[active];
+      cross.setAttribute('x1', x); cross.setAttribute('x2', x); cross.setAttribute('visibility', 'visible');
+      dot.setAttribute('cx', x); dot.setAttribute('cy', y); dot.setAttribute('visibility', 'visible');
+      var exact = active === L.todayIdx || (active === 0 && !vc.new_price.approx);
+      var val = (exact ? '' : '≈\u00a0') + money(exact ? p.value : roundPoint(p.value), cur);
+      var label = active === 0 ? t('When new') : active === L.todayIdx ? t(isAvg ? 'Average today' : 'Today') : p.forecast ? t('Forecast') : '';
+      tip.innerHTML = '<span class="vc-tip-d">' + esc(monthLabel(p, locale)) + '</span><b>' + esc(val) + '</b>' + (label ? '<span class="vc-tip-f">' + esc(label) + '</span>' : '');
+      tip.hidden = false;
+      var w = plot.clientWidth, tw = tip.offsetWidth || 120;
+      var left = Math.max(4, Math.min(w - tw - 4, x - tw / 2));
+      var top = y - (tip.offsetHeight || 56) - 12;
+      if (top < 2) top = y + 14;
+      tip.style.left = left + 'px'; tip.style.top = top + 'px';
+    }
+    function clear() {
+      active = -1; tip.hidden = true;
+      if (cross) cross.setAttribute('visibility', 'hidden');
+      if (dot) dot.setAttribute('visibility', 'hidden');
+    }
+    function fromEvent(e) {
+      if (!L) return;
+      var r = plot.getBoundingClientRect();
+      select(nearestIndex(L.px, e.clientX - r.left));
+    }
+    /* миша: наведення; дотик: торкання і горизонтальний рух (вертикальний
+       скрол сторінки лишається за браузером: touch-action pan-y у стилях) */
+    plot.addEventListener('pointermove', function (e) { if (e.pointerType === 'mouse' || e.buttons || e.pressure > 0) fromEvent(e); });
+    plot.addEventListener('pointerdown', fromEvent);
+    plot.addEventListener('pointerleave', function (e) { if (e.pointerType === 'mouse') clear(); });
+    plot.addEventListener('touchmove', function (e) { if (e.touches && e.touches[0]) fromEvent(e.touches[0]); }, { passive: true });
+    plot.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); select((active < 0 ? L.todayIdx : active) + (e.key === 'ArrowRight' ? 1 : -1)); }
+      else if (e.key === 'Escape') clear();
+    });
+    plot.addEventListener('blur', clear);
+    document.addEventListener('pointerdown', function (e) { if (active >= 0 && !plot.contains(e.target)) clear(); });
+
+    draw();
+    if (typeof ResizeObserver === 'function') {
+      var lastW = plot.clientWidth;
+      new ResizeObserver(function () { var w = plot.clientWidth; if (w && Math.abs(w - lastW) > 1) { lastW = w; draw(); } }).observe(plot);
+    } else {
+      window.addEventListener('resize', draw);
+    }
+    return true;
+  }
+
+  window.CalCarValueChart = {
+    render: render, usable: usable, layout: layout, yScale: yScale, yearTicks: yearTicks, nearestIndex: nearestIndex,
+    money: money, axisMoney: axisMoney, roundApprox: roundApprox, monthLabel: monthLabel, tangents: tangents, pathThrough: pathThrough
+  };
+})();

@@ -48,6 +48,7 @@ import { fetchMiEquipmentCandidates, candidatePromptBlock, visionHintBlock, supp
 /* Model Intelligence Research v1: наявне MI плюс малий паралельний веб-пошук
    у контекст поточного звіту, придатні знахідки у конвеєр MI */
 import { startCheckResearch, researchBlock, researchMeta, guardModelNotes } from './mi-research.js';
+import { startValueResearch, buildValueCurve } from './value.js';
 
 /* ============================================================
    CalCar Check, рушій v1: посилання на оголошення -> звіт.
@@ -2824,6 +2825,20 @@ async function runCheck(req, res, job) {
         mileage_km: listing.odometer_km || null,
       },
     }, { callModel, t0: tRun });
+    /* Value v1: пошук ціни нового авто стартує тут і йде паралельно з усім
+       Check; виклик моделі запускається разом з основним аналізом. На Score
+       і Confidence секція не впливає */
+    const valueResearch = startValueResearch({
+      market: listing.country || null,
+      currency: listing.currency || (listing.price_context && listing.price_context.currency) || null,
+      identity: {
+        make: listing.make || (nhtsa && nhtsa.Make) || null,
+        model: listing.model || (nhtsa && nhtsa.Model) || null,
+        generation: listing.generation || null,
+        trim: (nhtsa && (nhtsa.Trim || nhtsa.Series)) || null,
+        year: listing.year || (nhtsa && parseInt(nhtsa.ModelYear, 10)) || null,
+      },
+    }, { callModel });
     /* кадри оголошення: паралельно з рештою пайплайна; для нового стану
        оголошення завжди, для dedup лише коли знімок ще без кадрів (створений
        до появи Photo Assets): досохраняємо один раз */
@@ -3297,6 +3312,21 @@ async function runCheck(req, res, job) {
       miResearch.state.status === 'running' ? 'pending' : miResearch.state.status === 'ok' ? 'executed' : 'skipped',
       { reason: miResearch.state.reason || null, waited_ms: miResearchWaited, knowledge: (miResearchSnapshot.context && miResearchSnapshot.context.knowledge_count) || 0,
         findings_at_cutoff: miResearchSnapshot.findings.length, batches_at_cutoff: miResearchSnapshot.batches, block: !!miResearchBlock });
+    /* Value v1: той самий знімок знань про модель, без службових правил
+       основного виклику. Не чекаємо: результат забирається після аналізу */
+    const tValue = Date.now();
+    const valuePromise = valueResearch.analyze({
+      langDirective,
+      vehicle: {
+        make: listing.make || (nhtsa && nhtsa.Make) || null, model: listing.model || (nhtsa && nhtsa.Model) || null,
+        year: listing.year || (nhtsa && parseInt(nhtsa.ModelYear, 10)) || null, generation: listing.generation || null,
+        trim: (nhtsa && (nhtsa.Trim || nhtsa.Series)) || null, body: (nhtsa && nhtsa.BodyClass) || null,
+        fuel: (nhtsa && nhtsa.FuelTypePrimary) || null, engine_l: (nhtsa && nhtsa.DisplacementL) || null,
+        drive: (nhtsa && nhtsa.DriveType) || null, odometer_km: listing.odometer_km || null,
+      },
+      market: { country: listing.country || null, currency: listing.currency || null, listing_price: listing.price || null, price_context: listing.price_context || null },
+      modelContext: miResearchBlock ? miResearchBlock.split('\nSOURCE_REF:')[0].slice(0, 9000) : null,
+    });
     let mainSystem = mainMsg.system;
     const mainPayload = mainPayloadBreakdown(mainSystem, content, {
       current: mainPhotoPositions.length, current_high: cvFeed ? Math.min(4, mainPhotoPositions.length) : photoUrls.filter((_, i) => highSet.has(i)).length, gallery_total: listing.photos.length,
@@ -3901,6 +3931,31 @@ async function runCheck(req, res, job) {
       { value: miIdentityGeneration(miEq), source: 'model_intelligence' },
       { value: parsed.vehicle && parsed.vehicle.generation, source: 'analysis', notTrim: parsed.vehicle && parsed.vehicle.trim },
     ]);
+    /* Value v1: виклик ішов паралельно з основним аналізом і зазвичай давно
+       готовий; чекаємо не довше 6 с. Не встиг чи впав: крива лишається на
+       зворотній оцінці, текстових карток немає */
+    const tValWait = Date.now();
+    const valueResult = await Promise.race([valuePromise, new Promise(r => setTimeout(() => r(null), Math.max(0, Math.min(6000, 288000 - (Date.now() - tRun)))))]);
+    const valueWaited = Date.now() - tValWait;
+    let valueCurve = null;
+    try {
+      valueCurve = buildValueCurve({
+        price: listing.price, currency: listing.currency, price_context: listing.price_context, country: listing.country,
+        year: listing.year || (parsed.vehicle && parsed.vehicle.year) || (nhtsa && parseInt(nhtsa.ModelYear, 10)) || null,
+        candidates: (valueResult && valueResult.candidates) || [],
+        vehicle: { fuel: (parsed.vehicle && parsed.vehicle.fuel) || null, displacement_l: (nhtsa && parseFloat(nhtsa.DisplacementL)) || null, battery_kwh: (nhtsa && parseFloat(nhtsa.BatteryKWh)) || null },
+        identity: { make: listing.make || (nhtsa && nhtsa.Make) || null, model: listing.model || (nhtsa && nhtsa.Model) || null, generation: genResolved.generation, trim: (nhtsa && (nhtsa.Trim || nhtsa.Series)) || (parsed.vehicle && parsed.vehicle.trim) || null },
+      });
+    } catch (e) { console.log('[value]', JSON.stringify({ op: 'build_curve', error: String((e && e.message) || e).slice(0, 160) })); }
+    if (valueResult && valueResult.market_value) parsed.market_value = valueResult.market_value;
+    {
+      const vs = valueResearch.state;
+      mark('value_section', vs.ms || 0, vs.status === 'ok' ? 'executed' : vs.status === 'running' ? 'pending' : 'skipped', {
+        at: tValue - tRun, reason: vs.reason || null, waited_ms: valueWaited, search: vs.search, candidates: vs.candidates, dropped: vs.dropped,
+        curve: valueCurve ? valueCurve.status : null, curve_reason: (valueCurve && valueCurve.reason) || null, new_price_basis: (valueCurve && valueCurve.new_price && valueCurve.new_price.basis) || null,
+        ai: vs.ai ? aiUsage({ usage: vs.ai.usage, model: vs.ai.model }, { model: vs.ai.model, reasoning_effort: vs.ai.reasoning_effort }) : null,
+      });
+    }
     parsed._meta = {
       kind: 'check',
       lang,
@@ -3928,6 +3983,8 @@ async function runCheck(req, res, job) {
       /* мапи для UI і чату: технічний id кадру -> позиція у вихідній галереї */
       photo_map: { listing: photoIdx, auction: auctionPhotos.map(u => { const real = photoOriginByData.get(u) || u; return (auction && Array.isArray(auction.photos)) ? auction.photos.indexOf(real) : -1; }) },
       price_context: listing.price_context || null,
+      /* Value v1: якорі і точки кривої вартості; числа рахує api/value.js */
+      value_curve: valueCurve,
       /* віджет AUTO.RIA "Пробіг": узгоджений лишився в тексті, неможливий за датами відкинутий */
       mileage_widget: listing.mileage_widget || null,
       /* що саме отримав фінальний висновок: діагностика і контекст для чату.

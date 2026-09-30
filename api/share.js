@@ -22,13 +22,14 @@ const PUBLIC_TOP = [
   'presentation_damage', 'historical_visual',
   'score_breakdown', 'score_breakdown_v2', 'score_v2_preview', 'active_score_version',
   'confidence',
+  'market_value',
   'translations',
 ];
 /* _meta: лише те, що потрібно сторінці звіту для показу */
 const PUBLIC_META = [
   'kind', 'lang', 'url', 'domain', 'country', 'vin', 'plate', 'price', 'currency',
   'odometer_km', 'photos', 'auction_url', 'auction_photos', 'auction_photos_provenance',
-  'auction_meta', 'photo_map', 'price_context', 'analyzed_at', 'model_identity',
+  'auction_meta', 'photo_map', 'price_context', 'value_curve', 'analyzed_at', 'model_identity',
   'share_token', 'share_slug', 'historical_visual_cache',
 ];
 /* auction_search: сторінці потрібні лише статус і адреса лота */

@@ -977,6 +977,77 @@
   .score-tip span{display:block;font-size:12.5px;line-height:1.5;color:var(--text);font-weight:400}
   .score-tip span + span{margin-top:6px;color:var(--muted)}
 
+  /* ---- ринкова вартість (Value v1): графік ліворуч, дві картки праворуч.
+     Числа і точки кривої рахує сервер (api/value.js), графік малює
+     value-chart.js; тут лише розкладка і кольори з наявних токенів ---- */
+  .val-grid{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr)}
+  .val-main{padding:20px;min-width:0}
+  .val-side{display:flex;flex-direction:column;min-width:0;border-left:1px solid var(--line)}
+  .val-box{padding:20px;flex:1 1 auto;min-width:0}
+  .val-box + .val-box{border-top:1px solid var(--line)}
+  .val-box h3{font-size:12.5px;font-weight:600;letter-spacing:.2px;color:var(--muted);margin-bottom:8px}
+  .val-level{display:flex;align-items:center;gap:8px;font-size:17px;font-weight:700;color:var(--ink);margin-bottom:8px}
+  .val-level::before{content:'';flex:0 0 auto;width:9px;height:9px;border-radius:50%;background:var(--faint)}
+  .val-level.high::before{background:var(--green)}
+  .val-level.medium::before{background:var(--amber)}
+  .val-level.low::before{background:var(--red)}
+  .val-box p{font-size:14px;line-height:1.55;color:var(--text);margin:0 0 6px}
+  .val-box p:last-child{margin-bottom:0}
+  .val-box ul{list-style:none;margin:0;padding:0}
+  .val-box li{position:relative;padding-left:16px;font-size:14px;line-height:1.5;margin-bottom:7px}
+  .val-box li:last-child{margin-bottom:0}
+  .val-box li::before{content:'';position:absolute;left:0;top:.55em;width:6px;height:6px;border-radius:50%;background:var(--brand);box-shadow:0 0 0 1px rgba(20,22,25,.18)}
+  .val-note{font-size:12.5px;line-height:1.5;color:var(--muted);margin-top:10px}
+  .val-note[hidden]{display:none}
+  .val-card.no-chart .val-grid{grid-template-columns:1fr}
+  .val-card.no-chart .val-main{display:none}
+  .val-card.no-chart .val-side{flex-direction:row;border-left:none}
+  .val-card.no-chart .val-box + .val-box{border-top:none;border-left:1px solid var(--line)}
+  .val-card.no-side .val-grid{grid-template-columns:minmax(0,760px)}
+  .val-card.no-side .val-side{display:none}
+  .vc-stats{display:flex;flex-wrap:wrap;gap:10px 28px;margin-bottom:12px}
+  .vc-stat{display:flex;flex-direction:column;min-width:0}
+  .vc-num{font-size:20px;font-weight:700;line-height:1.25;color:var(--ink);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .vc-lbl{font-size:12.5px;color:var(--muted)}
+  .vc-listing{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font-size:13.5px;margin-bottom:10px}
+  .vc-listing b{font-variant-numeric:tabular-nums;white-space:nowrap}
+  .vc-dot{flex:0 0 auto;width:11px;height:11px;border-radius:50%;background:var(--card);border:2.5px solid var(--ink)}
+  .vc-delta{color:var(--muted);white-space:nowrap}
+  .vc-plot{position:relative;touch-action:pan-y;cursor:crosshair;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+  .vc-plot:focus{outline:none}
+  .vc-plot:focus-visible{outline:2px solid var(--ink);outline-offset:4px;border-radius:8px}
+  .vc-svg{display:block;width:100%;height:auto}
+  .vc-grid{stroke:var(--line);stroke-width:1}
+  .vc-axis{stroke:var(--line-strong);stroke-width:1}
+  .vc-tick{font-size:11.5px;fill:var(--muted);font-variant-numeric:tabular-nums}
+  .vc-area{fill:var(--brand);opacity:.2}
+  .vc-line{fill:none;stroke:var(--ink);stroke-width:2.25;stroke-linecap:round;stroke-linejoin:round}
+  .vc-forecast{stroke-dasharray:1 6.5}
+  .vc-now{stroke:var(--line-strong);stroke-width:1;stroke-dasharray:3 4}
+  .vc-end{fill:var(--ink)}
+  .vc-end-f{fill:var(--card);stroke:var(--ink);stroke-width:2}
+  .vc-today{fill:var(--brand);stroke:var(--ink);stroke-width:2}
+  .vc-listing-dot{fill:var(--card);stroke:var(--ink);stroke-width:2.5}
+  .vc-link{stroke:var(--ink);stroke-width:1;stroke-dasharray:2 3}
+  .vc-cross{stroke:var(--muted);stroke-width:1}
+  .vc-active{fill:var(--ink);stroke:var(--card);stroke-width:2}
+  .vc-tip{position:absolute;z-index:2;display:flex;flex-direction:column;pointer-events:none;background:var(--ink);color:#fff;border-radius:8px;padding:7px 10px;font-size:12.5px;line-height:1.35;white-space:nowrap}
+  .vc-tip[hidden]{display:none}
+  .vc-tip b{font-size:14.5px;font-variant-numeric:tabular-nums}
+  .vc-tip-d{opacity:.75}
+  .vc-tip-f{color:var(--brand)}
+  @media(max-width:860px){
+    .val-grid{grid-template-columns:1fr}
+    .val-side{border-left:none;border-top:1px solid var(--line)}
+    .val-card.no-chart .val-side{flex-direction:column;border-top:none}
+    .val-card.no-chart .val-box + .val-box{border-left:none;border-top:1px solid var(--line)}
+  }
+  @media(max-width:480px){
+    .vc-stats{display:grid;grid-template-columns:repeat(3,auto);justify-content:space-between;gap:8px 10px}
+    .vc-num{font-size:15.5px}
+    .vc-lbl{font-size:12px;line-height:1.3}
+  }
+
   /* висновок CalCar це головна точка рішення звіту. Картка лишається на
      всю ширину, а сам текст стоїть у центральній редакторській колонці:
      рядок читабельний, і праворуч не лишається випадкової порожнечі.
@@ -1078,6 +1149,7 @@
 <script src="/mileage-intensity.js"></script>
 <script src="/equipment-value.js"></script>
 <script src="/vehicle-timeline.js"></script>
+<script src="/value-chart.js"></script>
 </head>
 <body>
 
@@ -1217,6 +1289,31 @@
         </div>
       </div>
       <div class="v-text" id="vText"></div>
+    </div>
+  </div>
+
+  <!-- ринкова вартість: графік, ліквідність, чинники ціни (Value v1) -->
+  <div class="card val-card" id="valueCard" style="display:none">
+    <div class="card-head">
+      <h2>Market value</h2>
+      <span class="sec-meta" id="valMarket" hidden></span>
+    </div>
+    <div class="val-grid">
+      <div class="val-main">
+        <div id="valChart"></div>
+        <p class="val-note" id="valNote" hidden></p>
+      </div>
+      <div class="val-side">
+        <div class="val-box" id="valLiqBox" hidden>
+          <h3>Liquidity</h3>
+          <div class="val-level" id="valLiqLevel"></div>
+          <div id="valLiqReasons"></div>
+        </div>
+        <div class="val-box" id="valWhyBox" hidden>
+          <h3>Why this car costs what it does</h3>
+          <ul id="valWhyList"></ul>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1719,6 +1816,49 @@ async function translateNow(){
   }
 }
 
+/* ---------- ринкова вартість (Value v1) ----------
+   Графік зі ЗБЕРЕЖЕНИХ точок _meta.value_curve (сторінка нічого не
+   перераховує), тексти з market_value. Немає правдоподібної кривої: графік
+   сховано, картки лишаються. Немає нічого: секції немає. На Оцінку CalCar
+   і впевненість секція не впливає */
+function renderValueSection(D) {
+  const card = $('valueCard');
+  const vc = M.value_curve || null;
+  const mv = (D.market_value && typeof D.market_value === 'object') ? D.market_value : null;
+  const hasChart = !!(window.CalCarValueChart && CalCarValueChart.render($('valChart'), vc, { t, locale: window.calcarLocale() }));
+  const lq = mv && mv.liquidity && typeof mv.liquidity === 'object' ? mv.liquidity : null;
+  const reasons = lq && Array.isArray(lq.reasons) ? lq.reasons.filter(x => typeof x === 'string' && x.trim()).slice(0, 3) : [];
+  const factors = mv && Array.isArray(mv.price_factors) ? mv.price_factors.filter(x => typeof x === 'string' && x.trim()).slice(0, 5) : [];
+  const LEVEL = { high: t('Easy to resell'), medium: t('Average resale'), low: t('Hard to resell'), unknown: t('Not enough data') };
+  const level = lq && LEVEL[lq.level] ? lq.level : 'unknown';
+  $('valLiqBox').hidden = !reasons.length;
+  if (reasons.length) {
+    $('valLiqLevel').className = 'val-level ' + level;
+    $('valLiqLevel').textContent = LEVEL[level];
+    $('valLiqReasons').innerHTML = reasons.map(r => '<p>' + esc(clean(r)) + '</p>').join('');
+  }
+  $('valWhyBox').hidden = !factors.length;
+  if (factors.length) $('valWhyList').innerHTML = factors.map(f => '<li>' + esc(clean(f)) + '</li>').join('');
+  const hasSide = reasons.length > 0 || factors.length > 0;
+  if (!hasChart && !hasSide) { card.style.display = 'none'; return; }
+  card.classList.toggle('no-chart', !hasChart);
+  card.classList.toggle('no-side', !hasSide);
+  const mk = $('valMarket');
+  mk.hidden = !(hasChart && vc.market && vc.market.country === 'UA');
+  if (!mk.hidden) mk.textContent = t('Market: Ukraine');
+  const note = $('valNote');
+  note.hidden = !hasChart;
+  if (hasChart) {
+    const BASIS = {
+      reverse_estimate: t('The new-car price is estimated from the current price and age.'),
+      localized_msrp: t('The new-car price is the US list price plus import costs to Ukraine.'),
+      local_list: t('The new-car price is the list price in Ukraine.'),
+    };
+    note.textContent = ((BASIS[vc.new_price.basis] || '') + ' ' + t('The forecast is a model estimate, not a guarantee.')).trim();
+  }
+  card.style.display = '';
+}
+
 function fill(cardId, listId, arr, tpl) {
   if (!Array.isArray(arr) || !arr.length) return;
   $(cardId).style.display = '';
@@ -2040,6 +2180,9 @@ function boot2(D){
        звіту (breakdown і знімок confidence); сторінка нічого не перераховує */
     renderScoreBlock(D);
   }
+
+  /* ---- ринкова вартість: одразу після висновку ---- */
+  renderValueSection(D);
 
   /* ---- ключові ризики ---- */
   const LVL = { high: ['red', t('high cost of mistake')], med: ['amber', t('worth attention')], low: ['blue', t('background')] };
