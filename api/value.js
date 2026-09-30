@@ -173,24 +173,49 @@ export function toUsd(amount, currency, year) {
 
 /* ---------- Локалізація MSRP США в Україну ---------- */
 
-/* Ті самі коефіцієнти, що в кошторисі Import (result.html: autoFill і
-   computeExcise) для нового авто: мито 10%, акциз за типом і обʼємом
-   двигуна з віком 1, ПДВ 20% від суми. Логістика це середина таблиці
-   STATE_RATES Import (доставка по США плюс фрахт). Нового податкового
-   рушія тут немає. */
+/* "Новою" це ціна на локальному ринку ТОДІ, КОЛИ АВТО БУЛО НОВИМ. Тому
+   MSRP ринку-джерела локалізується режимом ввезення ТОГО року, а не
+   сьогоднішнім. Це не податкова база: лише періоди, для яких режим відомий.
+   Для року без відомого режиму локалізації немає (null), і якір бере
+   детерміновану зворотну оцінку. Сьогоднішні правила історичною правдою
+   мовчки не стають.
+
+   - електромобіль, 2019-2025: мито 0%, ПДВ звільнено, акциз 1 EUR за кВт*год;
+   - решта (бензин, дизель, гібрид) від 2019 і електромобіль від 2026:
+     коефіцієнти кошторису Import (result.html: autoFill і computeExcise)
+     для нового авто: мито 10%, акциз за типом і обʼємом двигуна з віком 1,
+     ПДВ 20% від суми.
+   Логістика не податок: середина таблиці STATE_RATES Import (доставка по
+   США плюс фрахт), однакова для всіх режимів. */
 const EUR_USD_IMPORT = 1.08;
 export const IMPORT_LOGISTICS_USD = 1850;
-export function localizeUsMsrpToUA(msrp, { fuel = null, displacement_l = null, battery_kwh = null } = {}) {
+export const UA_IMPORT_REGIMES = [
+  { id: 'ua_bev_2019_2025', fuel: ['electric'], from: 2019, to: 2025, duty: 0, vat: 0, excise: 'per_kwh' },
+  { id: 'ua_bev_2026', fuel: ['electric'], from: 2026, to: null, duty: 0.10, vat: 0.20, excise: 'per_kwh' },
+  { id: 'ua_ice_2019', fuel: ['petrol', 'diesel', 'hybrid'], from: 2019, to: null, duty: 0.10, vat: 0.20, excise: 'by_engine' },
+];
+
+export function uaImportRegime(fuel, year) {
+  const y = parseInt(year, 10);
+  if (!y || !fuel) return null;
+  return UA_IMPORT_REGIMES.find(r => r.fuel.includes(fuel) && y >= r.from && (r.to === null || y <= r.to)) || null;
+}
+
+/* null: режим для цього року чи типу приводу невідомий */
+export function localizeUsMsrpToUA(msrp, { fuel = null, displacement_l = null, battery_kwh = null, year = null } = {}) {
   const m = num(msrp);
   if (m === null || m <= 0) return null;
   const disp = num(displacement_l) || 0;
+  /* тип пального невідомий, але обʼєм двигуна є: це авто з ДВЗ, рахуємо як бензин */
+  const regime = uaImportRegime(fuel || (disp ? 'petrol' : null), year);
+  if (!regime) return null;
   let excise = 0;
-  if (fuel === 'hybrid') excise = 100 * EUR_USD_IMPORT;
-  else if (fuel === 'electric') excise = (num(battery_kwh) || 0) * EUR_USD_IMPORT;
+  if (regime.excise === 'per_kwh') excise = (num(battery_kwh) || 0) * EUR_USD_IMPORT;
+  else if (fuel === 'hybrid') excise = 100 * EUR_USD_IMPORT;
   else if (disp) excise = disp * (fuel === 'diesel' ? (disp > 3.5 ? 150 : 75) : (disp > 3.0 ? 100 : 50)) * EUR_USD_IMPORT;
-  const duty = m * 0.10;
-  const vat = (m + duty + excise) * 0.20;
-  return m + duty + excise + vat + IMPORT_LOGISTICS_USD;
+  const duty = m * regime.duty;
+  const vat = (m + duty + excise) * regime.vat;
+  return { value: m + duty + excise + vat + IMPORT_LOGISTICS_USD, regime: regime.id, duty, vat, excise };
 }
 
 /* ---------- Якір "новою" ---------- */
@@ -229,8 +254,10 @@ export function resolveNewPrice({ candidates = [], pc, T, market = null, currenc
     if (c.price_kind === 'local_list' && c.market === 'UA') {
       prepared.push({ rank: 0, value: usd, basis: 'local_list', strength: c.trim_match === 'exact' ? 'strong' : 'weak', c });
     } else if (c.price_kind === 'source_msrp' && c.market === 'US') {
-      const loc = localizeUsMsrpToUA(usd, vehicle);
-      if (loc !== null) prepared.push({ rank: 1, value: loc, basis: 'localized_msrp', strength: 'weak', c });
+      /* режим ввезення року, коли авто було новим */
+      const loc = localizeUsMsrpToUA(usd, { ...vehicle, year: c.model_year || vehicle.year });
+      if (loc !== null) prepared.push({ rank: 1, value: loc.value, basis: 'localized_msrp', strength: 'weak', c, localization: loc.regime });
+      else rejected.push({ ref: c.source_url || null, reason: 'historical_localization_unknown' });
     } else {
       rejected.push({ ref: c.source_url || null, reason: 'market_not_supported' });
     }
@@ -250,7 +277,7 @@ export function resolveNewPrice({ candidates = [], pc, T, market = null, currenc
     }
     if (p.value < pc * minNewToCurrentRatio(T)) { rejected.push({ ref: p.c.source_url || null, reason: 'incompatible_with_current_value', value: Math.round(p.value) }); continue; }
     if (p.value > reverse * MAX_OVER_REVERSE) { rejected.push({ ref: p.c.source_url || null, reason: 'implausibly_high', value: Math.round(p.value) }); continue; }
-    return { value: Math.round(p.value), approx: true, basis: p.basis, strength: 'weak', fact, rejected };
+    return { value: Math.round(p.value), approx: true, basis: p.basis, strength: 'weak', fact, rejected, ...(p.localization ? { localization: p.localization } : {}) };
   }
   return fallback(rejected.length ? 'sourced_price_unsuitable' : null);
 }
@@ -277,6 +304,8 @@ export function buildValueCurve({ price = null, currency = null, price_context =
     listing: cur.listing,
     new_price: {
       value: np.value, approx: np.approx, basis: np.basis,
+      /* яким режимом ввезення локалізовано MSRP ринку-джерела */
+      ...(np.localization ? { localization: np.localization } : {}),
       /* факт із джерела у контракті Model Intelligence (область: марка,
          модель, покоління, версія, рік, ринок, валюта, джерело, довіра).
          Зворотна оцінка фактом не є: fact лишається null */

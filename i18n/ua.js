@@ -957,7 +957,7 @@ window.CALCAR_DICTS.ua = {
   'Easy to resell': 'Висока',
   'Average resale': 'Середня',
   'Hard to resell': 'Низька',
-  'Market: Ukraine': 'Ринок: Україна',
+  'Ukraine': 'Україна',
   'When new': 'Новою',
   'Average today': 'Середня сьогодні',
   'In 5 years': 'Через 5 років',

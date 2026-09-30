@@ -171,12 +171,39 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
     /* порядок: локальна ціна перед MSRP США */
     const both = np({ pc: 40000, T: 3, candidates: [cand(48000, { market: 'US', price_kind: 'source_msrp' }), cand(62000)] });
     ok('5h. локальна ціна того самого ринку перед MSRP джерела', both.basis === 'local_list' && both.value === 62000);
-    const us = np({ pc: 40000, T: 3, candidates: [cand(48000, { market: 'US', price_kind: 'source_msrp' })], vehicle: { fuel: 'petrol', displacement_l: 2.5 } });
-    const expect = V.localizeUsMsrpToUA(48000, { fuel: 'petrol', displacement_l: 2.5 });
-    ok('5i. MSRP США локалізується коефіцієнтами Import', us.basis === 'localized_msrp' && us.value === Math.round(expect) && us.approx === true && us.fact.market === 'US' && us.fact.amount === 48000);
-    ok('5j. локалізація: мито 10%, акциз, ПДВ 20%, логістика', Math.abs(expect - ((48000 * 1.1 + 2.5 * 50 * 1.08) * 1.2 + V.IMPORT_LOGISTICS_USD)) < 1e-6);
-    ok('5k. локалізація: гібрид і дизель за тарифом Import', Math.abs(V.localizeUsMsrpToUA(10000, { fuel: 'hybrid' }) - ((11000 + 108) * 1.2 + V.IMPORT_LOGISTICS_USD)) < 1e-6
-      && Math.abs(V.localizeUsMsrpToUA(10000, { fuel: 'diesel', displacement_l: 4 }) - ((11000 + 4 * 150 * 1.08) * 1.2 + V.IMPORT_LOGISTICS_USD)) < 1e-6);
+    const us = np({ pc: 40000, T: 3, candidates: [cand(48000, { market: 'US', price_kind: 'source_msrp' })], vehicle: { fuel: 'petrol', displacement_l: 2.5, year: 2023 } });
+    const expect = V.localizeUsMsrpToUA(48000, { fuel: 'petrol', displacement_l: 2.5, year: 2023 });
+    ok('5i. MSRP США локалізується режимом року авто', us.basis === 'localized_msrp' && us.value === Math.round(expect.value) && us.approx === true && us.fact.market === 'US' && us.fact.amount === 48000 && us.localization === 'ua_ice_2019');
+    ok('5j. B: ДВЗ без регресії: мито 10%, акциз, ПДВ 20%, логістика', expect.regime === 'ua_ice_2019' && Math.abs(expect.value - ((48000 * 1.1 + 2.5 * 50 * 1.08) * 1.2 + V.IMPORT_LOGISTICS_USD)) < 1e-6);
+    ok('5k. B: гібрид і дизель за тарифом Import', Math.abs(V.localizeUsMsrpToUA(10000, { fuel: 'hybrid', year: 2022 }).value - ((11000 + 108) * 1.2 + V.IMPORT_LOGISTICS_USD)) < 1e-6
+      && Math.abs(V.localizeUsMsrpToUA(10000, { fuel: 'diesel', displacement_l: 4, year: 2022 }).value - ((11000 + 4 * 150 * 1.08) * 1.2 + V.IMPORT_LOGISTICS_USD)) < 1e-6);
+
+    /* A: електромобіль 2021 року. Перевіряється ПОВЕДІНКА податків, а не
+       цільове число: мито 0, ПДВ немає, акциз 1 EUR за кВт*год, логістика */
+    const bev = V.localizeUsMsrpToUA(45000, { fuel: 'electric', battery_kwh: 88, year: 2021 });
+    ok('5s. A: BEV 2021: мито 0%, ПДВ звільнено', bev && bev.regime === 'ua_bev_2019_2025' && bev.duty === 0 && bev.vat === 0);
+    ok('5t. A: BEV 2021: акциз 1 EUR за кВт*год', Math.abs(bev.excise - 88 * 1.08) < 1e-6);
+    ok('5u. A: BEV 2021: сума це MSRP + акциз + логістика, без 10% і 20%', Math.abs(bev.value - (45000 + 88 * 1.08 + V.IMPORT_LOGISTICS_USD)) < 1e-6 && bev.value < 45000 * 1.1);
+    const iceSame = V.localizeUsMsrpToUA(45000, { fuel: 'petrol', displacement_l: 2.0, year: 2021 });
+    ok('5v. A: той самий MSRP для ДВЗ локалізується дорожче, ніж для BEV 2021', iceSame.value > bev.value + 45000 * 0.25);
+    const bevNoKwh = V.localizeUsMsrpToUA(45000, { fuel: 'electric', year: 2021 });
+    ok('5w. A: невідома ємність батареї не вмикає мито і ПДВ', bevNoKwh.duty === 0 && bevNoKwh.vat === 0 && bevNoKwh.excise === 0);
+    const bevCurve = np({ pc: 23700, T: 5.2, candidates: [cand(45000, { market: 'US', price_kind: 'source_msrp', model_year: 2021 })], vehicle: { fuel: 'electric', battery_kwh: 88, year: 2021 } });
+    ok('5x. A: BEV 2021 доходить до якоря історичним режимом', bevCurve.basis === 'localized_msrp' && bevCurve.localization === 'ua_bev_2019_2025' && bevCurve.value === Math.round(bev.value));
+    /* рік кандидата важливіший за рік авто: режим того року, до якого належить ціна */
+    const byCandYear = np({ pc: 23700, T: 5.2, candidates: [cand(45000, { market: 'US', price_kind: 'source_msrp', model_year: 2021 })], vehicle: { fuel: 'electric', battery_kwh: 88, year: 2026 } });
+    ok('5y. режим береться за роком ціни', byCandYear.localization === 'ua_bev_2019_2025');
+
+    /* C: режим невідомий: сьогоднішні правила історичною правдою не стають */
+    ok('5z. C: рік без відомого режиму: локалізації немає', V.localizeUsMsrpToUA(45000, { fuel: 'electric', battery_kwh: 60, year: 2016 }) === null
+      && V.localizeUsMsrpToUA(45000, { fuel: 'petrol', displacement_l: 2.5, year: 2012 }) === null
+      && V.localizeUsMsrpToUA(45000, { fuel: 'petrol', displacement_l: 2.5 }) === null
+      && V.localizeUsMsrpToUA(45000, { year: 2021 }) === null);
+    const oldIce = np({ pc: 9000, T: 14, candidates: [cand(32000, { market: 'US', price_kind: 'source_msrp' })], vehicle: { fuel: 'petrol', displacement_l: 2.5, year: 2012 } });
+    ok('5aa. C: невідомий режим дає зворотну оцінку, не сьогоднішні податки', oldIce.basis === 'reverse_estimate' && oldIce.fact === null && oldIce.rejected.some(x => x.reason === 'historical_localization_unknown'));
+    ok('5ab. режими: BEV 2019-2025 окремо від BEV 2026 і ДВЗ', V.uaImportRegime('electric', 2019).id === 'ua_bev_2019_2025' && V.uaImportRegime('electric', 2025).id === 'ua_bev_2019_2025'
+      && V.uaImportRegime('electric', 2026).id === 'ua_bev_2026' && V.uaImportRegime('electric', 2018) === null && V.uaImportRegime('hybrid', 2021).id === 'ua_ice_2019' && V.uaImportRegime('petrol', 2018) === null);
+    ok('5ac. у модулі немає цін моделей: лише режими', !/mach|mustang|ford/i.test(fs.readFileSync('api/value.js', 'utf8')));
     const eu = np({ pc: 40000, T: 3, candidates: [cand(55000, { market: 'EU', price_kind: 'source_msrp', currency: 'EUR' })] });
     ok('5l. ціна іншого ринку якорем не стає', eu.basis === 'reverse_estimate' && eu.rejected.some(x => x.reason === 'market_not_supported'));
     const de = V.resolveNewPrice({ market: 'DE', currency: 'EUR', pc: 40000, T: 3, candidates: [cand(62000)] });
@@ -247,6 +274,7 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
       && /CTX-BLOCK/.test(bodySeen.messages[1].content) && /S1\. \[toyota\.com\]/.test(bodySeen.messages[1].content) && /LANG/.test(bodySeen.messages[1].content));
     ok('8d. повторний analyze не робить другого виклику', ctrl.analyze() === ctrl.analyze());
     const curve = V.buildValueCurve({ price: 58500, currency: 'USD', country: 'UA', year: 2025, nowMs: NOW, candidates: res.candidates, vehicle: { fuel: 'hybrid' } });
+    ok('8e0. режим локалізації видно у звіті', curve.new_price.localization === 'ua_ice_2019');
     ok('8e. кандидат доходить до графіка як локалізований MSRP', curve.status === 'ok' && curve.new_price.basis === 'localized_msrp' && curve.new_price.approx === true);
 
     const failing = V.startValueResearch({ market: 'UA', currency: 'USD', identity: ID }, { searchSerper: SEARCH, callModel: async () => { throw new Error('boom'); }, env: {} });
@@ -302,11 +330,19 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
     const iVerdict = page.indexOf('<div class="card" id="verdictCard"'), iValue = page.indexOf('id="valueCard"'), iRisks = page.indexOf('id="risksCard"');
     ok('10a. секція стоїть одразу після висновку і перед ризиками', iVerdict > 0 && iVerdict < iValue && iValue < iRisks);
     const between = page.slice(iVerdict, iValue);
-    ok('10b. між висновком і секцією немає іншої картки', (between.match(/<div class="card[ "]/g) || []).length === 2);
+    ok('10b. між висновком і секцією немає іншої картки', (between.match(/<div class="card[ "]/g) || []).length === 1);
+    const sec = page.slice(page.indexOf('<div class="val-sec" id="valueCard"'), iRisks);
+    ok('10b1. три незалежні картки без спільної рамки', /^<div class="val-sec"/.test(sec) && (sec.match(/<div class="card val-(main|box)"/g) || []).length === 3 && !/class="card val-card"/.test(page));
+    const vcss = page.slice(page.indexOf('/* ---- ринкова вартість'), page.indexOf('/* висновок CalCar це головна'));
+    ok('10b2. без внутрішніх розділювачів між частинами', !/\.val-(side|box|main)[^{]*\{[^}]*border-(left|top)/.test(vcss));
+    ok('10b3. праві картки природної висоти, графік близько 69%', /\.val-grid\{[^}]*grid-template-columns:minmax\(0,2\.2fr\) minmax\(0,1fr\)[^}]*align-items:start/.test(vcss));
+    ok('10b4. чіп ринку: просто країна, тихий', /mk\.textContent = t\('Ukraine'\)/.test(page) && !/Market: Ukraine/.test(page) && /\.val-chip\{[^}]*color:var\(--muted\)/.test(vcss));
+    ok('10b5. прогноз справжнім пунктиром, не крапками', /\.vc-forecast\{[^}]*stroke-linecap:butt[^}]*stroke-dasharray:7 5/.test(vcss));
+    ok('10b6. лаймова заливка ледь помітна', /\.vc-area\{fill:var\(--brand\);opacity:\.1\}/.test(vcss));
     ok('10c. графік, ліквідність і чинники в одній картці', /id="valChart"/.test(page) && /id="valLiqBox"/.test(page) && /id="valWhyBox"/.test(page));
     ok('10d. value-chart.js підключений', /<script src="\/value-chart\.js"><\/script>/.test(page));
     ok('10e. рендер викликається після висновку', /renderValueSection\(D\);/.test(page) && page.indexOf('renderValueSection(D);') > page.indexOf('renderScoreBlock(D);'));
-    ok('10f. мобільна розкладка в один стовпчик', /@media\(max-width:860px\)\{\s*\.val-grid\{grid-template-columns:1fr\}/.test(page));
+    ok('10f. мобільна розкладка в один стовпчик', /@media\(max-width:860px\)\{\s*\.val-grid\{grid-template-columns:1fr\}/.test(page) && /\.val-side\{display:flex;flex-direction:column/.test(page));
     ok('10g. дотик: вертикальний скрол лишається сторінці', /\.vc-plot\{[^}]*touch-action:pan-y/.test(page));
     ok('10h. нових кольорів немає: лише токени', !/\.(val|vc)-[a-z-]+[^{]*\{[^}]*#(?!fff\b)[0-9a-fA-F]{3,6}/.test(page.slice(page.indexOf('/* ---- ринкова вартість'), page.indexOf('/* висновок CalCar це головна'))));
     ok('10i. відсоток знецінення за роки не показується', !/за \d+ років|% over|percent over/.test(fs.readFileSync('value-chart.js', 'utf8')));
@@ -325,20 +361,38 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
       const yL = L.Y(vc.listing.value);
       ok('11f. ширина ' + width + ': позначка оголошення вище кривої і в межах полотна', yL < L.py[L.todayIdx] && yL >= L.pad.t);
     }
-    /* динамічна вісь Y */
-    const y30 = C.yScale(30000, 4), y300 = C.yScale(300000, 4), y14 = C.yScale(140000, 4);
-    ok('11g. вісь Y підлаштовується: $30k і $300k мають різні шкали', y30.top >= 30000 && y30.top <= 45000 && y300.top >= 300000 && y300.top <= 450000 && y30.step < y300.step);
-    ok('11h. вісь Y: гарні кроки від нуля, не більше 7 позначок', [y30, y300, y14].every(s => s.ticks[0] === 0 && s.ticks.length >= 3 && s.ticks.length <= 7 && s.ticks[s.ticks.length - 1] >= s.top));
+    /* D: вісь Y від нуля з ефективною верхньою межею */
+    for (const max of [30000, 53000, 60000, 63000, 140000, 300000, 411000, 7500, 1250000]) {
+      for (const maxI of [5, 7]) {
+        const sc = C.yScale(max, maxI);
+        ok('11g. max ' + max + ' (до ' + maxI + ' поділок): від нуля, стеля над значенням і не вища за 1.35x', sc.ticks[0] === 0 && sc.top >= max * 1.05 - 1e-6 && sc.top <= max * 1.35
+          && sc.ticks.length >= 3 && sc.ticks.length <= maxI + 1 && sc.ticks[sc.ticks.length - 1] === Math.round(sc.top), JSON.stringify(sc.ticks));
+        ok('11h. max ' + max + ': рівний крок', sc.ticks.every((v, i) => i === 0 || Math.abs((v - sc.ticks[i - 1]) - sc.step) < 1));
+      }
+    }
+    ok('11h1. ~50-60 тис. не отримує стелю 80 тис.', C.yScale(53000, 7).top <= 60000 && C.yScale(60000, 7).top < 80000 && C.yScale(60000, 5).top < 80000);
+    ok('11h2. дешеве і дороге авто мають різні шкали', C.yScale(30000, 7).step < C.yScale(300000, 7).step);
     const over = V.buildValueCurve({ price: 120000, currency: 'USD', price_context: RIA(45000), country: 'UA', year: 2024, nowMs: NOW });
     const Lo = C.layout(over, 640, 260);
-    ok('11i. позначка оголошення поза кривою розширює шкалу', Lo.ys.top >= 120000 && Lo.Y(120000) >= Lo.pad.t);
-    ok('11j. підписи осі і сум', C.axisMoney(20000, 'USD') === '$20k' && C.axisMoney(100000, 'USD') === '$100k' && C.axisMoney(1500000, 'USD') === '$1.5M' && C.money(23600, 'USD') === '$23\u00a0600' && C.money(23600, 'UAH') === '23\u00a0600\u00a0UAH');
-    /* вісь X: роки без піврічних підписів, для будь-якого віку */
-    for (const [age, maxLabels] of [[1, 8], [5, 8], [15, 8], [25, 8], [25, 5]]) {
-      const start = Date.UTC(2026 - age, 6, 1), end = Date.UTC(2031, 8, 1);
-      const ticks = C.yearTicks(start, end, maxLabels);
-      ok('11k. вік ' + age + ', до ' + maxLabels + ' підписів: ' + ticks.length, ticks.length >= 2 && ticks.length <= maxLabels && ticks.every((y, i) => i === 0 || y > ticks[i - 1]) && ticks[ticks.length - 1] <= 2031);
+    ok('11i. позначка оголошення поза кривою розширює шкалу', Lo.ys.top >= 120000 && Lo.Y(120000) >= Lo.pad.t && Lo.Y(0) === Lo.pad.t + Lo.ih);
+    ok('11j. підписи осі і сум', C.axisMoney(20000, 'USD') === '$20k' && C.axisMoney(100000, 'USD') === '$100k' && C.axisMoney(1500000, 'USD') === '$1.5M' && C.axisMoney(12500, 'USD') === '$12.5k' && C.money(23600, 'USD') === '$23\u00a0600' && C.money(23600, 'UAH') === '23\u00a0600\u00a0UAH');
+    /* E: вісь X: рік кінця прогнозу підписаний на правому краю */
+    for (const [age, maxLabels] of [[0.5, 8], [1.25, 8], [5, 8], [13.25, 8], [25, 8], [25, 5], [40, 4]]) {
+      const tMax = age + 5;
+      const ticks = C.xTicks(tMax, Date.UTC(2031, 8, 1), maxLabels);
+      const last = ticks[ticks.length - 1];
+      ok('11k. вік ' + age + ', до ' + maxLabels + ' підписів: ' + ticks.length, ticks.length >= 2 && ticks.length <= Math.max(2, maxLabels)
+        && last.year === 2031 && Math.abs(last.t - tMax) < 1e-9 && ticks.every((x, i) => x.t >= -1e-9 && (i === 0 || (x.t > ticks[i - 1].t && x.year > ticks[i - 1].year))));
     }
+    ok('11k1. молоде авто: підписи щороку, сьогодні теж підписане', C.xTicks(6.25, Date.UTC(2031, 8, 1), 8).some(x => x.year === 2026 && Math.abs(x.t - 1.25) < 1e-9));
+    /* F: формат головних чисел */
+    const chartSrc = fs.readFileSync('value-chart.js', 'utf8');
+    ok('11q. F: середня площадки округлена до сотні з позначкою приблизності', /curTxt = isAvg \? '\\u2248\\u00a0' \+ money\(Math\.round\(vc\.current\.value \/ 100\) \* 100, cur\) : money\(vc\.current\.value, cur\)/.test(chartSrc));
+    ok('11r. F: ціна оголошення точна, без знака приблизності', /esc\(money\(vc\.listing\.value, cur\)\)/.test(chartSrc));
+    ok('11s. F: прогноз лишається приблизним', /futTxt = '≈\\u00a0' \+ money\(roundApprox\(vc\.future\.value\), cur\)/.test(chartSrc));
+    ok('11t. підказка на сьогодні показує точне значення джерела', /var exact = active === L\.todayIdx/.test(chartSrc));
+    ok('11u. підпис "Сьогодні" біля вертикальної лінії', /'class': 'vc-now-lbl' \}, t\('Today'\)\)/.test(chartSrc));
+    ok('11v. взаємодія збережена: миша, дотик, клавіатура', ['pointermove', 'pointerdown', 'pointerleave', 'touchmove', 'keydown'].every(e => chartSrc.includes("addEventListener('" + e + "'")));
     /* прилипання до найближчої піврічної точки */
     const L = C.layout(vc, 640, 260);
     ok('11l. вибір прилипає до найближчої точки', C.nearestIndex(L.px, L.px[5] + 1) === 5 && C.nearestIndex(L.px, -50) === 0 && C.nearestIndex(L.px, 9999) === vc.points.length - 1);
@@ -354,7 +408,7 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
     /* словники */
     const dicts = { CALCAR_DICTS: {} };
     for (const f of ['i18n/ru.js', 'i18n/ua.js']) vm.runInNewContext(fs.readFileSync(f, 'utf8'), { window: dicts });
-    const keys = ['Market value', 'Liquidity', 'Why this car costs what it does', 'Easy to resell', 'Average resale', 'Hard to resell', 'Not enough data', 'Market: Ukraine', 'When new', 'Today', 'Average today', 'In 5 years',
+    const keys = ['Market value', 'Liquidity', 'Why this car costs what it does', 'Easy to resell', 'Average resale', 'Hard to resell', 'Not enough data', 'Ukraine', 'When new', 'Today', 'Average today', 'In 5 years',
       'Forecast', 'This listing', '{pct} vs average', 'Value over time', 'The new-car price is estimated from the current price and age.', 'The new-car price is the US list price plus import costs to Ukraine.',
       'The new-car price is the list price in Ukraine.', 'The forecast is a model estimate, not a guarantee.'];
     for (const lang of ['ru', 'ua']) {

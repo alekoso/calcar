@@ -8,7 +8,6 @@
    прогноз пунктирний, математично це одна крива. */
 (function () {
   var NS = 'http://www.w3.org/2000/svg';
-  var YEAR_MS = 365.25 * 24 * 3600 * 1000;
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function group(n) { return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0'); }
@@ -39,31 +38,39 @@
     return sym + s;
   }
 
-  /* "гарний" крок осі: 1, 2, 2.5, 5 на степінь десяти */
-  function niceStep(max, target) {
-    var raw = max / Math.max(1, target);
-    var pow = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10));
-    var steps = [1, 2, 2.5, 5, 10];
-    for (var i = 0; i < steps.length; i++) if (steps[i] * pow >= raw) return steps[i] * pow;
-    return 10 * pow;
-  }
-  function yScale(maxValue, target) {
-    var step = niceStep(maxValue * 1.04, target || 4);
-    var top = Math.ceil(maxValue * 1.04 / step) * step;
+  /* Вісь Y завжди від нуля: авто, що тримає ціну, мусить і виглядати так,
+     а обрізана знизу шкала робить скромне знецінення драматичним. Зайву
+     порожнечу прибирає ВЕРХНЯ межа: найменша "гарна" стеля над найбільшим
+     видимим значенням із запасом 5%, з прийнятною кількістю поділок */
+  var NICE = [1, 2, 2.5, 5];
+  function yScale(maxValue, maxIntervals) {
+    var need = maxValue * 1.05, maxI = maxIntervals || 7, minI = Math.min(3, maxI);
+    var pow = Math.pow(10, Math.floor(Math.log(need) / Math.LN10) - 1);
+    var best = null;
+    for (var e = 0; e < 3; e++) {
+      for (var i = 0; i < NICE.length; i++) {
+        var step = NICE[i] * pow * Math.pow(10, e);
+        var n = Math.ceil(need / step - 1e-9);
+        if (n < minI || n > maxI) continue;
+        var top = n * step;
+        if (!best || top < best.top - 1e-6 || (Math.abs(top - best.top) < 1e-6 && n < best.n)) best = { top: top, step: step, n: n };
+      }
+    }
+    if (!best) best = { top: need, step: need / minI, n: minI };
     var ticks = [];
-    for (var v = 0; v <= top + step / 2; v += step) ticks.push(Math.round(v));
-    return { top: top, step: step, ticks: ticks };
+    for (var k = 0; k <= best.n; k++) ticks.push(Math.round(k * best.step));
+    return { top: best.top, step: best.step, ticks: ticks };
   }
 
-  /* підписи років: не більше maxLabels, крок 1, 2, 5, 10 років */
-  function yearTicks(startMs, endMs, maxLabels) {
-    var y0 = new Date(startMs).getUTCFullYear(), y1 = new Date(endMs).getUTCFullYear();
-    var first = Date.UTC(y0, 0, 1) < startMs ? y0 + 1 : y0;
-    var span = Math.max(1, y1 - first + 1);
+  /* Підписи років відраховуються від КІНЦЯ прогнозу: останній рік прогнозу
+     завжди підписаний на правому краю, і графік не тягнеться далі за
+     останній підпис. Крок 1, 2, 5 або 10 років за доступною шириною */
+  function xTicks(tMax, endMs, maxLabels) {
+    var endYear = new Date(endMs).getUTCFullYear();
     var steps = [1, 2, 5, 10, 20], step = 20;
-    for (var i = 0; i < steps.length; i++) if (Math.ceil(span / steps[i]) <= maxLabels) { step = steps[i]; break; }
+    for (var i = 0; i < steps.length; i++) if (Math.floor(tMax / steps[i]) + 1 <= Math.max(2, maxLabels)) { step = steps[i]; break; }
     var out = [];
-    for (var y = first; y <= y1; y++) if ((y - first) % step === 0) out.push(y);
+    for (var back = 0; back <= tMax + 1e-9; back += step) out.unshift({ t: tMax - back, year: endYear - back });
     return out;
   }
 
@@ -128,13 +135,13 @@
   function layout(vc, width, height) {
     var pts = vc.points, n = pts.length;
     var narrow = width < 480;
-    var pad = { l: narrow ? 44 : 52, r: 18, t: 18, b: 28 };
+    var pad = { l: narrow ? 44 : 52, r: 20, t: 30, b: 28 };
     var iw = Math.max(40, width - pad.l - pad.r), ih = Math.max(40, height - pad.t - pad.b);
     var tMax = pts[n - 1].t;
     var listing = vc.listing && isFinite(vc.listing.value) ? vc.listing.value : null;
     var maxV = Math.max(vc.new_price.value, vc.current.value, listing || 0);
     for (var i = 0; i < n; i++) if (pts[i].value > maxV) maxV = pts[i].value;
-    var ys = yScale(maxV, narrow ? 3 : 4);
+    var ys = yScale(maxV, narrow ? 5 : 7);
     var X = function (t) { return pad.l + (t / tMax) * iw; };
     var Y = function (v) { return pad.t + ih - (v / ys.top) * ih; };
     var todayIdx = 0;
@@ -160,12 +167,15 @@
     var pts = vc.points;
     var isAvg = vc.current.source === 'marketplace_average';
     var newTxt = (vc.new_price.approx ? '≈\u00a0' : '') + money(vc.new_price.approx ? roundApprox(vc.new_price.value) : vc.new_price.value, cur);
+    /* середня площадки це оцінка ринку: показуємо до сотні з "≈"; ціна
+       продавця це реальне число оголошення, вона лишається точною */
+    var curTxt = isAvg ? '\u2248\u00a0' + money(Math.round(vc.current.value / 100) * 100, cur) : money(vc.current.value, cur);
     var futTxt = '≈\u00a0' + money(roundApprox(vc.future.value), cur);
     var delta = vc.listing ? ((vc.listing.delta_percent > 0 ? '+' : vc.listing.delta_percent < 0 ? '−' : '') + Math.abs(vc.listing.delta_percent) + '%') : '';
 
     var html = '<div class="vc-stats">'
       + '<div class="vc-stat"><span class="vc-num">' + esc(newTxt) + '</span><span class="vc-lbl">' + esc(t('When new')) + '</span></div>'
-      + '<div class="vc-stat"><span class="vc-num">' + esc(money(vc.current.value, cur)) + '</span><span class="vc-lbl">' + esc(t(isAvg ? 'Average today' : 'Today')) + '</span></div>'
+      + '<div class="vc-stat"><span class="vc-num">' + esc(curTxt) + '</span><span class="vc-lbl">' + esc(t(isAvg ? 'Average today' : 'Today')) + '</span></div>'
       + '<div class="vc-stat"><span class="vc-num">' + esc(futTxt) + '</span><span class="vc-lbl">' + esc(t('In 5 years')) + '</span></div>'
       + '</div>';
     if (vc.listing) {
@@ -193,24 +203,29 @@
         svg.appendChild(el('line', { x1: L.pad.l, x2: L.pad.l + L.iw, y1: y, y2: y, 'class': v === 0 ? 'vc-axis' : 'vc-grid' }));
         svg.appendChild(el('text', { x: L.pad.l - 8, y: y + 4, 'text-anchor': 'end', 'class': 'vc-tick' }, axisMoney(v, cur)));
       }
-      /* підписи років */
+      /* підписи років: від кінця прогнозу назад */
       var startMs = pointMs(pts[0]), nowMs = pointMs(pts[L.todayIdx]);
       if (startMs !== null && nowMs !== null) {
-        var T = pts[L.todayIdx].t;
-        var endMs = nowMs + (L.tMax - T) * YEAR_MS;
-        var years = yearTicks(startMs, endMs, L.narrow ? 5 : 8);
-        for (i = 0; i < years.length; i++) {
-          var ty = T + (Date.UTC(years[i], 0, 1) - nowMs) / YEAR_MS;
-          if (ty < 0 || ty > L.tMax) continue;
-          var x = L.X(ty);
+        var endMs = pointMs(pts[pts.length - 1]);
+        var xt = xTicks(L.tMax, endMs === null ? nowMs : endMs, Math.floor(L.iw / 56));
+        var lastX = -Infinity;
+        for (i = 0; i < xt.length; i++) {
+          var x = L.X(xt[i].t);
+          /* підпис біля лівого краю не налазить на наступний */
+          if (x - lastX < 40) continue;
+          lastX = x;
+          var edgeL = x < L.pad.l + 14, edgeR = x > L.pad.l + L.iw - 14;
           svg.appendChild(el('line', { x1: x, x2: x, y1: base, y2: base + 4, 'class': 'vc-axis' }));
-          svg.appendChild(el('text', { x: Math.min(Math.max(x, L.pad.l + 14), L.pad.l + L.iw - 14), y: base + 18, 'text-anchor': 'middle', 'class': 'vc-tick' }, String(years[i])));
+          svg.appendChild(el('text', { x: x, y: base + 18, 'text-anchor': edgeR ? 'end' : edgeL ? 'start' : 'middle', 'class': 'vc-tick' }, String(xt[i].year)));
         }
       }
       var m = tangents(L.px, L.py), last = pts.length - 1, ti = L.todayIdx;
       var solid = pathThrough(L.px, L.py, m, 0, ti);
       svg.appendChild(el('path', { d: solid + 'L' + L.px[ti] + ' ' + base + 'L' + L.px[0] + ' ' + base + 'Z', 'class': 'vc-area' }));
-      svg.appendChild(el('line', { x1: L.px[ti], x2: L.px[ti], y1: L.pad.t, y2: base, 'class': 'vc-now' }));
+      svg.appendChild(el('line', { x1: L.px[ti], x2: L.px[ti], y1: L.pad.t - 6, y2: base, 'class': 'vc-now' }));
+      /* ліворуч від лінії розрахована історія, праворуч прогноз */
+      var nearR = L.px[ti] > L.pad.l + L.iw - 40, nearL = L.px[ti] < L.pad.l + 40;
+      svg.appendChild(el('text', { x: L.px[ti] + (nearR ? -6 : nearL ? 6 : 0), y: L.pad.t - 12, 'text-anchor': nearR ? 'end' : nearL ? 'start' : 'middle', 'class': 'vc-now-lbl' }, t('Today')));
       svg.appendChild(el('path', { d: solid, 'class': 'vc-line' }));
       svg.appendChild(el('path', { d: pathThrough(L.px, L.py, m, ti, last), 'class': 'vc-line vc-forecast' }));
       svg.appendChild(el('circle', { cx: L.px[0], cy: L.py[0], r: 4, 'class': 'vc-end' }));
@@ -284,7 +299,7 @@
   }
 
   window.CalCarValueChart = {
-    render: render, usable: usable, layout: layout, yScale: yScale, yearTicks: yearTicks, nearestIndex: nearestIndex,
+    render: render, usable: usable, layout: layout, yScale: yScale, xTicks: xTicks, nearestIndex: nearestIndex,
     money: money, axisMoney: axisMoney, roundApprox: roundApprox, monthLabel: monthLabel, tangents: tangents, pathThrough: pathThrough
   };
 })();
