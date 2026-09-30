@@ -33,7 +33,7 @@ function stub(id, extra = {}) {
     getBoundingClientRect: () => ({ left: 100, right: 400, top: 50, bottom: 80, width: 300 }),
     contains: () => false, focus() { this.focused = true; } }, extra);
 }
-function mount(D) {
+function mount(D, { hover = false } = {}) {
   const els = {};
   const infos = [stub('info-score', { dataset: { tip: 'score' } }), stub('info-conf', { dataset: { tip: 'conf' } })];
   ['scoreSlot', 'scorePop', 'scoreOv', 'scTip', 'scoreToggle', 'scoreClose'].forEach(id => { els[id] = stub(id); });
@@ -41,7 +41,7 @@ function mount(D) {
   const $ = id => els[id] || null;
   const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const doc = stub('document');
-  const win = stub('window', { matchMedia: () => ({ matches: false }), innerWidth: 1280, innerHeight: 800 });
+  const win = stub('window', { matchMedia: q => ({ matches: hover && /hover:hover/.test(q) }), innerWidth: 1280, innerHeight: 800 });
   const fn = new Function('$', 'esc', 't', 'document', 'window', src + '\nreturn { renderScoreBlock };');
   fn($, esc, s => s, doc, win).renderScoreBlock(D);
   return { slot: els.scoreSlot.innerHTML, pop: els.scorePop.innerHTML, els, infos, doc };
@@ -128,16 +128,54 @@ for (const [final, cov] of [[9.0, 91], [5.1, 74], [3.2, 50]]) {
   /* Esc спершу закриває підказку, панель лишається як була */
   r.doc.fire('keydown', { key: 'Escape' });
   ok(tip.hidden && iConf.focused, 'Esc не закрив підказку або не повернув фокус');
-  /* клік по картці поза інфо відкриває панель; наступний Esc закриває її */
+  /* картка статична: клік по ній нічого не відкриває; шеврон (дотик,
+     клавіатура) відкриває панель; наступний Esc закриває її */
   card.fire('click');
-  ok(!pop.hidden && r.els.scoreToggle.attrs['aria-expanded'] === 'true', 'клік по картці не відкрив панель');
+  ok(pop.hidden && !(card.listeners.click || []).length && !(card.listeners.mouseenter || []).length, 'картка досі реагує на клік чи наведення');
+  r.els.scoreToggle.fire('click', { detail: 0 });
+  ok(!pop.hidden && r.els.scoreToggle.attrs['aria-expanded'] === 'true', 'шеврон не відкрив панель');
   r.doc.fire('keydown', { key: 'Escape' });
   ok(pop.hidden && r.els.scoreToggle.attrs['aria-expanded'] === 'false' && r.els.scoreToggle.focused, 'Esc не закрив панель');
   /* закріплена підказка закривається кліком поза нею; відкриття панелі закриває підказку */
   iScore.fire('click'); r.doc.fire('click', { target: {} });
   ok(tip.hidden, 'клік поза підказкою її не закрив');
-  iScore.fire('click'); card.fire('click');
+  iScore.fire('click'); r.els.scoreToggle.fire('click', { detail: 0 });
   ok(tip.hidden && !pop.hidden, 'відкриття панелі не закрило підказку');
+  /* дотик: повторний тап по шеврону закриває, тап поза ним закриває */
+  r.els.scoreToggle.fire('click', { detail: 1 });
+  ok(pop.hidden && r.els.scoreToggle.attrs['aria-expanded'] === 'false', 'повторний тап по шеврону не закрив панель');
+  r.els.scoreToggle.fire('click', { detail: 1 }); r.doc.fire('click', { target: {} });
+  ok(pop.hidden, 'тап поза шевроном не закрив панель');
+}
+/* 6b. миша: наведення на шеврон відкриває панель, відведення закриває, клік не потрібен */
+{
+  const r = mount({ verdict: { summary: 'x' }, confidence: conf(80), score_breakdown: v4(7.6) }, { hover: true });
+  const tg = r.els.scoreToggle, pop = r.els.scorePop, card = r.els.scoreCard;
+  card.fire('mouseenter'); card.fire('click');
+  ok(pop.hidden, 'наведення чи клік по картці відкрили панель');
+  tg.fire('mouseenter');
+  ok(!pop.hidden && tg.attrs['aria-expanded'] === 'true', 'наведення на шеврон не відкрило панель');
+  tg.fire('click', { detail: 1 });
+  ok(!pop.hidden, 'клік мишею по вже відкритому наведенням шеврону закрив панель');
+  tg.fire('mouseleave');
+  ok(pop.hidden && tg.attrs['aria-expanded'] === 'false', 'відведення миші з шеврону не закрило панель');
+  /* клавіатура: Enter/Space дають click з detail 0 і перемикають */
+  tg.fire('click', { detail: 0 });
+  ok(!pop.hidden, 'Enter/Space не відкрили панель');
+  tg.fire('click', { detail: 0 });
+  ok(pop.hidden, 'Enter/Space не закрили панель');
+  /* фокус з клавіатури показує панель, втрата фокусу закриває */
+  tg.matches = sel => sel === ':focus-visible';
+  tg.fire('focus');
+  ok(!pop.hidden, 'фокус з клавіатури не показав панель');
+  tg.fire('blur', { relatedTarget: null });
+  ok(pop.hidden, 'втрата фокусу не закрила панель');
+}
+/* 6c. стиль: картка статична, інтерактивний лише шеврон */
+{
+  const cardCss = (/\.sc-card\{[^}]*\}/.exec(page) || [''])[0];
+  ok(!/cursor:pointer|transition/.test(cardCss) && !/\.sc-card:hover/.test(page), 'картка досі має курсор-руку чи реакцію на наведення');
+  ok(/\.sc-tog:hover,\.sc-tog\[aria-expanded="true"\]\{color:var\(--ink\);background:var\(--bg\)\}/.test(page) && /\.sc-tog\{[^}]*cursor:pointer/.test(page), 'шеврон без стану наведення');
 }
 /* 7. бал не перераховується фронтендом */
 {

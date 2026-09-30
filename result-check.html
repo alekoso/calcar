@@ -455,8 +455,7 @@
   /* закрита картка: ліворуч компактний бал по центру своєї колонки, праворуч
      впевненість в оцінці на всю ширину колонки; шеврон у кінці її заголовка.
      Картка це не кнопка: всередині є окремі кнопки інфо і розкриття */
-  .sc-card{display:grid;grid-template-columns:minmax(170px,30%) 1px minmax(0,1fr);align-items:center;column-gap:28px;width:100%;margin:0 0 12px;padding:16px 18px 16px 20px;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:var(--radius);cursor:pointer;transition:border-color .15s,box-shadow .15s}
-  .sc-card:hover{border-color:var(--line-strong);box-shadow:0 4px 14px rgba(20,22,25,.05)}
+  .sc-card{display:grid;grid-template-columns:minmax(170px,30%) 1px minmax(0,1fr);align-items:center;column-gap:28px;width:100%;margin:0 0 12px;padding:16px 18px 16px 20px;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:var(--radius)}
   .sc-card.solo{grid-template-columns:minmax(0,1fr)}
   .sc-sep{align-self:stretch;width:1px;background:var(--line)}
   .sc-col{display:flex;flex-direction:column;min-width:0}
@@ -476,7 +475,8 @@
   .sc-info svg{width:15px;height:15px}
   /* шеврон розкриття: ціль 32x32 без важкої рамки */
   .sc-tog{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;margin-right:-6px;padding:0;border:none;border-radius:8px;background:transparent;color:var(--muted);cursor:pointer;transition:background .15s,color .15s}
-  .sc-card:hover .sc-tog,.sc-tog:hover{color:var(--ink);background:var(--bg)}
+  /* інтерактивний лише шеврон: картка статична, без реакції на наведення */
+  .sc-tog:hover,.sc-tog[aria-expanded="true"]{color:var(--ink);background:var(--bg)}
   .sc-tog:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
   .sc-tog svg{transition:transform .18s ease}
   .sc-tog[aria-expanded="true"] svg{transform:rotate(180deg)}
@@ -2876,17 +2876,26 @@ function renderScoreBlock(D) {
     tip.addEventListener('mouseenter', () => clearTimeout(tipHideT));
     tip.addEventListener('mouseleave', () => { if (!tipPinned) tipHideT = setTimeout(() => { if (!tipPinned) tipClose(false); }, 160); });
   }
-  /* уся картка клікабельна; клавіатура працює через кнопку-шеврон */
-  card.addEventListener('click', e => {
-    if (e.target.closest && e.target.closest('.sc-info')) return;
+  /* Картка статична. Інтерактивний лише шеврон: на пристрої з мишею
+     наведення відкриває панель, відведення закриває; дотик і клавіатура
+     (Enter, Space) перемикають її кліком. Клік мишею по шеврону, який уже
+     відкрився наведенням, нічого не змінює */
+  toggle.addEventListener('mouseenter', () => { if (hoverable()) open(); });
+  toggle.addEventListener('mouseleave', () => { if (hoverable()) close(false); });
+  /* фокус з клавіатури показує ту саму панель; втрата фокусу закриває,
+     якщо фокус не перейшов у саму панель */
+  toggle.addEventListener('focus', () => { if (toggle.matches && toggle.matches(':focus-visible')) open(); });
+  toggle.addEventListener('blur', e => { if (!(e.relatedTarget && pop.contains(e.relatedTarget))) close(false); });
+  toggle.addEventListener('click', e => {
     e.stopPropagation();
+    if (hoverable() && e.detail > 0) { if (pop.hidden) open(); return; }
     if (pop.hidden) open(); else close(false);
   });
   const x = $('scoreClose'); if (x) x.addEventListener('click', e => { e.stopPropagation(); close(true); });
   if (ov) ov.addEventListener('click', () => close(false));
   document.addEventListener('click', e => {
     if (tipTrig && !(tip && tip.contains(e.target))) tipClose(false);
-    if (!pop.hidden && !pop.contains(e.target) && !card.contains(e.target)) close(false);
+    if (!pop.hidden && !pop.contains(e.target) && !toggle.contains(e.target)) close(false);
   });
   /* Esc спершу закриває підказку, і лише наступний Esc панель */
   document.addEventListener('keydown', e => {

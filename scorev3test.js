@@ -752,10 +752,11 @@ const THIN = {
   }
   /* Технічні ризики свідомо приховані з popover (бекенд-вісь лишається) */
   if (/\['technical'/.test(pageSrc)) errs.push('result-check: technical лишився в popover ORDER');
-  /* компонент Оцінка CalCar + впевненість в оцінці: окрема кнопка-шеврон,
-     панель відкривається кліком і клавіатурою (деталі у scoreuitest.js) */
+  /* компонент Оцінка CalCar + впевненість в оцінці: картка статична,
+     панель відкриває лише шеврон (наведення, дотик, клавіатура; деталі у
+     scoreuitest.js) */
   if (!/class="sc-tog" id="scoreToggle"/.test(pageSrc)) errs.push('result-check: нема chevron-affordance на картці оцінки');
-  if (!/\.sc-card\{[^}]*cursor:pointer/.test(pageSrc)) errs.push('result-check: картка оцінки без cursor:pointer');
+  if (/\.sc-card\{[^}]*cursor:pointer/.test(pageSrc) || /\.sc-card:hover/.test(pageSrc)) errs.push('result-check: картка оцінки знову виглядає клікабельною');
   /* coachmark чату прибраний разом із верхньою кнопкою: він чіплявся до
      правого краю topbar і виринав під кнопкою "Поділитися", зокрема в
      публічному read-only звіті */
