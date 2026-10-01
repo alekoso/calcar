@@ -867,13 +867,15 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
       ok('10b21. заголовок правої картки короткий, переклади в одну строку', /<h3>Why this price<\/h3>/.test(page) && !/Why this car costs what it does/.test(page));
       const D3 = {}; vm.runInNewContext(fs.readFileSync('i18n/ru.js', 'utf8') + fs.readFileSync('i18n/ua.js', 'utf8'), { window: D3 });
       ok('10b22. RU "Почему такая цена", UA "Чому така ціна"', D3.CALCAR_DICTS.ru['Why this price'] === 'Почему такая цена' && D3.CALCAR_DICTS.ua['Why this price'] === 'Чому така ціна' && !D3.CALCAR_DICTS.ru['Why this car costs what it does']);
-      ok('10b23. заголовки в один рядок і однакової висоти: та сама будова mk-head в обох картках', /\.mk-card h3\{[^}]*white-space:nowrap/.test(page) && /\.mk-head\{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:28px;flex-wrap:wrap;row-gap:8px\}/.test(page)
+      ok('10b23. заголовки в один рядок і однакової висоти: та сама будова mk-head в обох картках', /\.mk-card h3\{[^}]*white-space:nowrap/.test(page) && /\.mk-head\{display:flex;align-items:baseline;justify-content:space-between;gap:10px;min-height:28px;flex-wrap:wrap;row-gap:8px\}/.test(page)
         && (page.match(/<div class="mk-head"><h3>/g) || []).length === 2);
       ok('10b24. рядки причин стоять поруч: спільна сітка на чотири рядки (заголовок і три причини)', /\.val-pair:not\(\.one\)\{grid-template-rows:auto repeat\(3,auto\);row-gap:0\}/.test(css)
         && /\.val-pair:not\(\.one\) \.mk-card\{display:grid;grid-row:span 4;grid-template-rows:subgrid/.test(css) && /\.val-pair:not\(\.one\) \.mk-rows\{display:contents\}/.test(css));
       ok('10b25. не більше трьох рядків у кожній картці', /reasons = lq && Array\.isArray\(lq\.reasons\) \? lq\.reasons\.filter\(x => typeof x === 'string' && x\.trim\(\)\)\.slice\(0, 3\)/.test(page) && /const factors = whyRaw\.filter\(x => typeof x === 'string' && x\.trim\(\)\)\.slice\(0, 3\);/.test(page));
       const narrow = page.slice(page.indexOf('@media(max-width:860px){', page.indexOf('.val-pair{')), page.indexOf('@media(max-width:480px){', page.indexOf('.val-pair{')));
       ok('10b26. телефон: картки одна під одною, без спільних рядків і з відступом', /\.val-pair:not\(\.one\) \.mk-card\{display:block;grid-row:auto\}/.test(narrow) && /\.val-pair:not\(\.one\) \.mk-rows\{display:block\}/.test(narrow) && /row-gap:12px/.test(narrow));
+      ok('10b28. заголовок і статус на одній лінії тексту в обох картках: одна шапка mk-head, базова лінія, статус з інфо по центру між собою, без зсувів', /\.mk-head\{display:flex;align-items:baseline/.test(page) && /\.mk-loss\{position:relative;display:inline-flex;align-items:center/.test(page)
+        && !/\.(mk-head|mk-state|mk-loss|mk-info|mk-card h3)[^{]*\{[^}]*(translateY|margin-top|vertical-align)/.test(page));
       ok('10b27. підказка статусу втрати вартості лишилась', /id="valWhyInfo"/.test(page) && /id="valWhyTip" role="tooltip"/.test(page));
     }
     ok('10b15. тексти карток: лише наявні причини і чинники, без переписування', /reasons\.map\(mkRow\)/.test(page) && /factors\.map\(mkRow\)/.test(page) && /esc\(clean\(text\)\)/.test(page));

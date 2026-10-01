@@ -473,8 +473,8 @@ const page = fs.readFileSync('result-check.html', 'utf8');
     const riskRender = page.slice(page.indexOf("fill('risksCard'"), page.indexOf("/* ---- історія пошкоджень"));
     if ((riskRender.match(/class="badge/g) || []).length !== 1) errs.push('у ризику більше одного чипа стану');
     /* latent-ризик не додає ДРУГУ позначку: його зміст іде самим чипом */
-    if (!/const chip = r\.kind === 'latent' \? t\('Not verified, high cost if wrong'\) : lv\[1\];/.test(riskRender)) errs.push('чип ризику не несе зміст latent');
-    if ((riskRender.match(/Not verified, high cost if wrong/g) || []).length !== 1) errs.push('дубль "не підтверджено, висока ціна помилки" поруч із чипом рівня');
+    if (!/const chip = r\.kind === 'latent' \? t\('High cost of failure'\) : lv\[1\];/.test(riskRender)) errs.push('чип ризику не несе зміст latent');
+    if ((riskRender.match(/High cost of failure/g) || []).length !== 1) errs.push('дубль "висока ціна помилки" поруч із чипом рівня');
     if (!/<span class="act-l">' \+ esc\(t\('What to check'\)\)/.test(riskRender)) errs.push('дія без підпису "Що перевірити"');
     if (!/const lv = LVL\[r\.level\] \|\| LVL\.med;/.test(riskRender)) errs.push('рівні ризику більше не з наявного поля level');
     if (!/\.risk \.act\{[^}]*border-top:1px dashed/.test(page)) errs.push('дія не відокремлена від пояснення');
@@ -593,10 +593,60 @@ const page = fs.readFileSync('result-check.html', 'utf8');
     if (sents.length !== 3 || !/35 тыс\. км от октября/.test(sents[1])) errs.push('короткий висновок рветься на "тыс.": ' + JSON.stringify(sents));
   }
 
+  /* ---------- бета: опис продавця, позначка ризику ---------- */
+  {
+    const vm2 = require('vm');
+    const D = {}; vm2.runInNewContext(fs.readFileSync('i18n/ru.js', 'utf8') + fs.readFileSync('i18n/ua.js', 'utf8'), { window: D });
+    const RU = D.CALCAR_DICTS.ru, UA = D.CALCAR_DICTS.ua;
+    /* кнопка: лише з текстом, підпис "Описание продавца", відмінна від VIN і номера */
+    if (RU['Seller description'] !== 'Описание продавца' || UA['Seller description'] !== 'Опис продавця' || RU['From the seller']) errs.push('підпис кнопки опису продавця не "Описание продавца / Опис продавця"');
+    if (!/idBits\.push\('<button class="id-chip seller-chip" type="button" id="sellerBtn"[\s\S]{0,900}esc\(t\('Seller description'\)\)/.test(page)) errs.push('кнопка опису продавця без підпису "Seller description"');
+    const chipCss = (/\.seller-chip\{[^}]*\}/.exec(page) || [''])[0];
+    if (!/cursor:pointer/.test(chipCss) || !/background:var\(--brand-soft\)/.test(chipCss) || !/border-color:var\(--brand\)/.test(chipCss)) errs.push('кнопка опису продавця не відрізняється від інформаційних чипів VIN і номера');
+    if (!/\.seller-chip:hover,\.seller-chip\[aria-expanded="true"\]\{background:var\(--brand\)/.test(page)) errs.push('кнопка опису продавця без стану наведення');
+    if (/\.id-chip\{[^}]*brand/.test(page)) errs.push('інформаційні чипи VIN і номера отримали акцент');
+    /* текст: оригінальний, дослівно, абзацами, без нових запитів */
+    const ss = page.slice(page.indexOf('/* ---------- оригінальний опис продавця ----------'), page.indexOf('body.tabIndex = 0'));
+    if (/fetch\(|XMLHttpRequest|\/api\//.test(ss)) errs.push('опис продавця робить мережевий запит');
+    if (!/String\(M\.seller_text \|\| ''\)\.replace\(\/\\r\\n\?\/g, '\\n'\)\.split\(\/\\n\{2,\}\/\)/.test(ss) || !/el\.textContent = clean\(p\);/.test(ss)) errs.push('опис продавця не показується дослівно абзацами');
+    /* десктоп: поповер біля кнопки; телефон: шторка */
+    if (!/const desktop = \(\) => window\.innerWidth > 760 && window\.matchMedia && window\.matchMedia\('\(hover:hover\) and \(pointer:fine\)'\)\.matches;/.test(ss)) errs.push('нема розрізнення десктопа з мишею і телефона');
+    if (!/sheet\.classList\.toggle\('pop', asPop\);/.test(ss) || !/if \(!asPop\) ov\.classList\.add\('open'\);/.test(ss)) errs.push('десктоп не поповер, або поповер з затемненням');
+    if (!/sellerPopPosition\(lastTrig\.getBoundingClientRect\(\), sheet\.offsetWidth, sheet\.offsetHeight, window\.innerWidth, window\.innerHeight\)/.test(ss)) errs.push('поповер рахується не від самої кнопки');
+    if (!/document\.addEventListener\('mouseover', e => \{\n\s*const b = e\.target\.closest \? e\.target\.closest\('#sellerBtn'\) : null;\n\s*if \(b && desktop\(\)\) open\(b, pinned\);/.test(ss)) errs.push('наведення на кнопку не відкриває поповер');
+    if (!/\.ss-panel\.pop\{[^}]*width:460px[^}]*max-height:420px/.test(page) || !/@media\(max-width:760px\)\{\n\s*\.ss-panel\{top:auto;left:0;right:0/.test(page)) errs.push('розміри поповера або шторка на телефоні змінились');
+    const grabFn = name => { const i = page.indexOf('function ' + name + '('); let d = 0; for (let k = page.indexOf('{', i); k < page.length; k++) { if (page[k] === '{') d++; else if (page[k] === '}') { d--; if (!d) return page.slice(i, k + 1); } } return ''; };
+    const pos = new Function(grabFn('sellerPopPosition') + '\nreturn sellerPopPosition;')();
+    const chip = (top, left = 420) => ({ left, right: left + 160, top, bottom: top + 30 });
+    const b1 = pos(chip(180), 460, 380, 1280, 900);
+    if (!(b1.side === 'below' && b1.top === 218 && b1.left === 420 && b1.maxHeight === 420)) errs.push('поповер має стояти одразу під кнопкою з лівим краєм на її рівні: ' + JSON.stringify(b1));
+    const b2 = pos(chip(760), 460, 380, 1280, 900);
+    if (!(b2.side === 'above' && b2.top + Math.min(380, b2.maxHeight) === 752)) errs.push('без місця знизу поповер має стати над кнопкою впритул: ' + JSON.stringify(b2));
+    const b3 = pos(chip(180, 1100), 460, 380, 1280, 900);
+    if (!(b3.left === 1280 - 460 - 12)) errs.push('поповер має лишатись у вікні біля правого краю: ' + JSON.stringify(b3));
+    for (const top of [40, 200, 420, 600, 820]) {
+      const r = chip(top), p = pos(r, 460, 2000, 1280, 900);
+      const h = Math.min(2000, p.maxHeight);
+      const gap = p.side === 'below' ? p.top - r.bottom : r.top - (p.top + h);
+      if (gap !== 8 || p.top < 12 - 0.01 || p.top + h > 900 - 12 + 0.01 || p.maxHeight > 420) errs.push('довгий текст: поповер відірвався від кнопки або вийшов за вікно (top ' + top + '): ' + JSON.stringify(p));
+    }
+    /* позначка ризику: "висока ціна помилки" без загального "не підтверджено" */
+    if (RU['High cost of failure'] !== 'Высокая цена ошибки' || UA['High cost of failure'] !== 'Висока ціна помилки') errs.push('позначка ризику не "Высокая цена ошибки / Висока ціна помилки"');
+    if (RU['Not verified, high cost if wrong'] || /Not verified, high cost if wrong/.test(page) || /Не подтверждено, высокая цена ошибки|Не підтверджено, висока ціна помилки/.test(fs.readFileSync('i18n/ru.js', 'utf8') + fs.readFileSync('i18n/ua.js', 'utf8'))) errs.push('стара позначка "не подтверждено, высокая цена ошибки" лишилась');
+    const chk = fs.readFileSync('api/check.js', 'utf8');
+    const latent = chk.slice(chk.indexOf('ВИНЯТОК, ЯКИЙ МУСИТЬ БУТИ: HIGH_COST_LATENT_RISK'), chk.indexOf('ПРІОРИТИЗАЦІЯ:'));
+    if (/формулюванням "не підтверджено"|не підтверджено"\s*\(/.test(latent) || !/Загальне "не підтверджено", "стан не підтверджено незалежною діагностикою" НЕ пиши ні в title, ні в note/.test(latent)) errs.push('правило latent-ризику досі просить "не підтверджено"');
+    if (!/title називає вузол, note пояснює, чому він економічно важливий і що саме може коштувати дорого, action каже, що перевірити/.test(latent)) errs.push('правило latent-ризику не описує вузол, ціну помилки і що перевірити');
+    if (!/kind: E\(\['finding', 'latent'\]/.test(fs.readFileSync('api/check-schema.js', 'utf8'))) errs.push('розпізнавання ризиків змінилось');
+    /* підтверджений дефект і конкретна заява продавця описуються прямо */
+    const riskRule = chk.slice(chk.indexOf('"risks": до 5 КЛЮЧОВИХ РИЗИКІВ'), chk.indexOf('\n', chk.indexOf('"risks": до 5 КЛЮЧОВИХ РИЗИКІВ')));
+    if (!/конкретний факт цієї машини \(симптом, помилка системи/.test(riskRule) || !/"Не підтверджено" доречне ЛИШЕ для конкретної заяви продавця чи документа/.test(riskRule)) errs.push('підтверджений дефект чи заява продавця більше не описуються прямо');
+  }
+
   /* словники */
   for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
     const s = fs.readFileSync(d, 'utf8');
-    for (const k of ['Average mileage', 'Average calculated from the vehicle age.', 'From the seller', 'Did this analysis help you decide?', 'CalCar AI left a message', 'Unread messages: {n}', 'Yes', 'Not really', 'What was missing?', 'Send', 'Thanks for the feedback', 'km/mo', 'CalCar conclusion', 'Expensive options', 'What to check', '{n} sec', 'How videos are selected', 'CalCar AI Chat', 'Archive photos were used in the analysis but are not available to view right now.', 'Archive photos are unavailable.', 'Owner #{n}']) {
+    for (const k of ['Average mileage', 'Average calculated from the vehicle age.', 'Seller description', 'Did this analysis help you decide?', 'CalCar AI left a message', 'Unread messages: {n}', 'Yes', 'Not really', 'What was missing?', 'Send', 'Thanks for the feedback', 'km/mo', 'CalCar conclusion', 'Expensive options', 'What to check', '{n} sec', 'How videos are selected', 'CalCar AI Chat', 'Archive photos were used in the analysis but are not available to view right now.', 'Archive photos are unavailable.', 'Owner #{n}']) {
       if (!s.includes("'" + k + "':")) errs.push(d + ': нема ключа "' + k + '"');
     }
   }
