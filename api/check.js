@@ -4030,6 +4030,9 @@ async function runCheck(req, res, job) {
           /* версія і модельний рік для зіставлення з MSRP джерела */
           make: listing.make || (nhtsa && nhtsa.Make) || null, model: listing.model || (nhtsa && nhtsa.Model) || null,
           trim: (nhtsa && (nhtsa.Trim || nhtsa.Series)) || (parsed.vehicle && parsed.vehicle.trim) || null,
+          /* силовий агрегат лише для вибору релевантних цін версій; обладнання з нього не виводиться */
+          engine: (parsed.vehicle && parsed.vehicle.engine) || null, drive: (parsed.vehicle && parsed.vehicle.drive) || (nhtsa && nhtsa.DriveType) || null,
+          title: (parsed.vehicle && parsed.vehicle.title) || null,
           model_year: (nhtsa && parseInt(nhtsa.ModelYear, 10)) || (parsed.vehicle && parsed.vehicle.model_year) || null },
         identity: { make: listing.make || (nhtsa && nhtsa.Make) || null, model: listing.model || (nhtsa && nhtsa.Model) || null, generation: genResolved.generation, trim: (nhtsa && (nhtsa.Trim || nhtsa.Series)) || (parsed.vehicle && parsed.vehicle.trim) || null },
       });

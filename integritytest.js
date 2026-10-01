@@ -115,6 +115,30 @@ const ok = (name, cond, detail) => { checks++; if (!cond) errs.push(name + (deta
     ok('18e. Check описує події після привʼязки номерів', /parsed\.history = annotateOwnerOrdinals\(parsed\.history, listing\.history_facts\);\n[^\n]*\n\s*if \(Array\.isArray\(parsed\.history\)\) parsed\.history = describeOwnerEvents\(parsed\.history, listing\.history_facts, lang\);/.test(src));
   }
 
+  /* ===== 5. разова чистка року старого декодера ===== */
+  {
+    const Y = require('./vehicle-year-cleanup.js');
+    const legacy = (vin, my, year, extra) => ({ vin, model_year: my, year, decoder_version: 'vpic-v1', nhtsa: { Make: 'X', ModelYear: String(my) }, ...(extra || {}) });
+    ok('Y20. чистий декод не чіпається', Y.classifyLegacyYear(legacy('1FADP3J2XJL279655', 2018, 2018), { code: '0' }).action === 'SKIP');
+    const gl = legacy('WDC1668731A298010', 2001, 2013);
+    const glPlan = Y.classifyLegacyYear(gl, { code: '8', text: '8 - No detailed data available currently' });
+    ok('Y21. рік неповного декоду виявлено', glPlan.action === 'NULL' && glPlan.reason === 'unreliable_decode_no_trusted_year');
+    ok('Y22. довірений рік з іншого джерела стає на місце', Y.classifyLegacyYear(gl, { code: '8' }, { WDC1668731A298010: 2013 }).action === 'REPLACE' && Y.classifyLegacyYear(gl, { code: '8' }, { WDC1668731A298010: 2013 }).replacement === 2013);
+    ok('Y23. довіреного року нема: null, без вгадування з року оголошення', glPlan.replacement === null && gl.year === 2013);
+    ok('Y24. GL: 2001 не лишається канонічним, коли є довірений 2013', Y.classifyLegacyYear(gl, { code: '8' }, { WDC1668731A298010: 2013 }).replacement === 2013 && Y.classifyLegacyYear(gl, { code: '8' }).replacement !== 2001);
+    ok('Y25. без масових видалень: інший декодер, рік не з декодера, невідомий статус, підтверджений рік: SKIP',
+      Y.classifyLegacyYear({ ...gl, decoder_version: 'vpic-v2' }, { code: '8' }).action === 'SKIP'
+      && Y.classifyLegacyYear({ ...gl, model_year: 2013 }, { code: '8' }).action === 'SKIP'
+      && Y.classifyLegacyYear(gl, null).action === 'SKIP' && Y.classifyLegacyYear(gl, { code: '8' }, { WDC1668731A298010: 2001 }).action === 'SKIP'
+      && Y.classifyLegacyYear({ ...gl, model_year: null }, { code: '8' }).action === 'SKIP');
+    const n = Y.gatedNhtsa({ Make: 'X', ModelYear: '2001' }, { code: '8', text: 'No detailed data' });
+    ok('Y26. nhtsa: статус декоду і рік як недовірений', n.ModelYear === undefined && n.ModelYearUntrusted === '2001' && n.ErrorCode === '8' && Y.gatedNhtsa({ ModelYear: '2018' }, { code: '0' }).ModelYear === '2018');
+    const src = fs.readFileSync('vehicle-year-cleanup.js', 'utf8');
+    ok('Y27. запис лише з --apply і з умовою на старе значення', /const apply = process\.argv\.includes\('--apply'\);/.test(src) && /if \(!apply\) \{ console\.log\('сухий прогін: нічого не записано'\); return; \}/.test(src)
+      && /vehicles\?vin=eq\.' \+ encodeURIComponent\(p\.row\.vin\) \+ '&model_year=eq\.' \+ p\.row\.model_year \+ '&decoder_version=eq\.' \+ DECODER_LEGACY/.test(src));
+    ok('Y28. без розбору 10-го символу і без винятків для марок', !/charAt\(9\)|\[9\]|substr\(9|WDC|WDD|W1K/.test(src.replace(/Mercedes 2013 ставав 2001/, '')));
+  }
+
   /* ===== межі ===== */
   {
     for (const f of ['api/score-v4.js', 'api/confidence.js']) ok('20. ' + f + ' не читає декодер, власників і стовпчик цін', !/decoderYearTrusted|ModelYearUntrusted|describeOwnerEvents|vc-kpi/.test(fs.readFileSync(f, 'utf8')));

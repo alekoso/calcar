@@ -265,6 +265,81 @@ export function priceTimeCoherence(c, vehicleYear) {
   return { ok: false, reason: years.some(x => x > y + 1) ? 'source_date_mismatch' : 'price_date_unknown' };
 }
 
+/* ---------- Силовий агрегат для вибору MSRP ----------
+   Двигун лише ВИБИРАЄ, які справжні ціни версій стосуються цього авто;
+   коефіцієнтів ціни за двигун немає, і обладнання з двигуна не виводиться. */
+const FUELS = ['petrol', 'diesel', 'hybrid', 'electric'];
+const DRIVES = ['awd', 'rwd', 'fwd'];
+/* лінійки високої продуктивності: окремий світ цін, з V8 звичайної версії не змішуються */
+export const PERFORMANCE_RE = /\bamg\b|\b(?:c|e|s|g|gl|gle|gls|ml|cls|sl|glc|glk|cla|gla)\s?(?:55|63|65)\b|\bm[2-8]\b|\bx[3-7]\s?m\b|\brs\s?\d\b|\bsvr\b|turbo\s*s\b|\bsrt\b|hellcat|trackhawk|\btrx\b|type\s*r\b|\bgt3\b|nismo|shelby/i;
+const numOrNull = (v, lo, hi) => { const n = typeof v === 'number' ? v : parseFloat(v); return isFinite(n) && n >= lo && n <= hi ? n : null; };
+export function cleanPowertrain(pt) {
+  const p = pt && typeof pt === 'object' ? pt : {};
+  return {
+    fuel: FUELS.includes(p.fuel) ? p.fuel : null,
+    displacement_l: numOrNull(p.displacement_l, 0.6, 9),
+    cylinders: (() => { const n = numOrNull(p.cylinders, 2, 16); return n === null ? null : Math.round(n); })(),
+    power_hp: (() => { const n = numOrNull(p.power_hp, 40, 2000); return n === null ? null : Math.round(n); })(),
+    drive: DRIVES.includes(p.drive) ? p.drive : null,
+    performance: p.performance === true,
+  };
+}
+export function normalizeDrive(text) {
+  const t = String(text || '').toLowerCase();
+  if (!t) return null;
+  if (/полн|повн|awd|4wd|4x4|4matic|xdrive|quattro|all[\s-]*wheel|4motion/.test(t)) return 'awd';
+  if (/передн|front|fwd/.test(t)) return 'fwd';
+  if (/задн|rear|rwd/.test(t)) return 'rwd';
+  return null;
+}
+/* ідентичність цього авто зі звіту: текст двигуна ("4,7 л бензин V8,
+   435 л.с."), паливо, привід, версія і назва для лінійки продуктивності */
+export function vehiclePowertrain({ fuel = null, engine = null, displacement_l = null, drive = null, trim = null, title = null } = {}) {
+  const e = String(engine || '');
+  /* перше десяткове число тексту двигуна: "4,7 л", "3.0 TDI", "4.0 V8" */
+  const disp = numOrNull(displacement_l, 0.6, 9) ?? numOrNull((/(?:^|[^\d.,])(\d[.,]\d)(?![\d.,])/.exec(e) || [])[1]?.replace(',', '.'), 0.6, 9);
+  const cylM = /\b[vw](\d{1,2})\b/i.exec(e) || /\b(?:i|l|r)(\d)\b/i.exec(e) || /(\d{1,2})\s*-?\s*(?:цил|cyl)/i.exec(e);
+  const hpM = /(\d{2,4})\s*(?:л\.?\s?с|к\.?\s?с|hp\b|bhp\b|ps\b)/i.exec(e);
+  const kwM = /(\d{2,4})\s*(?:квт|kw\b)/i.exec(e);
+  const fuelText = /дизел|diesel|tdi|cdi|crdi|bluetec|dci|hdi|jtd/i.test(e) ? 'diesel' : /гибрид|гібрид|hybrid/i.test(e) ? 'hybrid' : /электр|електр|electric/i.test(e) ? 'electric' : /бензин|petrol|gasoline/i.test(e) ? 'petrol' : null;
+  return cleanPowertrain({
+    fuel: FUELS.includes(fuel) ? fuel : fuelText,
+    displacement_l: disp,
+    cylinders: cylM ? parseInt(cylM[1], 10) : null,
+    power_hp: hpM ? parseInt(hpM[1], 10) : (kwM ? Math.round(parseInt(kwM[1], 10) * 1.341) : null),
+    drive: normalizeDrive(drive),
+    performance: PERFORMANCE_RE.test(String(trim || '') + ' ' + String(title || '')),
+  });
+}
+/* Порівняння версії-кандидата з цим авто:
+   - equivalent: той самий технічний автомобіль під іншою ринковою назвою:
+     паливо, обʼєм і потужність (до 7%) збігаються, привід не суперечить,
+     лінійка продуктивності та сама;
+   - powertrain: сумісний агрегат (паливо і обʼєм), але не доведено, що це
+     та сама версія;
+   - інакше причина відмови. Сам лише V8 не доводить нічого */
+export function compareTechnical(v, c) {
+  if (!v || !c) return { level: null, reason: 'no_powertrain' };
+  if (!!v.performance !== !!c.performance) return { level: null, reason: 'performance_mismatch' };
+  const known = x => x !== null && x !== undefined;
+  if (!known(v.fuel) && !known(v.displacement_l)) return { level: null, reason: 'no_vehicle_powertrain' };
+  if (known(v.fuel) && known(c.fuel) && v.fuel !== c.fuel) return { level: null, reason: 'wrong_fuel' };
+  if (known(v.displacement_l) && known(c.displacement_l) && Math.abs(v.displacement_l - c.displacement_l) > 0.25) return { level: null, reason: 'wrong_engine' };
+  if (known(v.cylinders) && known(c.cylinders) && v.cylinders !== c.cylinders) return { level: null, reason: 'wrong_engine' };
+  const fuelOk = known(v.fuel) && v.fuel === c.fuel;
+  const dispOk = known(v.displacement_l) && known(c.displacement_l) && Math.abs(v.displacement_l - c.displacement_l) <= 0.15;
+  const cylOk = known(v.cylinders) && v.cylinders === c.cylinders;
+  const powerKnown = known(v.power_hp) && known(c.power_hp);
+  const powerOk = powerKnown && Math.abs(v.power_hp - c.power_hp) / Math.max(v.power_hp, c.power_hp) <= 0.07;
+  const driveConflict = known(v.drive) && known(c.drive) && v.drive !== c.drive;
+  /* еквівалент вимагає ще й близької потужності: однаковий обʼєм буває у
+     різних версій з різною віддачею (і різною ціною) */
+  if (fuelOk && dispOk && powerOk && !driveConflict) return { level: 'equivalent', reason: null };
+  if (fuelOk && (dispOk || (cylOk && !(known(v.displacement_l) && known(c.displacement_l))))) return { level: 'powertrain', reason: powerKnown && !powerOk ? 'different_output' : driveConflict ? 'wrong_drivetrain' : 'weak_equivalence' };
+  return { level: null, reason: 'weak_equivalence' };
+}
+const centralOf = values => { const v = [...new Set(values.map(x => Math.round(x)))].sort((a, b) => a - b), n = v.length; return { values: v, central: n % 2 ? v[(n - 1) / 2] : (v[n / 2 - 1] + v[n / 2]) / 2 }; };
+
 /* Чи та сама версія: назва версії з джерела проти версії цього авто.
    Порівнюються злиті токени без слів про привід і кузов, з назвою моделі і
    без неї: "X 450 AWD" і "X450" збігаються, "Limited Platinum" і
@@ -367,20 +442,67 @@ export function resolveNewPrice({ candidates = [], pc, T, market = null, currenc
     return sourced(strong);
   }
 
-  /* B. MSRP саме цієї версії */
+  /* ---- вибір MSRP: спершу точна версія, далі технічний еквівалент іншого
+     ринку, далі сумісний агрегат, лише потім уся сімʼя модельного року ---- */
+  const vPt = vehicle.powertrain ? cleanPowertrain(vehicle.powertrain) : vehiclePowertrain(vehicle);
+  const ptOf = m => { const p = cleanPowertrain(m.c.powertrain); return { ...p, performance: p.performance || PERFORMANCE_RE.test(String(m.c.version || '')) }; };
+  const describe = m => ({ version: m.c.version || null, amount: m.c.amount, currency: m.c.currency, model_year: m.price_year, powertrain: m.c.powertrain || null, source_url: m.c.source_url || null });
+  const sel = { vehicle_version: vehicle.trim || null, vehicle_powertrain: vPt, all_candidates: msrps.map(describe),
+    exact_version_candidates: [], equivalent_version_candidates: [], powertrain_candidates: [], rejected_versions: [] };
+  const pick = (method, list, market) => {
+    const { values, central } = centralOf(list.map(m => m.usd));
+    const year = list[0].price_year;
+    const loc = localize(central, year);
+    const urls = [...new Set(list.map(m => m.c.source_url).filter(Boolean))];
+    msrpInfo = { exact: null, selection: { ...sel, method, model_year: year, candidate_count: values.length, values, min: values[0], max: values[values.length - 1],
+      selected: Math.round(central), selected_value_localized: loc ? Math.round(loc.value) : null, localization: loc ? loc.regime : null, sources: urls, market: market || 'US',
+      trim_known: !!vehicle.trim, exact_trim_matched: method === 'exact_version' } };
+    return { value: loc ? loc.value : central, c: { source_url: urls[0] || null, amount: Math.round(central), currency: 'USD' }, localization: loc ? loc.regime : null };
+  };
+
+  /* B. MSRP саме цієї версії: переважає будь-яке зіставлення за двигуном */
   const isExact = m => m.c.trim_match === 'exact' || trimMatches(m.c.version, vehicle.trim, vehicle);
   const exact = msrps.filter(isExact).sort((a, b) => confRank(a) - confRank(b));
+  sel.exact_version_candidates = exact.map(describe);
   for (const m of exact) {
     const loc = localize(m.usd, m.price_year);
     const p = { c: m.c, usd: m.usd, price_year: m.price_year, strength: 'weak',
       value: loc ? loc.value : m.usd, basis: loc ? 'localized_msrp' : 'source_msrp', localization: loc ? loc.regime : null };
-    msrpInfo = { exact: { amount: m.c.amount, currency: m.c.currency, version: m.c.version || null, model_year: m.price_year, source_url: m.c.source_url, localization: p.localization }, range: null };
+    msrpInfo = { exact: { amount: m.c.amount, currency: m.c.currency, version: m.c.version || null, model_year: m.price_year, source_url: m.c.source_url, localization: p.localization },
+      selection: { ...sel, method: 'exact_version', model_year: m.price_year, selected: Math.round(m.usd), selected_value_localized: loc ? Math.round(loc.value) : null,
+        localization: p.localization, sources: [m.c.source_url], market: 'US', trim_known: !!vehicle.trim, exact_trim_matched: true } };
     if (plausible(p)) return sourced(p);
     msrpInfo = null;
   }
 
+  /* B2. технічно та сама версія під іншою ринковою назвою */
+  const equivalent = [], powertrain = [];
+  for (const m of msrps) {
+    if (isExact(m)) continue;
+    const r = compareTechnical(vPt, ptOf(m));
+    if (r.level === 'equivalent') { equivalent.push(m); powertrain.push(m); }
+    else if (r.level === 'powertrain') { powertrain.push(m); sel.rejected_versions.push({ version: m.c.version || null, amount: m.c.amount, reason: r.reason }); }
+    else sel.rejected_versions.push({ version: m.c.version || null, amount: m.c.amount, reason: r.reason });
+  }
+  sel.equivalent_version_candidates = equivalent.map(describe);
+  sel.powertrain_candidates = powertrain.map(describe);
+  if (equivalent.length) {
+    const p = pick('equivalent_version', equivalent);
+    if (plausible(p)) return { value: Math.round(p.value), approx: true, basis: 'msrp_equivalent_version', strength: null, fact: null, rejected, msrp: msrpInfo, ...(p.localization ? { localization: p.localization } : {}) };
+  }
+
   /* C. слабка локальна */
   for (const p of locals) if (plausible(p)) return sourced(p);
+
+  /* D1. версія не встановлена, але агрегат сумісний: медіана цих версій
+     (дві: середина). Одна сумісна ціна без доведеної еквівалентності
+     надто слабка: далі вся сімʼя */
+  if (centralOf(powertrain.map(m => m.usd)).values.length >= 2) {
+    const n = centralOf(powertrain.map(m => m.usd)).values.length;
+    const method = n >= 3 ? 'powertrain_median' : 'powertrain_midpoint';
+    const p = pick(method, powertrain);
+    if (plausible(p)) return { value: Math.round(p.value), approx: true, basis: 'msrp_' + method, strength: null, fact: null, rejected, msrp: msrpInfo, ...(p.localization ? { localization: p.localization } : {}) };
+  }
 
   /* D. версія невідома, але є ціни кількох версій того самого модельного
      року з одного джерела: нейтральна центральна MSRP. Три і більше цін:
@@ -390,27 +512,22 @@ export function resolveNewPrice({ candidates = [], pc, T, market = null, currenc
   const bySource = new Map();
   for (const m of msrps) { const k = m.c.source_url || ''; if (!bySource.has(k)) bySource.set(k, []); bySource.get(k).push(m); }
   let family = null;
-  for (const [url, list] of bySource) {
-    const values = [...new Set(list.map(m => Math.round(m.usd)))].sort((a, b) => a - b);
-    if (values.length >= 2 && (!family || values.length > family.values.length)) family = { url, values, year: list[0].price_year };
+  for (const [, list] of bySource) {
+    const n = centralOf(list.map(m => m.usd)).values.length;
+    if (n >= 2 && (!family || n > family.n)) family = { list, n };
   }
   if (family) {
-    const v = family.values, n = v.length;
-    const central = n % 2 ? v[(n - 1) / 2] : (v[n / 2 - 1] + v[n / 2]) / 2;
-    const method = n >= 3 ? 'msrp_median' : 'msrp_midpoint';
-    const loc = localize(central, family.year);
-    const p = { value: loc ? loc.value : central, c: { source_url: family.url, amount: Math.round(central), currency: 'USD' } };
-    msrpInfo = { exact: null, selection: { method, model_year: family.year, candidate_count: n, values: v, min: v[0], max: v[n - 1], selected: Math.round(central),
-      selected_anchor: Math.round(p.value), localization: loc ? loc.regime : null, sources: [family.url], trim_known: !!vehicle.trim, exact_trim_matched: false } };
-    if (plausible(p)) return { value: Math.round(p.value), approx: true, basis: method, strength: null, fact: null, rejected, msrp: msrpInfo, ...(loc ? { localization: loc.regime } : {}) };
+    const method = family.n >= 3 ? 'msrp_median' : 'msrp_midpoint';
+    const p = pick(method, family.list);
+    if (plausible(p)) return { value: Math.round(p.value), approx: true, basis: method, strength: null, fact: null, rejected, msrp: msrpInfo, ...(p.localization ? { localization: p.localization } : {}) };
   }
   /* лише стартова ціна моделі року: нижня межа правдоподібності, не сімʼя */
   if (!family) {
     const base = msrps.filter(m => m.c.trim_match === 'base').sort((a, b) => a.usd - b.usd)[0];
     if (base) {
       const lo = localize(base.usd, base.price_year), loV = lo ? lo.value : base.usd;
-      msrpInfo = { exact: null, selection: { method: 'base_floor', model_year: base.price_year, candidate_count: 1, values: [Math.round(base.usd)], min: Math.round(base.usd), max: null,
-        selected: null, selected_anchor: Math.round(loV), localization: lo ? lo.regime : null, sources: [base.c.source_url], trim_known: !!vehicle.trim, exact_trim_matched: false, applied: reverse < loV ? 'floor' : null } };
+      msrpInfo = { exact: null, selection: { ...sel, method: 'base_floor', model_year: base.price_year, candidate_count: 1, values: [Math.round(base.usd)], min: Math.round(base.usd), max: null,
+        selected: null, selected_value_localized: Math.round(loV), localization: lo ? lo.regime : null, sources: [base.c.source_url], market: 'US', trim_known: !!vehicle.trim, exact_trim_matched: false, applied: reverse < loV ? 'floor' : null } };
       if (reverse < loV) return { value: Math.round(loV), approx: true, basis: 'msrp_base_floor', strength: null, fact: null, rejected, msrp: msrpInfo };
       return fallback(null);
     }
@@ -435,6 +552,10 @@ export function resolveNewPrice({ candidates = [], pc, T, market = null, currenc
    стільки" і НЕ йде ні в Оцінку CalCar, ні у впевненість, ні в MI. */
 export const RETENTION_THRESHOLDS = { heavy: 0.80, strong: 1.20 };
 export const RETENTION_STATES = ['heavy_depreciation', 'normal_depreciation', 'strong_retention', 'unknown'];
+/* методи ціни нового авто, з яких висновок про сохранність був би
+   циклічним (зворотна оцінка) або не про цю версію (стартова ціна моделі) */
+export const RETENTION_UNKNOWN_BASIS = new Set(['reverse_estimate', 'msrp_base_floor']);
+export function retentionBasisMeaningful(basis) { return !!basis && !RETENTION_UNKNOWN_BASIS.has(basis); }
 
 /* representative: середня площадки, коли вона є і в тій самій валюті,
    інакше ціна оголошення. Це наближення поточної ціни МОДЕЛІ, а не цього
@@ -447,7 +568,7 @@ export function retentionContext({ newPrice, basis, representative, representati
   if (p0 === null || pc === null || t === null || t <= 0 || p0 <= 0 || pc <= 0) return { ...out, reason: 'insufficient_inputs' };
   const observed = pc / p0, expected = retentionFactor(t), index = observed / expected;
   const metrics = { observed_retention: Math.round(observed * 1000) / 1000, expected_retention: Math.round(expected * 1000) / 1000, retention_index: Math.round(index * 1000) / 1000 };
-  if (basis === 'reverse_estimate') return { ...out, ...metrics, reason: 'new_price_from_reverse_estimate' };
+  if (!retentionBasisMeaningful(basis)) return { ...out, ...metrics, reason: basis === 'msrp_base_floor' ? 'new_price_from_base_floor' : 'new_price_from_reverse_estimate' };
   const state = index < RETENTION_THRESHOLDS.heavy ? 'heavy_depreciation' : index > RETENTION_THRESHOLDS.strong ? 'strong_retention' : 'normal_depreciation';
   return { ...out, ...metrics, state };
 }
@@ -589,6 +710,7 @@ export function validateCandidates(raw, results, { brand = null, year = null, no
       amount, currency: c.currency, market: c.market, price_kind: c.price_kind,
       trim_match: trim, model_year: my,
       version: c.version ? noDash(c.version).slice(0, 60) : null,
+      powertrain: cleanPowertrain(c.powertrain),
       source_url: r.url, source_host: cls.host || hostOf(r.url), source_excerpt: String(r.snippet || r.title || '').slice(0, 240),
       confidence: cls.source_type === 'official' ? 'high' : 'medium',
       /* до якого часу належить ціна: дата сторінки від пошуку і роки в
@@ -681,6 +803,11 @@ export function valueResponseFormat() {
       result_ref: S('string'), amount: S('number'), currency: S('string', { enum: CUR }), market: S('string', { enum: MKT }),
       price_kind: S('string', { enum: KIND }), trim_match: S('string', { enum: TRIM }), model_year: S(['integer', 'null']),
       version: S(['string', 'null']),
+      powertrain: OBJ({
+        fuel: { type: ['string', 'null'], enum: ['petrol', 'diesel', 'hybrid', 'electric', null] },
+        displacement_l: S(['number', 'null']), cylinders: S(['integer', 'null']), power_hp: S(['integer', 'null']),
+        drive: { type: ['string', 'null'], enum: ['awd', 'rwd', 'fwd', null] }, performance: S('boolean'),
+      }),
     }) }),
   }) } };
 }
@@ -705,6 +832,7 @@ Three outputs.
    Take a price only if the number is literally written in that result's title or snippet. result_ref is the result id (S1, S2...). amount is the number as written, without conversion.
    price_kind "local_list": an official or dealer list price of a new car in Ukraine. price_kind "source_msrp": manufacturer list price in another market (US MSRP and so on). market: UA, US, EU or OTHER.
    When a result lists prices of several versions of the same model year, return EVERY version price as a separate entry; version is the version name exactly as written next to that price (null when there is none).
+   powertrain: the powertrain of THAT version as stated in the result or as documented for that exact version and model year (fuel, engine displacement in litres, cylinders, power in hp, drive); null for anything you are not sure about. performance: true for high-performance lines (AMG, M, RS, SVR, Turbo S and similar), otherwise false. This describes the version only and never changes the price.
    trim_match "exact" only when the result clearly names the same version as VEHICLE; "base" for a starting or base price ("from", "starting at"); otherwise "unknown".
    model_year: the model year the price refers to, or null. Skip used-car prices, prices of other generations, monthly payments and price ranges without a concrete number. No suitable price: empty array. Never supply a price from memory.
 

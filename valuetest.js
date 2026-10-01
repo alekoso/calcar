@@ -313,7 +313,7 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
       && Math.abs(med.points.find(p => p.today).value - 20900) < 1);
     const exact = gl('V450', v.candidates);
     ok('13f. A: відома версія: точна MSRP версії, а не медіана сімʼї', exact.new_price.basis === 'source_msrp' && exact.new_price.value === 64550
-      && exact.new_price.msrp.exact.version === 'V450 AWD' && !exact.new_price.msrp.selection && exact.new_price.fact.amount === 64550);
+      && exact.new_price.msrp.exact.version === 'V450 AWD' && exact.new_price.msrp.selection.method === 'exact_version' && exact.new_price.fact.amount === 64550);
     const unmatched = gl('V500', v.candidates);
     ok('13f1. версію знаємо, але її ціни в джерелі нема: медіана, і це видно в походженні', unmatched.new_price.basis === 'msrp_median' && unmatched.new_price.msrp.selection.trim_known === true && unmatched.new_price.msrp.selection.exact_trim_matched === false);
     const single = gl('V450', [v.candidates[1]]);
@@ -362,6 +362,76 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
     ok('13o. у модулі немає цін моделей і марок', !/mercedes|gl-class|gl450|63,?000|64,?550/i.test(fs.readFileSync('api/value.js', 'utf8')));
     ok('13q. пояснення джерела ціни нового авто для кожного методу', ['reverse_estimate', 'localized_msrp', 'local_list', 'source_msrp', 'msrp_range', 'msrp_median', 'msrp_midpoint', 'msrp_base_floor'].every(k => new RegExp('\\b' + k + ': t\\(').test(fs.readFileSync('result-check.html', 'utf8'))));
     ok('13p. правило витягу: кожна версія окремим записом з назвою', /return EVERY version price as a separate entry/.test(V.VALUE_RULES) && V.valueResponseFormat().json_schema.schema.properties.new_price_candidates.items.required.includes('version'));
+  }
+
+  /* ===== New price v2.1: спершу версія, далі технічний еквівалент, агрегат, сімʼя ===== */
+  {
+    const PT = (fuel, d, cyl, hp, drive, perf = false) => ({ fuel, displacement_l: d, cylinders: cyl, power_hp: hp, drive, performance: perf });
+    const mk = (version, amount, pt, url = 'https://example.com/v') => ({ amount, currency: 'USD', market: 'US', price_kind: 'source_msrp', trim_match: 'unknown', model_year: 2013, version, powertrain: pt,
+      source_url: url, source_host: 'example.com', source_excerpt: 'x', confidence: 'medium', source_date: null, source_year: null, text_years: [2013], price_ladder: false });
+    /* сімʼя модельного року ринку США: дизель, два бензинові V8 4.7 різної віддачі, AMG */
+    const fam = [mk('X350 BlueTEC 4MATIC', 63000, PT('diesel', 3.0, 6, 240, 'awd')), mk('X450 4MATIC', 64550, PT('petrol', 4.7, 8, 362, 'awd')),
+      mk('X550 4MATIC', 88600, PT('petrol', 4.7, 8, 429, 'awd')), mk('X63 AMG', 118160, PT('petrol', 5.5, 8, 550, 'awd', true))];
+    const veh = (over = {}) => ({ fuel: 'petrol', engine: '4,7 л бензин V8, 435 л.с.', drive: 'полный', trim: 'X 500 4Matic', title: 'Brand X-Class 2013', make: 'Brand', model: 'X-Class', model_year: null, ...over });
+    const run = (cands, over) => V.buildValueCurve({ price: 17999, currency: 'USD', price_context: { average_price: 27000, currency: 'USD', source_name: 'AUTO.RIA' }, country: 'UA', year: 2013, nowMs: NOW, candidates: cands, vehicle: veh(over) });
+    /* 1-3: точна версія і її написання */
+    const ex = run([...fam, mk('X500 4MATIC', 92000, PT('petrol', 4.7, 8, 435, 'awd'))]);
+    ok('15a. 1, 2: точна версія X500 перемагає еквівалент, агрегат і сімʼю', ex.new_price.basis === 'source_msrp' && ex.new_price.value === 92000 && ex.new_price.msrp.selection.method === 'exact_version'
+      && ex.new_price.msrp.selection.exact_version_candidates.length === 1);
+    ok('15b. 3: X500 / X 500 / X500 4MATIC / X 500 4Matic одна версія', ['X500', 'X 500', 'X500 4MATIC', 'X 500 4Matic'].every(v => V.trimMatches(v, 'X 500 4Matic', { model: 'X-Class' })) && !V.trimMatches('X550 4MATIC', 'X 500 4Matic', { model: 'X-Class' }));
+    /* 4: точної нема, є технічний еквівалент іншого ринку */
+    const eq = run(fam);
+    ok('15c. 4: точної версії нема: X550 (4.7 V8 бензин 429 к.с., повний) еквівалент X500 435 к.с.', eq.new_price.basis === 'msrp_equivalent_version' && eq.new_price.value === 88600
+      && eq.new_price.msrp.selection.method === 'equivalent_version' && eq.new_price.msrp.selection.equivalent_version_candidates.map(c => c.version).join() === 'X550 4MATIC', JSON.stringify(eq.new_price.msrp && eq.new_price.msrp.selection.rejected_versions));
+    const sel = eq.new_price.msrp.selection;
+    ok('15d. провенанс: версія і агрегат авто, усі кандидати, причини відмов', sel.vehicle_version === 'X 500 4Matic' && sel.vehicle_powertrain.displacement_l === 4.7 && sel.vehicle_powertrain.power_hp === 435
+      && sel.all_candidates.length === 4 && sel.rejected_versions.some(r => r.version === 'X350 BlueTEC 4MATIC' && r.reason === 'wrong_fuel') && sel.rejected_versions.some(r => r.version === 'X63 AMG' && r.reason === 'performance_mismatch')
+      && sel.rejected_versions.some(r => r.version === 'X450 4MATIC' && r.reason === 'different_output') && sel.selected === 88600 && sel.market === 'US');
+    /* 5: сам лише V8 нічого не доводить */
+    const v8only = V.compareTechnical(V.vehiclePowertrain({ engine: 'V8' }), V.cleanPowertrain(PT('petrol', 4.7, 8, 429, 'awd')));
+    ok('15e. 5: лише "V8" не робить еквівалентом', v8only.level !== 'equivalent');
+    const noPower = run(fam, { engine: '4,7 л бензин V8' });
+    ok('15f. 5: без потужності однаковий V8 4.7 це лише сумісний агрегат, не еквівалент', noPower.new_price.basis === 'msrp_powertrain_midpoint' && noPower.new_price.value === 76575
+      && noPower.new_price.msrp.selection.equivalent_version_candidates.length === 0 && noPower.new_price.msrp.selection.powertrain_candidates.length === 2);
+    /* 6, 7: лінійка продуктивності */
+    ok('15g. 6: звичайний V8 не бере AMG', !eq.new_price.msrp.selection.powertrain_candidates.some(c => /AMG/.test(c.version)));
+    const amg = run(fam, { engine: '5,5 л бензин V8, 557 л.с.', trim: 'X 63 AMG', title: 'Brand X 63 AMG 2013' });
+    ok('15h. 7: справжній AMG бере AMG-ціну (тут навіть точною назвою)', amg.new_price.value === 118160 && ['source_msrp', 'msrp_equivalent_version'].includes(amg.new_price.basis));
+    const amgEq = run(fam, { engine: '5,5 л бензин V8, 557 л.с.', trim: 'Performance 63', title: 'Brand X AMG 2013' });
+    ok('15h1. 7: AMG під іншою назвою: технічний еквівалент лише серед AMG', amgEq.new_price.basis === 'msrp_equivalent_version' && amgEq.new_price.value === 118160);
+    /* 8, 9: агрегат без еквівалента */
+    const three = [mk('A 4.7', 60000, PT('petrol', 4.7, 8, 300, 'awd')), mk('B 4.7', 70000, PT('petrol', 4.7, 8, 340, 'awd')), mk('C 4.7', 100000, PT('petrol', 4.7, 8, 380, 'awd')), mk('D diesel', 50000, PT('diesel', 3.0, 6, 240, 'awd'))];
+    const pt3 = run(three);
+    ok('15i. 8: три сумісні агрегати: медіана саме їх', pt3.new_price.basis === 'msrp_powertrain_median' && pt3.new_price.value === 70000 && pt3.new_price.msrp.selection.powertrain_candidates.length === 3);
+    const pt2 = run(three.slice(1));
+    ok('15j. 9: два сумісні: середина', pt2.new_price.basis === 'msrp_powertrain_midpoint' && pt2.new_price.value === 85000);
+    /* 10: одна слабка сумісність: уся сімʼя */
+    const weakOne = run([mk('A 4.7', 60000, PT('petrol', 4.7, 8, 300, 'awd')), mk('D diesel', 50000, PT('diesel', 3.0, 6, 240, 'awd')), mk('E diesel', 90000, PT('diesel', 3.0, 6, 300, 'awd'))]);
+    ok('15k. 10: одна слабка сумісна ціна: медіана всієї сімʼї', weakOne.new_price.basis === 'msrp_median' && weakOne.new_price.value === 60000);
+    /* 11: без даних про агрегат: як було */
+    const noMeta = run(fam.map(c => ({ ...c, powertrain: null })), { engine: null, fuel: null, drive: null });
+    ok('15l. 11: без метаданих агрегату: медіана сімʼї як у 1e68e3d', noMeta.new_price.basis === 'msrp_median' && noMeta.new_price.value === 76575);
+    /* 12: без MSRP */
+    const none = run([]);
+    ok('15m. 12: без MSRP: зворотна оцінка', none.new_price.basis === 'reverse_estimate');
+    /* обладнання і коефіцієнти */
+    const src = fs.readFileSync('api/value.js', 'utf8');
+    ok('15n. двигун не виводить обладнання і не множить ціну', !/equipment|burmester|massage|panoram/i.test(src.slice(src.indexOf('/* ---------- Силовий агрегат для вибору MSRP'), src.indexOf('/* Чи та сама версія')))
+      && !/\* ?1\.\d|price\s*\*|premium_factor|coefficient/i.test(src.slice(src.indexOf('export function compareTechnical'), src.indexOf('const centralOf'))));
+    ok('15o. витяг: агрегат версії в тому самому виклику', /powertrain: the powertrain of THAT version/.test(V.VALUE_RULES) && V.valueResponseFormat().json_schema.schema.properties.new_price_candidates.items.required.includes('powertrain'));
+    const v = V.validateCandidates([{ result_ref: 'S1', amount: 88600, currency: 'USD', market: 'US', price_kind: 'source_msrp', trim_match: 'unknown', model_year: 2013, version: 'X550', powertrain: { fuel: 'petrol', displacement_l: 4.7, cylinders: 8, power_hp: 429, drive: 'awd', performance: false } }],
+      [{ ref: 'S1', url: 'https://e.x/p', host: 'e.x', title: '2013 X550 MSRP', snippet: '$88,600' }], { year: 2013 });
+    ok('15p. кандидат несе чистий агрегат', v.candidates[0].powertrain.power_hp === 429 && v.candidates[0].powertrain.performance === false && JSON.stringify(V.cleanPowertrain({ fuel: 'coal', cylinders: 99, displacement_l: 'x' })) === JSON.stringify({ fuel: null, displacement_l: null, cylinders: null, power_hp: null, drive: null, performance: false }));
+    ok('15q. розбір двигуна звіту', JSON.stringify(V.vehiclePowertrain({ fuel: 'petrol', engine: '4,7 л бензин V8, 435 л.с.', drive: 'полный', trim: 'GL 500 4Matic' })) === JSON.stringify(PT('petrol', 4.7, 8, 435, 'awd'))
+      && V.vehiclePowertrain({ engine: '2,0 л дизель, 140 кВт' }).power_hp === 188 && V.vehiclePowertrain({ engine: '3.0 TDI 249 к.с.' }).fuel === 'diesel' && V.vehiclePowertrain({ trim: 'GL 63 AMG' }).performance === true && V.vehiclePowertrain({ trim: 'M Sport' }).performance === false);
+    /* 19: медіана нижча за поточну ціну відкидається */
+    const low = V.buildValueCurve({ price: 130000, currency: 'USD', country: 'UA', year: 2013, nowMs: NOW, candidates: fam, vehicle: veh() });
+    ok('15r. 19: еквівалент нижчий за поточну ціну: не якір, зворотна оцінка, сохранність невідома', low.new_price.basis === 'reverse_estimate' && low.new_price.rejected.some(r => r.reason === 'incompatible_with_current_value') && low.retention.state === 'unknown');
+    /* 13-18: сохранність за методом */
+    const r = basis => V.retentionContext({ newPrice: 100000, basis, representative: 24000, T: 12.25 }).state;
+    ok('15s. 13-16: точна, еквівалент, агрегат, сімʼя: сохранність рахується', ['source_msrp', 'localized_msrp', 'msrp_equivalent_version', 'msrp_powertrain_median', 'msrp_powertrain_midpoint', 'msrp_median', 'msrp_midpoint', 'local_list'].every(b => r(b) === 'heavy_depreciation'));
+    ok('15t. 17, 18: стартова ціна і зворотна оцінка: невідомо', r('msrp_base_floor') === 'unknown' && r('reverse_estimate') === 'unknown' && V.retentionBasisMeaningful('msrp_base_floor') === false && V.RETENTION_UNKNOWN_BASIS.size === 2);
+    ok('15u. пояснення під графіком для нових методів', ['msrp_equivalent_version', 'msrp_powertrain_median', 'msrp_powertrain_midpoint'].every(k => new RegExp('\\b' + k + ': t\\(').test(fs.readFileSync('result-check.html', 'utf8'))));
   }
 
   /* ===== 5. кандидати зі сниппетів ===== */
@@ -669,7 +739,7 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
     /* словники */
     const dicts = { CALCAR_DICTS: {} };
     for (const f of ['i18n/ru.js', 'i18n/ua.js']) vm.runInNewContext(fs.readFileSync(f, 'utf8'), { window: dicts });
-    const keys = ['Market value', 'Liquidity', 'Why this car costs what it does', 'Easy to resell', 'Average resale', 'Hard to resell', 'Not enough data', 'Ukraine', 'When new', 'Today', '{name} average', 'Marketplace average', 'Estimated when new', 'Forecast in 5 years', 'Lost much of its value', 'Typical depreciation', 'Holds its value well', 'The new-car price is the US list price of this version.', 'The new-car price is estimated from the current price and age, within the list prices of this model year.', 'The new-car price is estimated from the US list prices of this model year.',
+    const keys = ['Market value', 'Liquidity', 'Why this car costs what it does', 'Easy to resell', 'Average resale', 'Hard to resell', 'Not enough data', 'Ukraine', 'When new', 'Today', '{name} average', 'Marketplace average', 'Estimated when new', 'Forecast in 5 years', 'Lost much of its value', 'Typical depreciation', 'Holds its value well', 'The new-car price is the US list price of this version.', 'The new-car price is estimated from the current price and age, within the list prices of this model year.', 'The new-car price is estimated from the US list prices of this model year.', 'The new-car price is the US list price of the technically equivalent version.', 'The new-car price is estimated from US list prices of versions with this powertrain.',
       'Forecast', 'This listing', '{pct} vs average', 'Value over time', 'The new-car price is estimated from the current price and age.', 'The new-car price is the US list price plus import costs to Ukraine.',
       'The new-car price is the list price in Ukraine.', 'The forecast is a model estimate, not a guarantee.'];
     for (const lang of ['ru', 'ua']) {
