@@ -984,4 +984,7 @@ window.CALCAR_DICTS.ua = {
   'The new-car price is estimated from the US list prices of this model year.': 'Ціну нового авто оцінено за прайс-цінами версій цього модельного року у США.',
   'The new-car price is the US list price of the technically equivalent version.': 'Ціна нового авто: прайс-ціна у США технічно рівнозначної версії.',
   'The new-car price is estimated from US list prices of versions with this powertrain.': 'Ціну нового авто оцінено за прайс-цінами у США версій з таким самим агрегатом.',
+  'Estimated today': 'Оцінка сьогодні',
+  'Listing price': 'Ціна оголошення',
+  'Vehicle identification': 'Ідентифікація авто',
 };

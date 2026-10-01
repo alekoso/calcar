@@ -26,7 +26,9 @@ const src = ['coverageRail', 'renderScoreBlock'].map(grab).join('\n');
 
 function stub(id, extra = {}) {
   const attrs = {}, listeners = {};
-  return Object.assign({ id, innerHTML: '', hidden: true, style: {}, dataset: {}, attrs, listeners, offsetWidth: 300, offsetHeight: 120,
+  const classes = new Set();
+  return Object.assign({ id, innerHTML: '', hidden: true, style: {}, dataset: {}, attrs, listeners, classes,
+    classList: { toggle(c, on) { if (on) classes.add(c); else classes.delete(c); }, contains: c => classes.has(c) }, offsetWidth: 300, offsetHeight: 120,
     setAttribute(k, v) { attrs[k] = String(v); }, getAttribute(k) { return attrs[k]; },
     addEventListener(ev, fn) { (listeners[ev] = listeners[ev] || []).push(fn); },
     fire(ev, e = {}) { for (const fn of listeners[ev] || []) fn(Object.assign({ stopPropagation() { this.stopped = true; }, preventDefault() {}, target: { closest: () => null } }, e)); },
@@ -94,7 +96,7 @@ for (const [final, cov] of [[9.0, 91], [5.1, 74], [3.2, 50]]) {
   const iConf = pt.indexOf('Confidence in the score'), iCov = pt.indexOf('Check coverage');
   ok(iConf > 0 && iCov > iConf, 'у панелі впевненість в оцінці має йти перед повнотою перевірки');
   ok(pt.slice(iConf, iCov).includes(conf(cov).text_key), 'у панелі нема тексту впевненості');
-  ok(['History', 'Photos and current condition', 'Mileage', 'Car data'].every(l => pt.slice(iCov).includes(l)), 'повнота перевірки без чотирьох доменів');
+  ok(['History', 'Photos and current condition', 'Mileage', 'Vehicle identification'].every(l => pt.slice(iCov).includes(l)), 'повнота перевірки без чотирьох доменів');
   ok(!pt.includes('Data coverage'), 'стара назва розділу доменів');
   ok(!/probab|ймовірн|вероятн/i.test(pt + TIPS_SRC), 'формулювання про ймовірність правильності');
 }
@@ -142,6 +144,7 @@ for (const [final, cov] of [[9.0, 91], [5.1, 74], [3.2, 50]]) {
   iScore.fire('click'); r.els.scoreToggle.fire('click', { detail: 0 });
   ok(tip.hidden && !pop.hidden, 'відкриття панелі не закрило підказку');
   /* дотик: повторний тап по шеврону закриває, тап поза ним закриває */
+  ok(!pop.classList.contains('hover-open'), 'дотик: панель позначена як відкрита наведенням');
   r.els.scoreToggle.fire('click', { detail: 1 });
   ok(pop.hidden && r.els.scoreToggle.attrs['aria-expanded'] === 'false', 'повторний тап по шеврону не закрив панель');
   r.els.scoreToggle.fire('click', { detail: 1 }); r.doc.fire('click', { target: {} });
@@ -155,6 +158,11 @@ for (const [final, cov] of [[9.0, 91], [5.1, 74], [3.2, 50]]) {
   ok(pop.hidden, 'наведення чи клік по картці відкрили панель');
   tg.fire('mouseenter');
   ok(!pop.hidden && tg.attrs['aria-expanded'] === 'true', 'наведення на шеврон не відкрило панель');
+  /* відкрита наведенням панель не перехоплює курсор: повторні mouseenter не закривають її, mouseleave з панелі не приходить */
+  ok(pop.classList.contains('hover-open') && /\.sc-pop\.hover-open\{pointer-events:none\}/.test(page), 'панель, відкрита наведенням, перехоплює курсор (мерехтіння)');
+  tg.fire('mouseenter'); tg.fire('mouseenter');
+  ok(!pop.hidden, 'повторне наведення закрило панель');
+  ok(!(pop.listeners.mouseenter || []).length && !(pop.listeners.mouseleave || []).length, 'панель має власні обробники наведення');
   tg.fire('click', { detail: 1 });
   ok(!pop.hidden, 'клік мишею по вже відкритому наведенням шеврону закрив панель');
   tg.fire('mouseleave');
@@ -162,6 +170,7 @@ for (const [final, cov] of [[9.0, 91], [5.1, 74], [3.2, 50]]) {
   /* клавіатура: Enter/Space дають click з detail 0 і перемикають */
   tg.fire('click', { detail: 0 });
   ok(!pop.hidden, 'Enter/Space не відкрили панель');
+  ok(!pop.classList.contains('hover-open'), 'панель, відкрита з клавіатури, не приймає курсор');
   tg.fire('click', { detail: 0 });
   ok(pop.hidden, 'Enter/Space не закрили панель');
   /* фокус з клавіатури показує панель, втрата фокусу закриває */
@@ -226,7 +235,7 @@ for (const [final, cov] of [[9.0, 91], [5.1, 74], [3.2, 50]]) {
 /* 11. словники */
 {
   const keys = ['CalCar Score', 'Confidence in the score', 'Check coverage', 'Sufficient', 'Limited data', 'Well covered', 'Data is limited', 'Partially checked', 'Enough data', 'Studied in detail',
-    'Photos and current condition', 'Car data', 'Not applicable', 'About CalCar Score', 'About confidence in the score', 'Show score details',
+    'Photos and current condition', 'Vehicle identification', 'Not applicable', 'About CalCar Score', 'About confidence in the score', 'Show score details',
     'An assessment of this specific car based on confirmed data about its history, condition, mileage and other available facts.',
     ...[...TIPS_SRC.matchAll(/'([^']{20,})'/g)].map(m => m[1])];
   ok(keys.length >= 20, 'тексти підказок не знайдені для перевірки словників');

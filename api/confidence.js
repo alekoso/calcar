@@ -7,8 +7,9 @@
    searched_no_result, unavailable, blocked, not_applicable) і бали;
    not_applicable виключається зі знаменника входу, домен з усіма входами
    not_applicable виключається з загального знаменника, решта ваг
-   перенормовується. Три жорсткі обмеження: <6 фото -> не вище 69, історію
-   фактично не вдалося перевірити -> не вище 69, VIN відсутній або надійно
+   перенормовується. Жорсткі обмеження: <6 фото -> не вище 69, історію
+   фактично не вдалося перевірити -> не вище 69, слабка історія (домен
+   нижче 50) -> стеля 35 + 0.6 * бал історії, VIN відсутній або надійно
    інший -> не вище 39.
 
    Рахується ОДИН раз у момент Check і зберігається знімком у звіті; UI
@@ -16,13 +17,22 @@
    історичне значення. Модуль чистий: без мережі і без моделі. */
 
 export const CONFIDENCE_CONFIG_V1 = {
-  CONFIG_TAG: 'coverage-v1-2026-09-25',
+  CONFIG_TAG: 'coverage-v1-2026-10-01',
   DOMAIN_WEIGHTS: { history: 35, photos: 30, mileage: 20, identity: 15 },
-  HISTORY: { auction: 8, historical_photos: 7, registry: 7, previous_listings: 5, span: 8, search_no_result_share: 0.5 },
+  HISTORY: { auction: 8, historical_photos: 7, registry: 7, previous_listings: 5, span: 8, search_no_result_share: 0.5,
+    /* охоплення: записи молодші за recent_days це поточний продаж, не історія;
+       запис у кожні density_years_per_record роки життя авто дає повну щільність */
+    recent_days: 120, density_years_per_record: 2 },
   PHOTOS: { count: 10, count_target: 12, zones: 14, zones_target: 6, interior: 4, interior_min_zones: 2, dashboard: 2 },
   MILEAGE: { age: 3, odometer: 5, points: 7, points_scale: [0, 2, 5, 7], dashboard: 3, families: 2, families_min: 2 },
   IDENTITY: { vin: 6, vin_undecoded: 4, consistency: 4, consistency_partial: 2, config: 3, config_partial: 1.5, listing: 2 },
-  CAPS: { few_photos: { below: 6, max: 69 }, history_blocked: { max: 69 }, vin: { max: 39 } },
+  CAPS: { few_photos: { below: 6, max: 69 }, history_blocked: { max: 69 }, vin: { max: 39 },
+    /* історія це критичний вхід: неповний домен історії (нижче below) не
+       перекривається добрими фото, ідентифікацією і пробігом. Стеля росте
+       разом з історією: base + slope * бал історії. Звідси: історія нижче
+       ~58 лишає звіт під рискою "достатньо", нижче ~83 під "вивчено
+       детально" */
+    weak_history: { below: 85, base: 35, slope: 0.6 } },
   TEXT_RANGES: [[85, 'Studied in detail'], [70, 'Enough data'], [40, 'Partially checked'], [0, 'Data is limited']],
   SUFFICIENT_TICK: 70,
 };
@@ -67,7 +77,8 @@ export function buildConfidenceInput(ctx = {}) {
   const registryApplicable = listing.country === 'UA';
   let registryState = 'not_applicable';
   if (registryApplicable) {
-    if (hf.registry_present === true) registryState = 'verified';
+    /* структуровані записи реєстру про власників це теж відповідь реєстру */
+    if (hf.registry_present === true || (Array.isArray(hf.owner_events) && hf.owner_events.length > 0)) registryState = 'verified';
     else if (hf.registry_answered_empty === true) registryState = 'checked_absent';
     else registryState = 'unavailable';
   }
@@ -164,15 +175,22 @@ function historyDomain(h, cfg) {
     : inp('registry', r, r === 'verified' || r === 'checked_absent' ? H.registry : 0, H.registry));
   const p = h.previous_listings;
   out.push(inp('previous_listings', p, p === 'verified' || p === 'checked_absent' ? H.previous_listings : 0, H.previous_listings));
-  /* охоплення історії: від найранішого надійного датованого запису до дня
-     Check проти віку авто */
+  /* охоплення історії: яку частину життя авто покривають надійні датовані
+     записи. Проміжок від найранішого запису до дня Check проти віку авто
+     (span), помножений на щільність: у скількох різних роках життя є
+     ІСТОРИЧНИЙ запис. Одна давня точка пробігу не означає, що історія
+     відома; записи останніх місяців це поточний продаж, а не історія */
   const now = Date.parse(h.now || '') || Date.now();
-  const earliest = (h.dated_records || []).map(d => dayOf(d.date)).filter(t => t !== null && t <= now).sort((x, y) => x - y)[0];
+  const times = (h.dated_records || []).map(d => dayOf(d.date)).filter(t => t !== null && t <= now).sort((x, y) => x - y);
+  const earliest = times[0];
   const ageDays = h.age_months !== null && h.age_months !== undefined ? h.age_months * 30.44 : null;
   if (earliest === undefined || !ageDays) out.push(inp('history_span', 'unavailable', 0, H.span, { ratio: 0 }));
   else {
-    const ratio = clamp01(((now - earliest) / DAY) / ageDays);
-    out.push(inp('history_span', 'verified', H.span * ratio, H.span, { ratio: Math.round(ratio * 100) / 100, earliest: new Date(earliest).toISOString().slice(0, 10) }));
+    const span = clamp01(((now - earliest) / DAY) / ageDays);
+    const years = new Set(times.filter(t => now - t > H.recent_days * DAY).map(t => new Date(t).getUTCFullYear()));
+    const density = clamp01(years.size / Math.max(1, (ageDays / 365.25) / H.density_years_per_record));
+    const ratio = span * density;
+    out.push(inp('history_span', 'verified', H.span * ratio, H.span, { ratio: Math.round(ratio * 100) / 100, span: Math.round(span * 100) / 100, years_with_records: years.size, earliest: new Date(earliest).toISOString().slice(0, 10) }));
   }
   return out;
 }
@@ -262,6 +280,11 @@ export function computeConfidenceV1(input, cfg = CONFIDENCE_CONFIG_V1) {
   const registryIn = hi.find(i => i.key === 'registry');
   if (auctionIn && (auctionIn.state === 'blocked' || auctionIn.state === 'unavailable')
     && !(registryIn && (registryIn.state === 'verified' || registryIn.state === 'checked_absent'))) cap('history_checks_blocked', cfg.CAPS.history_blocked.max);
+  /* неповна історія: стеля залежить від балу історії */
+  const hd = domains.history;
+  if (hd && hd.status !== 'not_applicable' && typeof hd.score_internal === 'number' && hd.score_internal < cfg.CAPS.weak_history.below) {
+    cap('weak_history', Math.round(cfg.CAPS.weak_history.base + cfg.CAPS.weak_history.slope * hd.score_internal));
+  }
   /* VIN відсутній або надійно інший. Невдалий декод vPIC при валідному VIN
      цей кап НЕ вмикає */
   if (!id.vin_present || id.vin_mismatch) cap(id.vin_mismatch ? 'vin_mismatch' : 'vin_absent', cfg.CAPS.vin.max);

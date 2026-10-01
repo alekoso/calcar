@@ -344,16 +344,22 @@ const centralOf = values => { const v = [...new Set(values.map(x => Math.round(x
    Порівнюються злиті токени без слів про привід і кузов, з назвою моделі і
    без неї: "X 450 AWD" і "X450" збігаються, "Limited Platinum" і
    "Limited" ні. */
-const TRIM_NOISE = new Set(['4matic', 'awd', '4wd', 'fwd', 'rwd', '2wd', 'xdrive', 'sdrive', 'quattro', '4motion', '4x4', '4x2', 'all', 'wheel', 'drive',
-  'sedan', 'suv', 'coupe', 'wagon', 'hatchback', 'crossover']);
-const trimTokens = s => String(s || '').normalize('NFKD').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(' ').filter(x => x && !TRIM_NOISE.has(x));
+const TRIM_NOISE = new Set(['4matic', '4m', 'awd', '4wd', 'fwd', 'rwd', '2wd', 'xdrive', 'sdrive', 'quattro', '4motion', '4x4', '4x2', 'all', 'wheel', 'drive',
+  'sedan', 'suv', 'coupe', 'wagon', 'hatchback', 'crossover', 'at', 'mt', 'amt', 'cvt', 'dct', 'dsg', 'tiptronic', 'base', 'utility', 'sport', '4d', '5d']);
+/* версія площадки без потужності в дужках: "X 63 AT (557 к.с.)" -> "X 63 AT" */
+export function cleanVersion(text) {
+  return String(text || '').replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
+}
+/* токени версії: шум приводу, коробки і кузова прибрано, літери і цифри
+   розділені ("X63" -> x, 63), порядок не важить */
+const trimTokens = s => cleanVersion(s).normalize('NFKD').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(' ')
+  .filter(x => x && !TRIM_NOISE.has(x)).flatMap(x => x.match(/\p{L}+|\p{N}+/gu) || []).filter(x => !TRIM_NOISE.has(x));
 export function trimMatches(version, trim, { make = null, model = null } = {}) {
   if (!version || !trim) return false;
   const skip = new Set([...trimTokens(make), ...trimTokens(model)]);
-  const forms = s => { const all = trimTokens(s); return new Set([all.join(''), all.filter(x => !skip.has(x)).join('')].filter(x => x.length >= 2)); };
-  const a = forms(version), b = forms(trim);
-  for (const x of a) if (b.has(x)) return true;
-  return false;
+  const key = s => [...new Set(trimTokens(s).filter(x => !skip.has(x)))].sort().join(' ');
+  const a = key(version), b = key(trim);
+  return a.length >= 2 && a === b;
 }
 
 /* MSRP про той самий модельний рік: рік авто з оголошення або модельний
@@ -509,8 +515,12 @@ export function resolveNewPrice({ candidates = [], pc, T, market = null, currenc
      медіана (для парної кількості середнє двох центральних); дві ціни:
      середина між ними. Без ваг популярності версій і без імовірностей.
      Зворотна оцінка тут не вибирає і не зажимається в діапазон */
+  /* версія лінійки продуктивності не бере ціну звичайних версій сімʼї:
+     без ціни своєї лінійки чесніша зворотна оцінка */
+  const lineMsrps = vPt.performance ? msrps.filter(m => ptOf(m).performance) : msrps;
+  if (vPt.performance) for (const m of msrps) if (!lineMsrps.includes(m)) reject(m.c, 'performance_mismatch');
   const bySource = new Map();
-  for (const m of msrps) { const k = m.c.source_url || ''; if (!bySource.has(k)) bySource.set(k, []); bySource.get(k).push(m); }
+  for (const m of lineMsrps) { const k = m.c.source_url || ''; if (!bySource.has(k)) bySource.set(k, []); bySource.get(k).push(m); }
   let family = null;
   for (const [, list] of bySource) {
     const n = centralOf(list.map(m => m.usd)).values.length;
@@ -523,7 +533,7 @@ export function resolveNewPrice({ candidates = [], pc, T, market = null, currenc
   }
   /* лише стартова ціна моделі року: нижня межа правдоподібності, не сімʼя */
   if (!family) {
-    const base = msrps.filter(m => m.c.trim_match === 'base').sort((a, b) => a.usd - b.usd)[0];
+    const base = lineMsrps.filter(m => m.c.trim_match === 'base').sort((a, b) => a.usd - b.usd)[0];
     if (base) {
       const lo = localize(base.usd, base.price_year), loV = lo ? lo.value : base.usd;
       msrpInfo = { exact: null, selection: { ...sel, method: 'base_floor', model_year: base.price_year, candidate_count: 1, values: [Math.round(base.usd)], min: Math.round(base.usd), max: null,
@@ -534,7 +544,7 @@ export function resolveNewPrice({ candidates = [], pc, T, market = null, currenc
   }
 
   /* E. одна MSRP невідомої версії: лише з відомим режимом ввезення */
-  for (const m of msrps.sort((a, b) => confRank(a) - confRank(b))) {
+  for (const m of lineMsrps.sort((a, b) => confRank(a) - confRank(b))) {
     const loc = localize(m.usd, m.price_year);
     if (!loc) { reject(m.c, 'historical_localization_unknown'); continue; }
     const p = { c: m.c, usd: m.usd, price_year: m.price_year, strength: 'weak', value: loc.value, basis: 'localized_msrp', localization: loc.regime };
@@ -730,10 +740,18 @@ const LIQ = ['high', 'medium', 'low', 'unknown'];
 const FORCE_DIR = ['supports', 'reduces'];
 /* довге тире у продукті заборонене: модель могла його поставити */
 const noDash = s => String(s || '').replace(/\s*[\u2014\u2013]\s*/g, ', ').replace(/\s+/g, ' ').trim();
+/* кожен рядок картки це самостійна причина: сполучник на початку ("Однако",
+   "Но", "Хотя", "However") прибирається, речення починається з великої */
+const LEAD_CONNECTOR = /^(?:однако|но|хотя|при\s+этом|тем\s+не\s+менее|впрочем|зато|однак|але|хоча|проте|при\s+цьому|втім|however|but|although|though|yet|nevertheless|still|at\s+the\s+same\s+time)[,\s]+/iu;
+export function standalone(text) {
+  let s = noDash(text);
+  for (let i = 0; i < 2 && LEAD_CONNECTOR.test(s); i++) s = s.replace(LEAD_CONNECTOR, '');
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
 const cleanList = (arr, max, maxLen) => {
   const seen = new Set(), out = [];
   for (const x of Array.isArray(arr) ? arr : []) {
-    const s = noDash(x).slice(0, maxLen);
+    const s = standalone(x).slice(0, maxLen);
     const key = s.toLowerCase();
     if (s.length < 4 || seen.has(key)) continue;
     seen.add(key); out.push(s);
@@ -753,7 +771,7 @@ export function sanitizeMarketValue(raw) {
   const forces = [];
   for (const f of Array.isArray(raw.price_forces) ? raw.price_forces : []) {
     if (!f || typeof f !== 'object' || !FORCE_DIR.includes(f.direction)) continue;
-    const text = noDash(f.text).slice(0, 200);
+    const text = standalone(f.text).slice(0, 200);
     const key = text.toLowerCase();
     if (text.length < 4 || seen.has(key) || reasonKeys.has(key)) continue;
     seen.add(key); forces.push({ direction: f.direction, text });
@@ -768,27 +786,40 @@ export function sanitizeMarketValue(raw) {
    Сильна амортизація: насамперед те, що знижує; хороша сохранність: що
    підтримує; звичайна чи невідома: обидві сторони. Не більше чотирьох */
 export const WHY_PRICE_MAX = 4;
-export function composeWhyPrice(forces, state) {
+/* Яку історію розповідає картка. Це не те саме, що retention_state:
+   стан каже, наскільки НЕЗВИЧНА амортизація для віку, історія каже, який
+   бік пояснювати. Старе авто зі звичайною амортизацією все одно втратило
+   більшу частину ціни, і картка пояснює саме втрату.
+   Частка: збережена доля ціни нового авто; коли ціна нового відновлена
+   зворотною оцінкою, береться очікувана для віку (спостережена була б
+   циклічною). Пороги в одному місці */
+export const PRICE_STORY_THRESHOLDS = { depreciation_below: 0.65, retention_above: 0.75 };
+export function priceStory(retention) {
+  const r = retention && typeof retention === 'object' ? retention : {};
+  const share = r.state === 'unknown' ? num(r.expected_retention) : num(r.observed_retention);
+  if (share === null) return r.state === 'strong_retention' ? 'retention' : 'depreciation';
+  if (share < PRICE_STORY_THRESHOLDS.depreciation_below) return 'depreciation';
+  if (share > PRICE_STORY_THRESHOLDS.retention_above) return 'retention';
+  if (r.state === 'heavy_depreciation') return 'depreciation';
+  if (r.state === 'strong_retention') return 'retention';
+  return share < (PRICE_STORY_THRESHOLDS.depreciation_below + PRICE_STORY_THRESHOLDS.retention_above) / 2 ? 'depreciation' : 'retention';
+}
+/* Одна історія, без чергування плюсів і мінусів: лише сили обраного
+   напрямку, скільки є (до чотирьох), без добивання протилежними. Якщо сил
+   потрібного напрямку немає зовсім, показуємо наявні, а не порожню картку */
+export function composeWhyPrice(forces, story) {
   const list = Array.isArray(forces) ? forces : [];
-  const up = list.filter(f => f.direction === 'supports').map(f => f.text);
-  const down = list.filter(f => f.direction === 'reduces').map(f => f.text);
-  let out;
-  if (state === 'heavy_depreciation') out = down.slice(0, WHY_PRICE_MAX).concat(down.length < 3 ? up.slice(0, 1) : []);
-  else if (state === 'strong_retention') out = up.slice(0, WHY_PRICE_MAX).concat(up.length < 3 ? down.slice(0, 1) : []);
-  else {
-    out = [];
-    for (let i = 0; out.length < WHY_PRICE_MAX && (i < up.length || i < down.length); i++) {
-      if (i < up.length && out.length < WHY_PRICE_MAX) out.push(up[i]);
-      if (i < down.length && out.length < WHY_PRICE_MAX) out.push(down[i]);
-    }
-  }
-  return out.slice(0, WHY_PRICE_MAX);
+  const want = story === 'retention' ? 'supports' : 'reduces';
+  const main = list.filter(f => f.direction === want).map(f => f.text);
+  const other = list.filter(f => f.direction !== want).map(f => f.text);
+  return (main.length ? main : other).slice(0, WHY_PRICE_MAX);
 }
 export function composeMarketValue(mv, retention) {
   if (!mv || typeof mv !== 'object') return null;
   const state = retention && RETENTION_STATES.includes(retention.state) ? retention.state : 'unknown';
-  const reasons = composeWhyPrice(mv.price_forces, state);
-  return { liquidity: mv.liquidity, why_price: { retention_state: state, reasons } };
+  const story = priceStory(retention);
+  const reasons = composeWhyPrice(mv.price_forces, story);
+  return { liquidity: mv.liquidity, why_price: { retention_state: state, price_story: story, reasons } };
 }
 
 /* ---------- Виклик моделі ---------- */
@@ -816,15 +847,16 @@ export const VALUE_RULES = `You write the market context block of a used-car rep
 
 Three outputs.
 
-1. liquidity: how easy it normally is to sell THIS MODEL AND VERSION on the LOCAL used-car market (named in MARKET) at a reasonable market price. This is marketability of the model and version, not of this particular listing.
-   level: high, medium, low, or unknown. reasons: 2 or 3 sentences; each one must explain why reselling this kind of car is easier or harder.
-   Reason about the combination, not one attribute: breadth of the buyer audience and body format against running costs (fuel, maintenance), perceived risk of expensive repairs as the car ages, complexity of aging technology, niche or high-performance positioning, powertrain desirability, and model reputation. A practical format alone does not make a car liquid when running costs and repair risk narrow the audience.
+1. liquidity: how easy it normally is to sell THIS MODEL AND VERSION on the LOCAL used-car market (named in MARKET) at a reasonable market price. This is the breadth of the buyer pool that remains AFTER ownership barriers are taken into account; it is marketability of the model and version, not of this particular listing.
+   level: high, medium, low, or unknown.
+   Calibrate the level by barriers first. Strong barriers: very high fuel consumption, expensive servicing, expensive engine, gearbox or suspension repairs as the car ages, old complex luxury systems, performance-version running costs, a buyer pool limited by budget and risk tolerance. A famous brand, a practical body or all-wheel drive do NOT offset several strong barriers: an aging luxury or performance model that is expensive to own is normally "low" unless MODEL_CONTEXT gives grounded evidence of unusually broad demand. "high" is for mainstream models with a broad audience and low perceived ownership risk. "medium" is for real mixed cases, not a default.
+   reasons: 2 or 3 sentences. Every sentence is an INDEPENDENT reason that reads on its own and explains why reselling this kind of car is easier or harder. Never start a reason with a connector (however, but, although, yet, at the same time, nevertheless; однако, но, хотя, при этом, тем не менее; однак, але, хоча, проте, при цьому) and never write a reason as a continuation of the previous one. One sentence states one reason and its effect on resale; do not put "X, but Y" into one sentence.
    Never use: this listing's price, any discount or the marketplace average, the seller, or this car's condition, mileage, accident, flood or history. None of that is in the input and none of it changes the liquidity of the model.
    No numeric ratings and no invented statistics (days to sell, shares, counts). If the input is not enough to judge, use level "unknown" with one neutral reason.
 
 2. price_forces: 4 to 6 forces that explain how well THIS MODEL AND VERSION keeps its original value as it ages (why a car like this is worth a large or a small share of its new price at its age).
    Each item: direction "supports" (helps it keep value) or "reduces" (makes it lose value faster), and text: one short sentence that names the factor AND its effect on retained value, for example "High running costs of premium technology cut demand as the car ages." A bare attribute ("All-wheel drive", "Premium positioning", "Practical body") is not acceptable.
-   Give at least two forces of each direction when the context allows it. Reliability, failure and repair claims about specific units (engine, gearbox, suspension, electronics, battery) are allowed ONLY when MODEL_CONTEXT supports them; without that support stay with facts that follow from the identity itself: segment and price class, body practicality, powertrain type and its running costs, age of a premium car, technology obsolescence, buyer audience breadth.
+   Give at least three forces that reduce value and at least two that support it when the context allows it; each force is one independent sentence with no leading connector. Reliability, failure and repair claims about specific units (engine, gearbox, suspension, electronics, battery) are allowed ONLY when MODEL_CONTEXT supports them; without that support stay with facts that follow from the identity itself: segment and price class, body practicality, powertrain type and its running costs, age of a premium car, technology obsolescence, buyer audience breadth.
    Never mention this listing's price, any discount, the marketplace average, the seller, or this car's condition, mileage, accident, flood or history.
    Do not repeat a liquidity sentence: the same underlying factor may appear in both, but liquidity explains ease of resale and price_forces explains retained value.
 
@@ -855,10 +887,14 @@ const logLine = (op, extra) => console.log('[value]', JSON.stringify({ op, ...ex
 export function priceQueries(identity) {
   const label = [identity.make, identity.model].filter(Boolean).join(' ');
   if (!label || !identity.year) return [];
-  const trim = identity.trim ? ' ' + identity.trim : '';
+  /* версія без потужності в дужках, службових дефісів декодера ("X450-4M")
+     і позначок коробки: у запиті лишається сама назва версії */
+  const inLabel = new Set(String(identity.make || '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean));
+  const version = cleanVersion(identity.trim).replace(/[-_/]+/g, ' ').split(/\s+/).filter(x => x && !/^(?:at|mt|amt|cvt|dct|dsg|4m|base)$/i.test(x) && !inLabel.has(x.toLowerCase())).join(' ');
+  const trim = version ? ' ' + version : '';
   return [
     label + ' ' + identity.year + ' ціна нового в Україні офіційний дилер',
-    identity.year + ' ' + label + trim + ' MSRP price new',
+    (identity.model_year || identity.year) + ' ' + label + trim + ' MSRP price new',
   ];
 }
 
@@ -888,7 +924,10 @@ export function startValueResearch(input = {}, deps = {}) {
       seen.add(url);
       results.push({ ref: 'S' + (results.length + 1), url, host: hostOf(url), title: String(it.title || '').slice(0, 160), snippet: String(it.snippet || '').slice(0, 320), date: it.date ? String(it.date).slice(0, 40) : null });
     }
-    state.search = { queries: queries.length, ok: rs.filter(r => r && r.ok).length, results: results.length, ms: Date.now() - t0, reasons: rs.filter(r => r && !r.ok).map(r => r.reason) };
+    /* запити і стислі результати лишаються в діагностиці: без них не видно,
+       чому з видачі не витягнуто жодної ціни */
+    state.search = { queries: queries.length, ok: rs.filter(r => r && r.ok).length, results: results.length, ms: Date.now() - t0, reasons: rs.filter(r => r && !r.ok).map(r => r.reason),
+      query_text: queries, items: results.map(r => ({ ref: r.ref, host: r.host, date: r.date, title: r.title.slice(0, 90), snippet: r.snippet.slice(0, 200) })) };
     return results;
   }).catch(e => { state.search = { queries: queries.length, ok: 0, results: 0, error: String((e && e.message) || e).slice(0, 120) }; return []; });
 

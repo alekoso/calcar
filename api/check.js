@@ -443,6 +443,16 @@ function extractListing(html, url) {
     const g = /"id":"basicInfoGenerationBase"[\s\S]{0,300}?"content":"([A-Za-z0-9][A-Za-z0-9\- ]{0,18}?)\s*(?:•|")/.exec(html);
     if (g && g[1].trim()) generation = g[1].trim().slice(0, 20);
   }
+  /* модифікація з того самого структурованого рядка площадки, одразу після
+     покоління: "X 63 AT (557 к.с.)". Це версія авто за даними
+     площадки; декодер VIN для європейських авто її часто не дає */
+  let modification = null;
+  if (isRia) {
+    const b = /"id":"basicInfoGenerationBase"[\s\S]{0,900}?\]/.exec(html);
+    const texts = b ? [...b[0].matchAll(/"content":"([^"]{2,80})"/g)].map(m => m[1].replace(/\s*•\s*$/, '').trim()).filter(Boolean) : [];
+    const cand = texts.find(t => t !== generation && /\d/.test(t) && !/^base$/i.test(t)) || null;
+    if (cand) modification = cand.slice(0, 60);
+  }
 
   /* нормалізований ціновий контекст ПЛОЩАДКИ: generic обʼєкт, downstream
      імені маркетплейса не знає. position рахує ДЕТЕРМІНОВАНИЙ поріг ±7%
@@ -499,6 +509,7 @@ function extractListing(html, url) {
     title: title.slice(0, 200), vin, plate,
     seller_text: sellerText,
     generation,
+    modification,
     price_context: priceContext,
     listing_equipment: listingEquipment.slice(0, 60),
     price, currency, odometer_km: odometerKm, year, make, model,
@@ -1253,6 +1264,22 @@ export function nhtsaForPrompt(n) {
   if (!n || typeof n !== 'object') return n;
   const { ErrorCode, ErrorText, ModelYearUntrusted, ...rest } = n;
   return rest;
+}
+
+/* Ризик "стан X не підтверджено незалежною діагностикою" це правда про
+   будь-яке авто і користі не несе. Правило для моделі в описі risks; тут
+   детектор: такі заголовки видно в логах і в _meta, текст код не
+   переписує. Заява продавця чи документ поруч роблять "не підтверджено"
+   доречним, і детектор її не чіпає */
+const GENERIC_UNVERIFIED = /не\s+(?:підтверджен\S*|подтвержд[её]н\S*|перевірен\S*|проверен\S*)\s+(?:\S+\s+){0,2}(?:діагностик\S*|диагностик\S*|перевірк\S*|проверк\S*|оглядом|осмотром|сто(?![\p{L}]))|^(?:стан|состояние)\s+[^.]{3,60}\s+не\s+(?:підтверджен\S*|подтвержд[её]н\S*)\.?$|not\s+(?:confirmed|verified)\s+by\s+(?:an?\s+)?independent/iu;
+const SPECIFIC_CLAIM = /продав\S*|заявл\S*|документ\S*|заказ-наряд\S*|наряд\S*|рахун\S*|сч[её]т\S*|чек\S*|seller|claim|invoice|receipt/iu;
+export function genericUnverifiedRisks(risks) {
+  const hits = [];
+  for (const r of Array.isArray(risks) ? risks : []) {
+    const title = String((r && r.title) || '');
+    if (GENERIC_UNVERIFIED.test(title) && !SPECIFIC_CLAIM.test(title)) hits.push(title.slice(0, 90));
+  }
+  return hits;
 }
 
 /* Привід для людини: канонічні значення ("full", "awd", "fwd") ніколи не
@@ -2238,7 +2265,7 @@ const MAIN_RULES = (auction, decisionStyle, auctionMeta, { proseSchema = false, 
 
 ${cvProvided ? `"photo_findings": бери ГОТОВИМИ з CURRENT_VISUAL_EVIDENCE. condition_findings звідти це канонічні спостереження про нинішній стан: дай РІВНО ПО ОДНОМУ пункту на кожен елемент, У ТОМУ САМОМУ ПОРЯДКУ (status warn, а для severe bad), переказавши ознаку людською мовою і назвавши кадр. Не додавай нових дефектів від себе, не обʼєднуй кілька знахідок в один пункт і не спростовуй канонічні. Якщо condition_findings порожній, а покриття достатнє: ОДИН пункт "ok" ("на доступних фото явних слідів ремонту не видно") плюс МАКСИМУМ один "unknown" про найважливішу невидиму зону з zones.not_visible. Самостійно переглядати кадри у пошуках дефектів НЕ треба: контекстні кадри дані лише для загального розуміння авто.` : `"photo_findings": ЛИШЕ про НИНІШНІ фото з оголошення (не аукціонні: для них є auction.findings). СПОЧАТКУ те, що РЕАЛЬНО ПОМІЧЕНО: різниця відтінку фарби, шагрень, нерівні зазори, свіжий герметик, нештатні деталі, знос салону проти пробігу. Кожна знахідка = окремий пункт зі status warn або bad. Якщо підозрілого нічого немає: ОДИН пункт "ok" ("на доступних фото явних слідів ремонту не видно") плюс МАКСИМУМ один пункт "unknown" із найважливішим обмеженням (наприклад, немає фото салону). ЗАБОРОНЕНО три пункти поспіль про те, чого не видно.`}
 
-"risks": 2-5 КЛЮЧОВИХ РИЗИКІВ САМЕ ЦЬОГО ЕКЗЕМПЛЯРА, кожен спирається на КОНКРЕТНИЙ факт цієї машини: симптом, помилку системи, суперечність, результат діагностики, видимий дефект, зафіксовану подію (ДТП, аукціон, скрутка) з непідтвердженими наслідками. Вік, пробіг і відома болячка моделі САМІ ПО СОБІ недостатні для risks: типові задири, пневмопідвіска, роздавальна коробка, батарея гібрида тощо живуть у model_notes.issues, де можна позначити підвищену актуальність через вік чи пробіг цієї машини; у risks вони переходять ЛИШЕ за конкретного сигналу по цій машині. Пояснення "чому преміальне авто дешеве" (дорогий сервіс, витрати володіння) клади у purchase_decision.value_context, не в risks. Для авто після зафіксованого ДТП один із ризиків майже завжди якість відновлення: це конкретна подія цієї машини.
+"risks": до 5 КЛЮЧОВИХ РИЗИКІВ САМЕ ЦЬОГО ЕКЗЕМПЛЯРА. Ризик каже, ЩО може коштувати дорого чи стати проблемою і ЧОМУ це важить саме тут. Підстави для ризику: конкретний факт цієї машини (симптом, помилка системи, суперечність, видимий дефект, зафіксована подія: ДТП, аукціон, скрутка, страховий випадок з непідтвердженими наслідками); дорогий вузол, чутливий до віку чи пробігу і реально присутній на цьому авто (пневмопідвіска, турбований двигун високої віддачі, автоматична коробка на великому пробігу, батарея гібрида чи електромобіля); конкретна заява продавця без доказів. Вік, пробіг і відома болячка моделі САМІ ПО СОБІ недостатні для risks: типова слабкість моделі без привʼязки до цієї машини живе у model_notes.issues; у risks потрапляє лише дорогий вузол, наявність якого на ЦЬОМУ авто підтверджена (дані оголошення, фото, версія), або конкретний сигнал по цій машині. НЕ ризик: сам факт, що CalCar чи сторонній сервіс не оглядав авто. Формулювання на кшталт "стан двигуна не підтверджено незалежною діагностикою", "стан пневмопідвіски не підтверджено незалежною перевіркою", "не перевірено на СТО" ЗАБОРОНЕНІ в title і note: це правда про будь-яке авто і нічого не каже про це. Замість цього назви вузол і ціну помилки: title "Пневмопідвіска" і note "Вікові стійки і компресор можуть потребувати дорогого ремонту"; title "Двигун і автоматична коробка" і note "Дорогі агрегати: вік і висока вартість ремонту роблять їх пріоритетом перевірки". "Не підтверджено" доречне ЛИШЕ для конкретної заяви продавця чи документа: "Ремонт АКПП заявлений продавцем, але документально не підтверджений". Практичні кроки перевірки живуть у полі action, а не в title. Не добивай кількість: якщо обґрунтованих ризиків два, пиши два. Пояснення "чому преміальне авто дешеве" (дорогий сервіс, витрати володіння в цілому) клади у purchase_decision.value_context, не в risks. Для авто після зафіксованого ДТП один із ризиків майже завжди якість відновлення: це конкретна подія цієї машини.
 ВИНЯТОК, ЯКИЙ МУСИТЬ БУТИ: HIGH_COST_LATENT_RISK. Це ризик, який (а) НЕ є доведеною несправністю, (б) НЕ знижує Оцінку CalCar сам по собі, але (в) може суттєво змінити рішення про покупку, бо ймовірність × ціна помилки × релевантність САМЕ ЦЬОМУ авто (вік, пробіг, версія, відсутність незалежного підтвердження) висока. Такий ризик ВХОДИТЬ у risks з полем "kind": "latent" і формулюванням "не підтверджено", а не "несправно". Приклади: у 10-11-річного електромобіля з оригінальною високовольтною батареєю і без незалежної перевірки її стану: "Стан оригінальної високовольтної батареї не підтверджено" (реальна usable capacity/SOH, історія помилок HV-батареї, cell imbalance, реальне споживання і запас ходу, поведінка на DC-швидкій зарядці важать більше за заявлений продавцем запас ходу; НЕ стверджуй, що батарея обовʼязково сильно деградована); у ранньої Tesla Model S без підтвердженого апгрейду медіаблока: "Перевірити, чи лишився MCU1 чи встановлено MCU2" (MCU1 на NVIDIA Tegra 3: помітно повільніший інтерфейс, відома проблема зносу 8 ГБ eMMC, звірити recall/сервісну історію; НЕ стверджуй MCU1 як факт, якщо авто могло отримати апгрейд); дорога коробка чи пневмопідвіска без сервісної історії при великому пробігу тощо. Власницькі спостереження (жовта рамка чи розшарування ранніх дисплеїв Model S) додавай лише як "перевірити візуально обидва екрани", з провенансом owner-reported, без твердження про дефект.
 ПРІОРИТИЗАЦІЯ: top risks це 3-5 пунктів, які РЕАЛЬНО змінюють рішення, впорядковані за ціною помилки: підтверджене ДТП/подушки і незакритий HIGH_COST_LATENT_RISK головних агрегатів (HV-батарея, двигун, коробка, повний привід) стоять ВИЩЕ дрібних generic-слабкостей моделі. Не перетворюй risks на каталог болячок: дрібні і типові лишаються в model_notes.issues. Кожен ризик КОМПАКТНИЙ: title; level (high = висока ціна помилки, med, low); note МАКСИМУМ 2 речення (чому це головна стаття витрат саме тут, без есе); action одним рядком, що починається з переліку конкретних вузлів чи дій ("лонжерони, підрамник, SRS та ремені", а не загальне "діагностика на СТО").
 
@@ -2908,8 +2935,11 @@ async function runCheck(req, res, job) {
         make: listing.make || (nhtsa && nhtsa.Make) || null,
         model: listing.model || (nhtsa && nhtsa.Model) || null,
         generation: listing.generation || null,
-        trim: (nhtsa && (nhtsa.Trim || nhtsa.Series)) || null,
+        /* версія: декодер, інакше структурована модифікація площадки */
+        trim: (nhtsa && (nhtsa.Trim || nhtsa.Series)) || listing.modification || null,
         year: listing.year || (nhtsa && parseInt(nhtsa.ModelYear, 10)) || null,
+        /* MSRP публікують за модельним роком: довірений рік декодера, інакше рік оголошення */
+        model_year: (nhtsa && parseInt(nhtsa.ModelYear, 10)) || listing.year || null,
       },
     }, { callModel });
     /* кадри оголошення: паралельно з рештою пайплайна; для нового стану
@@ -3393,7 +3423,7 @@ async function runCheck(req, res, job) {
       vehicle: {
         make: listing.make || (nhtsa && nhtsa.Make) || null, model: listing.model || (nhtsa && nhtsa.Model) || null,
         year: listing.year || (nhtsa && parseInt(nhtsa.ModelYear, 10)) || null, generation: listing.generation || null,
-        trim: (nhtsa && (nhtsa.Trim || nhtsa.Series)) || null, body: (nhtsa && nhtsa.BodyClass) || null,
+        trim: (nhtsa && (nhtsa.Trim || nhtsa.Series)) || listing.modification || null, body: (nhtsa && nhtsa.BodyClass) || null,
         fuel: (nhtsa && nhtsa.FuelTypePrimary) || null, engine_l: (nhtsa && nhtsa.DisplacementL) || null,
         drive: (nhtsa && nhtsa.DriveType) || null,
         age_years: listing.year ? Math.max(0, new Date().getUTCFullYear() - parseInt(listing.year, 10)) : null,
@@ -4029,10 +4059,10 @@ async function runCheck(req, res, job) {
         vehicle: { fuel: (parsed.vehicle && parsed.vehicle.fuel) || null, displacement_l: (nhtsa && parseFloat(nhtsa.DisplacementL)) || null, battery_kwh: (nhtsa && parseFloat(nhtsa.BatteryKWh)) || null,
           /* версія і модельний рік для зіставлення з MSRP джерела */
           make: listing.make || (nhtsa && nhtsa.Make) || null, model: listing.model || (nhtsa && nhtsa.Model) || null,
-          trim: (nhtsa && (nhtsa.Trim || nhtsa.Series)) || (parsed.vehicle && parsed.vehicle.trim) || null,
+          trim: (nhtsa && (nhtsa.Trim || nhtsa.Series)) || listing.modification || (parsed.vehicle && parsed.vehicle.trim) || null,
           /* силовий агрегат лише для вибору релевантних цін версій; обладнання з нього не виводиться */
           engine: (parsed.vehicle && parsed.vehicle.engine) || null, drive: (parsed.vehicle && parsed.vehicle.drive) || (nhtsa && nhtsa.DriveType) || null,
-          title: (parsed.vehicle && parsed.vehicle.title) || null,
+          title: [(parsed.vehicle && parsed.vehicle.title) || '', listing.modification || '', (parsed.vehicle && parsed.vehicle.trim) || ''].join(' ').trim() || null,
           model_year: (nhtsa && parseInt(nhtsa.ModelYear, 10)) || (parsed.vehicle && parsed.vehicle.model_year) || null },
         identity: { make: listing.make || (nhtsa && nhtsa.Make) || null, model: listing.model || (nhtsa && nhtsa.Model) || null, generation: genResolved.generation, trim: (nhtsa && (nhtsa.Trim || nhtsa.Series)) || (parsed.vehicle && parsed.vehicle.trim) || null },
       });
@@ -4079,6 +4109,8 @@ async function runCheck(req, res, job) {
       value_curve: valueCurve,
       /* порада людині у висновку замість оцінки авто (діагностика, не для UI) */
       decision_directive: directiveHits.length ? directiveHits : null,
+      /* загальні "не підтверджено діагностикою" у ризиках (діагностика, не для UI) */
+      risks_generic_unverified: (() => { const g = genericUnverifiedRisks(parsed.risks); if (g.length) console.log('[risks-generic]', JSON.stringify({ lang, titles: g })); return g.length ? g : null; })(),
       /* віджет AUTO.RIA "Пробіг": узгоджений лишився в тексті, неможливий за датами відкинутий */
       mileage_widget: listing.mileage_widget || null,
       /* що саме отримав фінальний висновок: діагностика і контекст для чату.

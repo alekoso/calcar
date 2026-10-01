@@ -497,6 +497,7 @@
   .sc-tip p+p{margin-top:6px;color:var(--muted)}
   .sc-pop{position:fixed;z-index:160;width:360px;max-width:calc(100vw - 32px);max-height:calc(100vh - 24px);overflow:auto;overscroll-behavior:contain;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 28px rgba(20,22,25,.16);padding:14px 16px 16px;color:var(--ink)}
   .sc-pop[hidden]{display:none}
+  .sc-pop.hover-open{pointer-events:none}
   .sc-ov{position:fixed;inset:0;z-index:155;background:rgba(15,25,40,.28)}
   .sc-ov[hidden]{display:none}
   .sc-head{display:flex;align-items:flex-start;gap:10px}
@@ -2806,7 +2807,7 @@ function renderScoreBlock(D) {
       + '<span class="sc-cov-text">' + esc(covText) + '</span>' + coverageRail(conf.overall_internal, true) + '</div>';
   }
   if (conf && conf.domains) {
-    const DOM = [['history', 'History'], ['photos', 'Photos and current condition'], ['mileage', 'Mileage'], ['identity', 'Car data']];
+    const DOM = [['history', 'History'], ['photos', 'Photos and current condition'], ['mileage', 'Mileage'], ['identity', 'Vehicle identification']];
     h += '<div class="sc-sec"><span class="sc-t">' + esc(t('Check coverage')) + '</span><div class="sc-list">'
       + DOM.map(([k, lbl]) => {
         const d = conf.domains[k] || {};
@@ -2834,8 +2835,12 @@ function renderScoreBlock(D) {
     top = Math.max(12, Math.min(top, vh - ph - 12));
     pop.style.left = left + 'px'; pop.style.top = top + 'px';
   }
-  function open() {
+  function open(byHover) {
     tipClose(false);
+    /* відкрита наведенням панель не перехоплює курсор: коли їй бракує місця
+       під карткою, вона лягає поверх шеврона, і без цього наведення
+       зривалось би в цикл відкриття і закриття (мерехтіння) */
+    pop.classList.toggle('hover-open', !!byHover);
     pop.hidden = false;
     if (phone() && ov) ov.hidden = false;
     toggle.setAttribute('aria-expanded', 'true');
@@ -2893,7 +2898,7 @@ function renderScoreBlock(D) {
      наведення відкриває панель, відведення закриває; дотик і клавіатура
      (Enter, Space) перемикають її кліком. Клік мишею по шеврону, який уже
      відкрився наведенням, нічого не змінює */
-  toggle.addEventListener('mouseenter', () => { if (hoverable()) open(); });
+  toggle.addEventListener('mouseenter', () => { if (hoverable()) open(true); });
   toggle.addEventListener('mouseleave', () => { if (hoverable()) close(false); });
   /* фокус з клавіатури показує ту саму панель; втрата фокусу закриває,
      якщо фокус не перейшов у саму панель */

@@ -141,6 +141,36 @@ const eq = (a, b, m) => { if (a !== b) errs.push(m + ': ' + JSON.stringify(a) + 
   eq(sellerSpan, baseSpan, 'seller text date must not extend span');
   ok(baseSpan > 0 && baseSpan < CFG.HISTORY.span, 'partial span from registry only: ' + baseSpan);
 
+  /* 12a. історія це критичний вхід: стеля росте з балом історії */
+  {
+    const noHist = { auctionSearch: { status: 'absent' }, auctionRecordExists: false, hvPresent: false, snaps: [], ageMonths: 135 };
+    const weak = run({ ...noHist, hf: {} });
+    eq(dom(weak, 'identity').score_internal, 100, 'weak history fixture keeps identity complete');
+    ok(dom(weak, 'photos').score_internal === 100 && dom(weak, 'mileage').score_internal === 100, 'weak history fixture keeps photos and mileage complete');
+    ok(weak.overall_internal < CFG.SUFFICIENT_TICK && weak.text_key === 'Partially checked', 'complete identity + weak history stays below the sufficient tick: ' + weak.overall_internal);
+    ok(weak.caps_applied.some(c => c.name === 'weak_history' && c.binding), 'weak history cap recorded as binding');
+    /* кількість полів без охоплення в часі не робить історію вивченою */
+    const fields = run({ ...noHist, hf: { registry_present: true, past_listings: 3, owner_events: [{ ordinal: 1, date: '2026-08-01' }, { ordinal: 2, date: '2026-08-10' }, { ordinal: 3, date: '2026-08-20' }] } });
+    eq(input(fields, 'history', 'history_span').earned, 0, 'recent records only: zero history span');
+    ok(fields.overall_internal < CFG.SUFFICIENT_TICK, 'many recent fields without coverage stay below sufficient: ' + fields.overall_internal);
+    /* щільність: один давній запис на одинадцять років гірший за записи в різні роки */
+    const one = input(run({ ...noHist, hf: { registry_present: true, owner_events: [{ ordinal: 1, date: '2016-08-01' }] } }), 'history', 'history_span').earned;
+    const many = input(run({ ...noHist, hf: { registry_present: true, owner_events: [{ ordinal: 1, date: '2016-08-01' }, { ordinal: 2, date: '2018-05-01' }, { ordinal: 3, date: '2020-03-01' }, { ordinal: 4, date: '2022-06-01' }, { ordinal: 5, date: '2024-02-01' }] } }), 'history', 'history_span').earned;
+    ok(one > 0 && many > one, 'span rewards records spread over the years: ' + one + ' < ' + many);
+    /* середня історія: "достатньо" досяжне, "вивчено детально" ні */
+    const mid = run({ auctionSearch: { status: 'absent' }, auctionRecordExists: false, hvPresent: false, snaps: [] });
+    const hMid = dom(mid, 'history').score_internal;
+    ok(hMid >= 59 && hMid < 83 ? (mid.overall_internal >= 70 && mid.overall_internal < 85) : true, 'mid history lands in "Enough data": history ' + hMid + ', overall ' + mid.overall_internal);
+    /* обидва крайні стани досяжні */
+    eq(r1.text_key, 'Studied in detail', 'top state reachable');
+    const low = run({ ...noHist, hf: {}, photosCount: 4, cv: { zones: zones(2, 0, false), dashboard: { visible: false } }, v4: { mileage_points: [{ date: '2026-09-25', families: ['current'] }], vin_check: {} }, nhtsa: null,
+      listing: { vin: VIN, country: 'UA', make: 'BMW', odometer_km: 150000 } });
+    ok(low.overall_internal < 40 && low.text_key === 'Data is limited', 'lowest state reachable: ' + low.overall_internal);
+    eq(CFG.CAPS.weak_history.base + CFG.CAPS.weak_history.slope * 50 < CFG.SUFFICIENT_TICK, true, 'history below 50 always under the sufficient tick');
+    const page = fs.readFileSync('result-check.html', 'utf8');
+    ok(/'Vehicle identification'/.test(page) && !/'Car data'/.test(page), 'domain label renamed to Vehicle identification');
+  }
+
   /* 13. Confidence не змінює Score v4: модуль v4 не залежить від confidence, і навпаки лише читає */
   const v4src = fs.readFileSync('api/score-v4.js', 'utf8');
   ok(!/confidence\.js|computeConfidence|overall_internal/.test(v4src), 'score-v4 must not depend on the coverage module');

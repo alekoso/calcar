@@ -144,6 +144,28 @@ const ok = (name, cond, detail) => { checks++; if (!cond) errs.push(name + (deta
     for (const f of ['api/score-v4.js', 'api/confidence.js']) ok('20. ' + f + ' не читає декодер, власників і стовпчик цін', !/decoderYearTrusted|ModelYearUntrusted|describeOwnerEvents|vc-kpi/.test(fs.readFileSync(f, 'utf8')));
   }
 
+  /* ===== ризики: що дорого і чому, без "не підтверджено діагностикою" ===== */
+  {
+    const src = fs.readFileSync('api/check.js', 'utf8');
+    const rule = src.slice(src.indexOf('"risks": до 5 КЛЮЧОВИХ РИЗИКІВ'), src.indexOf('\n', src.indexOf('"risks": до 5 КЛЮЧОВИХ РИЗИКІВ')));
+    ok('R1. правило: ризик каже, що дорого і чому; загальне "не підтверджено діагностикою" заборонене', /ЩО може коштувати дорого/.test(rule) && /ЗАБОРОНЕНІ/.test(rule) && /НЕ ризик: сам факт, що CalCar чи сторонній сервіс не оглядав авто/.test(rule));
+    ok('R2. "не підтверджено" лишається для конкретної заяви продавця чи документа', /доречне ЛИШЕ для конкретної заяви продавця чи документа/.test(rule));
+    ok('R3. типова болячка моделі без привʼязки до машини лишається в model_notes', /САМІ ПО СОБІ недостатні для risks/.test(rule) && /model_notes\.issues/.test(rule));
+    const g = C.genericUnverifiedRisks;
+    const generic = ['Состояние двигателя не подтверждено независимой диагностикой', 'Стан пневмопідвіски не підтверджено незалежною перевіркою', 'Engine condition not confirmed by independent diagnostics', 'Коробка не проверена на СТО'];
+    ok('R4. Y: загальні заголовки ловляться трьома мовами', generic.every(t => g([{ title: t }]).length === 1), generic.filter(t => g([{ title: t }]).length !== 1).join(' | '));
+    const fine = ['Пневмоподвеска', 'Двигатель и автоматическая коробка', 'Ремонт АКПП заявлен продавцом, но документально не подтвержден', 'Страховой случай 2021 года', 'Днище и подкапотное пространство не показаны'];
+    ok('R5. Z, AA: вузол і ціна помилки, заява продавця, подія машини не чіпаються', fine.every(t => g([{ title: t }]).length === 0), fine.filter(t => g([{ title: t }]).length).join(' | '));
+    ok('R6. детектор лише діагностика: текст ризиків код не переписує', /risks_generic_unverified:/.test(src) && !/parsed\.risks\s*=\s*parsed\.risks\.filter\([^)]*genericUnverified/.test(src) && g(null).length === 0);
+    /* версія з площадки: структурований рядок після покоління */
+    const block = src.slice(src.indexOf('let modification = null;'), src.indexOf('if (cand) modification = cand.slice(0, 60);'));
+    const run = (html, generation) => new Function('html', 'isRia', 'generation', block + 'if (cand) modification = cand.slice(0, 60);\n}\nreturn modification;')(html, true, generation);
+    const html = '{"id":"basicInfoGenerationBase","items":[{"content":"X166 •"},{"content":"Brand-AMG X 63 AT (557 к.с.)"}]}';
+    ok('R7. модифікація читається зі структурованого рядка площадки', run(html, 'X166') === 'Brand-AMG X 63 AT (557 к.с.)', String(run(html, 'X166')));
+    ok('R8. рядка немає або в ньому лише покоління: версії немає, нічого не вигадано', run('{"id":"other"}', 'X166') === null && run('{"id":"basicInfoGenerationBase","items":[{"content":"X166"}]}', 'X166') === null);
+    ok('R9. версія площадки йде у вибір ціни нового лише коли декодер версії не дав', (src.match(/\(nhtsa && \(nhtsa\.Trim \|\| nhtsa\.Series\)\) \|\| listing\.modification/g) || []).length >= 3);
+  }
+
   fs.rmSync(dir, { recursive: true, force: true });
   if (errs.length) {
     console.error('integritytest: помилок ' + errs.length + ' із ' + checks);

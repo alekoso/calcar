@@ -181,11 +181,11 @@
     /* праворуч від графіка: нова, сьогодні, через 5 років; нижче тихіше
        друга ціна як контекст (середня площадки або ціна оголошення) */
     var rail = item(newTxt, t(vc.new_price.approx ? 'Estimated when new' : 'When new'))
-      + item(curTxt, t('Today'), 'now')
+      + item(curTxt, t('Estimated today'), 'now')
       + item(futTxt, t('Forecast in 5 years'));
     if (vc.listing) {
-      var delta = (vc.listing.delta_percent > 0 ? '+' : vc.listing.delta_percent < 0 ? '−' : '') + Math.abs(vc.listing.delta_percent) + '%';
-      rail += item(money(vc.listing.value, cur), t('This listing') + ', ' + t('{pct} vs average').replace('{pct}', delta), 'ctx');
+      /* якір це середня площадки: ціна оголошення лишається довідковою */
+      rail += item(money(vc.listing.value, cur), t('Listing price'), 'ctx');
     } else if (vc.average && typeof vc.average.value === 'number' && isFinite(vc.average.value)) {
       /* якір це ціна оголошення: середня площадки лишається контекстом */
       rail += item(money(r100(vc.average.value), cur), vc.average.source_name ? t('{name} average').replace('{name}', vc.average.source_name) : t('Marketplace average'), 'ctx');
@@ -257,7 +257,7 @@
       dot.setAttribute('cx', x); dot.setAttribute('cy', y); dot.setAttribute('visibility', 'visible');
       var exact = active === L.todayIdx || (active === 0 && !vc.new_price.approx);
       var val = money(exact ? p.value : roundPoint(p.value), cur);
-      var label = active === 0 ? t('When new') : active === L.todayIdx ? t('Today') : p.forecast ? t('Forecast') : '';
+      var label = active === 0 ? t('When new') : active === L.todayIdx ? t('Estimated today') : p.forecast ? t('Forecast') : '';
       tip.innerHTML = '<span class="vc-tip-d">' + esc(monthLabel(p, locale)) + '</span><b>' + esc(val) + '</b>' + (label ? '<span class="vc-tip-f">' + esc(label) + '</span>' : '');
       tip.hidden = false;
       var w = plot.clientWidth, tw = tip.offsetWidth || 120;
