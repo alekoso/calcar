@@ -17,7 +17,7 @@ import {
   gateSeverityRaisingSignals,
 } from './visual-signals.js';
 import { hasHistoricalPhotoEvidence, stripUnbackedPhotoClaims } from './historical-claims.js';
-import { parseOwnerEvents, annotateOwnerOrdinals } from './history-owners.js';
+import { parseOwnerEvents, annotateOwnerOrdinals, describeOwnerEvents } from './history-owners.js';
 import { validEngineCode, resolveGeneration } from './youtube.js';
 import {
   photoIdentity, photoSetFingerprint, listingFingerprint, snapshotRow, listingKey, dedupePhotoVariants,
@@ -1231,6 +1231,30 @@ export function humanizeDecisionJargon(text, lang = 'en') {
   return out;
 }
 
+/* Модельний рік з декодера VIN це доказ ЛИШЕ коли розбір чистий: vPIC
+   ErrorCode "0". Будь-який інший код (8: детальних даних нема, 1: контрольна
+   цифра, 6: неповний VIN, 11: недійсний рік...) чи відсутній статус означає,
+   що рік міг бути вгаданий з 10-го символу за американською конвенцією,
+   яку європейські VIN не використовують. Такий рік не створює розбіжностей,
+   не йде в аналіз і не пишеться як модельний рік; лишається в провенансі
+   як ModelYearUntrusted */
+export function decoderYearTrusted(n) {
+  if (!n || typeof n !== 'object') return false;
+  const codes = String(n.ErrorCode == null ? '' : n.ErrorCode).split(/[\s,;]+/).filter(Boolean);
+  return codes.length > 0 && codes.every(c => c === '0');
+}
+export function gateDecoderYear(n) {
+  if (!n || typeof n !== 'object' || !n.ModelYear || decoderYearTrusted(n)) return n;
+  const { ModelYear, ...rest } = n;
+  return { ...rest, ModelYearUntrusted: ModelYear };
+}
+/* в аналіз іде лише те, що декодер справді розібрав; статус і провенанс ні */
+export function nhtsaForPrompt(n) {
+  if (!n || typeof n !== 'object') return n;
+  const { ErrorCode, ErrorText, ModelYearUntrusted, ...rest } = n;
+  return rest;
+}
+
 /* Привід для людини: канонічні значення ("full", "awd", "fwd") ніколи не
    йдуть у звіт сирими. Фірмові назви (xDrive, 4MATIC, quattro) і вже
    локалізований текст лишаються як є. Те саме відображення на сторінці
@@ -2358,7 +2382,7 @@ export function hvReferencedFrames(hv) {
    metadata лота один раз, історичний візуал один раз у компактному вигляді */
 const MAIN_DATA = (l, nhtsa, auction, langDirective, auctionMeta, decisionContext, cvEvidence = null) => {
   const blocks = [langDirective];
-  blocks.push('VEHICLE (декодування VIN від NHTSA): ' + (nhtsa ? JSON.stringify(nhtsa) : 'недоступне'));
+  blocks.push('VEHICLE (декодування VIN від NHTSA): ' + (nhtsa ? JSON.stringify(nhtsaForPrompt(nhtsa)) : 'недоступне'));
   blocks.push('LISTING, ФАКТИ ЗІ СТОРІНКИ ОГОЛОШЕННЯ (детермінований парс): ' + JSON.stringify({ title: l.title, vin: l.vin, plate: l.plate, price: l.price, currency: l.currency, odometer_km: l.odometer_km, year: l.year, history_facts: l.history_facts, price_context: l.price_context || null }));
   if (Array.isArray(l.listing_equipment) && l.listing_equipment.length) blocks.push('LISTING, СТРУКТУРОВАНІ ОПЦІЇ З ДАНИХ ОГОЛОШЕННЯ (source listing_data: структуровані поля площадки; це НЕ заводські дані і НЕ слова продавця): ' + JSON.stringify(l.listing_equipment));
   blocks.push('LISTING, ТЕКСТ СТОРІНКИ ОГОЛОШЕННЯ (опис продавця + офіційні блоки перевірки площадки, якщо є):\n' + (l.text || ''));
@@ -2808,9 +2832,15 @@ async function runCheck(req, res, job) {
           for (const k of ['Make','Model','ModelYear','Trim','Series','FuelTypePrimary','ElectrificationLevel','DisplacementL','EngineHP','TransmissionStyle','DriveType','BodyClass','PlantCountry']) {
             if (row[k]) nhtsa[k] = row[k];
           }
+          /* статус декоду: без нього не видно, що рік узято з неповного розбору */
+          if (row.ErrorCode != null && row.ErrorCode !== '') nhtsa.ErrorCode = String(row.ErrorCode).slice(0, 40);
+          if (row.ErrorText) nhtsa.ErrorText = String(row.ErrorText).slice(0, 240);
         }
       } catch (e) { /* без NHTSA працюємо далі */ }
     }
+    /* рік із неповного чи невдалого декоду доказом не є: модельний рік
+       лишається лише в провенансі і далі нікуди не йде */
+    nhtsa = gateDecoderYear(nhtsa);
     mark('decoder', Date.now() - tDec, reuse.identity === 'vehicles_cache' ? 'cached' : listing.vin ? 'executed' : 'skipped', { reason: listing.vin ? null : 'no_vin' });
 
     /* --- Vehicle Memory: кожен Check це ще й спостереження авто ---
@@ -3470,6 +3500,8 @@ async function runCheck(req, res, job) {
     }
     /* номер власника в хронології лише з реєстру, не з тексту моделі */
     if (Array.isArray(parsed.history)) parsed.history = annotateOwnerOrdinals(parsed.history, listing.history_facts);
+    /* подія, де модель написала лише номер власника, отримує дію з реєстру */
+    if (Array.isArray(parsed.history)) parsed.history = describeOwnerEvents(parsed.history, listing.history_facts, lang);
     /* свіжий нормалізований візуал у кеш за ключем набору кадрів: наступний
        Check цього VIN із тими самими кадрами отримає його примусово */
     if (parsed.historical_visual && !hvCache.hit && !hvCache.consensus && hvCache.fingerprint && listing.vin) {
@@ -4061,6 +4093,8 @@ async function runCheck(req, res, job) {
          декодера NHTSA, обидва лише коли справді відомі. Потрібна
          необовʼязковим збагаченням на зразок відео про модель (api/youtube.js);
          на Score, рішення і Vehicle Memory не впливає */
+      /* провенанс декодера VIN: статус і рік, якому не довіряємо (діагностика) */
+      decoder: nhtsa ? { error_code: nhtsa.ErrorCode || null, model_year_trusted: decoderYearTrusted(nhtsa), model_year_untrusted: nhtsa.ModelYearUntrusted || null } : null,
       model_identity: {
         make: listing.make || (nhtsa && nhtsa.Make) || null,
         model: listing.model || (nhtsa && nhtsa.Model) || null,

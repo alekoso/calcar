@@ -286,7 +286,8 @@ const page = fs.readFileSync('result-check.html', 'utf8');
     const HO = await import('file://' + path.join(dir, 'history-owners.js'));
     const registry = 'Остання операція 11.05.2023 • Перереєстрація на нового власника 3 власники ... 21.03.26 Продавалось на AUTO.RIA 3-ій власник 11.05.23 Перереєстрація на нового власника за дог. купiвлi-продажу (СГ) 15.04.23 Продано на іншій платформі 2-ий власник 11.09.20 Перереєстрація на нового власника за дог. купiвлi-продажу (СГ) 04.05.19 Перереєстрація при заміні номерного знаку 1-ий власник 29.03.19 Реєстрація ТЗ привезеного з-за кордону по посвідченню митниці';
     const evs = HO.parseOwnerEvents(registry);
-    if (JSON.stringify(evs) !== JSON.stringify([{ ordinal: 1, date: '2019-03-29' }, { ordinal: 2, date: '2020-09-11' }, { ordinal: 3, date: '2023-05-11' }])) errs.push('реєстр власників розібраний неправильно: ' + JSON.stringify(evs));
+    if (JSON.stringify(evs.map(e => ({ ordinal: e.ordinal, date: e.date }))) !== JSON.stringify([{ ordinal: 1, date: '2019-03-29' }, { ordinal: 2, date: '2020-09-11' }, { ordinal: 3, date: '2023-05-11' }])) errs.push('реєстр власників розібраний неправильно: ' + JSON.stringify(evs));
+    if (evs[2].operation !== 'sale_registration') errs.push('дія реєстру "за дог. купівлі-продажу" не впізнана: ' + evs[2].operation);
     const ann = HO.annotateOwnerOrdinals(raw, { owners_count: 3, owner_events: evs });
     const byDate = Object.fromEntries(ann.map(r => [r.date, r.owner_ordinal || null]));
     if (byDate['03.2019'] !== 1 || byDate['09.2020'] !== 2 || byDate['05.2023'] !== 3 || byDate['04.2023'] !== null || byDate['08.2018'] !== null) errs.push('номери з реєстру привʼязані не до тих подій: ' + JSON.stringify(byDate));
@@ -548,7 +549,7 @@ const page = fs.readFileSync('result-check.html', 'utf8');
       + 'Зафіксовано пробіг 225 тис. км дилерське СТО 22.04.15 Зняття з облiку для реалiзацiї 2-ий власник 22.04.15 Вторинна реєстрація тз, придбаного в торговельній організації '
       + '1-ий власник 09.04.11 Реєстрацiя ТЗ привезеного з-за кордону';
     const cayEvents = HO.parseOwnerEvents(cayText);
-    if (JSON.stringify(cayEvents) !== '[{"ordinal":1,"date":"2011-04-09"},{"ordinal":2,"date":"2015-04-22"}]') errs.push('Cayenne: підписи власників AUTO.RIA не розібрані: ' + JSON.stringify(cayEvents));
+    if (JSON.stringify(cayEvents) !== '[{"ordinal":1,"date":"2011-04-09","operation":"import_registration"},{"ordinal":2,"date":"2015-04-22","operation":"trade_purchase"}]') errs.push('Cayenne: підписи власників AUTO.RIA не розібрані: ' + JSON.stringify(cayEvents));
     const cay = HO.annotateOwnerOrdinals([
       { gap: null, date: '04.2011', event: 'Регистрация автомобиля, ввезённого из-за границы.' },
       { gap: '4 года', date: '04.2015', event: 'Вторичная регистрация и снятие с учёта для реализации.' },

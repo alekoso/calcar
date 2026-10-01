@@ -175,7 +175,8 @@ const SNAPSHOT_V0_COLS = ['source_listing_id', 'listing_fingerprint', 'first_see
 const SNAPSHOT_LEGACY_EXTRA = ['seller_text', 'listing_fields', 'job_token'];
 
 /* ---------- Vehicle ---------- */
-export const NHTSA_DECODER_VERSION = 'vpic-v1';
+/* v2: зберігається статус декоду (ErrorCode); рік неповного декоду не є модельним роком */
+export const NHTSA_DECODER_VERSION = 'vpic-v2';
 export async function readVehicle(vin) {
   if (!vin) return null;
   return first(await rest('vehicles?vin=eq.' + encodeURIComponent(vin) + '&select=*&limit=1'));

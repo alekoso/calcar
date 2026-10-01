@@ -555,8 +555,8 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
       && /id="valueCard"[^>]*>\s*<div class="val-head">\s*<h2>Market value<\/h2>\s*<span class="val-chip" id="valMarket"/.test(page));
     ok('10b5. прогноз справжнім пунктиром і тихіший за історію', /\.vc-forecast\{stroke:var\(--faint\)[^}]*stroke-linecap:butt[^}]*stroke-dasharray:7 5/.test(vcss));
     ok('10b6. заливка ледь помітна, сітка і осі тихі', /\.vc-area\{fill:var\(--brand\);opacity:\.07\}/.test(vcss) && /\.vc-grid\{stroke:var\(--surface-2\)/.test(vcss) && /\.vc-tick\{[^}]*fill:var\(--faint\)/.test(vcss));
-    ok('10b7. числа у стовпчику без окремих рамок: лише тонкі розділювачі; друга ціна тихіша', /\.vc-kpi \+ \.vc-kpi\{border-top:1px solid var\(--line\)\}/.test(vcss) && !/\.vc-kpi\{[^}]*(border-radius|background|box-shadow)/.test(vcss)
-      && /\.vc-kpi\.ctx \.vc-num\{font-size:16px/.test(vcss) && /\.vc-num\{font-size:24px/.test(vcss));
+    ok('10b7. числа у стовпчику без окремих рамок: лише тонкі розділювачі; усі ціни однакової типографіки', /\.vc-kpi \+ \.vc-kpi\{border-top:1px solid var\(--line\)\}/.test(vcss) && !/\.vc-kpi\{[^}]*(border-radius|background|box-shadow)/.test(vcss)
+      && !/\.vc-kpi\.ctx \.vc-num/.test(page) && /\.vc-num\{font-size:24px/.test(vcss));
     ok('10b8. другої позначки на графіку немає: ні стилю, ні малювання', !/vc-listing-dot|vc-link/.test(page) && !/vc-listing-dot|vc-link|L\.listing/.test(fs.readFileSync('value-chart.js', 'utf8')));
     /* 15: ліквідність і чинники ціни однієї будови */
     const pairHtml = page.slice(iPair, iRisks);

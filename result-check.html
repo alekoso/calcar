@@ -998,9 +998,6 @@
   .vc-kpi + .vc-kpi{border-top:1px solid var(--line)}
   .vc-num{font-size:24px;font-weight:700;line-height:1.2;letter-spacing:-.3px;color:var(--ink);font-variant-numeric:tabular-nums;white-space:nowrap}
   .vc-lbl{font-size:13px;line-height:1.35;color:var(--muted)}
-  /* друга ціна це контекст: помітно тихіша за три головні числа */
-  .vc-kpi.ctx .vc-num{font-size:16px;font-weight:600;letter-spacing:0;color:var(--ink-2)}
-  .vc-kpi.ctx .vc-lbl{font-size:12.5px}
   .vc-plot{position:relative;min-width:0;touch-action:pan-y;cursor:crosshair;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
   .vc-plot:focus{outline:none}
   .vc-plot:focus-visible{outline:2px solid var(--ink);outline-offset:4px;border-radius:8px}
@@ -1046,12 +1043,12 @@
   /* рядки сигналів: однакова іконка в однаковому контейнері і текст,
      тонкі розділювачі. Та сама будова в обох картках */
   .mk-rows{margin-top:12px}
-  .mk-row{display:grid;grid-template-columns:32px minmax(0,1fr);column-gap:12px;align-items:start;padding:12px 0;font-size:14px;line-height:1.5;color:var(--text)}
+  .mk-row{display:grid;grid-template-columns:32px minmax(0,1fr);column-gap:12px;align-items:center;padding:12px 0;font-size:14px;line-height:1.5;color:var(--text)}
   .mk-row + .mk-row{border-top:1px solid var(--line)}
   .mk-row:last-child{padding-bottom:0}
   .mk-ic{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:var(--surface-2);color:var(--ink-2)}
   .mk-ic svg{width:17px;height:17px}
-  .mk-tx{padding-top:5px;min-width:0;overflow-wrap:anywhere}
+  .mk-tx{min-width:0;overflow-wrap:anywhere}
   @media(max-width:860px){
     /* вузький екран: числа компактним рядом над графіком, картки одна під одною */
     .vc-body{grid-template-columns:minmax(0,1fr);row-gap:18px}
@@ -1068,7 +1065,6 @@
     .vc-rail{column-gap:10px}
     .vc-num{font-size:16.5px;letter-spacing:-.2px}
     .vc-lbl{font-size:12px}
-    .vc-kpi.ctx .vc-num{font-size:15px}
   }
 
   /* висновок CalCar це головна точка рішення звіту. Картка лишається на
