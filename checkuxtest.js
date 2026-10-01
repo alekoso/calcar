@@ -307,7 +307,8 @@ const page = fs.readFileSync('result-check.html', 'utf8');
     const twinPlateOut = HO.annotateOwnerOrdinals(twinPlate, { owners_count: 3, owner_events: evs });
     if (!twinPlateOut.some(r => r.date === '09.2020' && /власника$/.test(r.event) === false && r.owner_ordinal === 2)) errs.push('заміна номерного знака не розвʼязала місяць на користь зміни власника');
     const twinOwners = raw.concat([{ date: '09.2020', event: 'Перереєстрація на нового власника за договором' }]);
-    if (HO.annotateOwnerOrdinals(twinOwners, { owners_count: 3, owner_events: evs }).some(r => r.owner_ordinal)) errs.push('два переходи в одному місяці дали номери навмання');
+    const twinOut = HO.annotateOwnerOrdinals(twinOwners, { owners_count: 3, owner_events: evs });
+    if (twinOut.some(r => r.date === '09.2020' && r.owner_ordinal) || twinOut.find(r => r.date === '03.2019').owner_ordinal !== 1 || twinOut.find(r => r.date === '05.2023').owner_ordinal !== 3) errs.push('два переходи в одному місяці: цей місяць без номера, решта з реєстру');
     /* перекладений звіт: номер лише з оригіналу, вигаданий перекладом ігнорується */
     const tr = ann.map(r => ({ ...r, owner_ordinal: 9 }));
     if (TL.normalize(tr, 'en', ann).find(r => r.date === '09.2020').owner_ordinal !== 2) errs.push('номер власника взятий з перекладу, а не з оригіналу');
@@ -515,13 +516,13 @@ const page = fs.readFileSync('result-check.html', 'utf8');
     const evs = n => Array.from({ length: n }, (_, i) => ({ ordinal: i + 1, date: '202' + i + '-0' + (i + 1) + '-11' }));
     const ords = rows => rows.map(r => r.owner_ordinal || null);
     /* реальний Nissan 5N1CL0MB5KC570086: у хронології нема події 2-го власника.
-       Показати 1, 3, 4 не можна: або вся послідовність, або без бейджів */
+       Пропуск у нумерації допустимий: 1, 3, 4 з реєстру, другого просто нема в хронології */
     const gap = HO.annotateOwnerOrdinals([
       { date: '06.2020', event: 'Первичная регистрация ввезённого автомобиля.' },
       { date: '09.2022', event: 'Перерегистрация на третьего владельца.' },
       { date: '11.2023', event: 'Перерегистрация на четвёртого владельца.' },
     ], { owners_count: 4, owner_events: [{ ordinal: 1, date: '2020-06-15' }, { ordinal: 2, date: '2021-07-02' }, { ordinal: 3, date: '2022-09-10' }, { ordinal: 4, date: '2023-11-20' }] });
-    if (ords(gap).some(Boolean)) errs.push('послідовність з дірою (1, 3, 4) показана: ' + JSON.stringify(ords(gap)));
+    if (JSON.stringify(ords(gap)) !== '[1,3,4]') errs.push('пропуск у нумерації власників має лишатись (1, 3, 4): ' + JSON.stringify(ords(gap)));
     /* повна послідовність лягає на хронологію: номери лишаються */
     const full = HO.annotateOwnerOrdinals([
       { date: '06.2020', event: 'Первичная регистрация в Украине.' },

@@ -96,16 +96,9 @@ export function annotateOwnerOrdinals(history, facts) {
     matched++;
     rows[hits[0]] = { ...rows[hits[0]], owner_ordinal: ev.ordinal, owner_ordinal_source: 'registry' };
   }
-  /* показуємо номери ЛИШЕ коли на хронологію лягла вся послідовність.
-     Інакше вийшло б "1-й, 3-й, 4-й": другий власник нікуди не подівся,
-     просто його події у хронології немає. Краще без бейджів, ніж з дірою */
-  if (matched !== events.length) {
-    return rows.map(h => {
-      if (!h || typeof h !== 'object' || h.owner_ordinal === undefined) return h;
-      const { owner_ordinal, owner_ordinal_source, ...rest } = h;
-      return rest;
-    });
-  }
+  /* Пропуски в нумерації допустимі: "1-й, 4-й, 6-й, 7-й" означає лише, що
+     подій решти власників у хронології немає. Номер кожного бейджа все одно
+     дає реєстр, узгоджений як ціле (1..N без дірок), і нічого не вигадується */
   return rows;
 }
 
@@ -129,13 +122,41 @@ export function ownerOrdinalOnly(text) {
   const t = String(text || '').toLowerCase().replace(OWNER_WORD, ' ').replace(ORD_WORD, ' ').replace(/[^\p{L}]+/gu, '');
   return t.length < 3;
 }
+/* Номер власника живе у бейджі, а не в реченні: "Вторинна реєстрація після
+   купівлі в торговельній організації, четвертий власник." стає "Вторинна
+   реєстрація після купівлі в торговельній організації." з бейджем 4-й
+   власник. Сама дія лишається дослівно; "на четвертого власника" стає "на
+   нового власника". Застосовується лише до рядків з номером з реєстру */
+const ORD_TOKEN = '(?:\\d{1,2}\\s*[-‑]?\\s*(?:й|ий|ій|ый|ой|я|го|му|st|nd|rd|th)?|перш\\S*|перв\\S*|друг\\S*|втор\\S*|трет\\S*|четв\\S*|п.?ят\\S*|шост\\S*|шест\\S*|сьом\\S*|седьм\\S*|восьм\\S*|дев.?ят\\S*|десят\\S*|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)';
+const OWN_TOKEN = '(?:власник\\S*|владел\\S*|owner\\S*)';
+const NEW_OWNER = { ua: 'нового власника', ru: 'нового владельца', en: 'a new owner' };
+export function stripOwnerOrdinal(text, lang = 'en') {
+  const l = lang === 'ua' || lang === 'ru' ? lang : 'en';
+  let t = String(text || '');
+  /* "на четвертого власника", "to the fourth owner" */
+  t = t.replace(new RegExp('(^|[\\s,(])(на|to(?:\\s+the)?|для)\\s+' + ORD_TOKEN + '\\s+' + OWN_TOKEN, 'giu'), (m, pre, prep) => pre + (/^to/i.test(prep) ? 'to' : prep) + ' ' + NEW_OWNER[l]);
+  /* ", четвертий власник", "(4-й власник)", "; fourth owner" */
+  t = t.replace(new RegExp('\\s*[,;:(–-]\\s*(?:(?:это|це|now|став\\S*|стал\\S*)\\s+)?' + ORD_TOKEN + '\\s+' + OWN_TOKEN + '\\s*\\)?', 'giu'), '');
+  /* "власник №4", "owner #4" */
+  t = t.replace(new RegExp('\\s*[,;(]\\s*' + OWN_TOKEN + '\\s*(?:№|#|n°)?\\s*\\d{1,2}\\s*\\)?', 'giu'), '');
+  /* на початку речення: "Четвертий власник: перереєстрація ..." */
+  t = t.replace(new RegExp('^\\s*' + ORD_TOKEN + '\\s+' + OWN_TOKEN + '\\s*[:,.–-]\\s*', 'iu'), '');
+  t = t.replace(/\s+([.,;])/g, '$1').replace(/\s{2,}/g, ' ').trim();
+  if (!t) return t;
+  t = t.charAt(0).toUpperCase() + t.slice(1);
+  return /[.!?]$/.test(t) ? t : t + '.';
+}
 export function describeOwnerEvents(history, facts, lang = 'en') {
   if (!Array.isArray(history)) return history;
   const l = lang === 'ua' || lang === 'ru' ? lang : 'en';
   const events = facts && Array.isArray(facts.owner_events) ? facts.owner_events : [];
   return history.map(h => {
     if (!h || typeof h !== 'object' || h.owner_ordinal_source !== 'registry' || !Number.isInteger(h.owner_ordinal)) return h;
-    if (!ownerOrdinalOnly(h.event)) return h;
+    if (!ownerOrdinalOnly(h.event)) {
+      /* дія лишається, номер переходить у бейдж */
+      const stripped = stripOwnerOrdinal(h.event, l);
+      return stripped && stripped !== h.event && !ownerOrdinalOnly(stripped) ? { ...h, event: stripped } : h;
+    }
     const ev = events.find(e => e && e.ordinal === h.owner_ordinal);
     const op = (ev && OWNER_OPERATION_TEXT[ev.operation]) ? ev.operation : (h.owner_ordinal === 1 ? 'first_registration' : 'owner_reregistration');
     return { ...h, event: OWNER_OPERATION_TEXT[op][l], event_source: 'registry_operation' };

@@ -953,7 +953,7 @@ window.CALCAR_DICTS.ua = {
   'Not really': 'Не зовсім',
   'Market value': 'Ринкова вартість',
   'Liquidity': 'Ліквідність',
-  'Why this car costs what it does': 'Чому це авто коштує саме стільки',
+  'Why this price': 'Чому така ціна',
   'Easy to resell': 'Висока',
   'Average resale': 'Середня',
   'Hard to resell': 'Низька',

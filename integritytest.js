@@ -111,6 +111,27 @@ const ok = (name, cond, detail) => { checks++; if (!cond) errs.push(name + (deta
     const noReg = H.describeOwnerEvents([{ date: '12.2013', event: 'Второй владелец.' }], { owner_events: [] }, 'ru');
     ok('18c. без номера з реєстру нічого не вигадується', noReg[0].event === 'Второй владелец.');
     ok('18d. не вигадуємо продаж, спадщину чи дилера без запису реєстру', H.classifyOwnerOperation('Перереєстрація на нового власника') === 'owner_reregistration' && H.classifyOwnerOperation('') === null && H.classifyOwnerOperation('Зміна номерного знака') === null);
+    /* номер власника в бейджі, а не в реченні; пропуски в нумерації допустимі */
+    {
+      const evs = [{ date: '2013-11-15', ordinal: 1, operation: 'first_registration' }, { date: '2014-02-23', ordinal: 2, operation: 'owner_reregistration' }, { date: '2014-03-22', ordinal: 3, operation: 'owner_reregistration' },
+        { date: '2014-08-23', ordinal: 4, operation: 'trade_purchase' }, { date: '2015-10-17', ordinal: 5, operation: 'owner_reregistration' }, { date: '2017-09-05', ordinal: 6, operation: 'inheritance' }, { date: '2025-02-28', ordinal: 7, operation: 'owner_reregistration' }];
+      const f7 = { owners_count: 7, owner_events: evs };
+      const real = [{ date: '11.2013', event: 'Первая регистрация автомобиля.' }, { date: '08.2014', event: 'Вторичная регистрация после покупки через торговую организацию, четвёртый владелец.' },
+        { date: '09.2017', event: 'Перерегистрация по наследству, шестой владелец.' }, { date: '12.2023', event: 'На дилерском СТО зафиксирован пробег 94 000 км.' },
+        { date: '02.2025', event: 'Перерегистрация по договору дарения, седьмой владелец.' }, { date: '09.2026', event: 'Текущее объявление с заявленным пробегом 106 000 км.' }];
+      const o = H.describeOwnerEvents(H.annotateOwnerOrdinals(real, f7), f7, 'ru');
+      ok('20a. реальний GL63: бейджі 1, 4, 6, 7 з пропусками', JSON.stringify(o.map(r => r.owner_ordinal || null)) === '[1,4,6,null,7,null]', JSON.stringify(o.map(r => r.owner_ordinal || null)));
+      ok('20b. номер прибраний з речення, конкретна дія лишилась', o[1].event === 'Вторичная регистрация после покупки через торговую организацию.' && o[2].event === 'Перерегистрация по наследству.' && o[4].event === 'Перерегистрация по договору дарения.' && o[0].event === 'Первая регистрация автомобиля.',
+        JSON.stringify(o.map(r => r.event)));
+      ok('20c. рядки без події реєстру не змінюються і бейджа не мають', o[3].event === 'На дилерском СТО зафиксирован пробег 94 000 км.' && !o[3].owner_ordinal && !o[5].owner_ordinal);
+      const ua7 = H.describeOwnerEvents(H.annotateOwnerOrdinals([{ date: '11.2013', event: 'Перша реєстрація автомобіля.' }, { date: '09.2017', event: 'Перереєстрація за правом спадщини, шостий власник.' }, { date: '02.2025', event: 'Перереєстрація на сьомого власника за договором дарування.' }], f7), f7, 'ua');
+      const en7 = H.describeOwnerEvents(H.annotateOwnerOrdinals([{ date: '11.2013', event: 'First registration of the car.' }, { date: '09.2017', event: 'Re-registration by inheritance, sixth owner.' }, { date: '02.2025', event: 'Registration to the 7th owner under a gift agreement.' }], f7), f7, 'en');
+      ok('20d. українською і англійською', ua7[1].event === 'Перереєстрація за правом спадщини.' && ua7[2].event === 'Перереєстрація на нового власника за договором дарування.' && ua7[2].owner_ordinal === 7
+        && en7[1].event === 'Re-registration by inheritance.' && en7[2].event === 'Registration to a new owner under a gift agreement.' && en7[1].owner_ordinal === 6, JSON.stringify([ua7.map(r => r.event), en7.map(r => r.event)]));
+      const noChip = H.describeOwnerEvents([{ date: '09.2017', event: 'Перерегистрация по наследству, шестой владелец.' }], { owner_events: [] }, 'ru');
+      ok('20e. без номера з реєстру текст не чіпається і номер не вигадується', noChip[0].event === 'Перерегистрация по наследству, шестой владелец.' && !noChip[0].owner_ordinal);
+      ok('20f. сторінка показує номер бейджем', /h\.owner_ordinal \? ' <span class="badge reg-badge">' \+ esc\(t\('Owner #\{n\}'\)\.replace\('\{n\}', h\.owner_ordinal\)\)/.test(fs.readFileSync('result-check.html', 'utf8')));
+    }
     const src = fs.readFileSync('api/check.js', 'utf8');
     ok('18e. Check описує події після привʼязки номерів', /parsed\.history = annotateOwnerOrdinals\(parsed\.history, listing\.history_facts\);\n[^\n]*\n\s*if \(Array\.isArray\(parsed\.history\)\) parsed\.history = describeOwnerEvents\(parsed\.history, listing\.history_facts, lang\);/.test(src));
   }

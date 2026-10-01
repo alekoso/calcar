@@ -953,7 +953,7 @@ window.CALCAR_DICTS.ru = {
   'Not really': 'Не совсем',
   'Market value': 'Рыночная стоимость',
   'Liquidity': 'Ликвидность',
-  'Why this car costs what it does': 'Почему эта машина стоит столько',
+  'Why this price': 'Почему такая цена',
   'Easy to resell': 'Высокая',
   'Average resale': 'Средняя',
   'Hard to resell': 'Низкая',

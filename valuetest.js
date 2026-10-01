@@ -766,6 +766,43 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
     ok('17z1. детектор вузької несправності трьома мовами', ['Coolant leaks are common', 'Витік охолоджувальної рідини', 'Течь сальника', 'Timing chain stretch'].every(V.narrowFailure) && !V.narrowFailure('Высокий расход топлива сокращает число покупателей'));
   }
 
+  /* ===== ціна нового: ціна чужого ринку, викид і заява продавця не стають заводською MSRP ===== */
+  {
+    const R = (ref, host, title, snippet) => ({ ref, host, title, snippet, url: 'https://www.' + host + '/' + ref, date: null });
+    const results = [
+      R('S1', 'caranddriver.com', '2013 Brand X63 AMG', 'PRICE AS TESTED (EST): $130,000. ESTIMATED BASE PRICE: $120,000. ENGINE TYPE: V-8'),
+      R('S6', 'autoweek.com', '2013 Brand X63 AMG review notes', '2013 Brand X63 AMG Base Price: $117,830 As-Tested Price: $122,430'),
+      R('S9', 'motortrend.com', '2013 Brand X63 AMG First Test', '2013 Brand X63 AMG. BASE PRICE. $117,830. PRICE AS TESTED. $128,030.'),
+      R('S11', 'carsales.com.au', '2013 Brand X-Class X63 AMG Auto 4x4', 'Private buy price guide$35,700 - $46,500. Price when new$214,900Price Guide (base price'),
+      R('S13', 'groovecar.com', '2013 Brand X-Class AWD X 63 AMG 4MATIC', 'Base MSRP $116,925 | Invoice Price $0.'),
+    ];
+    const raw = [['S11', 214900], ['S1', 120000], ['S6', 117830], ['S9', 117830], ['S13', 116925]]
+      .map(([r, a]) => ({ result_ref: r, amount: a, currency: 'USD', market: 'US', price_kind: 'source_msrp', trim_match: 'exact', model_year: 2013, version: 'X63 AMG', powertrain: null }));
+    const veh = { make: 'Brand', model: 'X-Class', year: 2014, model_year: 2013, trim: 'X63 AMG', fuel: 'petrol', engine: '5,5 л бензин V8, 557 л.с.', drive: 'полный', title: 'Brand X-Class 2014 X63 AMG' };
+    const v = V.validateCandidates(raw, results, { brand: 'Brand', year: 2014 });
+    ok('19a. ціна національного сайту іншої країни (.com.au) не стає MSRP ринку США', v.dropped.some(d => d.ref === 'S11' && d.reason === 'source_market_mismatch') && !v.candidates.some(c => c.amount === 214900));
+    ok('19b. сам домен вирішує: загальні домени і .us лишаються', V.foreignMarketHost('https://www.carsales.com.au/x') && V.foreignMarketHost('https://www.autotrader.co.uk/x') && V.foreignMarketHost('https://auto.ria.ua/x')
+      && !V.foreignMarketHost('https://www.cars.com/x') && !V.foreignMarketHost('https://www.mbusa.com/x') && !V.foreignMarketHost('https://dealer.us/x'));
+    const run = cands => V.buildValueCurve({ price: 30000, currency: 'USD', price_context: { average_price: 28000, currency: 'USD', source_name: 'AUTO.RIA' }, country: 'UA', year: 2014, nowMs: NOW, candidates: cands, vehicle: veh, identity: veh });
+    const fixed = run(v.candidates);
+    ok('19c. реальний кейс: узгоджена базова ціна точної версії модельного року', fixed.new_price.basis === 'source_msrp' && fixed.new_price.value === 117830 && fixed.new_price.msrp.selection.method === 'exact_version' && fixed.new_price.msrp.selection.model_year === 2013, fixed.new_price.value);
+    /* навіть якщо чужий ринок пройшов би: завищене поодиноке число проти кількох узгоджених джерел відкидається */
+    const forced = V.validateCandidates(raw, results.map(r => r.ref === 'S11' ? { ...r, url: 'https://www.example.com/S11', host: 'example.com' } : r), { brand: 'Brand', year: 2014 }).candidates;
+    const outlier = run(forced);
+    ok('19d. точна ціна далеко від кількох узгоджених джерел того самого року: викид, не якір', outlier.new_price.value === 117830 && outlier.new_price.rejected.some(r => r.reason === 'exact_price_outlier' && r.amount === 214900 && r.consensus === 117830));
+    ok('19e. викид рахується лише проти щонайменше двох інших джерел: дві ціни без третьої не судяться', V.EXACT_OUTLIER_SHARE === 0.25
+      && run(forced.filter(c => ['S11', 'S1'].includes(c.source_url.split('/').pop()))).new_price.rejected.every(r => r.reason !== 'exact_price_outlier'));
+    ok('19f. серед кількох точних цін перемагає ближча до узгодженої, а не перша у списку', run(forced.filter(c => c.amount !== 214900)).new_price.value === 117830);
+    /* заява продавця і ціна оголошення кандидатом не стають: кандидат мусить посилатись на результат пошуку */
+    const seller = V.validateCandidates([{ result_ref: 'SELLER', amount: 215000, currency: 'USD', market: 'US', price_kind: 'source_msrp', trim_match: 'exact', model_year: 2013, version: 'X63 AMG', powertrain: null }], results, { brand: 'Brand', year: 2014 });
+    ok('19g. заява продавця про ціну нового не стає MSRP', seller.candidates.length === 0 && seller.dropped[0].reason === 'unknown_result_ref');
+    const ctx = V.valueUserMessage({ vehicle: veh, market: { country: 'UA' }, results, modelContext: 'x' });
+    ok('19h. текст продавця і оголошення у вхід ціни нового не потрапляють', !/seller|продав/i.test(ctx) && !/seller_text|listing\.price/.test(fs.readFileSync('api/value.js', 'utf8')));
+    /* ціна тюнінг-ательє і далі не заводська */
+    const tuned = run([...v.candidates, { ...v.candidates[0], amount: 260000, version: 'Brabus 850', trim_match: 'unknown' }]);
+    ok('19i. ціна конверсії ательє не стає заводською MSRP', tuned.new_price.value === 117830 && tuned.new_price.rejected.some(r => r.reason === 'aftermarket_conversion'));
+  }
+
   /* ===== сторінка і графік ===== */
   {
     const page = fs.readFileSync('result-check.html', 'utf8');
@@ -806,11 +843,11 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
         && same('Неопределённость по ресурсу батареи', 'Battery degradation') && same('Быстрое удешевление электромобилей', 'Battery degradation') && !same('Дорогая электроника', 'Battery degradation') && !same('Полный привод', 'Цена ниже средней') && same('Что-то совсем иное', 'Something unrelated')
         && /<svg viewBox="0 0 24 24"[^>]*aria-hidden="true">/.test(kind('x')) && !/[<>]script/i.test(kind('<script>')));
     }
-    ok('10b12d. чинників ціни не більше чотирьох рядків, причин ліквідності не більше трьох', /const factors = whyRaw\.filter\(x => typeof x === 'string' && x\.trim\(\)\)\.slice\(0, 4\);/.test(page) && /mv\.why_price && Array\.isArray\(mv\.why_price\.reasons\) \? mv\.why_price\.reasons : \(mv && Array\.isArray\(mv\.price_factors\) \? mv\.price_factors : \[\]\)/.test(page) && /lq\.reasons\.filter\(x => typeof x === 'string' && x\.trim\(\)\)\.slice\(0, 3\)/.test(page));
+    ok('10b12d. чинників ціни і причин ліквідності не більше трьох рядків', /const factors = whyRaw\.filter\(x => typeof x === 'string' && x\.trim\(\)\)\.slice\(0, 3\);/.test(page) && /mv\.why_price && Array\.isArray\(mv\.why_price\.reasons\) \? mv\.why_price\.reasons : \(mv && Array\.isArray\(mv\.price_factors\) \? mv\.price_factors : \[\]\)/.test(page) && /lq\.reasons\.filter\(x => typeof x === 'string' && x\.trim\(\)\)\.slice\(0, 3\)/.test(page));
     ok('10b13. без яскравих лаймових маркерів списку', !/\.mk-[a-z]+[^{]*\{[^}]*var\(--brand\)/.test(vcss) && /\.mk-row \+ \.mk-row\{border-top:1px solid var\(--line\)\}/.test(vcss));
     ok('10b14. дві рівні картки поруч, на вузькому екрані одна під одною; числа над графіком', /\.val-pair\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\);gap:20px/.test(vcss)
       && /@media\(max-width:860px\)\{[\s\S]*?\.vc-body\{grid-template-columns:minmax\(0,1fr\)[\s\S]*?\.vc-rail\{order:-1[\s\S]*?\.val-pair\{grid-template-columns:minmax\(0,1fr\)/.test(vcss));
-    ok('10b16. статус сохранності у заголовку другої картки: той самий тихий статус, з даних кривої', /<h3>Why this car costs what it does<\/h3><span class="mk-loss" id="valWhyLoss" hidden><span class="mk-state" id="valWhyState"><\/span>/.test(page)
+    ok('10b16. статус сохранності у заголовку другої картки: той самий тихий статус, з даних кривої', /<h3>Why this price<\/h3><span class="mk-loss" id="valWhyLoss" hidden><span class="mk-state" id="valWhyState"><\/span>/.test(page)
       && /const retState = vc && vc\.retention && LOSS\[vc\.retention\.state\] && mv && mv\.why_price \? LOSS\[vc\.retention\.state\] : null;/.test(page) && !/unknown:/.test(page.slice(page.indexOf('const LOSS = {'), page.indexOf('const LOSS = {') + 320)));
     {
       const lossSrc = page.slice(page.indexOf('const LOSS = {'), page.indexOf('const LOSS = {') + 320);
@@ -823,6 +860,21 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
       ok('10b20. переклади статусу', T.ru['Value loss: Low'] === 'Потеря стоимости: Низкая' && T.ru['Value loss: Medium'] === 'Потеря стоимости: Средняя' && T.ru['Value loss: High'] === 'Потеря стоимости: Высокая'
         && T.ua['Value loss: Low'] === 'Втрата вартості: Низька' && T.ua['Value loss: Medium'] === 'Втрата вартості: Середня' && T.ua['Value loss: High'] === 'Втрата вартості: Висока'
         && !T.ru['Typical depreciation'] && !/Typical depreciation|Lost much of its value|Holds its value well/.test(page));
+    }
+    {
+      /* дві картки однієї системи: короткий заголовок, спільні рядки сітки, до трьох рядків у кожній */
+      const css = page.slice(page.indexOf('.val-pair{'), page.indexOf('.mk-tx{'));
+      ok('10b21. заголовок правої картки короткий, переклади в одну строку', /<h3>Why this price<\/h3>/.test(page) && !/Why this car costs what it does/.test(page));
+      const D3 = {}; vm.runInNewContext(fs.readFileSync('i18n/ru.js', 'utf8') + fs.readFileSync('i18n/ua.js', 'utf8'), { window: D3 });
+      ok('10b22. RU "Почему такая цена", UA "Чому така ціна"', D3.CALCAR_DICTS.ru['Why this price'] === 'Почему такая цена' && D3.CALCAR_DICTS.ua['Why this price'] === 'Чому така ціна' && !D3.CALCAR_DICTS.ru['Why this car costs what it does']);
+      ok('10b23. заголовки в один рядок і однакової висоти: та сама будова mk-head в обох картках', /\.mk-card h3\{[^}]*white-space:nowrap/.test(page) && /\.mk-head\{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:28px;flex-wrap:wrap;row-gap:8px\}/.test(page)
+        && (page.match(/<div class="mk-head"><h3>/g) || []).length === 2);
+      ok('10b24. рядки причин стоять поруч: спільна сітка на чотири рядки (заголовок і три причини)', /\.val-pair:not\(\.one\)\{grid-template-rows:auto repeat\(3,auto\);row-gap:0\}/.test(css)
+        && /\.val-pair:not\(\.one\) \.mk-card\{display:grid;grid-row:span 4;grid-template-rows:subgrid/.test(css) && /\.val-pair:not\(\.one\) \.mk-rows\{display:contents\}/.test(css));
+      ok('10b25. не більше трьох рядків у кожній картці', /reasons = lq && Array\.isArray\(lq\.reasons\) \? lq\.reasons\.filter\(x => typeof x === 'string' && x\.trim\(\)\)\.slice\(0, 3\)/.test(page) && /const factors = whyRaw\.filter\(x => typeof x === 'string' && x\.trim\(\)\)\.slice\(0, 3\);/.test(page));
+      const narrow = page.slice(page.indexOf('@media(max-width:860px){', page.indexOf('.val-pair{')), page.indexOf('@media(max-width:480px){', page.indexOf('.val-pair{')));
+      ok('10b26. телефон: картки одна під одною, без спільних рядків і з відступом', /\.val-pair:not\(\.one\) \.mk-card\{display:block;grid-row:auto\}/.test(narrow) && /\.val-pair:not\(\.one\) \.mk-rows\{display:block\}/.test(narrow) && /row-gap:12px/.test(narrow));
+      ok('10b27. підказка статусу втрати вартості лишилась', /id="valWhyInfo"/.test(page) && /id="valWhyTip" role="tooltip"/.test(page));
     }
     ok('10b15. тексти карток: лише наявні причини і чинники, без переписування', /reasons\.map\(mkRow\)/.test(page) && /factors\.map\(mkRow\)/.test(page) && /esc\(clean\(text\)\)/.test(page));
     /* I, J: рендер оцінки і впевненості не змінений цією задачею */
@@ -960,7 +1012,7 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
     /* словники */
     const dicts = { CALCAR_DICTS: {} };
     for (const f of ['i18n/ru.js', 'i18n/ua.js']) vm.runInNewContext(fs.readFileSync(f, 'utf8'), { window: dicts });
-    const keys = ['Market value', 'Liquidity', 'Why this car costs what it does', 'Easy to resell', 'Average resale', 'Hard to resell', 'Not enough data', 'Ukraine', 'When new', 'Today', '{name} average', 'Marketplace average', 'Estimated when new', 'Forecast in 5 years', 'Value loss: Low', 'Value loss: Medium', 'Value loss: High', 'About value loss', 'How much value the car has lost against its price when new, given its age.', 'Listing price', 'The new-car price is the US list price of this version.', 'The new-car price is estimated from the current price and age, within the list prices of this model year.', 'The new-car price is estimated from the US list prices of this model year.', 'The new-car price is the US list price of the technically equivalent version.', 'The new-car price is estimated from US list prices of versions with this powertrain.',
+    const keys = ['Market value', 'Liquidity', 'Why this price', 'Easy to resell', 'Average resale', 'Hard to resell', 'Not enough data', 'Ukraine', 'When new', 'Today', '{name} average', 'Marketplace average', 'Estimated when new', 'Forecast in 5 years', 'Value loss: Low', 'Value loss: Medium', 'Value loss: High', 'About value loss', 'How much value the car has lost against its price when new, given its age.', 'Listing price', 'The new-car price is the US list price of this version.', 'The new-car price is estimated from the current price and age, within the list prices of this model year.', 'The new-car price is estimated from the US list prices of this model year.', 'The new-car price is the US list price of the technically equivalent version.', 'The new-car price is estimated from US list prices of versions with this powertrain.',
       'Forecast', 'This listing', '{pct} vs average', 'Value over time', 'The new-car price is estimated from the current price and age.', 'The new-car price is the US list price plus import costs to Ukraine.',
       'The new-car price is the list price in Ukraine.', 'The forecast is a model estimate, not a guarantee.'];
     for (const lang of ['ru', 'ua']) {

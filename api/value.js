@@ -348,6 +348,10 @@ export function compareTechnical(v, c) {
 }
 const centralOf = values => { const v = [...new Set(values.map(x => Math.round(x)))].sort((a, b) => a - b), n = v.length; return { values: v, central: n % 2 ? v[(n - 1) / 2] : (v[n / 2 - 1] + v[n / 2]) / 2 }; };
 
+/* частка, на яку ціна точної версії може відходити від узгодженої ціни
+   інших джерел того самого модельного року (коли їх щонайменше два) */
+export const EXACT_OUTLIER_SHARE = 0.25;
+
 /* Чи та сама версія: назва версії з джерела проти версії цього авто.
    Порівнюються злиті токени без слів про привід і кузов, з назвою моделі і
    без неї: "X 450 AWD" і "X450" збігаються, "Limited Platinum" і
@@ -477,10 +481,28 @@ export function resolveNewPrice({ candidates = [], pc, T, market = null, currenc
 
   /* B. MSRP саме цієї версії: переважає будь-яке зіставлення за двигуном */
   const isExact = m => m.c.trim_match === 'exact' || trimMatches(m.c.version, vehicle.trim, vehicle);
-  /* серед точних: спершу ціна модельного року самого авто, далі довіра до джерела */
+  /* серед точних: спершу ціна модельного року самого авто, далі довіра до
+     джерела, далі близькість до узгодженої ціни інших джерел. Ціна точної
+     версії, що далеко відходить від кількох інших джерел того самого року
+     ("ціна в іншій валюті", "з опціями", ціна конверсії), відкидається:
+     узгоджена базова ціна точної версії сильніша за поодиноке завищене
+     число */
   const ownYear = parseInt(vehicle.model_year, 10) || vy;
   const yearRank = m => (m.price_year === ownYear ? 0 : 1);
-  const exact = msrps.filter(isExact).sort((a, b) => (yearRank(a) - yearRank(b)) || (confRank(a) - confRank(b)));
+  const median = arr => { const v = arr.slice().sort((a, b) => a - b), n = v.length; return n % 2 ? v[(n - 1) / 2] : (v[n / 2 - 1] + v[n / 2]) / 2; };
+  const exactAll = msrps.filter(isExact);
+  const exact = [];
+  exactAll.forEach((m, i) => {
+    const peers = exactAll.filter((x, j) => j !== i && x.price_year === m.price_year).map(x => x.usd);
+    if (peers.length >= 2) {
+      const consensus = median(peers);
+      if (Math.abs(m.usd - consensus) / consensus > EXACT_OUTLIER_SHARE) { reject(m.c, 'exact_price_outlier', { consensus: Math.round(consensus) }); return; }
+    }
+    exact.push(m);
+  });
+  const centre = y => { const v = exact.filter(m => m.price_year === y).map(m => m.usd); return v.length ? median(v) : null; };
+  const offCentre = m => { const c = centre(m.price_year); return c ? Math.abs(m.usd - c) : 0; };
+  exact.sort((a, b) => (yearRank(a) - yearRank(b)) || (confRank(a) - confRank(b)) || (offCentre(a) - offCentre(b)));
   sel.exact_version_candidates = exact.map(describe);
   for (const m of exact) {
     const loc = localize(m.usd, m.price_year);
@@ -726,6 +748,8 @@ export function validateCandidates(raw, results, { brand = null, year = null, no
     if (!r) { dropped.push({ reason: 'unknown_result_ref' }); continue; }
     if (amount === null || !CUR.includes(c.currency) || !MKT.includes(c.market) || !KIND.includes(c.price_kind)) { dropped.push({ ref: r.ref, reason: 'bad_shape' }); continue; }
     if (!amountInText(amount, r.title + ' ' + r.snippet)) { dropped.push({ ref: r.ref, reason: 'amount_not_in_source' }); continue; }
+    /* ціна національного сайту іншої країни не є MSRP ринку США */
+    if (c.market === 'US' && foreignMarketHost(r.url)) { dropped.push({ ref: r.ref, reason: 'source_market_mismatch', host: hostOf(r.url) }); continue; }
     const my = parseInt(c.model_year, 10) || null;
     /* ціна іншого модельного року (далі ніж на 1) цій машині не якір */
     if (my && year && Math.abs(my - parseInt(year, 10)) > 1) { dropped.push({ ref: r.ref, reason: 'other_model_year' }); continue; }
@@ -749,6 +773,17 @@ export function validateCandidates(raw, results, { brand = null, year = null, no
     });
   }
   return { candidates: out, dropped };
+}
+
+/* Ринок джерела за доменом країни: сторінка австралійського, британського,
+   канадського чи будь-якого іншого національного сайту показує ціну свого
+   ринку і у своїй валюті ("Price when new $214,900" на .com.au це австралійські
+   долари з місцевими податками). MSRP ринку США з такого джерела не береться.
+   Загальні домени (.com, .net, .org) і .us рішення не змінюють */
+const FOREIGN_MARKET_TLD = /\.(?:au|uk|ca|nz|ie|za|in|sg|my|hk|jp|kr|cn|tw|ae|sa|qa|kw|il|tr|ru|ua|by|kz|pl|cz|sk|hu|ro|bg|hr|si|rs|de|at|ch|fr|be|nl|lu|it|es|pt|gr|se|no|dk|fi|ee|lv|lt|br|ar|cl|mx|pe)$/i;
+export function foreignMarketHost(url) {
+  const h = hostOf(String(url || ''));
+  return !!h && FOREIGN_MARKET_TLD.test(h);
 }
 
 /* Страховка витягу: модель могла не повернути ціну, хоча результат пошуку
