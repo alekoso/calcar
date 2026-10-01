@@ -298,9 +298,9 @@ function msrpYearOk(c, years) {
       режим ввезення року відомий: локалізується, інакше лишається як є
       (підпис у звіті і так "Оцінка новою");
    C. слабка локальна ціна;
-   D. діапазон MSRP модельного року з одного джерела (кілька версій) або
-      стартова ціна: зворотна оцінка лишається, але не виходить за межі
-      діапазону. Це запобіжник правдоподібності, а не пошук точної ціни;
+   D. версія невідома, ціни кількох версій модельного року з одного
+      джерела: медіана (2 ціни: середина); лише стартова ціна: нижня межа
+      для зворотної оцінки;
    E. одна MSRP невідомої версії з відомим режимом ввезення (як раніше);
    F. зворотна оцінка.
    max(MSRP, зворотна) свідомо НЕ застосовується. */
@@ -382,31 +382,38 @@ export function resolveNewPrice({ candidates = [], pc, T, market = null, currenc
   /* C. слабка локальна */
   for (const p of locals) if (plausible(p)) return sourced(p);
 
-  /* D. діапазон модельного року з одного джерела */
+  /* D. версія невідома, але є ціни кількох версій того самого модельного
+     року з одного джерела: нейтральна центральна MSRP. Три і більше цін:
+     медіана (для парної кількості середнє двох центральних); дві ціни:
+     середина між ними. Без ваг популярності версій і без імовірностей.
+     Зворотна оцінка тут не вибирає і не зажимається в діапазон */
   const bySource = new Map();
   for (const m of msrps) { const k = m.c.source_url || ''; if (!bySource.has(k)) bySource.set(k, []); bySource.get(k).push(m); }
-  let band = null;
+  let family = null;
   for (const [url, list] of bySource) {
-    const amounts = [...new Set(list.map(m => Math.round(m.usd)))];
-    if (amounts.length >= 2 && (!band || amounts.length > band.n)) band = { url, n: amounts.length, lo: Math.min(...amounts), hi: Math.max(...amounts), year: list[0].price_year };
+    const values = [...new Set(list.map(m => Math.round(m.usd)))].sort((a, b) => a - b);
+    if (values.length >= 2 && (!family || values.length > family.values.length)) family = { url, values, year: list[0].price_year };
   }
-  if (!band) {
+  if (family) {
+    const v = family.values, n = v.length;
+    const central = n % 2 ? v[(n - 1) / 2] : (v[n / 2 - 1] + v[n / 2]) / 2;
+    const method = n >= 3 ? 'msrp_median' : 'msrp_midpoint';
+    const loc = localize(central, family.year);
+    const p = { value: loc ? loc.value : central, c: { source_url: family.url, amount: Math.round(central), currency: 'USD' } };
+    msrpInfo = { exact: null, selection: { method, model_year: family.year, candidate_count: n, values: v, min: v[0], max: v[n - 1], selected: Math.round(central),
+      selected_anchor: Math.round(p.value), localization: loc ? loc.regime : null, sources: [family.url], trim_known: !!vehicle.trim, exact_trim_matched: false } };
+    if (plausible(p)) return { value: Math.round(p.value), approx: true, basis: method, strength: null, fact: null, rejected, msrp: msrpInfo, ...(loc ? { localization: loc.regime } : {}) };
+  }
+  /* лише стартова ціна моделі року: нижня межа правдоподібності, не сімʼя */
+  if (!family) {
     const base = msrps.filter(m => m.c.trim_match === 'base').sort((a, b) => a.usd - b.usd)[0];
-    if (base) band = { url: base.c.source_url, n: 1, lo: Math.round(base.usd), hi: null, year: base.price_year };
-  }
-  if (band) {
-    const lo = localize(band.lo, band.year), hi = band.hi !== null ? localize(band.hi, band.year) : null;
-    const loV = lo ? lo.value : band.lo, hiV = band.hi === null ? null : (hi ? hi.value : band.hi);
-    /* стеля діапазону нижча за поточну ціну: це базові ціни під дорогою
-       конфігурацією, стелю не застосовуємо */
-    const useHi = hiV !== null && hiV >= minOk;
-    let value = reverse, applied = null;
-    if (value < loV) { value = loV; applied = 'floor'; }
-    else if (useHi && value > hiV) { value = hiV; applied = 'ceiling'; }
-    msrpInfo = { exact: null, range: { min: band.lo, max: band.hi, prices: band.n, model_year: band.year, source_url: band.url, localization: lo ? lo.regime : null,
-      min_anchor: Math.round(loV), max_anchor: hiV === null ? null : Math.round(hiV), ceiling_used: useHi, applied } };
-    if (applied) return { value: Math.round(value), approx: true, basis: 'msrp_range', strength: null, fact: null, rejected, msrp: msrpInfo };
-    return fallback(null);
+    if (base) {
+      const lo = localize(base.usd, base.price_year), loV = lo ? lo.value : base.usd;
+      msrpInfo = { exact: null, selection: { method: 'base_floor', model_year: base.price_year, candidate_count: 1, values: [Math.round(base.usd)], min: Math.round(base.usd), max: null,
+        selected: null, selected_anchor: Math.round(loV), localization: lo ? lo.regime : null, sources: [base.c.source_url], trim_known: !!vehicle.trim, exact_trim_matched: false, applied: reverse < loV ? 'floor' : null } };
+      if (reverse < loV) return { value: Math.round(loV), approx: true, basis: 'msrp_base_floor', strength: null, fact: null, rejected, msrp: msrpInfo };
+      return fallback(null);
+    }
   }
 
   /* E. одна MSRP невідомої версії: лише з відомим режимом ввезення */

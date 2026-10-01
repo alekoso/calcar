@@ -981,4 +981,5 @@ window.CALCAR_DICTS.ua = {
   'Lost much of its value': 'Сильно втратила в ціні',
   'Typical depreciation': 'Звичайна амортизація',
   'Holds its value well': 'Добре тримає ціну',
+  'The new-car price is estimated from the US list prices of this model year.': 'Ціну нового авто оцінено за прайс-цінами версій цього модельного року у США.',
 };
