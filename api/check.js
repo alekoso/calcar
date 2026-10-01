@@ -2919,7 +2919,8 @@ async function runCheck(req, res, job) {
         model_line: (nhtsa && nhtsa.Model) || listing.model || null,
         /* складений код площадки ("B9/F5") розбирає сам резолвер; назва
            моделі у формі коду покоління не є */
-        generation: resolveGeneration([{ value: listing.generation, source: 'listing', notModel: (nhtsa && nhtsa.Model) || listing.model }]).generation,
+        /* версія комплектації декодера у полі покоління ("HST") поколінням не є */
+        generation: resolveGeneration([{ value: listing.generation, source: 'listing', notTrim: [nhtsa && nhtsa.Trim, nhtsa && nhtsa.Series], notModel: (nhtsa && nhtsa.Model) || listing.model }]).generation,
         version_text: (nhtsa && (nhtsa.Trim || nhtsa.Series)) || null,
         engine_text: nhtsa ? [nhtsa.DisplacementL ? nhtsa.DisplacementL + ' L' : null, nhtsa.FuelTypePrimary || null, nhtsa.EngineHP ? nhtsa.EngineHP + ' hp' : null].filter(Boolean).join(' ') || null : null,
         model_year: (nhtsa && nhtsa.ModelYear) || listing.year || null,
@@ -4041,7 +4042,7 @@ async function runCheck(req, res, job) {
        сходинка це висновок ОСНОВНОГО аналізу: окремого виклику під
        покоління немає. Нічого не підтвердилось: порожньо */
     const genResolved = resolveGeneration([
-      { value: listing.generation, source: 'listing', notTrim: parsed.vehicle && parsed.vehicle.trim, notModel: listing.model },
+      { value: listing.generation, source: 'listing', notTrim: [parsed.vehicle && parsed.vehicle.trim, nhtsa && nhtsa.Trim], notModel: listing.model },
       { value: miIdentityGeneration(miEq), source: 'model_intelligence' },
       { value: parsed.vehicle && parsed.vehicle.generation, source: 'analysis', notTrim: parsed.vehicle && parsed.vehicle.trim },
     ]);
@@ -4204,6 +4205,18 @@ async function runCheck(req, res, job) {
        Продовження після відповіді немає */
     await miResearch.persistDone(3000);
     miResearch.abort();
+    /* MI Research v1.2: канонічне покоління Check відоме лише тут. Воно
+       запамʼятовується для цієї машини (наступний Check стартує дослідження
+       з нього), а сильна ідентичність (поле площадки і аналіз зійшлись)
+       входить у каталог MI, і холодні кандидати покоління проходять той
+       самий gate. Один RPC, без пошуку і без виклику моделі; збій Check
+       не зачіпає */
+    await miResearch.finalize({
+      generation: genResolved.generation, generation_source: genResolved.source,
+      listing_generation: resolveGeneration([{ value: listing.generation, source: 'listing', notTrim: [parsed.vehicle && parsed.vehicle.trim, nhtsa && nhtsa.Trim, nhtsa && nhtsa.Series], notModel: (nhtsa && nhtsa.Model) || listing.model }]).generation,
+      analysis_generation: resolveGeneration([{ value: parsed.vehicle && parsed.vehicle.generation, source: 'analysis', notTrim: parsed.vehicle && parsed.vehicle.trim }]).generation,
+      powertrain: resolvePowertrainClass({ nhtsa, fuel: (parsed.vehicle && parsed.vehicle.fuel) || null }),
+    });
     parsed._meta.mi_research = researchMeta(miResearch.state);
     const rs = miResearch.state;
     console.log('[mi-research]', JSON.stringify({ op: 'check', status: rs.status, reason: rs.reason || rs.stop_reason || null, eligibility: rs.eligibility || null,

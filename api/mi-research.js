@@ -104,6 +104,9 @@ export function researchIdentity(src = {}) {
     brand: clean(src.brand) || null,
     model_line: clean(src.model_line) || null,
     generation: clean(src.generation) || null,
+    /* звідки код покоління: check (поле площадки цього Check) або memory
+       (його визначив попередній Check цієї самої машини) */
+    generation_source: clean(src.generation) ? (src.generation_source === 'memory' ? 'memory' : 'check') : null,
     version_text: clean(src.version_text) || null,
     engine_text: clean(src.engine_text) || null,
     model_year: Number.isInteger(Number(src.model_year)) && Number(src.model_year) > 1950 ? Number(src.model_year) : null,
@@ -147,7 +150,7 @@ export function identityLabel(ctx, identity) {
 
 export async function fetchResearchContext(vin, identity, opts = {}) {
   const r = await rpc('mi_research_context', { p_vin: vin ? String(vin).trim().toUpperCase() : null, p_identity: identity ? {
-    brand: identity.brand, model_line: identity.model_line, generation: identity.generation, label: identity.label } : null }, { ...opts, timeoutMs: opts.timeoutMs || 8000 });
+    brand: identity.brand, model_line: identity.model_line, generation: identity.generation, version_text: identity.version_text || null, label: identity.label } : null }, { ...opts, timeoutMs: opts.timeoutMs || 8000 });
   if (!r.ok) {
     if (r.reason === 'error' || r.reason === 'timeout') logLine('mi_research_context', { reason: r.reason, status: r.status || null, code: r.code || null, error: r.error || null, ms: r.ms });
     return { ok: false, reason: r.reason, ms: r.ms };
@@ -717,7 +720,9 @@ export function persistPayload(findings, identity, token) {
   const list = Array.isArray(findings) ? findings : [];
   return {
     check_token: token || null,
-    identity: identity ? { label: identity.label || null, brand: identity.brand || null, model_line: identity.model_line || null, generation: identity.generation || null } : null,
+    /* памʼять кандидатів живе за канонічною ідентичністю (бренд + ряд +
+       покоління), версійні знахідки за текстом версії; мітка лише для людей */
+    identity: identity ? { label: identity.label || null, brand: identity.brand || null, model_line: identity.model_line || null, generation: identity.generation || null, version_text: identity.version_text || null } : null,
     /* знання про конкретний VIN не є знанням про модель: у MI не йде */
     findings: list.filter(f => f.scope !== 'vehicle').map(f => ({
       scope: f.scope, component_role: f.component_role || null, knowledge_type: f.knowledge_type,
@@ -745,6 +750,32 @@ export async function persistResearch(vin, payload, opts = {}) {
   if (b.ok === false || results.some(x => x.status === 'publish_failed')) logLine('mi_research_persist', { reason: b.reason || 'publish_failed', results: results.filter(x => x.status === 'publish_failed').map(x => x.error).slice(0, 2) });
   return { ok: b.ok !== false, reason: b.reason || null, published: b.published || 0, merged: b.merged || 0, candidates: b.candidates || 0, staged_cold: b.staged_cold || 0, skipped: b.skipped || 0, fragments_rebuilt: b.fragments_rebuilt || 0,
     results: results.map(x => ({ status: x.status, scope: x.scope, reason: x.reason || null, gate_failed: x.gate_failed || null, strengthened: x.strengthened || false })), ms: r.ms };
+}
+
+/* Тип силової установки для каталогу MI з класу Check; невідоме лишається
+   невідомим і покоління без нього у каталог не входить */
+export function miPowertrain(cls) {
+  const c = String(cls || '').toLowerCase();
+  if (c === 'petrol' || c === 'diesel' || c === 'ice') return 'ice';
+  return c === 'bev' || c === 'phev' || c === 'hev' ? c : null;
+}
+
+/* Фінал Check (міграція 030): канонічне покоління запамʼятовується для
+   машини, сильна ідентичність входить у каталог MI, холодні кандидати
+   покоління проходять той самий gate заново. Нового пошуку і нового
+   виклику моделі тут немає. */
+export async function finalizeResearch(vin, payload, opts = {}) {
+  const r = await rpc('mi_research_finalize', { p_vin: vin ? String(vin).trim().toUpperCase() : null, p_run: payload }, { ...opts, timeoutMs: opts.finalizeTimeoutMs || 6000 });
+  if (!r.ok) {
+    /* памʼять ідентичності і вхід у каталог це критичний шлях MI: збій завжди у лог */
+    if (r.reason !== 'no_credentials' && r.reason !== 'not_installed') logLine('mi_research_finalize', { reason: r.reason, status: r.status || null, code: r.code || null, error: r.error || null, generation: (payload && payload.identity && payload.identity.generation) || null, ms: r.ms });
+    return { ok: false, reason: r.reason, ms: r.ms };
+  }
+  const b = r.body || {};
+  if (b.publish_failed) logLine('mi_research_finalize', { reason: 'publish_failed', count: b.publish_failed, generation: b.generation || null });
+  return { ok: b.ok !== false, reason: b.reason || null, identity_key: b.identity_key || null, generation: b.generation || null, status: b.status || null, basis: b.basis || null, note: b.note || null,
+    sources: Array.isArray(b.sources) ? b.sources : [], generation_subject_id: b.generation_subject_id || null, catalogued_now: b.catalogued_now === true, vehicle_remembered: b.vehicle_remembered === true, rekeyed: b.rekeyed || 0, attached: b.attached || 0,
+    published: b.published || 0, merged: b.merged || 0, publish_failed: b.publish_failed || 0, fragments_rebuilt: b.fragments_rebuilt || 0, ms: r.ms };
 }
 
 /* ---------- Оркестрація ---------- */
@@ -829,6 +860,12 @@ export function startCheckResearch(input = {}, opts = {}) {
       state.context_ms = Date.now() - tc;
       state.context_at = at();
       if (ctxRes.ok) state.context = ctxRes.context;
+      /* площадка покоління не дала, але його вже визначив попередній Check
+         цієї самої машини: дослідження стартує з памʼяті */
+      const remembered = state.context && state.context.research_identity;
+      if (!state.identity.generation && remembered && remembered.generation && remembered.generation_source === 'memory') {
+        state.identity = researchIdentity({ ...state.identity, generation: remembered.generation, generation_source: 'memory' });
+      }
       const miScope = (state.context && state.context.mi_scope) || 'none';
       /* достатня ідентичність: версія каталогу MI або бренд + ряд + покоління з Check */
       if (!ctxRes.ok && !state.identity.sufficient) return finish('skipped', ctxRes.reason || 'context_unavailable');
@@ -892,8 +929,31 @@ export function startCheckResearch(input = {}, opts = {}) {
   });
   const persistDone = ms => Promise.race([Promise.allSettled(state.persists), new Promise(r => setTimeout(() => r('timeout'), ms))]);
   const stop = () => { if (!state.aborted_at) state.aborted_at = at(); abort.abort(); };
+  /* Фінал: канонічне покоління Check відоме лише тепер. Викликається після
+     збережень пакетів; нічого не кидає, збій це рядок логу. */
+  const finalize = async (final = {}) => {
+    try {
+      if (!miResearchEnabled(opts.env)) return null;
+      const generation = clean(final.generation) || null;
+      if (!generation) { state.finalize = { ok: true, reason: 'no_generation' }; return state.finalize; }
+      const payload = {
+        check_token: input.token || null,
+        identity: { brand: state.identity.brand, model_line: state.identity.model_line, generation, generation_source: final.generation_source || null, version_text: state.identity.version_text || null },
+        listing_generation: clean(final.listing_generation) || null, analysis_generation: clean(final.analysis_generation) || null,
+        /* під яким кодом ішло дослідження цього Check, якщо йшло */
+        research_generation: state.batches.length ? state.identity.generation : null,
+        powertrain: miPowertrain(final.powertrain),
+      };
+      state.finalize = await (opts.finalize || finalizeResearch)(input.vin || null, payload, opts);
+      return state.finalize;
+    } catch (e) {
+      logLine('mi_research_finalize', { reason: 'error', error: String((e && e.message) || e).slice(0, 160) });
+      state.finalize = { ok: false, reason: 'error' };
+      return state.finalize;
+    }
+  };
 
-  return { promise, state, cutoff, waitBatch, persistDone, abort: stop };
+  return { promise, state, cutoff, waitBatch, persistDone, finalize, abort: stop };
 }
 
 /* Телеметрія для _meta: хронологія пакетів, без текстів джерел і ключів */
@@ -903,7 +963,9 @@ export function researchMeta(state) {
   const brief = f => ({ scope: f.scope, component_role: f.component_role, knowledge_type: f.knowledge_type, strength: f.strength, prominence: f.prominence, lifecycle: f.lifecycle, current_relevance: f.current_relevance, model_relevance: f.model_relevance, severity: f.severity, rank: Math.round((f.rank || 0) * 10) / 10, novelty: f.novelty, candidate_id: f.candidate_id, text_en: f.text_en.slice(0, 200), remedy: f.remedy ? f.remedy.slice(0, 120) : null, verify_on_vehicle: f.verify_on_vehicle ? f.verify_on_vehicle.slice(0, 120) : null, evidence_period: f.evidence_period || null, sources: f.evidence.map(e => e.host + (e.evidence_date ? '@' + e.evidence_date : '')) });
   return {
     status: state.status, reason: state.reason || null, stop_reason: state.stop_reason || null, eligibility: state.eligibility || null,
-    identity: state.identity ? { label: state.identity.label, sufficient: state.identity.sufficient, generation: state.identity.generation, model_year: state.identity.model_year } : null,
+    identity: state.identity ? { label: state.identity.label, sufficient: state.identity.sufficient, generation: state.identity.generation, generation_source: state.identity.generation_source || null, model_year: state.identity.model_year } : null,
+    identity_key: (ctx.research_identity && ctx.research_identity.key) || null,
+    finalize: state.finalize || null,
     mi_scope: ctx.mi_scope || null, identity_precision: ctx.identity_precision || null, version: (ctx.identity_summary && ctx.identity_summary.version) || null,
     knowledge_count: ctx.knowledge_count || 0, open_candidates: ctx.open_candidates_count || 0,
     totals: { batches: state.batches.length, queries: state.totals.queries, sources: state.totals.sources, findings: state.findings.length },

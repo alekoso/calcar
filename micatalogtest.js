@@ -953,7 +953,7 @@ t(64, 'холодний бренд: контекст доступний без �
   ${A(`(select count(*) from mi_vm.resolved_identity where vin = 'WVWZZZ1KZAW0S0004') = 0`, 'the cold path ran the catalogue bridge')}
   r := mi.research_persist('WVWZZZ1KZAW0S0004', ('{"check_token":"c1","identity":{"label":"Volkswagen Golf MK6 2010","brand":"Volkswagen","model_line":"Golf","generation":"MK6"},"findings":[' || ${sq(rfind('generation', 'known_issue', 'The DSG mechatronic unit of this generation is reported to fail and was covered by a service action.', rev('https://vwvortex.com/x', 'owner', 'secondary', 'mechatronic failed', ',"source_date":"2026-01-05","evidence_date":"2012"'), ',"lifecycle":"campaign_or_one_time_fix","current_relevance":"verify","remedy":"service action","verify_on_vehicle":"dealer campaign check by VIN"'))} || ']}')::jsonb);
   ${A(`(r->>'staged_cold')::int = 1 and (r->>'published')::int = 0 and r->'results'->0->>'status' = 'staged_cold'`, 'a cold finding was not staged')}
-  ${A(`(select bool_and(resolved_subject_id is null and proposed_applicability is null and proposed_subject_text = 'Volkswagen Golf MK6 2010' and review_note like '%cold identity%' and review_note like '%lifecycle: campaign_or_one_time_fix%') from mi.candidate_claim where extractor = 'check_research')`, 'the cold candidate invented a subject or applicability')}
+  ${A(`(select bool_and(resolved_subject_id is null and proposed_applicability is null and proposed_subject_text = 'Volkswagen Golf MK6' and research_scope = 'generation' and research_identity_key = 'volkswagen|golf|MK6' and review_note like '%cold identity%' and review_note like '%lifecycle: campaign_or_one_time_fix%') from mi.candidate_claim where extractor = 'check_research')`, 'the cold candidate invented a subject or applicability')}
   ${A(`(select bool_and(ce.context->>'lifecycle' = 'campaign_or_one_time_fix' and ce.context->>'evidence_date' = '2012' and ce.context->>'source_date' = '2026-01-05' and ce.context->>'current_relevance' = 'verify') from mi.candidate_evidence ce join mi.candidate_claim cc on cc.id = ce.candidate_id where cc.extractor = 'check_research')`, 'lifecycle metadata did not reach the evidence context')}
   ${A(`(select published_at from mi.source where url = 'https://vwvortex.com/x') = date '2026-01-05'`, 'the page date was not stored on the source')}
   ${A(`(select count(*) from mi.claim where text_en like 'The DSG mechatronic%') = 0`, 'a subjectless candidate was published')}
@@ -1000,6 +1000,164 @@ t(67, 'gate і публікація незмінні для розвʼязано
   ${A(`(select bool_and(p.prosecdef and not exists (select 1 from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a where a.grantee = 0 and a.privilege_type = 'EXECUTE'))
           from pg_proc p join pg_namespace n on n.oid = p.pronamespace
          where n.nspname = 'public' and p.proname in ('mi_research_context', 'mi_research_persist') having count(*) = 2)`, 'a research entry is executable by public')}
+  end;`);
+
+/* ---- MI Research v1.2 (міграція 030): канонічна ідентичність, памʼять покоління, вхід у каталог ---- */
+
+const GL_A = "'4JGDF7CE5DA100001'", GL_B = "'4JGDF7EE1FA200002'", GL_C = "'4JGDF6EE0GA300003'", GL_D = "'4JGDF7CE9EA400004'";
+const idj = (label, brand, line, gen, ver) => `"identity":{"label":"${label}","brand":"${brand}","model_line":"${line}"${gen ? `,"generation":"${gen}"` : ''}${ver ? `,"version_text":"${ver}"` : ''}}`;
+const ID_GL13 = idj('MERCEDES-BENZ gl class X166 2013', 'MERCEDES-BENZ', 'gl class', 'X166');
+const ID_GL63 = idj('MERCEDES-BENZ GL-Class X166 GL63 AMG 5.5 L Gasoline 2015', 'Mercedes-Benz', 'GL-Class', 'X166', 'GL63 AMG');
+const ID_GL450 = idj('MERCEDES-BENZ GL-Class X166 GL450 4.7 L Gasoline 2016', 'MERCEDES-BENZ', 'GL-Class', 'X166', 'GL450');
+const ctxj = id => "'{" + id.replace(/^"identity":\{/, '') + "'::jsonb";
+const AIR = 'The air suspension of this generation is reported to leak at the front struts and overload the compressor.';
+const persist = (vin, token, id, findings) => `mi.research_persist(${vin}, ('{"check_token":"${token}",${id},"findings":[' || ${sq(findings)} || ']}')::jsonb)`;
+const fin = (vin, token, id, extra) => `mi.research_finalize(${vin}, '{"check_token":"${token}",${id}${extra}}'::jsonb)`;
+const idf = (brand, line, gen, src, ver) => `"identity":{"brand":"${brand}","model_line":"${line}","generation":"${gen}","generation_source":"${src}"${ver ? `,"version_text":"${ver}"` : ''}}`;
+const seedv = (vin, make, model, trim, year) => `perform mi_test.seed_check(${vin}, '${make}', '${model}', ${trim ? `'${trim}'` : 'null'}, ${trim ? `'${trim}'` : 'null'}, ${year}, 'mobile', 'EU', 30000, 150000, null, null, null);`;
+const XKEY = "'mercedesbenz|glclass|X166'";
+
+t(68, 'канонічна ідентичність: різні мітки одного покоління це одна памʼять; докази накопичуються між Check', `
+  declare r1 jsonb; r2 jsonb; c jsonb; cid bigint;
+  begin
+  r1 := ${persist(GL_A, 'k1', ID_GL13, rfind('generation', 'known_issue', AIR, rev('https://spec.example/x166-air', 'specialist', 'primary', 'we rebuild these struts')))};
+  cid := (r1->'results'->0->>'candidate_id')::bigint;
+  ${A(`r1->'results'->0->>'status' = 'staged_cold' and r1->>'identity_key' = ${XKEY}`, 'the cold finding has no canonical identity')}
+  ${A(`(select proposed_subject_text = 'MERCEDES-BENZ gl class X166' and research_identity_key = ${XKEY} and research_scope = 'generation' and research_version_key is null and resolved_subject_id is null from mi.candidate_claim where id = cid)`, 'the cold candidate is not keyed by the canonical identity')}
+  c := mi.research_context(${GL_B}, ${ctxj(ID_GL63)});
+  ${A(`(c->>'open_candidates_count')::int = 1 and (c->'open_candidates'->0->>'id')::bigint = cid and (c->'open_candidates'->0->>'cold')::boolean and c->'open_candidates'->0->>'scope' = 'generation'`, 'a different label of the same generation does not recall the candidate')}
+  ${A(`c->'research_identity'->>'key' = ${XKEY} and c->'research_identity'->>'generation_source' = 'check'`, 'the context does not report the canonical identity')}
+  r2 := ${persist(GL_B, 'k2', ID_GL63, rfind('generation', 'known_issue', AIR, rev('https://mbworld.org/forums/x166/1', 'owner', 'secondary', 'mine leaked at 90k')))};
+  ${A(`(r2->'results'->0->>'candidate_id')::bigint = cid and not (r2->'results'->0->>'new_candidate')::boolean and (r2->'results'->0->>'strengthened')::boolean and (r2->'results'->0->>'evidence_total')::int = 2`, 'evidence from the next check did not accumulate on the same candidate')}
+  ${A(`(select count(*) from mi.candidate_claim where extractor = 'check_research') = 1 and (select count(distinct research_identity_key) from mi.candidate_claim where extractor = 'check_research') = 1`, 'label variants created a second identity or candidate')}
+  ${A(`(select count(*) from mi.claim where reviewed_by = 'check-research') = 0`, 'a subjectless candidate was published')}
+  ${A(`mi.research_identity_key('Mercedes-Benz', 'GL Class', 'x166') = ${XKEY} and mi.research_identity_key('BMW', 'X5', null) is null and mi.research_identity_key('BMW', null, 'F15') is null and mi.research_identity_key('BMW', 'X5', 'not a code!') is null`, 'the canonical key accepts an incomplete identity')}
+  end;`);
+
+t(69, 'версії одного покоління не змішуються: версійний кандидат видно лише тій самій версії', `
+  declare r jsonb; r2 jsonb; r3 jsonb; c jsonb; vid bigint;
+  begin
+  r := ${persist(GL_B, 'v1', ID_GL63, rfind('version', 'known_issue', 'The AMG version of this generation is reported to crack the active roll stabilisation lines.', rev('https://mbworld.org/forums/amg/2', 'owner', 'secondary', 'lines cracked')))};
+  vid := (r->'results'->0->>'candidate_id')::bigint;
+  ${A(`(select research_scope = 'version' and research_version_key = 'gl63amg' and resolved_subject_id is null and proposed_subject_text = 'Mercedes-Benz GL-Class X166 GL63 AMG' from mi.candidate_claim where id = vid)`, 'the version candidate is not keyed by its version')}
+  c := mi.research_context(${GL_C}, ${ctxj(ID_GL450)});
+  ${A(`(c->>'open_candidates_count')::int = 0`, 'a GL450 check recalls GL63 AMG knowledge')}
+  c := mi.research_context(${GL_A}, ${ctxj(ID_GL13)});
+  ${A(`(c->>'open_candidates_count')::int = 0`, 'a check without a version recalls version knowledge')}
+  c := mi.research_context(${GL_D}, ${ctxj(idj('Mercedes-Benz GL-Class X166 GL63 AMG 2014', 'Mercedes-Benz', 'GL-Class', 'X166', 'GL 63 AMG'))});
+  ${A(`(c->>'open_candidates_count')::int = 1 and (c->'open_candidates'->0->>'id')::bigint = vid`, 'the same version does not recall its own candidate')}
+  -- без тексту версії версійна знахідка живе в межах одного Check
+  r2 := ${persist(GL_A, 'n1', ID_GL13, rfind('version', 'known_issue', 'This version is reported to wear the transfer case chain early.', rev('https://mbworld.org/forums/x166/3', 'owner', 'secondary', 'chain')))};
+  r3 := ${persist(GL_C, 'n2', ID_GL13, rfind('version', 'known_issue', 'This version is reported to wear the transfer case chain early.', rev('https://benzworld.org/x166/4', 'owner', 'secondary', 'chain too')))};
+  ${A(`(r3->'results'->0->>'new_candidate')::boolean and (r3->'results'->0->>'candidate_id') <> (r2->'results'->0->>'candidate_id')`, 'version findings without a version text were merged across checks')}
+  -- вхід покоління у каталог версійних кандидатів не чіпає
+  r := ${fin(GL_B, 'v1', idf('Mercedes-Benz', 'GL-Class', 'X166', 'listing', 'GL63 AMG'), ',"listing_generation":"X166","analysis_generation":"X166","research_generation":"X166","powertrain":"ice"')};
+  ${A(`(r->>'catalogued_now')::boolean and (r->>'attached')::int = 0`, 'the generation did not enter the catalogue or a version candidate was attached')}
+  ${A(`(select count(*) from mi.candidate_claim where extractor = 'check_research' and research_scope = 'version' and resolved_subject_id is not null) = 0`, 'version knowledge leaked onto the generation subject')}
+  end;`);
+
+t(70, 'слабка рання ідентичність: покоління з аналізу запамʼятовується по машині; чужій машині не підставляється', `
+  declare c jsonb; r jsonb;
+  begin
+  ${seedv("'5UXFE4C50AL100001'", 'BMW', 'X5', 'xDrive35i', 2011)}
+  ${seedv("'5UXFE4C52BL200002'", 'BMW', 'X5', 'xDrive35d', 2011)}
+  ${seedv("'WAUZZZ4M0JD100007'", 'AUDI', 'Q7', null, 2018)}
+  c := mi.research_context('5UXFE4C50AL100001', '{"brand":"BMW","model_line":"X5","label":"BMW X5 3.0 L 2011"}'::jsonb);
+  ${A(`c->'research_identity' is null and c->>'mi_scope' = 'none'`, 'a generation appeared from nowhere')}
+  r := ${fin("'5UXFE4C50AL100001'", 'e1', idf('BMW', 'X5', 'E70', 'analysis'), ',"analysis_generation":"E70","powertrain":"ice"')};
+  ${A(`(r->>'ok')::boolean and r->>'status' = 'observed' and (r->>'vehicle_remembered')::boolean and r->>'generation_subject_id' is null and r->'sources' = '["analysis"]'::jsonb`, 'one analysis signal was enough to enter the catalogue')}
+  ${A(`(select count(*) from mi.generation where platform_code = 'E70') = 0`, 'a weak identity created a catalogue subject')}
+  ${A(`(select research_identity_key = 'bmw|x5|E70' and research_identity_sources = array['analysis'] from public.vehicles where vin = '5UXFE4C50AL100001')`, 'the vehicle does not remember its generation')}
+  c := mi.research_context('5UXFE4C50AL100001', '{"brand":"BMW","model_line":"X5","label":"BMW X5 3.0 L 2011"}'::jsonb);
+  ${A(`c->'research_identity'->>'generation' = 'E70' and c->'research_identity'->>'generation_source' = 'memory' and c->'research_identity'->>'key' = 'bmw|x5|E70'`, 'the next check of the same vehicle does not remember its generation')}
+  c := mi.research_context('5UXFE4C52BL200002', '{"brand":"BMW","model_line":"X5","label":"BMW X5 3.0 L 2011"}'::jsonb);
+  ${A(`c->'research_identity' is null`, 'the generation of another vehicle was guessed')}
+  c := mi.research_context('5UXFE4C50AL100001', '{"brand":"BMW","model_line":"X6","label":"BMW X6"}'::jsonb);
+  ${A(`c->'research_identity' is null`, 'the memory of one model line was used for another')}
+  -- повторний Check тієї самої машини сили не додає
+  r := ${fin("'5UXFE4C50AL100001'", 'e2', idf('BMW', 'X5', 'E70', 'analysis'), ',"analysis_generation":"E70","powertrain":"ice"')};
+  ${A(`r->>'status' = 'observed'`, 'the same vehicle counted twice')}
+  -- оголошення без VIN памʼяті не має і у рахунок двох машин не йде
+  r := ${fin("null", 'e3', idf('BMW', 'X5', 'E70', 'analysis'), ',"analysis_generation":"E70","powertrain":"ice"')};
+  ${A(`r->>'status' = 'observed' and not (r->>'vehicle_remembered')::boolean`, 'a listing without a VIN counted as a second vehicle')}
+  -- код, якого не підтвердило жодне джерело цього Check, не запамʼятовується
+  r := ${fin("'5UXFE4C52BL200002'", 'e0', idf('BMW', 'X5', 'E70', 'listing'), ',"analysis_generation":"F15","powertrain":"ice"')};
+  ${A(`r->>'reason' = 'generation_unconfirmed' and (select research_identity_key is null from public.vehicles where vin = '5UXFE4C52BL200002')`, 'an unconfirmed code was remembered')}
+  r := ${fin("'5UXFE4C52BL200002'", 'e4', idf('BMW', 'X5', 'E70', 'analysis'), ',"analysis_generation":"E70","powertrain":"ice"')};
+  ${A(`r->>'status' = 'catalogued' and r->>'basis' = 'analysis_two_vehicles' and (r->>'catalogued_now')::boolean`, 'two vehicles with the same analysed generation did not make the identity strong')}
+  ${A(`(select count(*) from mi.brand where lower(name) = 'bmw') = 1 and (select count(*) from mi.model_line m join mi.brand b on b.subject_id = m.brand_id where b.name = 'BMW' and m.name = 'X5') = 1`, 'the catalogue brand was duplicated or the line was not created')}
+  ${A(`(select g.prod_from_kind = 'unknown' and g.prod_to_kind = 'unknown' and g.powertrain_types = array['ice']::mi.powertrain[] and g.phase = 'base' and g.default_system_profile = 'ice_default' from mi.generation g where g.platform_code = 'E70')`, 'the new generation invented a production window or powertrain')}
+  -- покоління уточнено: новий ключ замінює старий разом з джерелами
+  r := ${fin("'5UXFE4C50AL100001'", 'e5', idf('BMW', 'X5', 'F15', 'listing'), ',"listing_generation":"F15","powertrain":"ice"')};
+  ${A(`(select research_identity_key = 'bmw|x5|F15' and research_identity_sources = array['listing'] from public.vehicles where vin = '5UXFE4C50AL100001')`, 'a corrected generation kept the old sources')}
+  -- без відомого типу силової установки покоління не створюється
+  r := ${fin("'WAUZZZ4M0JD100007'", 'q1', idf('AUDI', 'Q7', '4M', 'listing'), ',"listing_generation":"4M","analysis_generation":"4M"')};
+  ${A(`r->>'status' = 'strong' and r->>'note' = 'powertrain is unknown' and (select count(*) from mi.generation where platform_code = '4M') = 0`, 'a generation was created with a guessed powertrain')}
+  r := ${fin("'WAUZZZ4M0JD100007'", 'q2', idf('AUDI', 'Q7', '4M', 'listing'), ',"listing_generation":"4M","powertrain":"ice"')};
+  ${A(`r->>'status' = 'catalogued' and (r->>'catalogued_now')::boolean and r->>'basis' = 'listing_analysis_agree'`, 'the remembered agreement did not let the identity in once the powertrain was known')}
+  end;`);
+
+t(71, 'дослідження під непідтвердженим кодом не повторюється: кандидати переходять під підтверджену ідентичність лише як версійні', `
+  declare r jsonb; f jsonb; c jsonb; cid bigint;
+  begin
+  ${seedv("'SALWR2FV4GA100001'", 'LAND ROVER', 'Range Rover Sport', 'HST', 2016)}
+  r := ${persist("'SALWR2FV4GA100001'", 'h1', idj('LAND ROVER Range Rover Sport HST 3 L Gasoline 380 hp 2016', 'LAND ROVER', 'Range Rover Sport', 'HST', 'HST'), rfind('generation', 'known_issue', 'The supercharged V6 of this generation is reported to crack the plastic coolant crossover pipe.', rev('https://spec.example/rrs-coolant', 'specialist', 'primary', 'pipes crack')))};
+  cid := (r->'results'->0->>'candidate_id')::bigint;
+  f := ${fin("'SALWR2FV4GA100001'", 'h1', idf('LAND ROVER', 'Range Rover Sport', 'L494', 'analysis', 'HST'), ',"analysis_generation":"L494","research_generation":"HST","powertrain":"ice"')};
+  ${A(`(f->>'rekeyed')::int = 1 and f->>'status' = 'observed'`, 'the early findings were not carried over')}
+  ${A(`(select research_identity_key = 'landrover|rangeroversport|L494' and research_scope = 'version' and research_version_key = 'hst' and resolved_subject_id is null and proposed_subject_text = 'LAND ROVER Range Rover Sport L494 HST' from mi.candidate_claim where id = cid)`, 'the carried candidate is not version scoped under the confirmed identity')}
+  ${A(`(select count(*) from public.vehicles where research_identity_key like '%|HST') = 0 and (select count(*) from mi.candidate_claim where research_identity_key like '%|HST') = 0`, 'the unconfirmed code is still remembered')}
+  c := mi.research_context('SALWR2FV4GA100001', '{"brand":"LAND ROVER","model_line":"Range Rover Sport","version_text":"HST","label":"x"}'::jsonb);
+  ${A(`c->'research_identity'->>'generation' = 'L494' and (c->>'open_candidates_count')::int = 1`, 'the next check does not start from the confirmed identity with its memory')}
+  c := mi.research_context('SALWA2FK7HA200002', '{"brand":"LAND ROVER","model_line":"Range Rover Sport","generation":"L494","version_text":"HSE","label":"y"}'::jsonb);
+  ${A(`(c->>'open_candidates_count')::int = 0`, 'another version recalls the carried candidate')}
+  end;`);
+
+t(72, 'повний цикл: вхід у каталог, той самий gate заново, публікація, наступний Check і компілятор бачать знання', `
+  declare r jsonb; f jsonb; c jsonb; cid bigint; g bigint; cl bigint; ver bigint; vmy bigint; frag bigint; gate_src text; pub_src text;
+  begin
+  gate_src := (select md5(prosrc) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'mi' and p.proname = 'check_gate');
+  pub_src := (select md5(prosrc) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'mi' and p.proname = 'publish_candidate');
+  ${seedv(GL_A, 'MERCEDES-BENZ', 'GL-Class', 'GL450', 2013)}
+  ${seedv(GL_B, 'MERCEDES-BENZ', 'GL-Class', 'GL63 AMG', 2015)}
+  -- Check 1: спеціаліст; ідентичність ще холодна
+  r := ${persist(GL_A, 'c1', ID_GL13, rfind('generation', 'known_issue', AIR, rev('https://spec.example/x166-air', 'specialist', 'primary', 'we rebuild these struts')) + ',' + rfind('generation', 'known_issue', 'The tailgate module of this generation is reported to fail according to a parts seller.', rev('https://parts-shop.example/x166', 'vendor', 'secondary', 'buy our module')))};
+  cid := (r->'results'->0->>'candidate_id')::bigint;
+  ${A(`r->'results'->0->'gate_failed' @> '["subject_resolved"]'::jsonb and (r->>'staged_cold')::int = 2`, 'the cold findings were not staged')}
+  -- фінал Check 1: поле площадки і аналіз зійшлись
+  f := ${fin(GL_A, 'c1', idf('MERCEDES-BENZ', 'gl class', 'X166', 'listing'), ',"listing_generation":"X166","analysis_generation":"X166","research_generation":"X166","powertrain":"ice"')};
+  g := (f->>'generation_subject_id')::bigint;
+  ${A(`(f->>'catalogued_now')::boolean and f->>'basis' = 'listing_analysis_agree' and (f->>'attached')::int = 2 and (f->>'published')::int = 0`, 'the strong identity did not enter the catalogue, or weak evidence was published')}
+  ${A(`(select kind = 'generation' and label = 'MERCEDES-BENZ gl class X166' from mi.knowledge_subject where id = g) and (select count(*) from mi.brand where name = 'MERCEDES-BENZ') = 1`, 'the catalogue subjects are wrong')}
+  ${A(`(select resolved_subject_id = g and proposed_applicability->0->>'dimension' = 'generation' and (proposed_applicability->0->>'ref_subject_id')::bigint = g and review_status = 'gate_pending' from mi.candidate_claim where id = cid)`, 'the candidate did not get the generation subject')}
+  ${A(`(select not (gate_result->>'passed')::boolean and (select jsonb_agg(x->>'code') from jsonb_array_elements(gate_result->'rules') x where not (x->>'ok')::boolean) = '["known_issue_evidence"]'::jsonb from mi.candidate_claim where id = cid)`, 'the gate was not re-evaluated to the evidence rule alone')}
+  -- повторний фінал нічого не дублює
+  f := ${fin(GL_A, 'c1b', idf('MERCEDES-BENZ', 'gl class', 'X166', 'listing'), ',"listing_generation":"X166","analysis_generation":"X166","powertrain":"ice"')};
+  ${A(`not (f->>'catalogued_now')::boolean and f->>'status' = 'catalogued' and (f->>'attached')::int = 0 and (select count(*) from mi.generation where platform_code = 'X166') = 1 and (select count(*) from mi.brand where mi.research_key(name) = 'mercedesbenz') = 1`, 'finalize is not idempotent')}
+  -- Check 2: інша мітка і версія, перша група власників; міст каталогу для нового бренду не падає
+  c := mi.research_context(${GL_B}, ${ctxj(ID_GL63)});
+  ${A(`c->>'mi_scope' = 'generation' and (c->'subjects'->>'generation')::bigint = g and (c->>'knowledge_count')::int = 0 and (c->>'open_candidates_count')::int = 2 and not (c->'open_candidates'->0->>'cold')::boolean`, 'the next check does not see the catalogued generation and its candidates')}
+  r := ${persist(GL_B, 'c2', ID_GL63, rfind('generation', 'known_issue', AIR, rev('https://mbworld.org/forums/x166/1', 'owner', 'secondary', 'mine leaked at 90k')))};
+  ${A(`r->'results'->0->>'status' = 'candidate' and (r->'results'->0->>'candidate_id')::bigint = cid and r->'results'->0->'gate_failed' = '["known_issue_evidence"]'::jsonb and (r->>'published')::int = 0`, 'one owner group was enough, or the evidence went to another candidate')}
+  -- Check 3: друга незалежна група власників, gate проходить
+  r := ${persist(GL_C, 'c3', ID_GL450, rfind('generation', 'known_issue', AIR, rev('https://benzworld.org/x166/7', 'owner', 'secondary', 'same leak, compressor died')))};
+  ${A(`(r->>'published')::int = 1 and r->'results'->0->>'status' = 'published' and (r->'results'->0->>'candidate_id')::bigint = cid`, 'accumulated evidence did not pass the unchanged gate')}
+  cl := (r->'results'->0->>'claim_id')::bigint;
+  ${A(`(select subject_id = g and status = 'published' and reviewed_by = 'check-research' from mi.claim where id = cl) and (select count(*) from mi.evidence where claim_id = cl) = 3`, 'the published claim is wrong')}
+  ${A(`(select count(*) = 1 and bool_and(dimension = 'generation' and ref_subject_id = g) from mi.claim_applicability where claim_id = cl)`, 'the claim applicability is not the generation')}
+  -- продавець запчастин сам нічого не встановлює: gate не послаблено
+  ${A(`(select count(*) from mi.claim where text_en like 'The tailgate module%') = 0 and (select review_status from mi.candidate_claim where text_en like 'The tailgate module%') = 'gate_pending'`, 'vendor-only evidence was published')}
+  ${A(`gate_src = (select md5(prosrc) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'mi' and p.proname = 'check_gate') and pub_src = (select md5(prosrc) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'mi' and p.proname = 'publish_candidate')`, 'gate or publication changed')}
+  -- Check 4: знання вже у контексті, кандидат більше не відкритий
+  c := mi.research_context(${GL_D}, ${ctxj(ID_GL450)});
+  ${A(`c->>'mi_scope' = 'generation' and (c->>'knowledge_count')::int = 1 and (c->'knowledge'->0->>'claim_id')::bigint = cl and (c->>'open_candidates_count')::int = 1`, 'a later check does not consume the published knowledge')}
+  -- компілятор: версія цього покоління отримує клейм як знання предка
+  insert into mi.knowledge_subject (kind, label) values ('vehicle_version', 'GL450 fixture') returning id into ver;
+  insert into mi.vehicle_version (subject_id, generation_id, version_code, name_en, powertrain) values (ver, g, 'GL450', 'Mercedes-Benz GL450', 'ice');
+  insert into mi.knowledge_subject (kind, label) values ('version_market_year', 'GL450 US 2016 fixture') returning id into vmy;
+  insert into mi.version_market_year (subject_id, version_id, market_code, model_year) values (vmy, ver, 'US', 2016);
+  frag := mi.build_fragment(vmy, 'report');
+  ${A(`(select cl = any (mi_test.pack_claims(payload)) from mi.pack_fragment where id = frag)`, 'the pack compiler does not see the published claim')}
   end;`);
 
 /* ---- Підсумок ---- */

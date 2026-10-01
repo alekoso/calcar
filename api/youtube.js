@@ -98,7 +98,7 @@ export function resolveGeneration(sources) {
       if (!g) continue;
       /* версія комплектації, переказана як покоління, не приймається навіть
          у правильній формі: "XSE" біля trim "XSE" це trim */
-      if (src.notTrim && validGeneration(src.notTrim) === g) continue;
+      if ([].concat(src.notTrim || []).some(t => t && validGeneration(t) === g)) continue;
       if (src.notModel && same(src.notModel, g)) continue;
       return { generation: g, source: src.source || null };
     }

@@ -1,4 +1,4 @@
-/* MI Research v1.1 (api/mi-research.js, міграції 028/029): тест без бази.
+/* MI Research v1.1/v1.2 (api/mi-research.js, міграції 028/029/030): тест без бази.
 
    Що доводиться:
    1. холодна модель: дослідження іде з канонічної ідентичності Check без
@@ -17,7 +17,10 @@
       згадок; один свіжий анекдот не переважує сильніші докази; дорога
       застосовна проблема не витісняється частішою; один слабкий доказ це
       лише підказка, не типове слабке місце;
-   7. модуль без захардкоджених фактів; проводка в api/check.js.
+   7. модуль без захардкоджених фактів; проводка в api/check.js;
+   10. канонічна ідентичність (v1.2): покоління з памʼяті машини, версія у
+       ключі памʼяті, фінал Check без нового пошуку і виклику моделі,
+       збій фіналу Check не зачіпає, gate і публікація не переписані.
 
    Запуск: node miresearchtest.js */
 
@@ -229,9 +232,9 @@ const F = (text, over = {}) => ({ text_en: text, scope: 'version', component_rol
   ok('7b. довгого тире немає', !/\u2014/.test(SRC) && !/\u2014/.test(fs.readFileSync('migrations/mi/029_check_research_cold_start.up.sql', 'utf8')));
   const core = CHECK.slice(CHECK.indexOf('async function runCheck('));
   const startAt = core.indexOf('startCheckResearch({');
-  ok('7c. дослідження стартує після Vehicle Memory з канонічної ідентичності: версія і мотор лише з декодера, покоління через резолвер з перевіркою назви моделі', startAt > core.indexOf('miEqPromise.then(miEqResolve)') && /version_text: \(nhtsa && \(nhtsa\.Trim \|\| nhtsa\.Series\)\) \|\| null/.test(core) && /generation: resolveGeneration\(\[\{ value: listing\.generation, source: 'listing', notModel: \(nhtsa && nhtsa\.Model\) \|\| listing\.model \}\]\)\.generation/.test(core) && !/title/.test(core.slice(startAt, startAt + 900)));
+  ok('7c. дослідження стартує після Vehicle Memory з канонічної ідентичності: версія і мотор лише з декодера, покоління через резолвер з перевіркою назви моделі', startAt > core.indexOf('miEqPromise.then(miEqResolve)') && /version_text: \(nhtsa && \(nhtsa\.Trim \|\| nhtsa\.Series\)\) \|\| null/.test(core) && /generation: resolveGeneration\(\[\{ value: listing\.generation, source: 'listing', notTrim: \[nhtsa && nhtsa\.Trim, nhtsa && nhtsa\.Series\], notModel: \(nhtsa && nhtsa\.Model\) \|\| listing\.model \}\]\)\.generation/.test(core) && !/title/.test(core.slice(startAt, startAt + 1000)));
   ok('7d. знімок перед основним викликом після очікування не довше 3 с', /await miResearch\.waitBatch\(MI_RESEARCH_MAIN_WAIT_MS\);/.test(core) && /const MI_RESEARCH_MAIN_WAIT_MS = 3000;/.test(core) && core.indexOf('miResearch.cutoff()') < core.indexOf("progress('ai')") && /content\.splice\(1, 0, \{ type: 'text', text: miResearchBlock \}\)/.test(core));
-  ok('7e. у кінці Check: збереження дочекано і решта обірвана до відповіді', /await miResearch\.persistDone\(3000\);\s*miResearch\.abort\(\);/.test(core) && core.indexOf('miResearch.abort()') < core.indexOf('timings.total_ms = Date.now() - tRun'));
+  ok('7e. у кінці Check: збереження дочекано і решта обірвана до відповіді', /await miResearch\.persistDone\(3000\);\s*miResearch\.abort\(\);/.test(core) && core.indexOf('miResearch.abort()') < core.indexOf('timings.total_ms = Date.now() - tRun') && core.indexOf('miResearch.abort()') < core.indexOf('await miResearch.finalize({') && core.indexOf('await miResearch.finalize({') < core.indexOf('parsed._meta.mi_research = researchMeta(miResearch.state)'));
   ok('7f. телеметрія з хронологією і лог', /parsed\._meta\.mi_research = researchMeta\(miResearch\.state\)/.test(core) && /findings_at_cutoff/.test(core));
   ok('7g. ядро Check про тінь так і не знає; Score і share не читають дослідження', !/runMiShadow|mi_shadow_pack/.test(core) && !/mi_research|miResearch/.test(fs.readFileSync('api/score-v4.js', 'utf8')) && !/mi_research/.test(fs.readFileSync('api/share.js', 'utf8')));
   ok('7h. вимикач читає лише api/mi-research.js', fs.readdirSync('api').filter(f => f.endsWith('.js') && /\.MI_RESEARCH\b/.test(fs.readFileSync('api/' + f, 'utf8'))).join() === 'mi-research.js');
@@ -306,6 +309,63 @@ const F = (text, over = {}) => ({ text_en: text, scope: 'version', component_rol
     ok('8l. Audi "B9/F5" дає покоління B9; поле AUTO.RIA "Typ 4M" дає 4M', audiGen === 'B9' && Y2.resolveGeneration([{ value: 'Typ 4M', source: 'listing', notModel: 'Q7' }]).generation === '4M', String(audiGen));
     r = await run({ vin: 'WAUZZZF55MA000001', identity: { brand: 'AUDI', model_line: 'A5', generation: audiGen, version_text: '45 TFSI quattro', engine_text: '2 L Gasoline 265 hp', model_year: 2021, mileage_km: 90000 } }, { ctx: CTX_COLD });
     ok('8m. Audi A5 холодне дослідження придатне і стартує в тих самих стелях', r.state.identity.sufficient && r.state.eligibility === 'check_identity' && r.state.batches.length >= 1 && r.state.totals.queries <= 15 && r.state.totals.sources <= 20 && r.calls.search[0].startsWith('AUDI A5 B9'), r.state.reason + ' ' + r.state.identity.label);
+  }
+
+  /* ---- 10. канонічна ідентичність (v1.2, міграція 030) ---- */
+  {
+    const CTX_MEM = { ...CTX_COLD, research_identity: { key: 'bmw|x5|E70', generation: 'E70', generation_source: 'memory' } };
+    const ID_X5 = { brand: 'BMW', model_line: 'X5', generation: null, version_text: 'xDrive35i', engine_text: '3.0 L Gasoline', model_year: 2011, mileage_km: 180000 };
+    let ctxArgs = null;
+    let rr = await run({ vin: '5UXFE4C50AL100001', identity: ID_X5, token: 'tk' }, { fetchContext: async (vin, identity) => { ctxArgs = identity; return { ok: true, available: true, context: CTX_MEM, ms: 1 }; } });
+    ok('10. покоління з памʼяті машини робить ідентичність достатньою, дослідження стартує', rr.state.status === 'ok' && rr.state.identity.generation === 'E70' && rr.state.identity.generation_source === 'memory' && rr.state.identity.sufficient && rr.state.batches.length >= 1 && rr.calls.search[0].startsWith('BMW X5 E70'), rr.state.status + ' ' + rr.state.reason + ' ' + rr.state.identity.label);
+    ok('10b. у контекст іде текст версії для ключа памʼяті; сама мітка ключем не є', ctxArgs && ctxArgs.version_text === 'xDrive35i' && /version_text: identity\.version_text \|\| null, label: identity\.label/.test(SRC));
+    rr = await run({ vin: '5UXFE4C50AL100001', identity: ID_X5 }, { ctx: { ...CTX_COLD, research_identity: { key: 'bmw|x5|E70', generation: 'E70', generation_source: 'check' } } });
+    ok('10c. без памʼяті машини слабка ідентичність дослідження не запускає', rr.state.status === 'skipped' && rr.state.reason === 'identity_too_weak' && rr.state.identity.generation === null);
+    ok('10d. покоління з поля площадки має джерело check і памʼяттю не підміняється', M.researchIdentity(ID_COLD).generation_source === 'check' && M.researchIdentity(ID_WEAK).generation_source === null);
+    const pay = M.persistPayload([{ scope: 'version', knowledge_type: 'known_issue', text_en: 'x'.repeat(30), strength: 'owner', evidence: [] }], M.researchIdentity({ ...ID_X5, generation: 'E70' }), 'tk');
+    ok('10e. збереження несе бренд, ряд, покоління і текст версії', pay.identity.brand === 'BMW' && pay.identity.model_line === 'X5' && pay.identity.generation === 'E70' && pay.identity.version_text === 'xDrive35i');
+
+    /* фінал: один виклик, без пошуку і моделі */
+    const fins = [];
+    const finStub = async (vin, payload) => { fins.push({ vin, payload }); return { ok: true, status: 'catalogued', basis: 'listing_analysis_agree', catalogued_now: true, attached: 1, published: 0 }; };
+    const st = stubs({ ctx: CTX_COLD, finalize: finStub });
+    let ctrl = M.startCheckResearch({ vin: '4JGDF7CE5DA100001', token: 'tok1', identity: { brand: 'MERCEDES-BENZ', model_line: 'GL-Class', generation: 'X166', version_text: 'GL450', model_year: 2015 } }, st.opts);
+    await ctrl.promise;
+    const before = { search: st.calls.search.length, model: st.calls.model };
+    const fr = await ctrl.finalize({ generation: 'X166', generation_source: 'listing', listing_generation: 'X166', analysis_generation: 'X166', powertrain: 'petrol' });
+    const fp = fins[0] && fins[0].payload;
+    ok('10f. фінал передає канонічне покоління, обидва джерела, код дослідження, тип силової установки', fr.catalogued_now === true && fins.length === 1 && fins[0].vin === '4JGDF7CE5DA100001' && fp.check_token === 'tok1' && fp.identity.generation === 'X166' && fp.identity.generation_source === 'listing' && fp.identity.version_text === 'GL450' && fp.listing_generation === 'X166' && fp.analysis_generation === 'X166' && fp.research_generation === 'X166' && fp.powertrain === 'ice', JSON.stringify(fp));
+    ok('10g. фінал не шукає і не кличе модель', st.calls.search.length === before.search && st.calls.model === before.model);
+    ok('10h. телеметрія несе джерело покоління і підсумок фіналу', M.researchMeta(ctrl.state).finalize.status === 'catalogued' && M.researchMeta(ctrl.state).identity.generation_source === 'check');
+    /* дослідження не йшло (слабка ідентичність): фінал усе одно запамʼятовує покоління, але коду дослідження немає */
+    const st2 = stubs({ ctx: CTX_COLD, finalize: finStub });
+    ctrl = M.startCheckResearch({ vin: '5UXFE4C50AL100001', token: 'tok2', identity: ID_X5 }, st2.opts);
+    await ctrl.promise;
+    await ctrl.finalize({ generation: 'E70', generation_source: 'analysis', listing_generation: null, analysis_generation: 'E70', powertrain: 'diesel' });
+    ok('10i. пропущене дослідження: покоління з аналізу йде у памʼять машини', ctrl.state.status === 'skipped' && fins[1].payload.identity.generation === 'E70' && fins[1].payload.analysis_generation === 'E70' && fins[1].payload.listing_generation === null && fins[1].payload.research_generation === null && fins[1].payload.powertrain === 'ice');
+    /* без покоління фінал нічого не викликає; збій фіналу Check не зачіпає; вимикач */
+    const n = fins.length;
+    const none = await ctrl.finalize({ generation: null });
+    ok('10j. без канонічного покоління фінал нічого не пише', none.reason === 'no_generation' && fins.length === n);
+    const st3 = stubs({ ctx: CTX_COLD, finalize: async () => { throw new Error('boom'); } });
+    ctrl = M.startCheckResearch({ vin: null, identity: ID_COLD }, st3.opts);
+    await ctrl.promise;
+    const failed = await ctrl.finalize({ generation: 'MK6', generation_source: 'listing' });
+    ok('10k. збій фіналу не кидає: Check завершується як раніше', failed && failed.ok === false && failed.reason === 'error');
+    const st4 = stubs({ ctx: CTX_COLD, finalize: finStub, env: { MI_RESEARCH: 'off' } });
+    ctrl = M.startCheckResearch({ vin: null, identity: ID_COLD }, st4.opts);
+    await ctrl.promise;
+    ok('10l. вимикач MI_RESEARCH=off вимикає і фінал', (await ctrl.finalize({ generation: 'MK6' })) === null && fins.length === n);
+    ok('10m. тип силової установки не вгадується', M.miPowertrain('unknown') === null && M.miPowertrain('') === null && M.miPowertrain('diesel') === 'ice' && M.miPowertrain('phev') === 'phev' && M.miPowertrain('bev') === 'bev' && M.miPowertrain('hev') === 'hev');
+    /* версія комплектації декодера у полі покоління */
+    const Yg = await import('file://' + path.join(dir, 'api', 'youtube.js'));
+    ok('10n. "HST" з поля покоління не проходить, коли це trim декодера; справжній код проходить', Yg.resolveGeneration([{ value: 'HST', source: 'listing', notTrim: ['HST', null], notModel: 'Range Rover Sport' }]).generation === null && Yg.resolveGeneration([{ value: 'HST', source: 'listing', notTrim: [null, 'HST'] }]).generation === null && Yg.resolveGeneration([{ value: 'L494', source: 'listing', notTrim: ['HST', undefined] }]).generation === 'L494' && Yg.resolveGeneration([{ value: 'XSE', source: 'listing', notTrim: 'XSE' }]).generation === null);
+    /* проводка фіналу і міграція */
+    const finAt = core.indexOf('await miResearch.finalize({');
+    ok('10o. Check передає у фінал канонічне покоління і окремо коди площадки та аналізу', finAt > 0 && /await miResearch\.finalize\(\{\s*generation: genResolved\.generation, generation_source: genResolved\.source,/.test(core) && /listing_generation: resolveGeneration\(\[\{ value: listing\.generation, source: 'listing'/.test(core) && /analysis_generation: resolveGeneration\(\[\{ value: parsed\.vehicle && parsed\.vehicle\.generation, source: 'analysis'/.test(core) && /powertrain: resolvePowertrainClass\(/.test(core.slice(finAt, finAt + 900)));
+    const M030 = fs.readFileSync('migrations/mi/030_research_identity.up.sql', 'utf8');
+    ok('10p. міграція 030 не переписує gate, публікацію і компілятор; довгого тире немає', !/create or replace function mi\.(check_gate|run_gate|publish_candidate|build_fragment|compile_pack|request_pack|vmy_scope|claim_in_scope)\b/.test(M030) && !/\u2014/.test(M030) && !/\u2014/.test(fs.readFileSync('migrations/mi/030_research_identity.down.sql', 'utf8')) && /mi\.run_gate\(c\.id\)/.test(M030) && /mi\.publish_candidate\(c\.id, 'check-research'\)/.test(M030));
+    ok('10q. стелі дослідження не змінились', M.RESEARCH_LIMITS.max_batches === 5 && M.RESEARCH_LIMITS.max_queries === 15 && M.RESEARCH_LIMITS.max_sources === 20 && M.RESEARCH_LIMITS.queries_per_batch === 3 && M.RESEARCH_LIMITS.sources_per_batch === 4 && M.RESEARCH_LIMITS.findings_per_batch === 2);
   }
 
   fs.rmSync(dir, { recursive: true, force: true });

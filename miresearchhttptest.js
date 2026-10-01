@@ -9,7 +9,10 @@
        knowledge[] з наявним знанням;
      * rpc/mi_research_persist службовою роллю: 200; порожній перелік
        знахідок нічого не пише; знахідка про VIN пропускається з причиною;
-     * анонімний ключ жодної з двох функцій не виконує.
+     * rpc/mi_research_finalize (міграція 030) службовою роллю: 200; без
+       канонічного покоління нічого не пише; контекст з канонічною
+       ідентичністю лише читає;
+     * анонімний ключ жодної з трьох функцій не виконує.
 
    За замовчуванням VIN поза каталогом (Volkswagen): контекст відповідає
    brand_not_in_catalog ще ДО мосту у Vehicle Memory, збереження отримує
@@ -78,10 +81,18 @@ const brief = b => JSON.stringify(b || {}).slice(0, 220);
     || (w1.body.skipped === 1 && w1.body.published === 0 && w1.body.candidates === 0 && w1.body.results && w1.body.results[0].reason === 'vehicle_scope_not_mi')), brief(w1.body));
   console.log('   persist: ' + brief(w1.body));
 
+  /* міграція 030: контекст з ідентичністю лише читає; фінал без покоління нічого не пише */
+  const c2 = await rpc(SERVICE, 'mi_research_context', { p_vin: VIN, p_identity: { brand: 'Volkswagen', model_line: 'HTTP test line', generation: 'ZZ99', version_text: 'http', label: 'HTTP test identity' } });
+  ok('4. контекст з канонічною ідентичністю відповідає 200 і нічого не пише', c2.status === 200 && c2.body && c2.body.available === true && c2.body.research_identity && c2.body.research_identity.generation === 'ZZ99' && c2.body.research_identity.key === 'volkswagen|httptestline|ZZ99' && c2.body.open_candidates_count === 0, 'HTTP ' + c2.status + ' ' + brief(c2.body));
+  const f0 = await rpc(SERVICE, 'mi_research_finalize', { p_vin: VIN, p_run: { check_token: 'http-test', identity: { brand: 'Volkswagen', model_line: 'HTTP test line', generation: null }, listing_generation: null, analysis_generation: null } });
+  ok('4b. mi_research_finalize відповідає 200 і без покоління нічого не пише', f0.status === 200 && f0.body && f0.body.ok === true && f0.body.reason === 'no_generation', 'HTTP ' + f0.status + ' ' + brief(f0.body));
+  ok('4c. немає SQLSTATE 21000 (safeupdate)', !(f0.body && f0.body.code === '21000') && !(c2.body && c2.body.code === '21000'), brief(f0.body));
+  console.log('   finalize: ' + brief(f0.body));
+
   if (ANON && !plainKey(ANON)) {
     ok('3. анонімний ключ придатний для заголовка', false, 'ключ містить не-ASCII символи (замаскована копія?)');
   } else if (ANON) {
-    for (const [name, args] of [['mi_research_context', { p_vin: VIN, p_identity: null }], ['mi_research_persist', { p_vin: VIN, p_run: { findings: [] } }]]) {
+    for (const [name, args] of [['mi_research_context', { p_vin: VIN, p_identity: null }], ['mi_research_persist', { p_vin: VIN, p_run: { findings: [] } }], ['mi_research_finalize', { p_vin: VIN, p_run: {} }]]) {
       try {
         const a = await rpc(ANON, name, args);
         ok('3. anon не виконує ' + name, [401, 403].includes(a.status) && a.body && a.body.code === '42501', 'HTTP ' + a.status + ' ' + brief(a.body));
