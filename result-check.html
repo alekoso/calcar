@@ -1015,6 +1015,9 @@
   .vc-end{fill:var(--ink)}
   .vc-end-f{fill:var(--card);stroke:var(--faint);stroke-width:2}
   .vc-today{fill:var(--brand);stroke:var(--ink);stroke-width:2}
+  /* друга реальна ціна на лінії "сьогодні": порожня тиха позначка; підписи обох позначок читаються без наведення */
+  .vc-today2{fill:var(--card);stroke:var(--ink-2);stroke-width:2}
+  .vc-mk-lbl{font-size:11.5px;font-weight:600;fill:var(--ink-2);paint-order:stroke;stroke:var(--card);stroke-width:3px;stroke-linejoin:round}
   .vc-cross{stroke:var(--line-strong);stroke-width:1}
   .vc-active{fill:var(--ink);stroke:var(--card);stroke-width:2}
   .vc-tip{position:absolute;z-index:2;display:flex;flex-direction:column;pointer-events:none;background:var(--ink);color:#fff;border-radius:8px;padding:7px 10px;font-size:12.5px;line-height:1.35;white-space:nowrap}
@@ -1038,9 +1041,16 @@
   .mk-state.medium::before{background:var(--amber)}
   .mk-state.low::before{background:var(--red)}
   /* сохранність вартості моделі: той самий тихий статус у заголовку */
-  .mk-state.r-heavy::before{background:var(--amber)}
   .mk-state.r-strong::before{background:var(--green)}
   .mk-state[hidden]{display:none}
+  /* втрата вартості: статус і маленька підказка, що саме він означає.
+     Підказка відкривається наведенням, фокусом або дотиком до кнопки */
+  .mk-loss{position:relative;display:inline-flex;align-items:center;gap:4px;flex:0 0 auto}
+  .mk-loss[hidden]{display:none}
+  .mk-state.r-normal::before{background:var(--amber)}
+  .mk-state.r-heavy::before{background:var(--red)}
+  .mk-tip{display:none;position:absolute;z-index:5;right:0;top:calc(100% + 8px);width:260px;max-width:calc(100vw - 64px);background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 28px rgba(20,22,25,.16);padding:10px 12px;font-size:13px;font-weight:400;line-height:1.5;color:var(--ink-2);white-space:normal}
+  .mk-info:hover + .mk-tip,.mk-info:focus + .mk-tip{display:block}
   /* рядки сигналів: однакова іконка в однаковому контейнері і текст,
      тонкі розділювачі. Та сама будова в обох картках */
   .mk-rows{margin-top:12px}
@@ -1330,7 +1340,7 @@
       <div class="mk-rows" id="valLiqReasons"></div>
     </div>
     <div class="card mk-card" id="valWhyBox" hidden>
-      <div class="mk-head"><h3>Why this car costs what it does</h3><span class="mk-state" id="valWhyState" hidden></span></div>
+      <div class="mk-head"><h3>Why this car costs what it does</h3><span class="mk-loss" id="valWhyLoss" hidden><span class="mk-state" id="valWhyState"></span><button type="button" class="sc-info mk-info" id="valWhyInfo" aria-label="About value loss" aria-describedby="valWhyTip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.5v.01"/></svg></button><span class="mk-tip" id="valWhyTip" role="tooltip">How much value the car has lost against its price when new, given its age.</span></span></div>
       <div class="mk-rows" id="valWhyList"></div>
     </div>
   </div>
@@ -1909,12 +1919,18 @@ function renderValueSection(D) {
   }
   $('valWhyBox').hidden = !factors.length;
   if (factors.length) $('valWhyList').innerHTML = factors.map(mkRow).join('');
-  /* стан сохранності рахує сервер (value_curve.retention, _meta не
-     перекладається); невідомий стан статусу не показує */
-  const RET = { heavy_depreciation: ['r-heavy', t('Lost much of its value')], normal_depreciation: ['r-normal', t('Typical depreciation')], strong_retention: ['r-strong', t('Holds its value well')] };
-  const retState = vc && vc.retention && RET[vc.retention.state] && mv && mv.why_price ? RET[vc.retention.state] : null;
-  $('valWhyState').hidden = !retState;
-  if (retState) { $('valWhyState').className = 'mk-state ' + retState[0]; $('valWhyState').textContent = retState[1]; }
+  /* Втрата вартості: низька, середня, висока. Це стан сохранності, який
+     рахує сервер (value_curve.retention; _meta не перекладається), іншими
+     словами. Ненадійна ціна нового (зворотна оцінка, нижня межа) дає стан
+     unknown, і статусу тоді немає зовсім */
+  const LOSS = { strong_retention: ['r-strong', t('Value loss: Low')], normal_depreciation: ['r-normal', t('Value loss: Medium')], heavy_depreciation: ['r-heavy', t('Value loss: High')] };
+  const retState = vc && vc.retention && LOSS[vc.retention.state] && mv && mv.why_price ? LOSS[vc.retention.state] : null;
+  $('valWhyLoss').hidden = !retState;
+  if (retState) {
+    $('valWhyState').className = 'mk-state ' + retState[0]; $('valWhyState').textContent = retState[1];
+    $('valWhyInfo').setAttribute('aria-label', t('About value loss'));
+    $('valWhyTip').textContent = t('How much value the car has lost against its price when new, given its age.');
+  }
   const pair = $('valPair');
   pair.style.display = (reasons.length || factors.length) ? '' : 'none';
   pair.classList.toggle('one', !(reasons.length && factors.length));
@@ -1989,6 +2005,8 @@ function ytIdentityParams(D) {
   if (mi.generation) p.set('generation', mi.generation);
   else if (v.year) p.set('year', String(v.year));
   if (mi.engine_code) p.set('engine_code', mi.engine_code);
+  /* точна версія авто: відео саме про неї стоять першими */
+  if (v.trim) p.set('version', clean(v.trim));
   if (v.fuel) p.set('powertrain', clean(v.fuel));
   p.set('lang', window.calcarLang());
   return (title || mi.make) ? p : null;
@@ -2750,6 +2768,18 @@ function isAmongFirstChecks(rows, ids, n, truncated) {
    (v3 і старіші) повноти не вигадують. Панель: клік або Enter/Space
    відкриває, Esc, хрестик чи клік поза закривають і повертають фокус; на
    телефоні шторка знизу */
+/* де стоїть панель відносно шеврона: чиста функція, її перевіряє тест */
+function popoverPosition(r, w, h, vw, vh) {
+  const GAP = 8, EDGE = 12;
+  const left = Math.max(EDGE, Math.min(r.right - w, vw - w - EDGE));
+  if (r.bottom + GAP + h <= vh - EDGE) return { left, top: r.bottom + GAP, side: 'below' };
+  if (r.top - GAP - h >= EDGE) return { left, top: r.top - GAP - h, side: 'above' };
+  /* по висоті не вміщується: збоку, верх біля шеврона в межах вікна */
+  const top = Math.max(EDGE, Math.min(r.top - EDGE, vh - h - EDGE));
+  if (r.left - GAP - w >= EDGE) return { left: r.left - GAP - w, top, side: 'left' };
+  if (r.right + GAP + w <= vw - EDGE) return { left: r.right + GAP, top, side: 'right' };
+  return { left, top, side: 'overlap' };
+}
 function coverageRail(value, withLabels) {
   const v = Math.max(0, Math.min(100, value));
   return '<div class="sc-meter" aria-hidden="true"><span class="sc-tick-l" style="left:70%">' + esc(t('Sufficient')) + '</span>'
@@ -2823,17 +2853,15 @@ function renderScoreBlock(D) {
   const card = $('scoreCard'), toggle = $('scoreToggle');
   const phone = () => window.matchMedia && window.matchMedia('(max-width:620px)').matches;
   const hoverable = () => window.matchMedia && window.matchMedia('(hover:hover) and (pointer:fine)').matches;
+  /* Панель привʼязана до самого шеврона, а не до картки: правий край на
+     рівні шеврона, одразу під ним. Нема місця знизу: над шевроном. Нема ні
+     там, ні там: збоку від шеврона, на його висоті. Панель завжди поруч із
+     тим, що її відкрило, і ніколи не їде до низу вікна */
   function place() {
     if (pop.hidden) return;
     if (phone()) { pop.style.left = ''; pop.style.top = ''; return; }
-    const r = card.getBoundingClientRect(), w = pop.offsetWidth, ph = pop.offsetHeight;
-    const vw = window.innerWidth, vh = window.innerHeight;
-    const left = Math.max(16, Math.min(r.right - w, vw - w - 16));
-    let top = r.bottom + 8;
-    if (top + ph > vh - 12 && r.top - ph - 8 > 12) top = r.top - ph - 8;
-    /* не вміщується ні знизу, ні зверху: піднімаємо, щоб панель лишалась у вікні */
-    top = Math.max(12, Math.min(top, vh - ph - 12));
-    pop.style.left = left + 'px'; pop.style.top = top + 'px';
+    const p = popoverPosition(toggle.getBoundingClientRect(), pop.offsetWidth, pop.offsetHeight, window.innerWidth, window.innerHeight);
+    pop.style.left = p.left + 'px'; pop.style.top = p.top + 'px';
   }
   function open(byHover) {
     tipClose(false);

@@ -131,6 +131,73 @@
     return e;
   }
 
+  /* Дві реальні ціни "сьогодні": ціна оголошення і середня площадки. Якір
+     кривої це нижча з них (рахує сервер); тут лише читання збережених
+     даних. Старі звіти без vc.prices читаються з current / listing / average */
+  function fin(v) { return typeof v === 'number' && isFinite(v) && v > 0; }
+  function todayPrices(vc) {
+    var p = vc.prices || {}, cur = vc.current || {};
+    var byAvg = cur.source === 'marketplace_average';
+    var listing = fin(p.listing) ? p.listing : (vc.listing && fin(vc.listing.value)) ? vc.listing.value : (!byAvg && fin(cur.value)) ? cur.value : null;
+    var average = fin(p.average) ? p.average : (byAvg && fin(cur.value)) ? cur.value : (vc.average && fin(vc.average.value)) ? vc.average.value : null;
+    var name = p.average_source_name || (byAvg ? cur.source_name : (vc.average && vc.average.source_name)) || null;
+    return { listing: listing, average: average, name: name, anchor: byAvg ? 'average' : 'listing',
+      /* друга позначка: та з двох цін, що не є якорем */
+      second: byAvg ? listing : average };
+  }
+
+  /* Підписи двох позначок на лінії "сьогодні". Позиції позначок не
+     змінюються ніколи; підпис шукає вільне місце поруч зі своєю позначкою:
+     у межах полотна, не на кривій, не на іншому підписі і не на іншій
+     позначці. Ширина тексту оцінюється, щоб розкладка лишалась чистою
+     функцією (її перевіряє тест). Не знайшлось місця: підпису немає,
+     значення все одно є у стовпчику чисел */
+  var LBL_H = 13, LBL_CHAR = 6.4;
+  function labelBox(m, text, pos) {
+    var w = Math.ceil(String(text).length * LBL_CHAR) + 4;
+    var side = pos.charAt(0), v = pos.charAt(1);
+    /* збоку від позначки (R, L) або по центру над чи під нею (C): вузький
+       графік не має місця збоку */
+    var dy = side === 'C' ? (v === 'A' ? -12 : 21) : (v === 'A' ? -9 : v === 'B' ? 17 : 4);
+    var x = side === 'R' ? m.x + 11 : side === 'L' ? m.x - 11 : m.x;
+    var x0 = side === 'R' ? x : side === 'L' ? x - w : x - w / 2;
+    return { pos: pos, anchor: side === 'R' ? 'start' : side === 'L' ? 'end' : 'middle', x: x, y: m.y + dy, x0: x0, x1: x0 + w, y0: m.y + dy - LBL_H + 3, y1: m.y + dy + 3 };
+  }
+  function boxesCross(a, b, gap) { return !(a.x1 + gap < b.x0 || b.x1 + gap < a.x0 || a.y1 + gap < b.y0 || b.y1 + gap < a.y0); }
+  function curveHits(L, b) {
+    for (var i = 0; i < L.px.length - 1; i++) {
+      var steps = Math.max(1, Math.ceil((L.px[i + 1] - L.px[i]) / 4));
+      for (var k = 0; k <= steps; k++) {
+        var x = L.px[i] + (L.px[i + 1] - L.px[i]) * k / steps, y = L.py[i] + (L.py[i + 1] - L.py[i]) * k / steps;
+        if (x >= b.x0 - 3 && x <= b.x1 + 3 && y >= b.y0 - 3 && y <= b.y1 + 3) return true;
+      }
+    }
+    return false;
+  }
+  function placeLabels(L, width, height, texts) {
+    var ti = L.todayIdx, base = L.pad.t + L.ih;
+    var anchor = { x: L.px[ti], y: L.py[ti] };
+    var second = L.second ? { x: L.px[ti], y: L.second.y } : null;
+    var out = { anchor: null, second: null };
+    function fits(b, otherMark, otherBox) {
+      if (b.x0 < L.pad.l + 2 || b.x1 > width - 2 || b.y0 < L.pad.t - 2 || b.y1 > base - 2) return false;
+      if (curveHits(L, b)) return false;
+      if (otherMark && boxesCross(b, { x0: otherMark.x - 7, x1: otherMark.x + 7, y0: otherMark.y - 7, y1: otherMark.y + 7 }, 0)) return false;
+      if (otherBox && boxesCross(b, otherBox, 2)) return false;
+      return true;
+    }
+    function pick(m, text, order, otherMark, otherBox) {
+      if (!text) return null;
+      for (var i = 0; i < order.length; i++) { var b = labelBox(m, text, order[i]); if (fits(b, otherMark, otherBox)) return b; }
+      return null;
+    }
+    /* друга позначка зазвичай вища за якір: їй місце збоку; якорю під лінією */
+    var above = !second || second.y <= anchor.y;
+    if (second) out.second = pick(second, texts.second, above ? ['RC', 'RA', 'LC', 'LA', 'CA', 'RB', 'LB', 'CB'] : ['RB', 'LB', 'CB', 'RC', 'LC', 'RA', 'LA', 'CA'], anchor, null);
+    out.anchor = pick(anchor, texts.anchor, above ? ['RB', 'LB', 'CB', 'RC', 'LC', 'RA', 'LA', 'CA'] : ['RC', 'RA', 'LC', 'LA', 'CA', 'RB', 'LB', 'CB'], second, out.second);
+    return out;
+  }
+
   /* геометрія окремо від DOM: її перевіряє тест */
   function layout(vc, width, height) {
     var pts = vc.points, n = pts.length;
@@ -138,16 +205,19 @@
     var pad = { l: narrow ? 44 : 52, r: 20, t: 30, b: 28 };
     var iw = Math.max(40, width - pad.l - pad.r), ih = Math.max(40, height - pad.t - pad.b);
     var tMax = pts[n - 1].t;
-    /* друга ціна (оголошення чи середня площадки) живе лише у стовпчику
-       чисел праворуч; на графіку і в шкалі її немає */
-    var maxV = Math.max(vc.new_price.value, vc.current.value);
+    /* друга реальна ціна "сьогодні" теж на графіку: шкала її вміщує, крива
+       від неї не залежить */
+    var tp = todayPrices(vc);
+    var maxV = Math.max(vc.new_price.value, vc.current.value, fin(tp.second) ? tp.second : 0);
     for (var i = 0; i < n; i++) if (pts[i].value > maxV) maxV = pts[i].value;
     var ys = yScale(maxV, narrow ? 5 : 7);
     var X = function (t) { return pad.l + (t / tMax) * iw; };
     var Y = function (v) { return pad.t + ih - (v / ys.top) * ih; };
     var todayIdx = 0;
     for (i = 0; i < n; i++) if (!pts[i].forecast) todayIdx = i;
-    return { pad: pad, iw: iw, ih: ih, tMax: tMax, ys: ys, X: X, Y: Y, todayIdx: todayIdx, narrow: narrow,
+    /* однакові після округлення ціни дають одну позначку */
+    var second = fin(tp.second) && Math.abs(Y(tp.second) - Y(pts[todayIdx].value)) >= 1.5 ? { value: tp.second, y: Y(tp.second), kind: tp.anchor === 'average' ? 'listing' : 'average' } : null;
+    return { pad: pad, iw: iw, ih: ih, tMax: tMax, ys: ys, X: X, Y: Y, todayIdx: todayIdx, narrow: narrow, second: second, anchorKind: tp.anchor,
       px: pts.map(function (p) { return X(p.t); }), py: pts.map(function (p) { return Y(p.value); }) };
   }
 
@@ -166,30 +236,26 @@
     host.hidden = false;
     var cur = vc.market && vc.market.currency;
     var pts = vc.points;
-    var isAvg = vc.current.source === 'marketplace_average';
+    var tp = todayPrices(vc);
+    var avgLabel = tp.name ? t('{name} average').replace('{name}', tp.name) : t('Marketplace average');
     /* до сотні; для шестизначних сум до тисячі */
     var r100 = function (n) { var step = n >= 100000 ? 1000 : 100; return Math.round(n / step) * step; };
     /* Головні числа без знака приблизності: невизначеність каже підпис
        ("Оцінка новою", "Прогноз через 5 років"). Розрахункові значення
        округлені; ціна оголошення це реальне число і лишається точною */
     var newTxt = money(vc.new_price.approx ? roundApprox(vc.new_price.value) : vc.new_price.value, cur);
-    var curTxt = money(isAvg ? r100(vc.current.value) : vc.current.value, cur);
     var futTxt = money(r100(vc.future.value), cur);
     var item = function (value, label, cls) {
       return '<div class="vc-kpi' + (cls ? ' ' + cls : '') + '"><span class="vc-num">' + esc(value) + '</span><span class="vc-lbl">' + esc(label) + '</span></div>';
     };
-    /* праворуч від графіка: нова, сьогодні, через 5 років; нижче тихіше
-       друга ціна як контекст (середня площадки або ціна оголошення) */
-    var rail = item(newTxt, t(vc.new_price.approx ? 'Estimated when new' : 'When new'))
-      + item(curTxt, t('Estimated today'), 'now')
-      + item(futTxt, t('Forecast in 5 years'));
-    if (vc.listing) {
-      /* якір це середня площадки: ціна оголошення лишається довідковою */
-      rail += item(money(vc.listing.value, cur), t('Listing price'), 'ctx');
-    } else if (vc.average && typeof vc.average.value === 'number' && isFinite(vc.average.value)) {
-      /* якір це ціна оголошення: середня площадки лишається контекстом */
-      rail += item(money(r100(vc.average.value), cur), vc.average.source_name ? t('{name} average').replace('{name}', vc.average.source_name) : t('Marketplace average'), 'ctx');
-    }
+    /* Порядок рядків сталий і від якоря кривої не залежить: оцінка новою,
+       ціна оголошення, прогноз через 5 років, середня площадки. Рядка без
+       значення немає зовсім: ні порожнього місця, ні заглушки. Ціна
+       оголошення це реальне число і лишається точною */
+    var rail = item(newTxt, t(vc.new_price.approx ? 'Estimated when new' : 'When new'));
+    if (fin(tp.listing)) rail += item(money(tp.listing, cur), t('Listing price'), 'now');
+    rail += item(futTxt, t('Forecast in 5 years'));
+    if (fin(tp.average)) rail += item(money(r100(tp.average), cur), avgLabel, 'ctx');
     host.innerHTML = '<div class="vc-body"><div class="vc-plot" tabindex="0" role="group" aria-label="' + esc(t('Value over time')) + '"><div class="vc-tip" hidden></div></div>'
       + '<div class="vc-rail">' + rail + '</div></div>';
     var plot = host.querySelector('.vc-plot');
@@ -240,8 +306,15 @@
       svg.appendChild(el('path', { d: pathThrough(L.px, L.py, m, ti, last), 'class': 'vc-line vc-forecast' }));
       svg.appendChild(el('circle', { cx: L.px[0], cy: L.py[0], r: 4, 'class': 'vc-end' }));
       svg.appendChild(el('circle', { cx: L.px[last], cy: L.py[last], r: 4, 'class': 'vc-end vc-end-f' }));
-      /* на лінії "сьогодні" одна позначка: якір кривої */
+      /* на лінії "сьогодні" дві реальні ціни: лаймова позначка це якір
+         кривої (нижча з двох), порожня це друга ціна. Що є що, каже підпис,
+         а не положення */
+      var names = { listing: t('Listing price'), average: avgLabel };
+      var lb = placeLabels(L, width, height, { anchor: names[L.anchorKind], second: L.second ? names[L.second.kind] : null });
+      if (L.second) svg.appendChild(el('circle', { cx: L.px[ti], cy: L.second.y, r: 5, 'class': 'vc-today2' }));
       svg.appendChild(el('circle', { cx: L.px[ti], cy: L.py[ti], r: 5.5, 'class': 'vc-today' }));
+      if (lb.second) svg.appendChild(el('text', { x: lb.second.x, y: lb.second.y, 'text-anchor': lb.second.anchor, 'class': 'vc-mk-lbl' }, names[L.second.kind]));
+      if (lb.anchor) svg.appendChild(el('text', { x: lb.anchor.x, y: lb.anchor.y, 'text-anchor': lb.anchor.anchor, 'class': 'vc-mk-lbl' }, names[L.anchorKind]));
       cross = el('line', { x1: 0, x2: 0, y1: L.pad.t, y2: base, 'class': 'vc-cross', visibility: 'hidden' });
       dot = el('circle', { cx: 0, cy: 0, r: 5, 'class': 'vc-active', visibility: 'hidden' });
       svg.appendChild(cross); svg.appendChild(dot);
@@ -257,7 +330,7 @@
       dot.setAttribute('cx', x); dot.setAttribute('cy', y); dot.setAttribute('visibility', 'visible');
       var exact = active === L.todayIdx || (active === 0 && !vc.new_price.approx);
       var val = money(exact ? p.value : roundPoint(p.value), cur);
-      var label = active === 0 ? t('When new') : active === L.todayIdx ? t('Estimated today') : p.forecast ? t('Forecast') : '';
+      var label = active === 0 ? t('When new') : active === L.todayIdx ? (L.anchorKind === 'average' ? avgLabel : t('Listing price')) : p.forecast ? t('Forecast') : '';
       tip.innerHTML = '<span class="vc-tip-d">' + esc(monthLabel(p, locale)) + '</span><b>' + esc(val) + '</b>' + (label ? '<span class="vc-tip-f">' + esc(label) + '</span>' : '');
       tip.hidden = false;
       var w = plot.clientWidth, tw = tip.offsetWidth || 120;
@@ -301,7 +374,7 @@
   }
 
   window.CalCarValueChart = {
-    render: render, usable: usable, layout: layout, yScale: yScale, xTicks: xTicks, nearestIndex: nearestIndex,
+    render: render, usable: usable, layout: layout, todayPrices: todayPrices, placeLabels: placeLabels, yScale: yScale, xTicks: xTicks, nearestIndex: nearestIndex,
     money: money, axisMoney: axisMoney, roundApprox: roundApprox, monthLabel: monthLabel, tangents: tangents, pathThrough: pathThrough
   };
 })();

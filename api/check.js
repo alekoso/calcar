@@ -511,7 +511,8 @@ function extractListing(html, url) {
     generation,
     modification,
     price_context: priceContext,
-    listing_equipment: listingEquipment.slice(0, 60),
+    /* усі структуровані опції площадки: списку не обрізаємо */
+    listing_equipment: listingEquipment,
     price, currency, odometer_km: odometerKm, year, make, model,
     photos, text: aiText,
     /* технічний слід рішення щодо віджета "Пробіг" (для діагностики) */

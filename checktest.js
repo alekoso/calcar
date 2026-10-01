@@ -428,7 +428,8 @@ const REPORTS = [
       if (it2[0].retrofit !== false) errs.push('retrofit без підстави не скинутий');
     }
     /* сторожі: адаптер, промпт, тексти, чат */
-    if (!api.includes('listing_equipment: listingEquipment.slice(0, 60)')) errs.push('нема marketplace-адаптера');
+    if (!api.includes('listing_equipment: listingEquipment,')) errs.push('нема marketplace-адаптера');
+    if (/listingEquipment\.slice\(0, \d+\)/.test(api)) errs.push('структуровані опції площадки обрізаються');
     if (!api.includes('split(/\\s+•\\s+/)')) errs.push('адаптер не терпить подвійні пробіли сепаратора');
     if (!api.includes("if (/^\\d/.test(p)")) errs.push('адаптер не фільтрує числові значення');
     if (!api.includes('source listing_data: структуровані поля площадки')) errs.push('промпт без секції listing_data');

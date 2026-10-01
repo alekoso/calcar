@@ -361,6 +361,59 @@ const vid = (id, title, extra = {}) => Object.assign({
   }
   if (page.includes('\u2014')) errs.push('довге тире в result-check.html');
 
+  /* ---------- точна версія авто: відео саме про неї стоять першими ---------- */
+  {
+    const perf = Y.buildIdentity({ title: 'Brand XL-Class 2014', make: 'brand', model: 'xl class', generation: 'X166', powertrain: 'petrol', version: 'XL63 AMG' });
+    if (JSON.stringify(perf.versionTokens) !== JSON.stringify(['63', 'amg'])) errs.push('слова версії не виділені: ' + JSON.stringify(perf.versionTokens));
+    if (perf.withVersion !== 'brand xl class XL63 AMG X166') errs.push('запит точної версії не "марка модель версія покоління": ' + perf.withVersion);
+    const q = Y.buildQueries(perf, 'ru');
+    if (q.length !== 3) errs.push('AO: запитів на мову має лишитись три: ' + q.length);
+    if (!/XL63 AMG X166 обзор$/.test(q[0].q) || !/XL63 AMG X166 опыт владения$/.test(q[2].q)) errs.push('огляд і досвід володіння мають шукатись про точну версію: ' + JSON.stringify(q));
+    if (/AMG/.test(q[1].q) || !/X166 проблемы$/.test(q[1].q)) errs.push('запит про проблеми має лишитись на рівні покоління: ' + q[1].q);
+    const pool = [
+      vid('g1', 'Brand XL X166 слабые места | Недостатки и болячки', { views: 500000, intents: ['problems'] }),
+      vid('g2', 'Обзор Brand XL-Class II (X166)', { views: 900000 }),
+      vid('g3', 'Brand XL 350 X166 расходы на обслуживание', { views: 700000, intents: ['ownership'] }),
+      vid('e1', 'Brand XL 63 AMG X166 обзор: 557 сил', { views: 9000 }),
+      vid('e2', 'XL63 AMG опыт владения', { views: 4000, intents: ['ownership'] }),
+      vid('f1', 'Brand XL AMG Line X166 обзор', { views: 300000 }),
+      vid('s1', 'Brand XLS (X166) проблемы | Надежность', { views: 800000, intents: ['problems'] }),
+      vid('w1', 'Brand XL X164 обзор старого кузова', { views: 990000 }),
+      vid('t1', 'Brabus 900 Rocket обзор', { views: 2000000 }),
+      vid('t2', 'Brabus XL 63 AMG X166 700 сил обзор', { views: 3000 }),
+    ];
+    const out = Y.selectVideos(pool, perf, { primaryLang: 'ru' });
+    const ids = out.map(v => v.id);
+    const at = id => ids.indexOf(id);
+    if (!(at('e1') >= 0 && at('e2') >= 0 && Math.max(at('e1'), at('e2'), at('t2')) < Math.min(at('g1'), at('g2'), at('g3')))) errs.push('AK: точна версія цього покоління має стояти вище за загальні відео покоління: ' + ids.join(','));
+    if (at('e1') !== 0) errs.push('AK: першим має бути відео про точну версію і покоління: ' + ids.join(','));
+    if (!(at('f1') > Math.max(at('e1'), at('e2')) && at('f1') < Math.min(at('g1'), at('g2'), at('g3')))) errs.push('та сама лінійка без точної версії має стояти між точною версією і загальними: ' + ids.join(','));
+    if (ids.includes('w1')) errs.push('AM: відео іншого покоління має відсіюватись: ' + ids.join(','));
+    if (!(at('s1') === -1 || at('s1') > Math.max(at('g1'), at('g2'), at('g3'))) || Y.versionTier({ title: 'Brand XLS (X166) проблемы' }, perf) !== -1 || Y.versionTier({ title: 'Brand XL X166 проблемы' }, perf) !== 0) errs.push('сусідня модель (наступник) має стояти після відео самої моделі: ' + ids.join(','));
+    if (ids.includes('t1')) errs.push('загальне відео тюнінг-ательє без моделі не має потрапляти в добірку');
+    if (!(at('t2') > at('e1'))) errs.push('відео ательє про цю саму версію доречне, але не вище за огляд заводської версії: ' + ids.join(','));
+    if (!out.every((v, i) => i === 0 || out[i - 1].tier > v.tier || (out[i - 1].tier === v.tier && out[i - 1].score >= v.score))) errs.push('порядок: спершу рівень версії, далі бал');
+    /* AN: точних відео немає: добірка рівня покоління лишається */
+    const fallback = Y.selectVideos(pool.filter(v => !['e1', 'e2', 't2', 'f1'].includes(v.id)), perf, { primaryLang: 'ru' });
+    if (!(fallback.length >= 3 && fallback[0].tier === 0 && ['g1', 'g2', 'g3'].every(id => fallback.some(v => v.id === id)))) errs.push('AN: без точних відео має лишатись добірка покоління: ' + fallback.map(v => v.id).join(','));
+    /* AL: коротка назва версії без цифр */
+    const trim = Y.buildIdentity({ title: 'Brand Rover Sport 2015', make: 'brand', model: 'rover sport', generation: 'L494', version: 'HSX' });
+    const out2 = Y.selectVideos([vid('a', 'Should You Buy a Brand Rover Sport? (Review L494)', { views: 600000 }), vid('b', 'Brand Rover Sport L494 Buyers Guide', { views: 300000 }), vid('c', 'Brand Rover Sport HSX L494 review', { views: 5000 }),
+      vid('d', 'Brand Rover Sport HSX ownership', { views: 2000, intents: ['ownership'] })], trim, { primaryLang: 'en' });
+    if (out2[0].id !== 'c' || out2[1].id !== 'd') errs.push('AL: точна версія має стояти вище за загальні відео моделі: ' + out2.map(v => v.id).join(','));
+    /* версія з шуму чи самих коротких позначок: добірка як раніше */
+    for (const junk of ['Base', '4MATIC AT', 'S', null]) {
+      const idj = Y.buildIdentity({ make: 'brand', model: 'xl class', generation: 'X166', version: junk });
+      if (idj.withVersion !== null || idj.versionTokens.length) errs.push('версія "' + junk + '" не має впливати на пошук');
+      if (JSON.stringify(Y.buildQueries(idj, 'ru')) !== JSON.stringify(Y.buildQueries(Y.buildIdentity({ make: 'brand', model: 'xl class', generation: 'X166' }), 'ru'))) errs.push('запити без версії мають лишитись колишніми');
+    }
+    if (Y.sanitizeQuery({ version: 'XL63 <AMG>"', lang: 'ru' }).version !== 'XL63 AMG') errs.push('версія з адресного рядка не очищена');
+    if (!/if \(v\.trim\) p\.set\('version', clean\(v\.trim\)\);/.test(page)) errs.push('сторінка не передає версію авто у добірку відео');
+    /* AO: кількість звернень до YouTube та сама */
+    const src = fs.readFileSync('api/youtube.js', 'utf8');
+    if ((src.match(/ytFetch\('search'/g) || []).length !== 1 || (src.match(/await searchLang\(/g) || []).length !== 2 || !/const SEARCH_PER_QUERY = 10;/.test(src) || Y.INTENTS.length !== 3) errs.push('AO: кількість пошукових запитів до YouTube змінилась');
+  }
+
   fs.rmSync(dir, { recursive: true, force: true });
   if (errs.length) { console.log('FAILED:', errs); process.exit(1); }
   console.log('покоління головний ключ, рік запасний · чуже покоління і мотлох не проходять · 3 запити по 10 кандидатів, добір англійською · максимум 15, показ по 3 · будь-яка невдача ховає блок');

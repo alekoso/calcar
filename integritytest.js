@@ -40,8 +40,8 @@ const ok = (name, cond, detail) => { checks++; if (!cond) errs.push(name + (deta
     const vm = require('vm');
     const w = {};
     vm.runInNewContext(chart, { window: w, Intl, Math, Date, String, Number, parseInt, isFinite, Object });
-    ok('5-6. рядок середньої лише коли вона є: оголошення, середня або нічого', /if \(vc\.listing\) \{[\s\S]*?rail \+= item\([\s\S]*?\} else if \(vc\.average && typeof vc\.average\.value === 'number' && isFinite\(vc\.average\.value\)\) \{[\s\S]*?rail \+= item\(/.test(chart)
-      && (chart.match(/rail \+= item\(/g) || []).length === 2);
+    ok('5-6. рядок середньої лише коли вона є; рядок ціни оголошення лише коли вона є', /if \(fin\(tp\.average\)\) rail \+= item\(/.test(chart) && /if \(fin\(tp\.listing\)\) rail \+= item\(/.test(chart)
+      && (chart.match(/rail \+= item\(/g) || []).length === 3);
     ok('7. розділювач належить рядку, а не стовпчику: без порожнього місця', /\.vc-kpi \+ \.vc-kpi\{border-top:1px solid var\(--line\)\}/.test(page) && !/\.vc-rail\{[^}]*(min-height|height|grid-template-rows)/.test(page));
     const V = await import('./api/value.js');
     const NOW = Date.UTC(2026, 8, 30);

@@ -142,9 +142,12 @@ export function resolveCurrentPrice({ price, currency, price_context } = {}) {
   const avg = pc ? sanePrice(pc.average_price) : null;
   const sameCurrency = pc && (!currency || !pc.currency || pc.currency === currency);
   const name = (pc && pc.source_name) || null;
-  const fromListing = { value: listing, source: 'listing_price', source_name: null, currency: cur, listing: null, average: null };
+  /* обидва реальні входи "сьогодні" для стовпчика чисел і позначок графіка:
+     ціна оголошення і середня площадки, незалежно від того, яка з них якір */
+  const prices = { listing, average: avg !== null && sameCurrency ? avg : null, average_source_name: avg !== null && sameCurrency ? name : null };
+  const fromListing = { value: listing, source: 'listing_price', source_name: null, currency: cur, listing: null, average: null, prices };
   if (avg === null || !sameCurrency) return listing !== null ? fromListing : null;
-  const fromAverage = { value: avg, source: 'marketplace_average', source_name: name, currency: pc.currency || cur, listing: null, average: null };
+  const fromAverage = { value: avg, source: 'marketplace_average', source_name: name, currency: pc.currency || cur, listing: null, average: null, prices };
   if (listing === null || listing / avg < 0.3 || listing / avg > 3) return fromAverage;
   const sameShown = Math.round(listing / 100) === Math.round(avg / 100);
   if (listing <= avg) {
@@ -271,6 +274,11 @@ export function priceTimeCoherence(c, vehicleYear) {
 const FUELS = ['petrol', 'diesel', 'hybrid', 'electric'];
 const DRIVES = ['awd', 'rwd', 'fwd'];
 /* лінійки високої продуктивності: окремий світ цін, з V8 звичайної версії не змішуються */
+/* Ціна нового авто це ЗАВОДСЬКА ціна. Ціна конверсії тюнінг-ательє не є
+   ціною заводської версії, навіть коли авто пізніше доопрацьоване тим
+   самим ательє: така ціна береться лише коли сама версія авто так
+   називається (авто продане як конверсія) */
+export const AFTERMARKET_RE = /\b(?:brabus|mansory|hamann|lorinser|novitec|techart|startech|renntech|hennessey|carlsson|g[\s-]?power|ac\s?schnitzer|lumma|liberty\s?walk|prior\s?design|overfinch|kahn|urban\s?automotive|abt)\b/i;
 export const PERFORMANCE_RE = /\bamg\b|\b(?:c|e|s|g|gl|gle|gls|ml|cls|sl|glc|glk|cla|gla)\s?(?:55|63|65)\b|\bm[2-8]\b|\bx[3-7]\s?m\b|\brs\s?\d\b|\bsvr\b|turbo\s*s\b|\bsrt\b|hellcat|trackhawk|\btrx\b|type\s*r\b|\bgt3\b|nismo|shelby/i;
 const numOrNull = (v, lo, hi) => { const n = typeof v === 'number' ? v : parseFloat(v); return isFinite(n) && n >= lo && n <= hi ? n : null; };
 export function cleanPowertrain(pt) {
@@ -431,6 +439,7 @@ export function resolveNewPrice({ candidates = [], pc, T, market = null, currenc
       const usd = toUsd(c.amount, c.currency, c.model_year || vy);
       if (usd === null) { reject(c, 'currency_not_convertible'); continue; }
       if (!msrpYearOk(c, vYears)) { reject(c, 'msrp_other_model_year'); continue; }
+      if (AFTERMARKET_RE.test(String(c.version || '')) && !AFTERMARKET_RE.test(String(vehicle.trim || ''))) { reject(c, 'aftermarket_conversion'); continue; }
       msrps.push({ c, usd, price_year: c.model_year || vy });
     } else {
       reject(c, 'market_not_supported');
@@ -468,7 +477,10 @@ export function resolveNewPrice({ candidates = [], pc, T, market = null, currenc
 
   /* B. MSRP саме цієї версії: переважає будь-яке зіставлення за двигуном */
   const isExact = m => m.c.trim_match === 'exact' || trimMatches(m.c.version, vehicle.trim, vehicle);
-  const exact = msrps.filter(isExact).sort((a, b) => confRank(a) - confRank(b));
+  /* серед точних: спершу ціна модельного року самого авто, далі довіра до джерела */
+  const ownYear = parseInt(vehicle.model_year, 10) || vy;
+  const yearRank = m => (m.price_year === ownYear ? 0 : 1);
+  const exact = msrps.filter(isExact).sort((a, b) => (yearRank(a) - yearRank(b)) || (confRank(a) - confRank(b)));
   sel.exact_version_candidates = exact.map(describe);
   for (const m of exact) {
     const loc = localize(m.usd, m.price_year);
@@ -550,6 +562,9 @@ export function resolveNewPrice({ candidates = [], pc, T, market = null, currenc
     const p = { c: m.c, usd: m.usd, price_year: m.price_year, strength: 'weak', value: loc.value, basis: 'localized_msrp', localization: loc.regime };
     if (plausible(p)) return sourced(p);
   }
+  /* версія продуктивності без ціни своєї лінійки: зворотна оцінка з явною
+     причиною, а не ціна звичайних версій */
+  if (vPt.performance && !lineMsrps.length) return fallback('performance_version_msrp_not_found');
   return fallback(rejected.length ? 'sourced_price_unsuitable' : null);
 }
 
@@ -604,6 +619,7 @@ export function buildValueCurve({ price = null, currency = null, price_context =
     current: { value: Math.round(cur.value), source: cur.source, source_name: cur.source_name },
     listing: cur.listing,
     average: cur.average,
+    prices: cur.prices || null,
     new_price: {
       value: np.value, approx: np.approx, basis: np.basis,
       /* яким режимом ввезення локалізовано MSRP ринку-джерела */
@@ -615,7 +631,7 @@ export function buildValueCurve({ price = null, currency = null, price_context =
         url: np.fact.source_url, host: np.fact.source_host || null, price: np.fact.amount, currency: np.fact.currency,
         date: np.fact.source_date || null, price_year: np.fact.price_year || null, market: np.fact.market,
       } : null,
-      rejection_reason: np.basis === 'reverse_estimate' && np.rejected.length ? np.rejected[0].reason : null,
+      rejection_reason: np.basis !== 'reverse_estimate' ? null : np.reason === 'performance_version_msrp_not_found' ? np.reason : np.rejected.length ? np.rejected[0].reason : null,
       /* MSRP ринку-джерела: точна версія або діапазон модельного року як
          межі правдоподібності зворотної оцінки */
       msrp: np.msrp || null,
@@ -717,6 +733,7 @@ export function validateCandidates(raw, results, { brand = null, year = null, no
     const text = r.title + ' ' + r.snippet;
     const trim = TRIM.includes(c.trim_match) ? c.trim_match : 'unknown';
     out.push({
+      ...(c.extraction === 'deterministic' ? { extraction: 'deterministic' } : {}),
       amount, currency: c.currency, market: c.market, price_kind: c.price_kind,
       trim_match: trim, model_year: my,
       version: c.version ? noDash(c.version).slice(0, 60) : null,
@@ -734,10 +751,71 @@ export function validateCandidates(raw, results, { brand = null, year = null, no
   return { candidates: out, dropped };
 }
 
+/* Страховка витягу: модель могла не повернути ціну, хоча результат пошуку
+   прямо називає ТОЧНУ версію цього авто, її модельний рік і ціну нового.
+   Нового виклику немає: читаються ті самі сниппети. Береться лише
+   однозначний випадок:
+   а) заголовок результату називає версію, а сниппет каже "MSRP ... $N"
+      (або "$N MSRP", "base price $N");
+   б) у прайс-таблиці ціна стоїть одразу після назви версії.
+   Ціна б/у, "average price paid", діапазони і таблиці інших версій сюди
+   не потрапляють. Далі кандидат іде тими самими перевірками, що й решта */
+const MSRP_WORD = '(?:msrp|m\\.s\\.r\\.p\\.?|base price|starting price|starting msrp|starting at|sticker price|original price|price when new|suggested retail(?: prices?)?|retail price)';
+const USD_AMOUNT = '\\$\\s?(\\d{2,3},?\\d{3})(?!\\d|,\\d)';
+const MSRP_AFTER_WORD = new RegExp(MSRP_WORD + '[^$\\d]{0,40}' + USD_AMOUNT, 'i');
+const MSRP_BEFORE_WORD = new RegExp(USD_AMOUNT + '\\s+(?:' + MSRP_WORD + ')', 'i');
+const NOT_NEW_PRICE = /average price paid|price paid|trade-?in|private party|invoice|for sale|used\s+\d{4}|per month|\/mo\b/i;
+export function versionTokens(trim, { make = null, model = null } = {}) {
+  const skip = new Set([...trimTokens(make), ...trimTokens(model)]);
+  return [...new Set(trimTokens(trim).filter(x => !skip.has(x)))];
+}
+export function deterministicCandidates(results, vehicle = {}) {
+  const tokens = versionTokens(vehicle.trim, vehicle);
+  /* версія з одних коротких позначок ("S", "4") надто неоднозначна */
+  if (!tokens.length || !tokens.some(x => x.length >= 2)) return [];
+  const years = [parseInt(vehicle.model_year, 10) || null, parseInt(vehicle.year, 10) || null].filter(Boolean);
+  if (!years.length) return [];
+  const words = t => new Set(trimTokens(t));
+  /* назва версії як вона пишеться в таблицях: "X63 AMG", "X 63 AMG", "X-63 AMG" */
+  const pieces = cleanVersion(vehicle.trim).toLowerCase().match(/\p{L}+|\p{N}+/gu) || [];
+  const makeModel = new Set([...trimTokens(vehicle.make)]);
+  const named = pieces.filter(x => !makeModel.has(x) && !TRIM_NOISE.has(x));
+  const inline = named.length ? new RegExp('(?:^|[^\\p{L}\\p{N}])' + named.map(x => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[\\s-]?') + '(?:\\s+4matic|\\s+awd|\\s+4wd)?\\s*[,:;|]?\\s*' + USD_AMOUNT, 'iu') : null;
+  const out = [];
+  for (const r of Array.isArray(results) ? results : []) {
+    const title = String((r && r.title) || ''), snippet = String((r && r.snippet) || '');
+    const text = title + ' ' + snippet;
+    const yearHit = years.find(y => yearsInText(text).includes(y));
+    if (!yearHit) continue;
+    let amount = null;
+    const titleWords = words(title);
+    if (tokens.every(x => titleWords.has(x)) && !NOT_NEW_PRICE.test(title)) {
+      const m = MSRP_AFTER_WORD.exec(snippet) || MSRP_BEFORE_WORD.exec(snippet);
+      if (m && !NOT_NEW_PRICE.test(snippet.slice(Math.max(0, m.index - 30), m.index))) amount = parseInt(m[1].replace(/,/g, ''), 10);
+    }
+    if (amount === null && inline && new RegExp(MSRP_WORD, 'i').test(text)) {
+      const m = inline.exec(snippet);
+      if (m) amount = parseInt(m[1].replace(/,/g, ''), 10);
+    }
+    if (amount === null || amount < 8000 || amount > 600000) continue;
+    out.push({ result_ref: r.ref, amount, currency: 'USD', market: 'US', price_kind: 'source_msrp', trim_match: 'exact', model_year: yearHit,
+      version: noDash(vehicle.trim).slice(0, 60), powertrain: null, extraction: 'deterministic' });
+  }
+  return out;
+}
+
 /* ---------- Тексти: ліквідність і чинники ціни ---------- */
 
 const LIQ = ['high', 'medium', 'low', 'unknown'];
 const FORCE_DIR = ['supports', 'reduces'];
+/* "Чому це авто коштує стільки" пояснює економіку залишкової вартості.
+   Невеликий перелік дозволених типів чинників не пускає в картку окремі
+   болячки моделі: їх місце в ризиках і в довідці про модель */
+export const WHY_DRIVERS = ['ownership_cost', 'fuel_cost', 'maintenance_cost', 'repair_cost_risk', 'technical_complexity', 'reliability_reputation', 'brand_strength',
+  'buyer_demand', 'buyer_pool_width', 'powertrain_desirability', 'efficiency', 'technology_obsolescence', 'practical_demand', 'long_term_reputation'];
+/* вузька технічна несправність у тексті: конкретна деталь або режим відмови */
+const NARROW_FAILURE_RE = /утечк|протечк|протека|теч[ьи]\b|течёт|течет|leak|насос|помп[аыуе]|\bpump|клапан|valve|форсунк|injector|цеп[ьи]\s+грм|ланцюг\S*\s+грм|timing chain|задир|прокладк|gasket|сальник|соленоид|solenoid|термостат|thermostat|вкладыш|вкладиш|маслосъ[её]мн|маслознімн|\bегр\b|\begr\b|сажев|dpf\b|интеркулер|інтеркулер|подшипник|підшипник|bearing|витік|витоки|протіка/i;
+export function narrowFailure(text) { return NARROW_FAILURE_RE.test(String(text || '')); }
 /* довге тире у продукті заборонене: модель могла його поставити */
 const noDash = s => String(s || '').replace(/\s*[\u2014\u2013]\s*/g, ', ').replace(/\s+/g, ' ').trim();
 /* кожен рядок картки це самостійна причина: сполучник на початку ("Однако",
@@ -771,10 +849,12 @@ export function sanitizeMarketValue(raw) {
   const forces = [];
   for (const f of Array.isArray(raw.price_forces) ? raw.price_forces : []) {
     if (!f || typeof f !== 'object' || !FORCE_DIR.includes(f.direction)) continue;
+    /* чинник поза переліком або про конкретну несправність у картку не йде */
+    if (!WHY_DRIVERS.includes(f.driver)) continue;
     const text = standalone(f.text).slice(0, 200);
     const key = text.toLowerCase();
-    if (text.length < 4 || seen.has(key) || reasonKeys.has(key)) continue;
-    seen.add(key); forces.push({ direction: f.direction, text });
+    if (text.length < 4 || seen.has(key) || reasonKeys.has(key) || narrowFailure(text)) continue;
+    seen.add(key); forces.push({ direction: f.direction, driver: f.driver, text });
     if (forces.length >= 6) break;
   }
   if (!reasons.length && !forces.length) return null;
@@ -814,12 +894,16 @@ export function composeWhyPrice(forces, story) {
   const other = list.filter(f => f.direction !== want).map(f => f.text);
   return (main.length ? main : other).slice(0, WHY_PRICE_MAX);
 }
+/* Підпис для людини: "Втрата вартості: низька / середня / висока". Це той
+   самий стан сохранності іншими словами; для ненадійної ціни нового
+   (зворотна оцінка, нижня межа) рівня немає */
+export const VALUE_LOSS_BY_STATE = { strong_retention: 'low', normal_depreciation: 'medium', heavy_depreciation: 'high' };
 export function composeMarketValue(mv, retention) {
   if (!mv || typeof mv !== 'object') return null;
   const state = retention && RETENTION_STATES.includes(retention.state) ? retention.state : 'unknown';
   const story = priceStory(retention);
   const reasons = composeWhyPrice(mv.price_forces, story);
-  return { liquidity: mv.liquidity, why_price: { retention_state: state, price_story: story, reasons } };
+  return { liquidity: mv.liquidity, why_price: { retention_state: state, value_loss: VALUE_LOSS_BY_STATE[state] || null, price_story: story, reasons } };
 }
 
 /* ---------- Виклик моделі ---------- */
@@ -829,7 +913,7 @@ const OBJ = properties => ({ type: 'object', properties, required: Object.keys(p
 export function valueResponseFormat() {
   return { type: 'json_schema', json_schema: { name: 'calcar_value_section', strict: true, schema: OBJ({
     liquidity: OBJ({ level: S('string', { enum: LIQ }), reasons: S('array', { items: S('string') }) }),
-    price_forces: S('array', { items: OBJ({ direction: S('string', { enum: FORCE_DIR }), text: S('string') }) }),
+    price_forces: S('array', { items: OBJ({ direction: S('string', { enum: FORCE_DIR }), driver: S('string', { enum: WHY_DRIVERS }), text: S('string') }) }),
     new_price_candidates: S('array', { items: OBJ({
       result_ref: S('string'), amount: S('number'), currency: S('string', { enum: CUR }), market: S('string', { enum: MKT }),
       price_kind: S('string', { enum: KIND }), trim_match: S('string', { enum: TRIM }), model_year: S(['integer', 'null']),
@@ -855,14 +939,17 @@ Three outputs.
    No numeric ratings and no invented statistics (days to sell, shares, counts). If the input is not enough to judge, use level "unknown" with one neutral reason.
 
 2. price_forces: 4 to 6 forces that explain how well THIS MODEL AND VERSION keeps its original value as it ages (why a car like this is worth a large or a small share of its new price at its age).
-   Each item: direction "supports" (helps it keep value) or "reduces" (makes it lose value faster), and text: one short sentence that names the factor AND its effect on retained value, for example "High running costs of premium technology cut demand as the car ages." A bare attribute ("All-wheel drive", "Premium positioning", "Practical body") is not acceptable.
-   Give at least three forces that reduce value and at least two that support it when the context allows it; each force is one independent sentence with no leading connector. Reliability, failure and repair claims about specific units (engine, gearbox, suspension, electronics, battery) are allowed ONLY when MODEL_CONTEXT supports them; without that support stay with facts that follow from the identity itself: segment and price class, body practicality, powertrain type and its running costs, age of a premium car, technology obsolescence, buyer audience breadth.
+   This is market ECONOMICS of residual value, not a list of the model's weak points.
+   Each item: direction "supports" (helps it keep value) or "reduces" (makes it lose value faster); driver: the type of the economic driver, one of ownership_cost, fuel_cost, maintenance_cost, repair_cost_risk, technical_complexity, reliability_reputation, brand_strength, buyer_demand, buyer_pool_width, powertrain_desirability, efficiency, technology_obsolescence, practical_demand, long_term_reputation; text: one short sentence that names the factor AND its effect on retained value, for example "High running costs of premium technology cut demand as the car ages." A bare attribute ("All-wheel drive", "Premium positioning", "Practical body") is not acceptable.
+   A narrow technical weak point is NOT a force: a specific leak, pump, valve, injector, chain, gasket or any other named failure mode never appears here, even when MODEL_CONTEXT describes it; those belong to the risks section of the report. A technical system may appear only at the economic level. Wrong: "Aging air suspension struts can fail." Right: "Air suspension that is expensive to keep up with age raises expected ownership costs and lowers residual value."
+   Give at least three forces that reduce value and at least two that support it when the context allows it; each force is one independent sentence with no leading connector. A force that fits none of the driver types is not written. Do not pad: fewer grounded forces are better than a filler.
    Never mention this listing's price, any discount, the marketplace average, the seller, or this car's condition, mileage, accident, flood or history.
    Do not repeat a liquidity sentence: the same underlying factor may appear in both, but liquidity explains ease of resale and price_forces explains retained value.
 
 3. new_price_candidates: prices of this model when NEW found in SEARCH_RESULTS.
    Take a price only if the number is literally written in that result's title or snippet. result_ref is the result id (S1, S2...). amount is the number as written, without conversion.
    price_kind "local_list": an official or dealer list price of a new car in Ukraine. price_kind "source_msrp": manufacturer list price in another market (US MSRP and so on). market: UA, US, EU or OTHER.
+   EXACT VERSION FIRST: when VEHICLE names a version (trim), look first for the price of exactly that version and model year. If any result states it (in a price table row, as "MSRP of $N", "base price $N", "starting at $N" next to that version), return it with trim_match "exact" and the version as written. In a road-test result take the base price, never the "as tested" price with options. A price of a tuner conversion (Brabus, Mansory and similar) is not the factory price of the version: return it only with that tuner name in version.
    When a result lists prices of several versions of the same model year, return EVERY version price as a separate entry; version is the version name exactly as written next to that price (null when there is none).
    powertrain: the powertrain of THAT version as stated in the result or as documented for that exact version and model year (fuel, engine displacement in litres, cylinders, power in hp, drive); null for anything you are not sure about. performance: true for high-performance lines (AMG, M, RS, SVR, Turbo S and similar), otherwise false. This describes the version only and never changes the price.
    trim_match "exact" only when the result clearly names the same version as VEHICLE; "base" for a starting or base price ("from", "starting at"); otherwise "unknown".
@@ -884,7 +971,10 @@ export function valueUserMessage({ langDirective, vehicle, market, results, mode
 
 const logLine = (op, extra) => console.log('[value]', JSON.stringify({ op, ...extra }));
 
-export function priceQueries(identity) {
+/* вік, з якого локальний прайс нових авто вже не знаходиться: дилери
+   тримають ціни лише поточних моделей */
+export const LOCAL_PRICE_MAX_AGE_YEARS = 4;
+export function priceQueries(identity, nowYear = new Date().getUTCFullYear()) {
   const label = [identity.make, identity.model].filter(Boolean).join(' ');
   if (!label || !identity.year) return [];
   /* версія без потужності в дужках, службових дефісів декодера ("X450-4M")
@@ -892,10 +982,14 @@ export function priceQueries(identity) {
   const inLabel = new Set(String(identity.make || '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean));
   const version = cleanVersion(identity.trim).replace(/[-_/]+/g, ' ').split(/\s+/).filter(x => x && !/^(?:at|mt|amt|cvt|dct|dsg|4m|base)$/i.test(x) && !inLabel.has(x.toLowerCase())).join(' ');
   const trim = version ? ' ' + version : '';
-  return [
-    label + ' ' + identity.year + ' ціна нового в Україні офіційний дилер',
-    (identity.model_year || identity.year) + ' ' + label + trim + ' MSRP price new',
-  ];
+  const my = identity.model_year || identity.year;
+  const msrp = my + ' ' + label + trim + ' MSRP price new';
+  /* Запитів завжди два. Для старшого авто з відомою версією запит про
+     прайс дилера в Україні повертає лише оголошення б/у, тому його місце
+     займає другий запит про ту саму точну версію іншими словами: огляди
+     нового авто називають базову ціну саме версії */
+  if (version && nowYear - parseInt(identity.year, 10) >= LOCAL_PRICE_MAX_AGE_YEARS) return [my + ' ' + label + trim + ' base price as tested review', msrp];
+  return [label + ' ' + identity.year + ' ціна нового в Україні офіційний дилер', msrp];
 }
 
 /* Пошук стартує одразу (паралельно з рештою Check), виклик моделі
@@ -951,8 +1045,13 @@ export function startValueResearch(input = {}, deps = {}) {
       const data = await deps.callModel(body, deps.timeoutMs || 60000, deps.signal);
       if (!data || data.error) throw new Error((data && data.error && data.error.message) || 'empty_response');
       const parsed = JSON.parse(String(data.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim());
-      const v = validateCandidates(parsed.new_price_candidates, results, { brand: identity.make, year: identity.year });
+      /* ціна точної версії, яку модель пропустила: з тих самих сниппетів */
+      const fromModel = Array.isArray(parsed.new_price_candidates) ? parsed.new_price_candidates : [];
+      const recovered = deterministicCandidates(results, { ...identity, ...(ctx.vehicle || {}), trim: (ctx.vehicle && ctx.vehicle.trim) || identity.trim, model_year: identity.model_year || null })
+        .filter(d => !fromModel.some(c => c && String(c.result_ref) === d.result_ref && Math.round(c.amount) === d.amount));
+      const v = validateCandidates([...recovered, ...fromModel], results, { brand: identity.make, year: identity.year });
       state.status = 'ok'; state.candidates = v.candidates.length; state.dropped = v.dropped;
+      state.recovered = v.candidates.filter(c => c.extraction === 'deterministic').length;
       state.ai = { usage: data.usage || null, model: data.model || body.model, reasoning_effort: body.reasoning_effort };
       state.ms = Date.now() - tA;
       return { market_value: sanitizeMarketValue(parsed), candidates: v.candidates };

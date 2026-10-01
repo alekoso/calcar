@@ -138,7 +138,22 @@ export function validPowertrain(raw) {
    Покоління невідоме -> запасний ключ це рік: Toyota Camry 2025.
    Двигун лишається тільки в запиті про проблеми і тільки коли код відомий.
    Нічого тут заново не визначається: значення приходять зі звіту. */
-export function buildIdentity({ title, make, model, generation, engine_code, year, powertrain } = {}) {
+/* Точна версія авто зі звіту ("X63 AMG", "M Competition"). Для
+   пошуку і ранжування лишаються слова, які відрізняють версію: без марки,
+   моделі, покоління, приводу, коробки і кузова. Літери і цифри розділені:
+   "X63" і "X 63" це одне й те саме. Версія з самих коротких позначок
+   ("S", "4") надто неоднозначна і не використовується */
+const VERSION_NOISE = new Set(['4matic', '4m', 'awd', '4wd', 'fwd', 'rwd', '2wd', 'xdrive', 'sdrive', 'quattro', '4motion', '4x4', '4x2', 'at', 'mt', 'amt', 'cvt', 'dct', 'dsg',
+  'tiptronic', 'base', 'sedan', 'suv', 'coupe', 'wagon', 'hatchback', 'utility', '4d', '5d', 'limited', 'edition']);
+const splitTokens = s => norm(String(s || '').replace(/\([^)]*\)/g, ' ')).split(' ').filter(Boolean).flatMap(x => x.match(/\p{L}+|\p{N}+/gu) || []);
+export function versionTokens(version, { make, model, generation } = {}) {
+  const skip = new Set([...splitTokens(make), ...splitTokens(model), ...splitTokens(generation)]);
+  const raw = norm(String(version || '').replace(/\([^)]*\)/g, ' ')).split(' ').filter(x => x && !VERSION_NOISE.has(x));
+  const tokens = [...new Set(raw.flatMap(x => x.match(/\p{L}+|\p{N}+/gu) || []).filter(x => !skip.has(x) && !VERSION_NOISE.has(x)))];
+  return tokens.some(x => x.length >= 2) ? tokens.slice(0, 4) : [];
+}
+
+export function buildIdentity({ title, make, model, generation, engine_code, year, powertrain, version } = {}) {
   const mk = clean(make), md = clean(model);
   let base = (mk && md) ? (mk + ' ' + md) : clean(title).replace(/\s*\b(19|20)\d{2}\b\s*$/, '').trim();
   if (!base) base = [mk, md].filter(Boolean).join(' ').trim();
@@ -152,9 +167,14 @@ export function buildIdentity({ title, make, model, generation, engine_code, yea
   const withPower = pw && !has(base, pw) ? base + ' ' + pw : base;
   const eng = validEngineCode(engine_code);
   const withEngine = eng && !has(withPower, eng) ? withPower + ' ' + eng : withPower;
+  /* версія: слова, що її відрізняють, і запит "марка модель версія покоління" */
+  const vTokens = versionTokens(version, { make: mk || base, model: md, generation: gen });
+  const vText = vTokens.length ? clean(String(version).replace(/\([^)]*\)/g, ' ')).split(' ').filter(w => !VERSION_NOISE.has(w.toLowerCase())).join(' ').slice(0, 30) : null;
+  const withVersion = vText ? ((mk && md) ? (mk + ' ' + md) : base) + ' ' + vText + (gen && !has(vText, gen) ? ' ' + gen : (!gen && yr ? ' ' + yr : '')) : null;
   return {
     base: base.slice(0, 80), withPower: withPower.slice(0, 90), withEngine: withEngine.slice(0, 100),
     generation: gen, engine_code: eng, powertrain: pw, year: gen ? null : yr,
+    version: vText, versionTokens: vTokens, withVersion: withVersion ? withVersion.slice(0, 100) : null,
   };
 }
 
@@ -162,8 +182,13 @@ export function buildQueries(identity, lang) {
   const tpl = QUERY_TEMPLATES[lang] || QUERY_TEMPLATES.en;
   if (!identity) return [];
   /* огляд і проблеми уточнюються типом установки, досвід володіння лишається
-     ширшим: там корисні і сусідні версії того самого покоління */
-  const forIntent = { review: identity.withPower, problems: identity.withEngine, ownership: identity.base };
+     ширшим: там корисні і сусідні версії того самого покоління.
+     Відома точна версія: огляд і досвід володіння шукаються саме про неї,
+     запит про проблеми лишається на рівні покоління і дає запасний шар.
+     Запитів стільки ж: три на мову */
+  const forIntent = identity.withVersion
+    ? { review: identity.withVersion, problems: identity.withEngine, ownership: identity.withVersion }
+    : { review: identity.withPower, problems: identity.withEngine, ownership: identity.base };
   return INTENTS.map(intent => ({
     intent,
     q: tpl[intent].replace('{engineId}', identity.withEngine).replace('{id}', forIntent[intent]),
@@ -251,6 +276,31 @@ export function identityTokens(identity) {
   return { make: rest[0] || null, model: rest.slice(1).filter(Boolean), generation: gen, engine: eng };
 }
 
+/* частка слів версії в заголовку відео: 1 це точна версія, 0 жодного */
+export function versionMatch(video, identity) {
+  const vt = (identity && identity.versionTokens) || [];
+  if (!vt.length) return 0;
+  const hay = new Set(splitTokens(video && video.title));
+  return vt.filter(w => hay.has(w)).length / vt.length;
+}
+/* сусідня модель замість цієї: у заголовку немає назви моделі, зате є та
+   сама назва з додатковою літерою (наступник чи сестринська модель:
+   "XLS" при моделі "XL"). Не заборона, а останнє місце в черзі */
+export function siblingModel(video, identity) {
+  const tok = identityTokens(identity);
+  const hay = norm(video && video.title).split(' ').filter(Boolean);
+  const set = new Set(hay);
+  return tok.model.some(w => /^[a-z]{2,4}$/.test(w) && !set.has(w) && !new Set(splitTokens(video && video.title)).has(w) && hay.some(h => h.length === w.length + 1 && h.startsWith(w) && /^[a-z]+$/.test(h)));
+}
+/* Порядок добірки: точна версія цього покоління, далі її лінійка, далі
+   покоління моделі, далі модель загалом; сусідня модель останньою.
+   Усередині рівня вирішує звичайний бал */
+export function versionTier(video, identity) {
+  const m = versionMatch(video, identity);
+  return (m >= 1 ? 2 : m > 0 ? 1 : 0) - (siblingModel(video, identity) ? 1 : 0);
+}
+const byTierThenScore = (a, b) => (b.tier - a.tier) || (b.score - a.score);
+
 /* 0..1: наскільки заголовок відео справді про ЦЕ покоління цієї моделі.
    Покоління важить найбільше: саме воно відрізняє потрібне відео від
    схожого про попередній кузов */
@@ -266,6 +316,10 @@ export function relevance(video, identity) {
     got += 0.35 * (hits / tok.model.length);
   }
   if (tok.generation) { max += 0.35; if (has(tok.generation)) got += 0.35; }
+  /* точна версія: сильний сигнал. Усі її слова в заголовку це відео саме
+     про цю версію; частина (лише лінійка, "AMG" без "63") це сусідня версія */
+  const vt = identity.versionTokens || [];
+  if (vt.length) { max += 0.45; got += 0.45 * versionMatch(video, identity); }
   if (identity.powertrain) { max += 0.1; if (has(norm(identity.powertrain))) got += 0.1; }
   if (tok.engine && video.engineQuery) { max += 0.05; if (has(tok.engine)) got += 0.05; }
   return max > 0 ? got / max : 0;
@@ -288,7 +342,7 @@ export function scoreVideo(video, identity, { primaryLang = null } = {}) {
   /* мова звіту виграє лише серед схожих за силою, а не сама по собі */
   const langBonus = primaryLang && video.lang === primaryLang ? 0.05 : 0;
   return {
-    ...video, relevance: rel,
+    ...video, relevance: rel, tier: versionTier(video, identity),
     score: 0.72 * rel + 0.22 * popularity(video.views) + bonus + useful + substantial + langBonus,
   };
 }
@@ -298,7 +352,10 @@ export function isRelated(video, identity) {
   const tok = identityTokens(identity);
   if (!tok.model.length) return relevance(video, identity) >= 0.5;
   const hay = norm(video.title + ' ' + (video.channel || ''));
-  return tok.model.some(w => new RegExp('(^| )' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '( |$)').test(hay));
+  if (tok.model.some(w => new RegExp('(^| )' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '( |$)').test(hay))) return true;
+  /* модель злита з версією ("X63 AMG ..."): точна версія плюс назва моделі серед розділених слів */
+  const split = new Set(splitTokens(video.title));
+  return versionMatch(video, identity) >= 1 && tok.model.some(w => split.has(w));
 }
 
 /* фільтр + ранжування + мінімальна різноманітність. Слабке відео у добірку
@@ -320,7 +377,7 @@ export function selectVideos(candidates, identity, { max = MAX_RESULTS, minScore
     .filter(v => isRelated(v, identity))
     .map(v => scoreVideo(v, identity, { primaryLang }))
     .filter(v => v.score >= minScore)
-    .sort((a, b) => b.score - a.score)
+    .sort(byTierThenScore)
     /* очевидні перезаливи: той самий заголовок */
     .filter(v => { const k = norm(v.title).slice(0, 60); if (seenTitle.has(k)) return false; seenTitle.add(k); return true; });
 
@@ -343,7 +400,7 @@ export function selectVideos(candidates, identity, { max = MAX_RESULTS, minScore
     if (out.includes(v)) continue;
     take(v);
   }
-  return out.slice(0, max).sort((a, b) => b.score - a.score);
+  return out.slice(0, max).sort(byTierThenScore);
 }
 
 /* ---------- YouTube Data API ---------- */
@@ -380,6 +437,7 @@ export function sanitizeQuery(query) {
     engine_code: str(q.engine_code, 12),
     year: str(q.year, 4),
     powertrain: str(q.powertrain, 24),
+    version: str(q.version, 40),
   };
 }
 
@@ -487,7 +545,7 @@ export default async function handler(req, res) {
     ? 'public, max-age=3600, s-maxage=' + CACHE_TTL_S + ', stale-while-revalidate=86400'
     : 'no-store');
   return res.status(200).json({
-    videos: payload, identity: identity.base, query_language: input.lang,
+    videos: payload, identity: identity.withVersion || identity.base, query_language: input.lang,
     fallback_language: fallbackUsed ? 'en' : null,
   });
 }

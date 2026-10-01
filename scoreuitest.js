@@ -22,7 +22,7 @@ const grab = name => {
   }
   return '';
 };
-const src = ['coverageRail', 'renderScoreBlock'].map(grab).join('\n');
+const src = ['popoverPosition', 'coverageRail', 'renderScoreBlock'].map(grab).join('\n');
 
 function stub(id, extra = {}) {
   const attrs = {}, listeners = {};
@@ -179,6 +179,28 @@ for (const [final, cov] of [[9.0, 91], [5.1, 74], [3.2, 50]]) {
   ok(!pop.hidden, 'фокус з клавіатури не показав панель');
   tg.fire('blur', { relatedTarget: null });
   ok(pop.hidden, 'втрата фокусу не закрила панель');
+}
+/* 6b1. панель привʼязана до шеврона, а не до картки чи низу вікна */
+{
+  const pos = new Function(grab('popoverPosition') + '\nreturn popoverPosition;')();
+  const W = 360, VW = 1280, VH = 800;
+  const trig = (top, right = 1180) => ({ left: right - 28, right, top, bottom: top + 28, width: 28, height: 28 });
+  const adjacent = (p, r, h) => { const gapY = Math.max(p.top - r.bottom, r.top - (p.top + h), 0), gapX = Math.max(p.left - r.right, r.left - (p.left + W), 0); return gapY <= 12 && gapX <= 12; };
+  const below = pos(trig(200), W, 420, VW, VH);
+  ok(below.side === 'below' && below.top === 236 && below.left + W === 1180, 'AF: панель має стояти одразу під шевроном з правим краєм на його рівні: ' + JSON.stringify(below));
+  const above = pos(trig(560), W, 420, VW, VH);
+  ok(above.side === 'above' && above.top + 420 === 552 && adjacent(above, trig(560), 420), 'AG: без місця знизу панель має стати над шевроном: ' + JSON.stringify(above));
+  const side = pos(trig(300), W, 620, VW, VH);
+  ok(side.side === 'left' && side.left + W === 1180 - 28 - 8 && adjacent(side, trig(300), 620), 'AG: без місця знизу і зверху панель має стати збоку від шеврона: ' + JSON.stringify(side));
+  for (const top of [20, 150, 300, 450, 600, 740]) for (const h of [200, 420, 620]) {
+    const r = trig(top), p = pos(r, W, h, VW, VH);
+    ok(adjacent(p, r, h), 'AH: панель відірвалась від шеврона (top ' + top + ', h ' + h + '): ' + JSON.stringify(p));
+    ok(p.left >= 12 && p.left + W <= VW - 12 && p.top >= 12 && (p.top + h <= VH - 12 || h > VH - 24), 'панель вийшла за вікно: ' + JSON.stringify(p));
+    ok(!(p.top + h >= VH - 12 && r.bottom < VH - h - 60 && p.side === 'below'), 'AH: панель притиснута до низу вікна далеко від шеврона');
+  }
+  const narrow = pos({ left: 300, right: 328, top: 300, bottom: 328 }, W, 620, 720, VH);
+  ok(narrow.side === 'right' && narrow.left === 336, 'ліворуч місця немає: панель має стати праворуч від шеврона: ' + JSON.stringify(narrow));
+  ok(/popoverPosition\(toggle\.getBoundingClientRect\(\), pop\.offsetWidth, pop\.offsetHeight, window\.innerWidth, window\.innerHeight\)/.test(page) && !/card\.getBoundingClientRect\(\)/.test(grab('renderScoreBlock')), 'панель має рахуватись від самого шеврона');
 }
 /* 6c. стиль: картка статична, інтерактивний лише шеврон */
 {

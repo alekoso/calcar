@@ -157,6 +157,48 @@ const ok = (name, cond, detail) => { checks++; if (!cond) errs.push(name + (deta
     }
   }
 
+  /* ===== повнота комплектації: знахідки Vision не губляться при злитті ===== */
+  {
+    const frames = Array.from({ length: 24 }, (_, i) => ({ gallery_index: i, url: 'https://cdn.example.com/p' + i + '.webp' }));
+    const E = (name, gi, confidence = 'high') => ({ normalized_name: name, visible_label_or_feature: 'x', category: 'other', gallery_index: gi, sign: 'ознака ' + name, confidence });
+    /* вісім знахідок одного реального розбору салону */
+    const raw = { equipment_visual: [E('Harman Kardon', 16), E('памʼять положень переднього сидіння', 16), E('контроль сліпих зон', 9, 'medium'), E('панорамний дах', 21, 'medium'),
+      E('підігрів і вентиляція передніх сидінь', 22, 'medium'), E('задній клімат-контроль', 19), E('підігрів задніх сидінь', 19), E('фірмові накладки порогів', 18)] };
+    const cv = CV.gateCurrentVisual(raw, frames).current_visual;
+    const concepts = cv.equipment_visual.map(e => e.concept);
+    ok('E1. Z: кожна знахідка Vision має своє поняття: підігрів і вентиляція окремо, задній підігрів окремо, накладки порогів у словнику', concepts.length === 9 && new Set(concepts).size === 9
+      && ['seat_heating', 'seat_ventilation', 'rear_seat_heating', 'branded_sills'].every(c => concepts.includes(c)) && !concepts.some(c => c.startsWith('other:')), concepts.join(','));
+    const seller = [{ name: 'Программная настройка', category: 'performance', confidence_level: 'seller', evidence: [{ source: 'seller_claim', ref: 'описание продавца', sign: 'x' }], retrofit: true },
+      { name: 'Люк', category: 'comfort', confidence_level: 'listing_data', evidence: [{ source: 'listing_data', ref: 'опции объявления', sign: 'Люк' }] },
+      { name: 'Датчик дождя', category: 'comfort', confidence_level: 'listing_data', evidence: [{ source: 'listing_data', ref: 'опции объявления', sign: 'Датчик дощу' }] }];
+    const merged = CM.mergeCanonicalEquipment(seller, cv, 'ru');
+    const names = merged.items.map(i => i.name);
+    ok('E2. Z: усі девʼять понять Vision у звіті з доказом на кадр (було шість із восьми знахідок)', merged.stats.canonical === 9 && merged.stats.unlabelled === 0 && merged.stats.inserted + merged.stats.matched === 9
+      && ['Вентиляция сидений', 'Подогрев задних сидений', 'Фирменные накладки порогов', 'Подогрев сидений'].every(n => names.includes(n))
+      && merged.items.filter(i => (i.evidence || []).some(e => e.source === 'current_photos' && /^photo_\d+$/.test(e.ref))).length === 9, names.join(' | '));
+    ok('E3. AA: структуровані опції площадки і заява продавця лишаються після злиття', names.includes('Датчик дождя') && names.includes('Программная настройка')
+      && merged.items.find(i => i.name === 'Люк').evidence.some(e => e.source === 'listing_data') && merged.items.find(i => i.name === 'Люк').evidence.some(e => e.source === 'current_photos'));
+    /* AB: жодного обмеження кількості */
+    const many = { equipment_visual: ['Harman Kardon', 'панорамний дах', 'проекційний дисплей', 'цифрова панель приладів', 'підігрів керма', 'задній клімат-контроль', 'підрульові пелюстки', 'електрорегулювання передніх сидінь',
+      'памʼять сидінь', 'підігрів передніх сидінь', 'вентиляція передніх сидінь', 'масаж сидінь', 'шкіряний салон', 'атмосферне підсвічування', 'деревʼяні вставки', 'камера заднього виду', 'камери кругового огляду',
+      'адаптивний круїз-контроль', 'контроль сліпих зон', 'навігація', 'безключовий доступ', 'бездротова зарядка', 'третій ряд сидінь', 'електропривод кришки багажника', 'кнопка запуску двигуна', 'органи керування пневмопідвіскою',
+      'доводчики дверей', 'сонцезахисні шторки задніх дверей', 'рейлінги на даху', 'фаркоп', 'бічні підніжки', 'підігрів задніх сидінь'].map((n, i) => E(n, i % 24)) };
+    const cvMany = CV.gateCurrentVisual(many, frames).current_visual;
+    const mergedMany = CM.mergeCanonicalEquipment([], cvMany, 'ua');
+    ok('E4. AB: 32 різні опції: усі 32 у звіті, обмеження кількості немає', cvMany.equipment_visual.length === 32 && new Set(cvMany.equipment_visual.map(e => e.concept)).size === 32 && mergedMany.items.length === 32
+      && !cvMany.equipment_visual.some(e => e.concept.startsWith('other:')), cvMany.equipment_visual.filter(e => e.concept.startsWith('other:')).map(e => e.concept).join(','));
+    const checkSrc = fs.readFileSync('api/check.js', 'utf8'), cvSrc = fs.readFileSync('api/current-visual.js', 'utf8');
+    ok('E5. AB: структуровані опції площадки не обрізаються; у схемі Vision немає maxItems для комплектації', !/listingEquipment\.slice\(0, \d+\)/.test(checkSrc) && !/equipment_visual[^\n]{0,400}maxItems/.test(cvSrc));
+    ok('E6. підказка Vision: перелічити всі видимі опції окремими записами, без домислів від дорогої версії', (cvSrc.match(/ПОВНОТА КОМПЛЕКТАЦІЇ: перелічи ВСІ опції/g) || []).length === 2
+      && /дорога версія чи репутація моделі самі по собі нічого не доводять/.test(cvSrc) && /Обмеження кількості записів немає/.test(cvSrc));
+    /* AC: доступне в каталозі не стає встановленим; дорогу версію ніхто не домислює */
+    const none = CV.gateCurrentVisual({ equipment_visual: [] }, frames).current_visual;
+    const sup = MIE.supplementVisionEquipment([], none, [{ key: 'hud', name: 'Head-up display', status: 'available' }, { key: 'massage', name: 'Massage seats', status: 'available' }]);
+    ok('E7. AC: опція, доступна для версії, без доказу на цьому авто у звіт не потрапляє', sup.items.length === 0 && sup.stats.inserted === 0 && CM.mergeCanonicalEquipment([], none, 'ru').items.length === 0);
+    ok('E8. обладнання не виводиться з назви версії чи ціни', !/vehicle\.trim|version|msrp|new_price/i.test(cvSrc.slice(cvSrc.indexOf('export function equipmentConcept('), cvSrc.indexOf('/* модифікація "підтверджена"'))));
+    ok('E9. зміна лише в комплектації: правила стану і знахідок у підказці Vision ті самі', /ЩО ШУКАТИ ВСЕРЕДИНІ: помітний знос керма/.test(cvSrc) && /ОГЛЯД СИДІНЬ ПО РЯДАХ/.test(cvSrc) && CV.CURRENT_VISUAL_VERSION === 'cv-2026-10-01-v3');
+  }
+
   if (errs.length) {
     console.error('premiumtest: помилок ' + errs.length + ' із ' + checks);
     for (const e of errs) console.error(' - ' + e);
