@@ -119,7 +119,9 @@ for (const x of fs.readdirSync('api').filter(f => f.endsWith('.js'))) {
   });
   if (pub._chat) errs.push('публічний звіт містить переписку');
   if (pub.brand_new_private_field || pub.score_facts || pub.score_breakdown_shadow) errs.push('публічний звіт віддає поле поза allowlist');
-  for (const k of ['decision_inputs', 'seller_text', 'snapshot', 'knowledge', 'equipment_verifier', 'photo_selection', 'historical_photo_transport']) if (k in pub._meta) errs.push('публічний _meta містить ' + k);
+  for (const k of ['decision_inputs', 'snapshot', 'knowledge', 'equipment_verifier', 'photo_selection', 'historical_photo_transport']) if (k in pub._meta) errs.push('публічний _meta містить ' + k);
+  /* оригінальний опис продавця свідомо публічний: це текст самого оголошення, звіт показує його кнопкою "Опис продавця" */
+  if (pub._meta.seller_text !== 'private') errs.push('опис продавця не дійшов до звіту з check-job');
   if (pub._meta.vin !== 'V' || pub.vehicle.title !== 'X' || pub.verdict.score !== 8 || pub._meta.share_token !== 'tok') errs.push('публічний звіт втратив дозволені дані');
   if (!pub._meta.auction_search || pub._meta.auction_search.candidates || pub._meta.auction_search.lot_url !== 'https://l') errs.push('auction_search не звужений до публічних полів');
   if (S.publicReport(null) !== null || S.publicReport([1]) !== null) errs.push('publicReport не відкидає не-обʼєкт');

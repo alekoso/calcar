@@ -118,7 +118,41 @@ const page = fs.readFileSync('result-check.html', 'utf8');
   /* межа приватності публічного посилання не зсунута мовчки */
   const share = fs.readFileSync('api/share.js', 'utf8');
   const pm = share.slice(share.indexOf('const PUBLIC_META'), share.indexOf('];', share.indexOf('const PUBLIC_META')));
-  if (/seller_text/.test(pm)) errs.push('seller_text потрапив у публічний allowlist без окремого рішення');
+  /* опис продавця доходить до звіту: check-job віддає звіт через allowlist,
+     і без seller_text у ньому кнопки не було ні в сесії, ні в збереженій копії */
+  if (!/'seller_text',\s*$/.test(pm)) errs.push('seller_text немає в allowlist звіту: кнопка "Опис продавця" не зʼявиться');
+  {
+    fs.writeFileSync(path.join(dir, 'share.js'), share);
+    const SH = await import('file://' + path.join(dir, 'share.js'));
+    /* H: звіт GLS у тій формі, як його зберіг check-job (ключі _meta з реального рядка) */
+    const SELLER = 'У наявності ! Два комплекта гуми';
+    const job = { vehicle: { title: 'Mercedes-Benz GLS-Class 2017' }, _meta: { vin: '4JGDF6EEXJB008213', domain: 'auto.ria.com', lang: 'ua', seller_text: SELLER,
+      decision_inputs: { personal_context: { x: 1 } }, timings: { a: 1 }, history_facts: { owners_count: 1 }, current_visual_shadow: {}, snapshot_id: 's' } };
+    const pub = SH.publicReport(job);
+    if (pub._meta.seller_text !== SELLER) errs.push('H: опис продавця загубився у звіті з check-job: ' + JSON.stringify(Object.keys(pub._meta)));
+    for (const k of ['decision_inputs', 'timings', 'history_facts', 'current_visual_shadow', 'snapshot_id']) if (k in pub._meta) errs.push('приватне поле ' + k + ' потрапило в публічний звіт');
+    if ('seller_text' in SH.publicReport({ vehicle: {}, _meta: { vin: 'X' } })._meta) errs.push('D: опис продавця вигаданий там, де його немає');
+    /* умова кнопки: та сама, що на сторінці */
+    const cond = (/if \((typeof M\.seller_text === 'string' && M\.seller_text\.trim\(\))\) \{\n\s*idBits\.push/.exec(page) || [])[1];
+    const shows = text => !!new Function('M', 'return ' + cond)({ seller_text: text });
+    if (!cond) errs.push('умову кнопки опису продавця не знайдено');
+    else {
+      if (!shows('Продам авто в гарному стані. Повна сервісна історія, два ключі.\n\nТорг біля авто.')) errs.push('A: звичайний опис не показує кнопку');
+      if (!shows('В наличии! Два комплекта резины.') || !shows(SELLER)) errs.push('B: короткий, але змістовний опис не показує кнопку');
+      if (shows('   \n\t  ')) errs.push('C: опис із самих пробілів показує кнопку');
+      if (shows(null) || shows(undefined)) errs.push('D: без опису кнопка зʼявилась');
+      if (!shows(pub._meta.seller_text)) errs.push('H: звіт GLS із check-job не показує кнопку');
+    }
+    /* F: текст дослівно, як у звіті */
+    if (pub._meta.seller_text !== job._meta.seller_text) errs.push('F: текст продавця змінено по дорозі');
+    /* G: сторінка не тягне опис окремим запитом */
+    const ssSrc = page.slice(page.indexOf('/* ---------- оригінальний опис продавця ----------'), page.indexOf('body.tabIndex = 0'));
+    if (/fetch\(|XMLHttpRequest|\/api\//.test(ssSrc)) errs.push('G: опис продавця тягнеться окремим запитом');
+    if (/seller/i.test(fs.readFileSync('api/check-job.js', 'utf8'))) errs.push('G: check-job отримав окрему логіку опису продавця');
+    /* E: підписи трьома мовами */
+    const D = {}; require('vm').runInNewContext(fs.readFileSync('i18n/ru.js', 'utf8') + fs.readFileSync('i18n/ua.js', 'utf8'), { window: D });
+    if (D.CALCAR_DICTS.ru['Seller description'] !== 'Описание продавца' || D.CALCAR_DICTS.ua['Seller description'] !== 'Опис продавця' || !/esc\(t\('Seller description'\)\)/.test(page)) errs.push('E: підписи кнопки RU/UA/EN');
+  }
 
   /* ---------- 3. відгук ---------- */
   const fnSrc = page.slice(page.indexOf('function isAmongFirstChecks('), page.indexOf('(function () {', page.indexOf('function isAmongFirstChecks(')));
