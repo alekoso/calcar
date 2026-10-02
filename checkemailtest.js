@@ -313,6 +313,7 @@ const TOK = n => ('tok' + n + 'AAAAAAAAAAAAAAAAAAAAAA').slice(0, 22);
   await p.ctx.emailBoxShow(T1);
   ok(p.els.emailBox.className === 'em on' && /id="emIn"/.test(p.els.emailBox.innerHTML), '3: гість не бачить поля email');
   ok(p.calls.length === 0, '3: запит пішов без натискання');
+  ok(/>Get the report by email</.test(p.els.emailBox.innerHTML) && />Email me<\/button>/.test(p.els.emailBox.innerHTML) && p.els.emailBox.innerHTML.includes('Leave your email: you can wait here or come back via the link in the email.'), '3: текст блоку гостя не той');
   await p.submit();
   ok(p.calls.length === 0 && p.els.emErr.className === 'em-err on', '3: порожній email пішов на сервер');
   /* 4, 5. гість ввів email: opt-in на сервер, адреса в localStorage */
@@ -321,7 +322,10 @@ const TOK = n => ('tok' + n + 'AAAAAAAAAAAAAAAAAAAAAA').slice(0, 22);
   ok(p.calls.length === 1 && p.calls[0].url === '/api/check-email' && p.calls[0].body.email === 'guest@example.com' && p.calls[0].body.token === T1, '4: opt-in гостя не пішов на сервер');
   ok(!p.calls[0].init.headers.authorization, '4: гість надіслав Authorization');
   ok(p.store.calcar_guest_email === 'guest@example.com', '5: email гостя не запамʼятався');
-  ok(/em-ok/.test(p.els.emailBox.innerHTML) && p.els.emailBox.innerHTML.includes('m***@example.com') && !p.els.emailBox.innerHTML.includes('guest@'), '4: немає спокійного підтвердження з маскою');
+  /* підтвердження без адреси: "Звіт прийде на пошту ✓", галочка в кінці */
+  ok(/em-ok/.test(p.els.emailBox.innerHTML) && !p.els.emailBox.innerHTML.includes('m***@example.com') && !p.els.emailBox.innerHTML.includes('guest@'), '4: немає спокійного підтвердження або в ньому адреса');
+  ok(/<div class="em-ok">The report will arrive by email <span class="em-ok-ic" aria-hidden="true">✓<\/span><\/div>/.test(p.els.emailBox.innerHTML), '4: галочка не в кінці речення');
+  ok(p.els.emailBox.innerHTML.includes('You can keep waiting here or close the page.') && !p.els.emailBox.innerHTML.includes('You can close this page.'), '4: підтвердження каже лише "сторінку можна закрити"');
   /* 15. подія без адреси */
   ok(p.tracked.length === 1 && p.tracked[0].n === 'report_email_opted_in' && !/guest|example|@/.test(JSON.stringify(p.tracked)), '15: подія opt-in з адресою або відсутня');
   /* 11. reload під час того самого Check: підтвердження, без нового запиту */
@@ -346,7 +350,9 @@ const TOK = n => ('tok' + n + 'AAAAAAAAAAAAAAAAAAAAAA').slice(0, 22);
   /* 2. хто увійшов: поля немає, маска адреси акаунта, адреса в запит не йде */
   p3 = page({ session: { access_token: 'AT', user: { email: 'owner@example.com' } }, stored: { ...pend(T1), calcar_guest_email: 'g@example.com' } });
   await p3.ctx.emailBoxShow(T1);
-  ok(!/id="emIn"/.test(p3.els.emailBox.innerHTML) && p3.els.emailBox.innerHTML.includes('o***@example.com') && !p3.els.emailBox.innerHTML.includes('owner@'), '2: тому, хто увійшов, показано поле або повну адресу');
+  /* хто увійшов: без поля і без маски адреси акаунта, кнопка "Надіслати на пошту" */
+  ok(!/id="emIn"/.test(p3.els.emailBox.innerHTML) && !p3.els.emailBox.innerHTML.includes('o***@example.com') && !p3.els.emailBox.innerHTML.includes('owner@') && !/em-addr/.test(p3.els.emailBox.innerHTML), '2: тому, хто увійшов, показано поле або адресу');
+  ok(/>Get the report by email</.test(p3.els.emailBox.innerHTML) && />Send to my email<\/button>/.test(p3.els.emailBox.innerHTML) && p3.els.emailBox.innerHTML.includes('You can wait here or close the page: we will send a link when the analysis is ready.'), '2: текст блоку для того, хто увійшов, не той');
   ok(p3.calls.length === 0, '1: запит без натискання для того, хто увійшов');
   await p3.submit();
   ok(p3.calls.length === 1 && p3.calls[0].init.headers.authorization === 'Bearer AT' && p3.calls[0].body.email === undefined, '2: запит того, хто увійшов');

@@ -162,3 +162,44 @@ export function describeOwnerEvents(history, facts, lang = 'en') {
     return { ...h, event: OWNER_OPERATION_TEXT[op][l], event_source: 'registry_operation' };
   });
 }
+
+/* Подія зміни власника з реєстру не може зникнути з хронології лише тому,
+   що модель її не написала: реальний Range Rover SALGS2EF5DA122430 мав у
+   реєстрі 1-го, 2-го, 3-го і 4-го власника, а в хронології лишились 1-й і
+   4-й. Кожна узгоджена подія реєстру (ownerEventsConsistent), якій не
+   дістався рядок history, додається окремим рядком: дата з реєстру, текст
+   дії з OWNER_OPERATION_TEXT мовою звіту, номер окремо в бейджі. Подій,
+   яких у реєстрі немає, не вигадуємо; нічого не прибираємо. Порядок
+   хронологічний, решта рядків незмінна. Не мутує вхід */
+function monthLabel(iso) {
+  const m = /^(\d{4})-(\d{2})/.exec(String(iso || ''));
+  return m ? m[2] + '.' + m[1] : null;
+}
+function rowKey(date) {
+  const m = /^\s*(?:\d{1,2}\.)?(\d{1,2})\.(\d{4})\s*$/.exec(String(date || ''));
+  if (m) return parseInt(m[2], 10) * 100 + parseInt(m[1], 10);
+  const y = /^\s*(\d{4})\s*$/.exec(String(date || ''));
+  return y ? parseInt(y[1], 10) * 100 : null;
+}
+export function addMissingOwnerEvents(history, facts, lang = 'en') {
+  if (!Array.isArray(history)) return history;
+  const l = lang === 'ua' || lang === 'ru' ? lang : 'en';
+  const events = facts && Array.isArray(facts.owner_events) ? facts.owner_events : [];
+  if (!ownerEventsConsistent(events, facts && facts.owners_count)) return history;
+  const have = new Set(history.filter(h => h && h.owner_ordinal_source === 'registry' && Number.isInteger(h.owner_ordinal)).map(h => h.owner_ordinal));
+  const out = history.slice();
+  for (const ev of events) {
+    if (have.has(ev.ordinal)) continue;
+    const date = monthLabel(ev.date);
+    if (!date) continue;
+    const op = OWNER_OPERATION_TEXT[ev.operation] ? ev.operation : (ev.ordinal === 1 ? 'first_registration' : 'owner_reregistration');
+    const row = { gap: null, date, event: OWNER_OPERATION_TEXT[op][l], owner_ordinal: ev.ordinal, owner_ordinal_source: 'registry', event_source: 'registry_operation' };
+    /* перед першим рядком із пізнішою датою; рядки без дати лишаються в кінці */
+    const k = rowKey(date);
+    let at = out.findIndex(h => { const hk = h && rowKey(h.date); return hk !== null && hk > k; });
+    if (at < 0) { at = out.length; while (at > 0 && out[at - 1] && rowKey(out[at - 1].date) === null) at--; }
+    out.splice(at, 0, row);
+    have.add(ev.ordinal);
+  }
+  return out;
+}

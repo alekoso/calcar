@@ -131,7 +131,7 @@ const TOK = 'AbCdEfGhIjKlMnOpQrStUv';
     const document = { body, title: 'Report', visibilityState: 'visible' };
     const timer = (fn, ms) => { if (ms >= 20000) return 0; st.pauses.push(ms); setImmediate(fn); return 0; };
     const f = new Function('fetch', 'setTimeout', 'clearTimeout', 'document', 'window', 'location', 'history', 'console', 'st', 'els',
-      "let ld = null, AWAIT_TITLE = null, DATA = null, READONLY = false, SHARE_SLUG = null;\n"
+      "let ld = null, AWAIT_TITLE = null, DATA = null, READONLY = false, SHARE_SLUG = null, ROW_ID = null;\nconst SB = null;\n"
       + "const OPEN_TOKEN = '" + TOK + "';\n"
       + "const STAGE_IDX = { queued: 0, history: 1, ai: 2, scoring: 3 };\n"
       + "const $ = id => els[id] || null; const t = s => s; const esc = s => String(s);\n"

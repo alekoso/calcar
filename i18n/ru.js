@@ -3,13 +3,13 @@
    коли обрано цю мову. Згенеровано розворотом попередніх словників UA -> EN/RU. */
 window.CALCAR_DICTS = window.CALCAR_DICTS || {};
 window.CALCAR_DICTS.ru = {
-  'You do not have to wait': 'Можно не ждать',
-  'We will send the finished report to your email': 'Пришлём готовый отчёт на вашу почту',
-  'Do not want to wait?': 'Не хотите ждать?',
-  'Leave your email and we will send a link when the analysis is ready.': 'Оставьте email, и мы пришлём ссылку, когда анализ будет готов.',
-  'Send me the finished report': 'Прислать готовый отчёт',
-  'The finished report will be sent to {email}': 'Готовый отчёт придёт на {email}',
-  'You can close this page.': 'Страницу можно закрыть.',
+  'Get the report by email': 'Получить отчёт на почту',
+  'You can wait here or close the page: we will send a link when the analysis is ready.': 'Можешь ждать здесь или закрыть страницу: мы пришлём ссылку, когда анализ будет готов.',
+  'Send to my email': 'Прислать на почту',
+  'Leave your email: you can wait here or come back via the link in the email.': 'Оставь email: можешь ждать здесь или вернуться по ссылке из письма.',
+  'Email me': 'Прислать',
+  'The report will arrive by email': 'Отчёт придёт на почту',
+  'You can keep waiting here or close the page.': 'Можешь продолжать ждать здесь или закрыть страницу.',
   'Check the email address': 'Проверьте адрес почты',
   'Could not set up the email, try again': 'Не удалось настроить письмо, попробуйте ещё раз',
   '{n} sec': '{n} сек',

@@ -19,7 +19,7 @@ import {
 import { hasHistoricalPhotoEvidence, stripUnbackedPhotoClaims } from './historical-claims.js';
 /* Final Conclusion: окремий synthesis-виклик по вже готовому звіту */
 import { runFinalConclusion, CONCLUSION_TIMEOUT_MS, CONCLUSION_MIN_BUDGET_MS } from './conclusion.js';
-import { parseOwnerEvents, annotateOwnerOrdinals, describeOwnerEvents } from './history-owners.js';
+import { parseOwnerEvents, annotateOwnerOrdinals, describeOwnerEvents, addMissingOwnerEvents } from './history-owners.js';
 import { validEngineCode, resolveGeneration } from './youtube.js';
 import {
   photoIdentity, photoSetFingerprint, listingFingerprint, snapshotRow, listingKey, dedupePhotoVariants,
@@ -3453,6 +3453,8 @@ async function runCheck(req, res, job) {
     if (Array.isArray(parsed.history)) parsed.history = annotateOwnerOrdinals(parsed.history, listing.history_facts);
     /* подія, де модель написала лише номер власника, отримує дію з реєстру */
     if (Array.isArray(parsed.history)) parsed.history = describeOwnerEvents(parsed.history, listing.history_facts, lang);
+    /* подія власника з реєстру, яку модель не написала, все одно в хронології */
+    if (Array.isArray(parsed.history)) parsed.history = addMissingOwnerEvents(parsed.history, listing.history_facts, lang);
     /* свіжий нормалізований візуал у кеш за ключем набору кадрів: наступний
        Check цього VIN із тими самими кадрами отримає його примусово */
     if (parsed.historical_visual && !hvCache.hit && !hvCache.consensus && hvCache.fingerprint && listing.vin) {

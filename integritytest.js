@@ -134,6 +134,33 @@ const ok = (name, cond, detail) => { checks++; if (!cond) errs.push(name + (deta
     }
     const src = fs.readFileSync('api/check.js', 'utf8');
     ok('18e. Check описує події після привʼязки номерів', /parsed\.history = annotateOwnerOrdinals\(parsed\.history, listing\.history_facts\);\n[^\n]*\n\s*if \(Array\.isArray\(parsed\.history\)\) parsed\.history = describeOwnerEvents\(parsed\.history, listing\.history_facts, lang\);/.test(src));
+    /* реальний Range Rover SALGS2EF5DA122430: реєстр дав 1-го, 2-го, 3-го і 4-го
+       власника, модель написала події лише 1-го і 4-го. Кожна подія реєстру
+       в хронології; дія окремо, номер окремо; нічого не вигадується */
+    {
+      const rr = [{ gap: null, date: '07.2019', event: 'ДТП у США, зафіксовано пробіг 138 000 км.' },
+        { gap: 'x', date: '10.2021', event: 'Перша реєстрація в Україні після ввезення.' },
+        { gap: 'x', date: '08.2022', event: 'Продаж через AUTO.RIA, заявлений пробіг 140 000 км.' },
+        { gap: 'x', date: '10.2024', event: 'Продаж через AUTO.RIA, заявлений пробіг 149 000 км.' },
+        { gap: 'x', date: '05.2025', event: 'Перереєстрація на нового власника в Україні.' },
+        { gap: 'x', date: '11.2025', event: 'Продаж через AUTO.RIA, заявлений пробіг 167 000 км.' },
+        { gap: 'x', date: '09.2026', event: 'Продаж через AUTO.RIA, заявлений пробіг 178 000 км.' }];
+      const rf = { owners_count: 4, owner_events: [{ date: '2021-10-29', ordinal: 1, operation: 'import_registration' }, { date: '2023-02-07', ordinal: 2, operation: 'owner_reregistration' },
+        { date: '2024-01-05', ordinal: 3, operation: 'sale_registration' }, { date: '2025-05-14', ordinal: 4, operation: 'owner_reregistration' }] };
+      const full = H.addMissingOwnerEvents(H.describeOwnerEvents(H.annotateOwnerOrdinals(rr, rf), rf, 'ua'), rf, 'ua');
+      const owners = full.filter(r => r.owner_ordinal);
+      ok('21a. Range Rover: усі власники з реєстру в хронології 1 -> 2 -> 3 -> 4', owners.map(r => r.owner_ordinal).join() === '1,2,3,4', JSON.stringify(full.map(r => [r.date, r.owner_ordinal || null])));
+      ok('21b. пропущені події з датою і дією реєстру, номер окремо', owners[1].date === '02.2023' && owners[1].event === 'Перереєстрація на нового власника.'
+        && owners[2].date === '01.2024' && owners[2].event === 'Перереєстрація на нового власника за договором купівлі-продажу.' && !/2|3|друг|трет/i.test(owners[1].event + owners[2].event), JSON.stringify(owners));
+      ok('21c. хронологічний порядок і жоден рядок моделі не загубився', full.length === rr.length + 2 && full.map(r => r.date).join() === '07.2019,10.2021,08.2022,02.2023,01.2024,10.2024,05.2025,11.2025,09.2026');
+      ok('21d. рядки моделі з номером не дублюються', full.filter(r => r.owner_ordinal === 1).length === 1 && full.filter(r => r.owner_ordinal === 4).length === 1);
+      /* неузгоджений реєстр (дірка в нумерації чи інша кількість): нічого не додаємо */
+      const bad = { owners_count: 4, owner_events: [rf.owner_events[0], rf.owner_events[2], rf.owner_events[3]] };
+      ok('21e. неузгоджений реєстр не створює подій', H.addMissingOwnerEvents(rr, bad, 'ua').length === rr.length);
+      ok('21f. без реєстру нічого не вигадується', H.addMissingOwnerEvents(rr, { owner_events: [] }, 'ua').length === rr.length);
+      ok('21g. мова дії = мова звіту', H.addMissingOwnerEvents(rr, rf, 'en').some(r => r.owner_ordinal === 3 && r.event === 'Re-registration to a new owner under a sale agreement.') || H.addMissingOwnerEvents(rr, rf, 'en').some(r => r.owner_ordinal === 3 && /^Re-registration/.test(r.event)));
+      ok('21h. Check додає пропущені події після опису', /parsed\.history = describeOwnerEvents\(parsed\.history, listing\.history_facts, lang\);\n[^\n]*\n\s*if \(Array\.isArray\(parsed\.history\)\) parsed\.history = addMissingOwnerEvents\(parsed\.history, listing\.history_facts, lang\);/.test(fs.readFileSync('api/check.js', 'utf8')));
+    }
   }
 
   /* ===== 5. разова чистка року старого декодера ===== */

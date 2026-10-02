@@ -355,7 +355,7 @@ const page = fs.readFileSync('result-check.html', 'utf8');
     if (TL.normalize(ann.map(r => ({ date: r.date, event: r.event, owner_ordinal: 2 })), 'en').some(r => r.owner_ordinal)) errs.push('owner_ordinal без позначки реєстру показаний');
     /* сторінка і сервер */
     if (/function ownerBadges/.test(page)) errs.push('повернувся підрахунок власників з тексту');
-    if (!/const hist = CalCarTimeline\.normalize\(D\.history, window\.calcarLang\(\), DATA && DATA\.history\);/.test(page)) errs.push('Історія авто рендериться не з канонічної хронології');
+    if (!/const hist = CalCarTimeline\.normalize\(D\.history, REPORT_LOCALE \|\| window\.calcarLang\(\), DATA && DATA\.history\);/.test(page)) errs.push('Історія авто рендериться не з канонічної хронології');
     if (/D\.history\.map\(/.test(page) || /h\.gap \? esc\(h\.gap\)[\s\S]{0,40}D\.history/.test(page)) errs.push('рендер ще йде по сирому D.history');
     if (!/history: CalCarTimeline\.normalize\(d\.history/.test(page)) errs.push('помічник отримує несортовану хронологію');
     if (!/<script src="\/vehicle-timeline\.js"><\/script>/.test(page)) errs.push('vehicle-timeline.js не підключений');
@@ -681,6 +681,45 @@ const page = fs.readFileSync('result-check.html', 'utf8');
     /* підтверджений дефект і конкретна заява продавця описуються прямо */
     const riskRule = chk.slice(chk.indexOf('"risks": до 5 КЛЮЧОВИХ РИЗИКІВ'), chk.indexOf('\n', chk.indexOf('"risks": до 5 КЛЮЧОВИХ РИЗИКІВ')));
     if (!/конкретний факт цієї машини \(симптом, помилка системи/.test(riskRule) || !/"Не підтверджено" доречне ЛИШЕ для конкретної заяви продавця чи документа/.test(riskRule)) errs.push('підтверджений дефект чи заява продавця більше не описуються прямо');
+  }
+
+  /* ---------- 9. фінальні бета-правки: адреса звіту, повний розбір, опис продавця ---------- */
+  {
+    /* адреса в рядку браузера = адреса "Поділитися": непрозорий токен, не public_id */
+    if (!/async function canonicalizeShareUrl\(\)\{\n  const u = await ensureShareToken\(\);/.test(page)) errs.push('канонічна адреса не з того самого джерела, що "Поділитися"');
+    if (!/    boot\(\);\n    canonicalizeShareUrl\(\);\n    return;/.test(page)) errs.push('звіт з кабінету лишає в адресі приватний /check/<public_id>');
+    if (!/ROW_ID = row\.id;\n    history\.replaceState\([^\n]*\n    canonicalizeShareUrl\(\);/.test(page)) errs.push('щойно збережений звіт лишає приватну адресу');
+    if (!/\.eq\('data->_meta->>share_token', OPEN_TOKEN\)/.test(page) || !/\n  if \(SB\) \{\n    try \{\n      const \{ data: s \} = await SB\.auth\.getSession\(\);/.test(page)) errs.push('власник за публічною адресою втрачає інтерфейс власника');
+    if (/'\/check\/r\/' \+ [^;\n]*public_id/.test(page)) errs.push('public_id став публічним ключем звіту');
+    /* "Читати повний розбір": компонент .pd-more з 153687d (до Final Conclusion), без змін */
+    const OLD_PD_MORE = [
+      '  .pd-more{display:inline-flex;align-items:center;gap:8px;height:38px;padding:0 14px 0 16px;margin-top:20px;border:1px solid var(--line-strong);border-radius:10px;background:var(--card);color:var(--ink);font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;transition:background .15s,border-color .15s}',
+      '  .pd-more:hover{background:var(--surface-2);border-color:var(--muted)}',
+      '  .pd-more:focus-visible{outline:2px solid var(--ink);outline-offset:2px}',
+      '  .pd-more svg{width:14px;height:14px;flex:0 0 auto;color:var(--muted);transition:transform .18s ease}',
+      '  .pd-more[aria-expanded="true"] svg{transform:rotate(180deg)}',
+      '        <button class="pd-more" id="pdMoreBtn" type="button" aria-expanded="false" aria-controls="pdReasoning"><span id="pdMoreLabel">Read the full reasoning</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>',
+    ];
+    for (const line of OLD_PD_MORE) if (!page.includes(line + '\n')) errs.push('компонент "Читати повний розбір" відійшов від 153687d: ' + line.slice(0, 60));
+    if (/\$\('pdMoreBtn'\)\.style\.display = 'none';\n    \$\('pdReasoning'\)\.style\.display = 'none';\n  \} else if/.test(page)) errs.push('Final Conclusion знову показується цілком без кнопки');
+    if (!/\$\('pdMoreBtn'\)\.style\.display = fcParts\.rest\.length \? '' : 'none';\n    \$\('pdMoreBtn'\)\.onclick = pdMoreToggle;/.test(page)) errs.push('кнопка розбору не працює з final_conclusion');
+    const fcSrc = page.slice(page.indexOf('function sentencesOf('), page.indexOf('function boot2(D){'));
+    const F = new Function(fcSrc + 'return { fcPreview, sentencesOf };')();
+    const long = ['QX60 интересен богатым оснащением и семиместным салоном. Однако дилерская запись 35 тыс. км от октября 2025 года против 81 тыс. км в объявлениях выглядит нестыковкой, и её нужно объяснить документами до осмотра.',
+      'Цена практически совпадает со средним ориентиром площадки и не компенсирует этот риск. Если запись окажется ошибкой, экземпляр стоит рассматривать дальше.',
+      'Перед покупкой стоит проверить тяговую батарею, вариатор и сервисную историю у официального дилера, а также сверить VIN по всем документам.',
+      'Отдельно стоит оценить состояние кузова на подъёмнике: на фото видны следы локального окраса на правой стороне, а в истории есть продажа после ДТП в США. Это не делает машину плохой, но требует внимательного осмотра силовых элементов и проёмов.',
+      'Итог: машина интересная, но решение зависит от объяснения пробега.'];
+    const pv = F.fcPreview(long);
+    if (!(pv.rest.length && pv.head.join(' ').length <= 450 && pv.head.concat(pv.rest).join(' ') === long.join(' '))) errs.push('превʼю Final Conclusion втрачає текст або завелике: ' + JSON.stringify(pv));
+    const one = F.fcPreview(['Одно очень длинное предложение. '.repeat(25).trim()]);
+    if (!(one.rest.length && /\.$/.test(one.head[0]) && one.head[0].length <= 450 && (one.head[0] + ' ' + one.rest[0]) === 'Одно очень длинное предложение. '.repeat(25).trim())) errs.push('превʼю ріже посеред речення або губить текст');
+    if (F.fcPreview(['Короткий вывод.']).rest.length) errs.push('короткий висновок сховано за кнопку');
+    if (F.sentencesOf('Запись 35 тыс. км от октября. Цена 1.5 млн грн.').length !== 2) errs.push('речення рвуться на скороченнях');
+    /* опис продавця: хрестик лише на шторці телефону */
+    if (!/\n  \.ss-panel\.pop \.ss-x\{display:none\}/.test(page)) errs.push('десктопний поповер опису продавця знову з хрестиком');
+    if (!/if \(!asPop\) setTimeout\(\(\) => closeBtn\.focus\(\), 30\);/.test(page)) errs.push('поповер переводить фокус на прихований хрестик');
+    if (!/<button class="ss-x" id="sellerClose" type="button" aria-label="Close">/.test(page)) errs.push('шторка телефону втратила хрестик');
   }
 
   /* словники */

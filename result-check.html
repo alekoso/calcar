@@ -563,6 +563,9 @@
      Позицію рахує sellerPopPosition від прямокутника кнопки */
   .ss-panel.pop{top:auto;right:auto;bottom:auto;width:460px;max-width:calc(100vw - 24px);height:auto;max-height:420px;border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 28px rgba(20,22,25,.16);transform:none;transition:none}
   .ss-panel.pop .ss-head{height:52px}
+  /* десктопний поповер закривається сам, коли курсор іде: хрестика нема.
+     Шторка на телефоні свій хрестик лишає */
+  .ss-panel.pop .ss-x{display:none}
   .ss-panel.pop .ss-body{padding:14px 18px 18px}
   @media(max-width:760px){
     .ss-panel{top:auto;left:0;right:0;width:auto;height:82vh;border-left:0;border-top:1px solid var(--line);border-radius:18px 18px 0 0;transform:translateY(102%);box-shadow:0 -14px 44px rgba(20,22,25,.18)}
@@ -607,7 +610,7 @@
   /* публічний read-only звіт: помічника тут навмисно нема (він працює з
      приватним контекстом звіту і памʼяттю людини), тому і глобального входу
      в шапці теж нема. Лаунчер із продуктами, мовою і входом лишається */
-  body.readonly #aiBtn,body.readonly .pd-cta,body.readonly #saveHint,body.readonly #trBar,body.readonly .chat-selask{display:none!important}
+  body.readonly #aiBtn,body.readonly .pd-cta,body.readonly #saveHint,body.readonly .chat-selask{display:none!important}
   /* архівні фото недоступні: компактна плашка замість порожнього місця */
   .arch-fail{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 20px 4px;padding:9px 12px;border:1px dashed var(--line-strong);border-radius:10px;font-size:13px;color:var(--muted)}
   @media(max-width:620px){
@@ -1547,6 +1550,62 @@
 <script src="/config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
+/* ---------- мова самого звіту ----------
+   Звіт показується тією мовою, якою його створено (_meta.lang), і ЦІЛКОМ:
+   тексти моделі, назви секцій, підписи, контролі звіту, формат чисел. Мова
+   глядача лишається для оболонки сайту (шапка, лаунчер, чат) і для банера
+   перекладу. Після "Перекласти" звіт так само цілком переходить на мову
+   глядача. Старий звіт без _meta.lang показується мовою глядача, як раніше.
+   t() нижче затіняє глобальний window.t лише для коду звіту: чат і спільні
+   блоки звертаються до window.t і лишаються мовою глядача */
+let REPORT_LOCALE = null;
+const t = (s, l) => window.t(s, l || REPORT_LOCALE || undefined);
+/* банер перекладу: лише коли мова звіту відома і відрізняється від мови глядача */
+function trOffer(reportLang, viewerLang){
+  const r = reportLang ? window.calcarResolveLocale(reportLang) : null;
+  return !!r && r !== window.calcarResolveLocale(viewerLang);
+}
+function reportLocaleTag(){
+  const c = REPORT_LOCALE || window.calcarLang();
+  const m = (window.CALCAR_LANGS || []).find(x => x.code === c);
+  return m ? m.locale : window.calcarLocale();
+}
+/* словник мови звіту, якщо він не мова глядача: ядро вантажить лише словник глядача */
+function ensureDict(code){
+  return new Promise(res => {
+    if (!code || code === 'en' || (window.CALCAR_DICTS && window.CALCAR_DICTS[code])) return res();
+    const cur = document.querySelector('script[src^="/i18n/"]');
+    const q = cur ? (cur.getAttribute('src').split('?')[1] || '') : '';
+    const el = document.createElement('script');
+    el.src = '/i18n/' + code + '.js' + (q ? '?' + q : '');
+    el.onload = el.onerror = () => res();
+    document.head.appendChild(el);
+  });
+}
+/* вихідні (англійські) підписи розмітки звіту, знято ДО того, як ядро i18n
+   перекладе сторінку мовою глядача: з них звіт перекладається мовою звіту.
+   Банер перекладу лишається мовою глядача */
+const REPORT_TEXT = [];
+(function () {
+  const roots = [document.querySelector('.wrap'), document.getElementById('ytModal'), document.getElementById('sellerSheet'), document.getElementById('miPop')].filter(Boolean);
+  const own = el => !(el && el.closest && el.closest('#trBar,script,style,template,noscript,textarea'));
+  roots.forEach(root => {
+    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+    let n;
+    while ((n = w.nextNode())) if (n.nodeValue.trim() && own(n.parentNode)) REPORT_TEXT.push([n, null, n.nodeValue]);
+    root.querySelectorAll('[placeholder],[title],[aria-label],[alt]').forEach(el => {
+      if (!own(el)) return;
+      ['placeholder', 'title', 'aria-label', 'alt'].forEach(a => { const v = el.getAttribute(a); if (v && v.trim()) REPORT_TEXT.push([el, a, v]); });
+    });
+  });
+})();
+function localizeReportStatic(code){
+  REPORT_TEXT.forEach(([n, a, src]) => {
+    if (!n.isConnected) return;
+    const v = window.t(src, code);
+    if (a) n.setAttribute(a, v.trim()); else n.nodeValue = v;
+  });
+}
 const SB = (typeof supabase !== 'undefined' && window.CALCAR_SUPABASE?.url)
   ? supabase.createClient(window.CALCAR_SUPABASE.url, window.CALCAR_SUPABASE.anon)
   : null;
@@ -1615,7 +1674,7 @@ function driveLabel(raw) {
   return s;
 }
 const $ = id => document.getElementById(id);
-const nf = n => Number(n).toLocaleString(window.calcarLocale());
+const nf = n => Number(n).toLocaleString(reportLocaleTag());
 const st = s => ['ok','warn','bad','unknown'].includes(s) ? s : 'unknown';
 const httpsOnly = a => (a || []).filter(u => typeof u === 'string' && /^https:/.test(u));
 
@@ -1820,8 +1879,26 @@ async function openTokenReport() {
   if (!j) return;
   DATA = j.report;
   READONLY = !(isLocalAuthor(OPEN_TOKEN) || (DATA._meta && DATA._meta.share_token && isLocalAuthor(DATA._meta.share_token)));
-  /* власник акаунта, що відкрив свій звіт за публічним посиланням, теж
-     бачить його як read-only: редагування живе на /check/<public_id> */
+  /* публічна адреса тепер і є адреса звіту в рядку браузера. Той, хто
+     увійшов і чий це звіт, знаходить свій рядок кабінету за тим самим
+     токеном (RLS віддає лише власні рядки) і лишається з повним
+     інтерфейсом власника: чат пишеться в його звіт, переклад зберігається,
+     і з іншого пристрою теж. Для всіх інших звіт read-only, як і раніше */
+  if (SB) {
+    try {
+      const { data: s } = await SB.auth.getSession();
+      if (s?.session) {
+        const { data: rows } = await SB.from('reports').select('id,data').eq('kind', 'check')
+          .eq('data->_meta->>share_token', OPEN_TOKEN).order('created_at', { ascending: true }).limit(1);
+        const own = Array.isArray(rows) && rows[0];
+        if (own) {
+          READONLY = false;
+          ROW_ID = own.id;
+          if (own.data && own.data.translations) DATA.translations = own.data.translations;
+        }
+      }
+    } catch (e) {}
+  }
   if (READONLY) document.body.classList.add('readonly');
   /* канонічна людська адреса: slug із сервера, токен незмінний */
   SHARE_SLUG = j.slug || (DATA._meta && DATA._meta.share_slug) || SHARE_SLUG || 'car';
@@ -1842,9 +1919,10 @@ async function openTokenReport() {
       sessionStorage.setItem('calcarCheck', JSON.stringify(DATA));
       sessionStorage.setItem('calcarCheckId', row.id);
     } catch (e) {}
-    /* канонічна коротка адреса */
+    /* поки готується публічна адреса, коротка адреса кабінету */
     if (row.public_id) history.replaceState(null, '', '/check/' + row.public_id);
     boot();
+    canonicalizeShareUrl();
     return;
   }
   try {
@@ -1855,15 +1933,16 @@ async function openTokenReport() {
   ROW_ID = sessionStorage.getItem('calcarCheckId') || null;
   if (ROW_ID) history.replaceState(null, '', '/result-check.html?id=' + ROW_ID);
   boot();
+  if (ROW_ID) canonicalizeShareUrl();
   saveIfNeeded();
 })();
 
 /* ---------- переклад звіту на мову інтерфейсу ---------- */
 function trSetup(){
   const ui = window.calcarLang();
-  if (!M.lang || M.lang === ui) return;
-  const cached = DATA.translations?.[ui];
-  if (cached) { applyTranslation(cached); return; }
+  if (!trOffer(M.lang, ui)) return;
+  /* збережений переклад не підставляється мовчки: звіт відкривається мовою
+     створення, а готовий переклад лише робить "Перекласти" миттєвим */
   const dismissKey = 'calcarTrDismiss:' + (ROW_ID || M.url || '');
   try { if (sessionStorage.getItem(dismissKey)) return; } catch (e) {}
   $('trBar').style.display = '';
@@ -1877,12 +1956,18 @@ function applyTranslation(tr){
   const merged = Object.assign({}, DATA, tr);
   merged._meta = DATA._meta;
   merged.translations = DATA.translations;
+  /* перекладений звіт цілком мовою глядача: і тексти, і підписи */
+  REPORT_LOCALE = window.calcarLang();
+  localizeReportStatic(REPORT_LOCALE);
   boot2(merged);
 }
 async function translateNow(){
   const ui = window.calcarLang();
   const btn = $('trBtn');
-  btn.disabled = true; btn.textContent = t('Translating…');
+  const cached = DATA.translations?.[ui];
+  if (cached) { $('trBar').style.display = 'none'; applyTranslation(cached); return; }
+  /* банер мовою глядача, не звіту */
+  btn.disabled = true; btn.textContent = window.t('Translating…');
   try {
     const { _meta, translations, ...body } = DATA;
     const r = await fetch('/api/check-translate', {
@@ -1891,7 +1976,7 @@ async function translateNow(){
       body: JSON.stringify({ report: body, lang: ui }),
     });
     const data = await r.json().catch(() => ({}));
-    if (!r.ok || !data.report) throw new Error(data.error || t('Translation failed, try again'));
+    if (!r.ok || !data.report) throw new Error(data.error || window.t('Translation failed, try again'));
     DATA.translations = Object.assign({}, DATA.translations, { [ui]: data.report });
     try { sessionStorage.setItem('calcarCheck', JSON.stringify(DATA)); } catch (e) {}
     /* кеш перекладу в збережений звіт: наступного разу миттєво */
@@ -1899,7 +1984,7 @@ async function translateNow(){
     $('trBar').style.display = 'none';
     applyTranslation(data.report);
   } catch (e) {
-    btn.disabled = false; btn.textContent = t('Translate');
+    btn.disabled = false; btn.textContent = window.t('Translate');
     alert(e.message);
   }
 }
@@ -2007,7 +2092,7 @@ function renderValueSection(D) {
   note.textContent = ((BASIS[vc.new_price.basis] || '') + ' ' + t('The forecast is a model estimate, not a guarantee.')).trim();
   card.style.display = '';
   /* графік малюється вже у видимій картці: ширина полотна береться з неї */
-  CalCarValueChart.render($('valChart'), vc, { t, locale: window.calcarLocale() });
+  CalCarValueChart.render($('valChart'), vc, { t, locale: reportLocaleTag() });
 }
 
 function fill(cardId, listId, arr, tpl) {
@@ -2017,10 +2102,21 @@ function fill(cardId, listId, arr, tpl) {
 }
 
 function boot(){
+  /* звіт малюється ПІСЛЯ того, як ядро i18n переклало оболонку мовою
+     глядача: інакше воно перемалювало б і вже відрендерений звіт */
+  if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', boot, { once: true }); return; }
   M = DATA._meta || {};
+  REPORT_LOCALE = M.lang ? window.calcarResolveLocale(M.lang) : null;
+  ensureDict(REPORT_LOCALE).then(bootRender);
+}
+function bootRender(){
+  localizeReportStatic(REPORT_LOCALE || window.calcarLang());
   boot2(DATA);
   shareSetup();
-  if (!READONLY) { trSetup(); chatInit(); }
+  /* пропозиція перекладу і для гостя за публічним посиланням: мова звіту
+     не мусить збігатися з мовою того, хто його відкрив */
+  trSetup();
+  if (!READONLY) chatInit();
   /* дані відрендерені повністю: показуємо звіт одним перемиканням.
      До цього людина бачить скелетон, а не порожній шаблон */
   document.body.classList.add('report-ready');
@@ -2197,6 +2293,37 @@ async function videosInit(D) {
   });
 })();
 
+/* речення без розриву на скороченнях: "35 тыс. км" лишається одним реченням */
+function sentencesOf(text){
+  const raw = String(text || '');
+  const parts = (raw.match(/[^.!?]+[.!?]+["»)]?\s*/g) || []).reduce((acc, x) => {
+    if (acc.length && /^\s*[a-zа-яіїєґё0-9]/.test(x)) acc[acc.length - 1] += x; else acc.push(x);
+    return acc;
+  }, []);
+  const tail = raw.slice(parts.join('').length);
+  if (tail.trim()) parts.push(tail);
+  return parts.map(x => x.trim()).filter(Boolean);
+}
+/* превʼю Final Conclusion: цілі абзаци до ~450 символів; якщо вже перший
+   абзац довший, він ділиться лише між реченнями. Короткий текст цілком */
+function fcPreview(paras, limit = 450){
+  const all = paras.join(' ');
+  if (all.length <= limit + 150) return { head: paras, rest: [] };
+  const head = [];
+  let used = 0, i = 0;
+  while (i < paras.length && (head.length === 0 ? paras[i].length <= limit : used + paras[i].length <= limit)) { head.push(paras[i]); used += paras[i].length; i++; }
+  let rest = paras.slice(i);
+  if (!head.length) {
+    const sents = sentencesOf(paras[0]);
+    if (sents.length < 2) return paras.length > 1 ? { head: [paras[0]], rest: paras.slice(1) } : { head: paras, rest: [] };
+    let acc = [], n = 0;
+    while (acc.length < sents.length - 1 && (acc.length === 0 || n + sents[acc.length].length <= limit)) { n += sents[acc.length].length; acc.push(sents[acc.length]); }
+    head.push(acc.join(' '));
+    const left = sents.slice(acc.length).join(' ');
+    rest = (left ? [left] : []).concat(paras.slice(1));
+  }
+  return rest.length ? { head, rest } : { head: paras, rest: [] };
+}
 function boot2(D){
 
   /* ---- авто: стрічка фото + факти, як в Import ---- */
@@ -2287,16 +2414,30 @@ function boot2(D){
      null блок "Висновок CalCar" просто прихований. Старі збережені звіти без
      цього ключа показують свій збережений purchase_decision чи verdict.summary */
   const fcGen = !!D && Object.prototype.hasOwnProperty.call(D, 'final_conclusion');
+  /* розкриття повного тексту: той самий компонент .pd-more і та сама
+     поведінка, що були до Final Conclusion (153687d), для обох гілок */
+  const pdMoreToggle = () => {
+    const open = $('pdReasoning').style.display !== 'none';
+    $('pdReasoning').style.display = open ? 'none' : '';
+    $('pdMoreLabel').textContent = open ? t('Read the full reasoning') : t('Collapse the reasoning');
+    $('pdMoreBtn').setAttribute('aria-expanded', open ? 'false' : 'true');
+  };
   if (fc && typeof fc.headline === 'string' && fc.headline.trim() && typeof fc.body === 'string' && fc.body.trim()) {
-    /* Final Conclusion: заголовок і весь текст абзацами, без згортання і
-       без обрізання. Абзаци розділені порожнім рядком */
+    /* Final Conclusion: заголовок, превʼю і решта тексту за кнопкою "Читати
+       повний розбір". Превʼю закінчується лише на межі абзацу чи речення.
+       Абзаци розділені порожнім рядком */
     $('verdictCard').style.display = '';
     $('pdBlock').style.display = '';
     $('vText').style.display = 'none';
     $('pdHeadline').textContent = clean(fc.headline);
-    $('pdShort').innerHTML = clean(fc.body).split(/\n\s*\n/).map(p => p.trim()).filter(Boolean).map(p => '<p class="pd-short">' + esc(p) + '</p>').join('');
-    $('pdMoreBtn').style.display = 'none';
+    const fcParts = fcPreview(clean(fc.body).split(/\n\s*\n/).map(p => p.trim()).filter(Boolean));
+    $('pdShort').innerHTML = fcParts.head.map(p => '<p class="pd-short">' + esc(p) + '</p>').join('');
+    $('pdReasoning').innerHTML = fcParts.rest.map(p => '<p>' + esc(p) + '</p>').join('');
     $('pdReasoning').style.display = 'none';
+    $('pdMoreLabel').textContent = t('Read the full reasoning');
+    $('pdMoreBtn').setAttribute('aria-expanded', 'false');
+    $('pdMoreBtn').style.display = fcParts.rest.length ? '' : 'none';
+    $('pdMoreBtn').onclick = pdMoreToggle;
   } else if (!fcGen && pd && pd.headline) {
     /* нове рішення шарами; старий verdict.summary лишається фолбеком нижче */
     $('verdictCard').style.display = '';
@@ -2335,12 +2476,7 @@ function boot2(D){
     if (miss.length) fullHtml += '<div class="pd-sec"><b>' + esc(t('What we could not verify')) + '</b><ul>' + miss.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul></div>';
     if (fullHtml) {
       $('pdReasoning').innerHTML = fullHtml;
-      $('pdMoreBtn').onclick = () => {
-        const open = $('pdReasoning').style.display !== 'none';
-        $('pdReasoning').style.display = open ? 'none' : '';
-        $('pdMoreLabel').textContent = open ? t('Read the full reasoning') : t('Collapse the reasoning');
-        $('pdMoreBtn').setAttribute('aria-expanded', open ? 'false' : 'true');
-      };
+      $('pdMoreBtn').onclick = pdMoreToggle;
     } else {
       $('pdMoreBtn').style.display = 'none';
     }
@@ -2544,7 +2680,7 @@ function boot2(D){
     $('histCard').style.display = '';
     /* канонічний порядок і тривалості рахує код (vehicle-timeline.js); номер
        власника лише зі структурованого реєстру оригінального звіту, не з перекладу */
-    const hist = CalCarTimeline.normalize(D.history, window.calcarLang(), DATA && DATA.history);
+    const hist = CalCarTimeline.normalize(D.history, REPORT_LOCALE || window.calcarLang(), DATA && DATA.history);
     /* єдиний рядок без дати це не хронологія, а підсумкове речення: у
        колонці дат воно виглядає зсунутим, тому показуємо його по центру */
     const solo = hist.length === 1 && !hist[0].date;
@@ -2640,6 +2776,15 @@ async function ensureShareToken(){
     SHARE_SLUG = j.slug || SHARE_SLUG;
     return location.origin + j.path;
   } catch (e) { return null; }
+}
+/* адреса в рядку браузера та сама, що копіює "Поділитися": власник може
+   скопіювати її звідти, і гість її відкриє. Ключ звіту це непрозорий токен,
+   а не передбачуваний public_id; стара адреса /check/<public_id> лишається
+   робочою і сама переходить сюди */
+async function canonicalizeShareUrl(){
+  const u = await ensureShareToken();
+  if (!u) return;
+  try { const path = new URL(u).pathname; if (location.pathname !== path) history.replaceState(null, '', path); } catch (e) {}
 }
 function shareToast(msg){
   const el = $('shareToast'); if (!el) return;
@@ -3103,7 +3248,7 @@ function renderScoreBlock(D) {
     if (lastTrig) lastTrig.setAttribute('aria-expanded', 'true');
     if (asPop) place();
     if (window.innerWidth <= 760) document.documentElement.style.overflow = 'hidden';
-    if (!asPop || pin) setTimeout(() => closeBtn.focus(), 30);
+    if (!asPop) setTimeout(() => closeBtn.focus(), 30);
   }
   function close(returnFocus = true) {
     clearTimeout(hideT);
@@ -3140,6 +3285,10 @@ function renderScoreBlock(D) {
   window.addEventListener('resize', place);
   closeBtn.addEventListener('click', () => close());
   ov.addEventListener('click', () => close());
+  /* поповер без хрестика і без фокусу всередині: Esc закриває його звідусіль */
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && sheet.classList.contains('open') && sheet.classList.contains('pop') && !sheet.contains(document.activeElement)) close();
+  });
   sheet.addEventListener('keydown', e => {
     if (e.key === 'Escape') { e.preventDefault(); close(); return; }
     /* фокус не виходить із шухляди: кнопка закриття і прокручуваний текст */
@@ -3279,6 +3428,7 @@ async function saveIfNeeded(){
     sessionStorage.setItem('calcarCheckId', row.id);
     ROW_ID = row.id;
     history.replaceState(null, '', row.public_id ? '/check/' + row.public_id : '/result-check.html?id=' + row.id);
+    canonicalizeShareUrl();
     hint.textContent = t('Saved ✓');
     setTimeout(() => hint.classList.remove('show'), 1600);
   } catch (e) {}

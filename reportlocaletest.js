@@ -93,18 +93,21 @@ const NAME = { ru: 'російською', ua: 'українською', en: 'а
   /* ---- 4. звіт: зміна мови інтерфейсу після збереження ---- */
   const rc = fs.readFileSync('result-check.html', 'utf8');
   ok((rc.match(/translateNow\(/g) || []).length === 1 && /async function translateNow\(\)/.test(rc) && (rc.match(/translateNow\b/g) || []).length === 2, 'result-check.html: переклад викликається не лише кнопкою');
-  ok(/if \(!READONLY\) \{ trSetup\(\);/.test(rc), 'result-check.html: плашка перекладу не налаштовується при показі звіту');
+  ok(/\n  trSetup\(\);\n  if \(!READONLY\) chatInit\(\);/.test(rc), 'result-check.html: плашка перекладу не налаштовується при показі звіту (і гостю теж)');
+  ok(!/body\.readonly #trBar/.test(rc), 'result-check.html: гість за публічним посиланням не бачить пропозиції перекладу');
   ok(/<div class="trbar" id="trBar" style="display:none">[\s\S]{0,200}This report was created in another language[\s\S]{0,120}id="trBtn"[^>]*>Translate</.test(rc), 'result-check.html: плашки "звіт іншою мовою / перекласти" немає');
-  const trSrc = rc.slice(rc.indexOf('function trSetup(){'), rc.indexOf('async function translateNow(){'));
+  const trSrc = rc.slice(rc.indexOf('function trOffer('), rc.indexOf('function reportLocaleTag(')) + rc.slice(rc.indexOf('function trSetup(){'), rc.indexOf('/* ---------- ринкова вартість'));
+  const RES = x => { const n = String(x || '').toLowerCase(); return n === 'uk' || n === 'ua' ? 'ua' : n === 'ru' ? 'ru' : 'en'; };
   function page(reportLang, uiLang, translations) {
     const els = {}, calls = { fetch: 0, applied: [] };
     const el = id => els[id] || (els[id] = { style: { display: 'none' }, listeners: [], addEventListener(n, f) { this.listeners.push(n); } });
     const DATA = { vehicle: { title: 'BMW X5' }, final_conclusion: { headline: 'Исходный текст' }, translations, _meta: { lang: reportLang } };
     const before = JSON.stringify(DATA);
-    const ctx = vm.createContext({ window: { calcarLang: () => uiLang }, M: DATA._meta, DATA, ROW_ID: 'r1', $: el,
-      sessionStorage: { getItem: () => null, setItem() {} }, translateNow() {}, fetch: () => { calls.fetch++; }, boot2: d => calls.applied.push(d) });
-    vm.runInContext(trSrc + '\ntrSetup();', ctx);
-    return { els, calls, DATA, before };
+    const ctx = vm.createContext({ window: { calcarLang: () => uiLang, calcarResolveLocale: RES, t: s => s }, M: DATA._meta, DATA, ROW_ID: 'r1', $: el,
+      REPORT_LOCALE: reportLang, localizeReportStatic: l => { calls.static = l; },
+      sessionStorage: { getItem: () => null, setItem() {} }, fetch: () => { calls.fetch++; }, boot2: d => calls.applied.push(d) });
+    vm.runInContext(trSrc + '\ntrSetup();\nthis.translateNow = translateNow;', ctx);
+    return { els, calls, DATA, before, ctx };
   }
   for (const [rl, ui] of [['ru', 'ua'], ['ua', 'en'], ['en', 'ru'], ['ru', 'en']]) {
     const p = page(rl, ui, undefined);
@@ -116,10 +119,43 @@ const NAME = { ru: 'російською', ua: 'українською', en: 'а
     const p = page(l, l, undefined);
     ok(!p.els.trBar || p.els.trBar.style.display === 'none', l + ': плашка показана, хоча мова звіту збігається з інтерфейсом');
   }
-  /* уже збережений переклад показується з кешу, вихідний звіт не переписується */
+  /* збережений переклад НЕ підставляється мовчки: звіт відкривається мовою
+     створення з пропозицією перекладу, а "Перекласти" бере кеш миттєво */
   const pc = page('ru', 'en', { en: { final_conclusion: { headline: 'Cached' } } });
-  ok(pc.calls.applied.length === 1 && pc.calls.applied[0].final_conclusion.headline === 'Cached' && pc.calls.fetch === 0, 'кешований переклад не застосовано');
+  ok(pc.calls.applied.length === 0 && pc.els.trBar.style.display === '', 'кешований переклад підставлено без натискання');
+  await pc.ctx.translateNow();
+  ok(pc.calls.applied.length === 1 && pc.calls.applied[0].final_conclusion.headline === 'Cached' && pc.calls.fetch === 0, 'кешований переклад не застосовано за натисканням');
+  ok(pc.ctx.REPORT_LOCALE === 'en' && pc.calls.static === 'en', 'після перекладу підписи звіту лишились мовою створення');
   ok(JSON.stringify(pc.DATA) === pc.before, 'кешований переклад переписав вихідний звіт');
+  /* старий звіт без _meta.lang: без плашки, як і раніше */
+  const pOld = page(undefined, 'ua', undefined);
+  ok(!pOld.els.trBar || pOld.els.trBar.style.display === 'none', 'звіт без мови показав плашку перекладу');
+
+  /* ---- 5. звіт цілком мовою створення: підписи, контролі, числа ---- */
+  {
+    const main = rc.slice(rc.indexOf('<script>\n/* ---------- мова самого звіту'));
+    ok(/^<script>\n\/\* ---------- мова самого звіту[\s\S]{0,900}?\nlet REPORT_LOCALE = null;\nconst t = \(s, l\) => window\.t\(s, l \|\| REPORT_LOCALE \|\| undefined\);/.test(main), 'код звіту перекладає мовою глядача, а не звіту');
+    ok(/el\.closest\('#trBar,script,style,template,noscript,textarea'\)/.test(rc), 'плашка перекладу переходить на мову звіту');
+    ok(/document\.querySelector\('\.wrap'\), document\.getElementById\('ytModal'\), document\.getElementById\('sellerSheet'\), document\.getElementById\('miPop'\)/.test(rc), 'не всі частини звіту перекладаються мовою звіту');
+    ok(/if \(document\.readyState === 'loading'\) \{ document\.addEventListener\('DOMContentLoaded', boot, \{ once: true \}\); return; \}\n  M = DATA\._meta \|\| \{\};\n  REPORT_LOCALE = M\.lang \? window\.calcarResolveLocale\(M\.lang\) : null;\n  ensureDict\(REPORT_LOCALE\)\.then\(bootRender\);/.test(rc), 'звіт рендериться до ядра i18n або без мови звіту');
+    ok(/function bootRender\(\)\{\n  localizeReportStatic\(REPORT_LOCALE \|\| window\.calcarLang\(\)\);\n  boot2\(DATA\);/.test(rc), 'підписи звіту не переводяться на мову звіту перед рендером');
+    ok(/const nf = n => Number\(n\)\.toLocaleString\(reportLocaleTag\(\)\);/.test(rc), 'числа звіту форматуються мовою глядача');
+    ok(/btn\.textContent = window\.t\('Translating…'\)/.test(rc) && /btn\.textContent = window\.t\('Translate'\)/.test(rc), 'плашка перекладу пише мовою звіту, а не глядача');
+    /* поведінка: глядач UA, звіт EN -> тексти звіту англійською, плашка українською */
+    const dict = { ua: { Mileage: 'Пробіг', Translate: 'Перекласти' }, ru: { Mileage: 'Пробег', Translate: 'Перевести' } };
+    for (const [report, viewer, want] of [['en', 'ua', 'Mileage'], ['ua', 'en', 'Пробіг'], ['ru', 'ru', 'Пробег']]) {
+      const c = vm.createContext({ window: { calcarLang: () => viewer, calcarResolveLocale: RES, t: (s, l) => ((dict[l || viewer] || {})[s] || s) } });
+      vm.runInContext(main.slice(main.indexOf('let REPORT_LOCALE = null;'), main.indexOf('function reportLocaleTag(')) + rc.slice(rc.indexOf('function localizeReportStatic('), rc.indexOf('const SB = (typeof supabase')) + '\nconst REPORT_TEXT = [];\nREPORT_LOCALE = ' + JSON.stringify(report) + ';\nthis.t = t; this.trOffer = trOffer; this.localize = localizeReportStatic; this.RT = REPORT_TEXT;', c);
+      ok(c.t('Mileage') === want, report + ' звіт, ' + viewer + ' глядач: текст звіту "' + c.t('Mileage') + '", а не мовою звіту');
+      ok(c.window.t('Translate') === (viewer === 'en' ? 'Translate' : dict[viewer].Translate), report + '/' + viewer + ': оболонка не мовою глядача');
+      ok(c.trOffer(report, viewer) === (report !== viewer), report + '/' + viewer + ': пропозиція перекладу ' + (report !== viewer ? 'відсутня' : 'зайва'));
+      /* статичний підпис розмітки: з англійської вихідної фрази мовою звіту */
+      const node = { isConnected: true, nodeValue: 'вже мовою глядача' };
+      c.RT.push([node, null, 'Mileage']);
+      c.localize(report);
+      ok(node.nodeValue === want, report + '/' + viewer + ': підпис розмітки "' + node.nodeValue + '"');
+    }
+  }
 
   if (errs.length) { console.log('reportlocaletest: FAIL\n- ' + errs.join('\n- ')); process.exit(1); }
   console.log('reportlocaletest: OK (RU, UA, EN: одна локаль на всі етапи; зміна мови інтерфейсу лише показує плашку перекладу)');

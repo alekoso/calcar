@@ -641,21 +641,29 @@
   @media (max-width:560px){.ld{padding:12px 14px}}
   /* progress:end */
 
-  /* лист "звіт готовий": вторинний блок під індикатором, лише під час аналізу */
-  .em{margin-top:10px;background:var(--surface-2);border:1px solid var(--line);border-radius:14px;padding:12px 18px;display:none;text-align:left}
-  .em.on{display:block}
-  .em-t{font-size:13.5px;font-weight:600;color:var(--ink)}
-  .em-s{font-size:12.5px;color:var(--muted);margin-top:2px}
-  .em-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;margin-top:10px}
-  .em-in{flex:1 1 190px;min-width:0;height:38px;border:1px solid var(--line-strong);border-radius:10px;padding:0 12px;background:var(--card);color:var(--ink);font-family:inherit;font-size:14px}
+  /* лист "звіт готовий": вторинний блок під індикатором, лише під час аналізу.
+     Іконка листа ліворуч, заголовок, одне речення і дія. Адреса акаунта не
+     показується: людина вже увійшла, маска нічого їй не дає */
+  .em{margin-top:12px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:none;text-align:left;box-shadow:0 1px 2px rgba(20,22,25,.04)}
+  .em.on{display:flex;gap:12px;align-items:flex-start}
+  .em-ic{flex:0 0 auto;width:34px;height:34px;border-radius:10px;background:var(--brand-soft);color:var(--brand-ink);display:inline-flex;align-items:center;justify-content:center}
+  .em-ic svg{width:17px;height:17px}
+  .em-main{flex:1;min-width:0}
+  .em-t{font-size:14px;font-weight:700;color:var(--ink);line-height:1.35}
+  .em-s{font-size:13px;line-height:1.5;color:var(--muted);margin-top:3px}
+  .em-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}
+  .em-in{flex:1 1 200px;min-width:0;height:40px;border:1px solid var(--line-strong);border-radius:10px;padding:0 12px;background:var(--card);color:var(--ink);font-family:inherit;font-size:14px}
   .em-in:focus{outline:none;border-color:var(--ink)}
-  .em-btn{flex:0 0 auto;height:38px;padding:0 14px;border:1px solid var(--line-strong);border-radius:10px;background:var(--card);color:var(--ink);font-family:inherit;font-size:13.5px;font-weight:600;cursor:pointer}
+  .em-btn{flex:0 0 auto;height:40px;padding:0 16px;border:1px solid var(--ink);border-radius:10px;background:var(--ink);color:#fff;font-family:inherit;font-size:13.5px;font-weight:700;cursor:pointer;transition:opacity .15s}
+  .em-btn:hover{opacity:.88}
+  .em-btn:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
   .em-btn:disabled{opacity:.6;cursor:default}
-  .em-addr{font-size:12.5px;color:var(--muted)}
-  .em-ok{font-size:13.5px;font-weight:600;color:var(--text)}
+  .em-ok{font-size:14px;font-weight:700;color:var(--ink);line-height:1.35}
+  /* галочка в кінці речення, а не на початку */
+  .em-ok-ic{color:var(--brand-ink);margin-left:2px}
   .em-err{font-size:12.5px;color:var(--red);margin-top:6px;display:none}
   .em-err.on{display:block}
-  @media (max-width:560px){.em{padding:12px 14px}.em-in{font-size:16px}.em-btn{flex:1 1 auto}}
+  @media (max-width:560px){.em{padding:12px 14px}.em-in{font-size:16px;flex-basis:100%}.em-btn{flex:1 1 auto}}
 
   .hf-status{font-size:13.5px;color:var(--muted);margin-top:10px;display:none}
   .hf-status.on{display:block}
@@ -1232,31 +1240,32 @@ async function finalizeReport(data, token){
 const GUEST_EMAIL_KEY = 'calcar_guest_email';
 function maskEmail(e){ const s = String(e || ''), at = s.lastIndexOf('@'); return at < 1 ? '' : s[0] + '***' + s.slice(at); }
 function emailBoxHide(){ const box = document.getElementById('emailBox'); if (box) { box.className = 'em'; box.innerHTML = ''; } }
-function emailBoxDone(masked){
+const EM_ICON = '<span class="em-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></span>';
+function emailBoxDone(){
   const box = document.getElementById('emailBox');
   if (!box) return;
-  box.innerHTML = '<div class="em-ok">✓ ' + esc(t('The finished report will be sent to {email}').replace('{email}', masked)) + '</div>'
-    + '<div class="em-s">' + esc(t('You can close this page.')) + '</div>';
+  box.innerHTML = EM_ICON + '<div class="em-main"><div class="em-ok">' + esc(t('The report will arrive by email')) + ' <span class="em-ok-ic" aria-hidden="true">✓</span></div>'
+    + '<div class="em-s">' + esc(t('You can keep waiting here or close the page.')) + '</div></div>';
   box.className = 'em on';
 }
 async function emailBoxShow(token){
   const box = document.getElementById('emailBox');
   if (!box || !token) return;
   const pj = pendingGet();
-  if (pj && pj.token === token && pj.mailed) { emailBoxDone(pj.mailed); return; }
+  if (pj && pj.token === token && pj.mailed) { emailBoxDone(); return; }
   let session = null;
   try { if (SB) session = (await SB.auth.getSession()).data?.session || null; } catch (e) {}
   const acct = session ? (session.user?.email || '') : '';
   if (session && !acct) return;
   let saved = '';
   if (!session) { try { saved = localStorage.getItem(GUEST_EMAIL_KEY) || ''; } catch (e) {} }
-  const cta = '<button class="em-btn" id="emBtn" type="submit">' + esc(t('Send me the finished report')) + '</button>';
-  box.innerHTML = (session
-    ? '<div class="em-t">' + esc(t('You do not have to wait')) + '</div><div class="em-s">' + esc(t('We will send the finished report to your email')) + '</div>'
-      + '<form class="em-row" id="emForm" novalidate>' + cta + '<span class="em-addr">' + esc(maskEmail(acct)) + '</span></form>'
-    : '<div class="em-t">' + esc(t('Do not want to wait?')) + '</div><div class="em-s">' + esc(t('Leave your email and we will send a link when the analysis is ready.')) + '</div>'
-      + '<form class="em-row" id="emForm" novalidate><input class="em-in" id="emIn" type="email" inputmode="email" autocomplete="email" spellcheck="false" placeholder="Email" aria-label="Email" value="' + esc(saved) + '">' + cta + '</form>')
-    + '<div class="em-err" id="emErr"></div>';
+  const btn = label => '<button class="em-btn" id="emBtn" type="submit">' + esc(t(label)) + '</button>';
+  box.innerHTML = EM_ICON + '<div class="em-main"><div class="em-t">' + esc(t('Get the report by email')) + '</div>' + (session
+    ? '<div class="em-s">' + esc(t('You can wait here or close the page: we will send a link when the analysis is ready.')) + '</div>'
+      + '<form class="em-row" id="emForm" novalidate>' + btn('Send to my email') + '</form>'
+    : '<div class="em-s">' + esc(t('Leave your email: you can wait here or come back via the link in the email.')) + '</div>'
+      + '<form class="em-row" id="emForm" novalidate><input class="em-in" id="emIn" type="email" inputmode="email" autocomplete="email" spellcheck="false" placeholder="Email" aria-label="Email" value="' + esc(saved) + '">' + btn('Email me') + '</form>')
+    + '<div class="em-err" id="emErr"></div></div>';
   box.className = 'em on';
   const form = document.getElementById('emForm'), emBtn = document.getElementById('emBtn'), errEl = document.getElementById('emErr');
   const fail = msg => { errEl.textContent = msg; errEl.className = 'em-err on'; };
@@ -1285,7 +1294,7 @@ async function emailBoxShow(token){
       const cur = pendingGet();
       if (cur && cur.token === token) pendingSet({ ...cur, mailed: masked, mailedAuth: !!session });
       try { if (window.calcar) window.calcar.track('report_email_opted_in', { product: 'check' }); } catch (e) {}
-      emailBoxDone(masked);
+      emailBoxDone();
     } catch (e) {
       busy = false; emBtn.disabled = false;
       fail(e.message || t('Could not set up the email, try again'));
