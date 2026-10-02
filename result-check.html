@@ -1584,6 +1584,9 @@ function stripUnbackedPhotoClaims(auction) {
   return out;
 }
 
+/* перехід із листа "звіт готовий": позначка читається до того, як
+   канонічна адреса прибере query; у подію йде лише сам факт */
+const FROM_EMAIL = new URLSearchParams(location.search).get('src') === 'email';
 const OPEN_TOKEN = (function(){
   const q = new URLSearchParams(location.search).get('r') || PATH_R[2] || null;
   return q && TOKEN_RE.test(q) ? q : null;
@@ -2031,6 +2034,7 @@ function boot(){
     if (window.calcar) window.calcar.reportViewed({ product: 'check', readonly: !!READONLY, shared_link: !!OPEN_TOKEN,
       score_bucket: window.calcar.scoreBucket(DATA.score_breakdown && DATA.score_breakdown.final),
       confidence_level: lvl[DATA.confidence && DATA.confidence.text_key] || 'none' }, document.querySelector('.wrap'));
+    if (FROM_EMAIL && window.calcar) window.calcar.track('report_opened_from_email', { product: 'check' });
   } catch (e) {}
   if (window.calcarFeedbackInit) window.calcarFeedbackInit();
 }

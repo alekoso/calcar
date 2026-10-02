@@ -46,6 +46,7 @@ import { findAuctionRecord, shouldRecheck, discoverVinCandidates, photoHasProven
 /* Model Intelligence: тінь. Вмикається лише серверним MI_SHADOW_ENABLED,
    працює у фоні ПІСЛЯ запису готового звіту і у звіт нічого не додає */
 import { runMiShadow } from './mi-shadow.js';
+import { presaveOptedInReport, deliverReportEmail } from './check-email.js';
 import { fetchMiEquipmentCandidates, candidatePromptBlock, visionHintBlock, supplementVisionEquipment, applyMiEquipment, equipmentMemoryObservations, recordMiEquipment, miIdentityGeneration } from './mi-equipment.js';
 /* Model Intelligence Research v1: наявне MI плюс малий паралельний веб-пошук
    у контекст поточного звіту, придатні знахідки у конвеєр MI */
@@ -2441,8 +2442,14 @@ export default async function handler(req, res) {
       if (shim._s === 200 && shim._o && shim._o.vehicle) {
         /* токен їде у звіт: сторінка будує посилання "Поділитися" з нього */
         if (shim._o._meta && typeof shim._o._meta === 'object') shim._o._meta.share_token = token;
+        /* opt-in на лист від того, хто увійшов: звіт у кабінет ще до done,
+           щоб сторінка знайшла готовий рядок, а не створила дубль */
+        await presaveOptedInReport(token, shim._o);
         const ok = await jobWrite(token, { status: 'done', stage: 'done', report: shim._o, vin: (shim._o._meta && shim._o._meta.vin) || null, finished_at: new Date().toISOString() });
         console.log('[job]', token, 'done', ok ? 'saved' : 'SAVE FAILED');
+        /* лист "звіт готовий": лише за явним opt-in для цього job, один раз;
+           збій провайдера готовий звіт не зачіпає (функція не кидає) */
+        if (ok) await deliverReportEmail(token);
         /* Тінь Model Intelligence: лише після успішного запису звіту,
            лише за прапорцем, лише у фоні. Звіт уже відданий користувачу,
            тому ні падіння, ні таймаут тіні на Check не впливають. */

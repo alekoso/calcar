@@ -35,6 +35,7 @@ supabase-garage.sql   схема гаража
 garagetest.js         тест збірки гаража
 calcar-public.js      ПУБЛІЧНІ ключі аналітики (PostHog, GA4) і контакти футера; порожньо = вимкнено
 analytics.js          шар подій (window.calcar.track), таксономія і санітайзер приватного
+api/check-email.js    лист «звіт готовий» за явним opt-in для конкретного Check: opt-in у check_jobs, відправка через Resend після завершення job (supabase-check-email.sql)
 api/feedback.js       відгук 👍/👎 про звіт Check -> report_feedback (supabase-feedback.sql)
 api/value.js          секція «Ринкова вартість» Check: крива знецінення, якорі цін, ліквідність (не Vercel-функція)
 api/conclusion.js     Final Conclusion («Висновок CalCar»): окремий synthesis-виклик по готовому звіту (не Vercel-функція)
@@ -47,7 +48,7 @@ vehicle-year-cleanup.js  разова чистка vehicles.model_year зі ст
 
 Маршрути у `vercel.json`: `/` -> check.html, `/import`, `/check`, `/check/:id`, `/garage`, `/garage/:id`.
 
-Сторінки викликають ці ендпоінти: `/api/analyze`, `/api/lot`, `/api/check`, `/api/check-translate`, `/api/chat`, `/api/memory`.
+Сторінки викликають ці ендпоінти: `/api/analyze`, `/api/lot`, `/api/check`, `/api/check-translate`, `/api/chat`, `/api/memory`, `/api/check-email`.
 
 **Джерело правди про поточну реалізацію: код, а не ця документація.** Якщо файл насправді виглядає інакше, ніж описано тут, зупинись і скажи власнику про розбіжність, не підлаштовуйся мовчки.
 
