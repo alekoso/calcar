@@ -1340,15 +1340,14 @@ export function applyDecisionLanguage(pd, { severity = null, lang = 'en' } = {})
   return pd;
 }
 
-/* Final Conclusion проходить ті самі дві страхувальні сітки, що й решта
-   текстів звіту: слова про тяжкість ДТП не сильніші за вирішену кодом, і
-   без внутрішніх позначок. Сам текст код не переписує */
+/* Final Conclusion: з тексту знімаються лише внутрішні позначки (SRS тощо).
+   Словесне калібрування тяжкості ДТП сюди НЕ застосовується: модель уже
+   отримала вирішену кодом тяжкість як факт, а заміна основ слів ламає
+   заперечення ("значних пошкоджень не видно" ставало "незначних пошкоджень
+   не видно"). Сам текст код не переписує */
 export function applyConclusionLanguage(fc, report, lang = 'en') {
   if (!fc || typeof fc !== 'object') return fc;
-  const bd = report && report.score_breakdown;
-  const sev = maxResolvedSeverity(bd && bd.score_version === 'v4' ? report.score_breakdown_shadow : bd);
-  const one = x => humanizeDecisionJargon(calibrateSeverityWording(x, sev, lang), lang);
-  for (const k of ['headline', 'body']) if (typeof fc[k] === 'string') fc[k] = one(fc[k]);
+  for (const k of ['headline', 'body']) if (typeof fc[k] === 'string') fc[k] = humanizeDecisionJargon(fc[k], lang);
   return fc;
 }
 

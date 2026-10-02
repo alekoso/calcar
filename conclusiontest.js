@@ -162,6 +162,10 @@ const REPORT = {
   const chk = await import('file://' + path.join(dir, 'api', 'check.js'));
   const lang1 = chk.applyConclusionLanguage({ headline: 'Стан SRS важливий', body: 'Перевірка SRS потрібна.' }, { score_breakdown: null }, 'ua');
   ok(!/SRS/.test(lang1.headline + lang1.body), 'внутрішні позначки не знімаються з фінального висновку');
+  /* регресія: словесне калібрування тяжкості ламало заперечення у тексті висновку */
+  const neg = 'На фото значительных повреждений и следов сильного удара не видно.';
+  const lang2 = chk.applyConclusionLanguage({ headline: 'H', body: neg }, { score_breakdown: { score_version: 'v4' }, score_breakdown_shadow: { accident_events: [{ resolved_severity: 'minor' }], events: [{ severity: 'minor' }] } }, 'ru');
+  ok(lang2.body === neg, 'код переписує слова про тяжкість у фінальному висновку: ' + lang2.body);
 
   /* ---------- публічний звіт, сторінка, чат ---------- */
   const share = await import('file://' + path.join(dir, 'api', 'share.js'));
