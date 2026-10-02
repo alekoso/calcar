@@ -1351,6 +1351,19 @@ export function applyConclusionLanguage(fc, report, lang = 'en') {
   return fc;
 }
 
+/* результат фінального виклику -> поля звіту. true, якщо висновок доданий.
+   Директива "купуй / не купуй" у тексті лише фіксується в діагностиці */
+export function attachFinalConclusion(parsed, fc, lang = 'en') {
+  if (!parsed || !fc || fc.status !== 'ok' || !fc.conclusion || !fc.conclusion.headline || !fc.conclusion.body) return false;
+  parsed.final_conclusion = applyConclusionLanguage({ headline: fc.conclusion.headline, body: fc.conclusion.body }, parsed, lang);
+  const hits = directiveVerdictHits({ headline: parsed.final_conclusion.headline, reasoning: parsed.final_conclusion.body });
+  if (hits.length) console.log('[final-conclusion]', JSON.stringify({ op: 'directive', lang, hits }));
+  if (parsed._meta && typeof parsed._meta === 'object') {
+    parsed._meta.final_conclusion = { version: fc.version || null, model: (fc.ai && fc.ai.model) || null, truncated: fc.conclusion.truncated === true, directive: hits.length ? hits : null };
+  }
+  return true;
+}
+
 /* resolved severity це ЄДИНЕ джерело правди про тяжкість ДТП для всіх
    користувацьких текстів звіту: Score, "Історія пошкоджень", вердикт,
    ризики, контекст чату. Vision фіксує спостереження, а не вердикт, тому
@@ -4201,7 +4214,7 @@ async function runCheck(req, res, job) {
     const tFc = Date.now();
     const fcBudget = Math.min(CONCLUSION_TIMEOUT_MS, 285000 - (Date.now() - tRun) - 10000);
     const fcPromise = fcBudget >= CONCLUSION_MIN_BUDGET_MS
-      ? runFinalConclusion({ report: parsed, langDirective, callModel, timeoutMs: fcBudget })
+      ? Promise.resolve().then(() => runFinalConclusion({ report: parsed, langDirective, callModel, timeoutMs: fcBudget }))
           .catch(e => ({ status: 'error', reason: String((e && e.message) || e).slice(0, 160), conclusion: null, ms: Date.now() - tFc, ai: null, attempts: [] }))
       : Promise.resolve({ status: 'skipped', reason: 'no_time_budget', conclusion: null, ms: 0, ai: null, attempts: [] });
     mark('persistence', Date.now() - tPers, photoPreservation && photoPreservation.listing === 'pending' ? 'pending' : 'executed');
@@ -4250,17 +4263,17 @@ async function runCheck(req, res, job) {
       knowledge: (rs.context && rs.context.knowledge_count) || 0, batches: rs.batches.length, queries: rs.totals.queries, sources: rs.totals.sources,
       findings: rs.findings.length, findings_at_cutoff: rs.cutoff_findings, cutoff_at: rs.cutoff_at, aborted_at: rs.aborted_at, waited_ms: miResearchWaited,
       persisted: rs.batches.filter(b => b.persist && b.persist.ok).map(b => ({ n: b.n, published: b.persist.published, merged: b.persist.merged, candidates: b.persist.candidates, staged_cold: b.persist.staged_cold })) }));
-    const fc = await fcPromise;
-    if (fc.status === 'ok' && fc.conclusion) {
-      parsed.final_conclusion = applyConclusionLanguage({ headline: fc.conclusion.headline, body: fc.conclusion.body }, parsed, lang);
-      /* директива "купуй / не купуй" у новому висновку: лише діагностика */
-      const fcHits = directiveVerdictHits({ headline: parsed.final_conclusion.headline, reasoning: parsed.final_conclusion.body });
-      if (fcHits.length) console.log('[final-conclusion]', JSON.stringify({ op: 'directive', lang, hits: fcHits }));
-      parsed._meta.final_conclusion = { version: fc.version || null, truncated: fc.conclusion.truncated === true, directive: fcHits.length ? fcHits : null };
-    } else {
-      console.log('[final-conclusion]', JSON.stringify({ op: 'check', status: fc.status, reason: fc.reason || null, vin: listing.vin || null }));
+    /* будь-який збій на цьому кроці лишає звіт цілим, без final_conclusion */
+    try {
+      const fc = await fcPromise;
+      const attached = attachFinalConclusion(parsed, fc, lang);
+      if (!attached) console.log('[final-conclusion]', JSON.stringify({ op: 'check', status: fc.status, reason: fc.reason || null, vin: listing.vin || null }));
+      mark('final_conclusion', fc.ms || 0, attached ? 'executed' : (fc.status === 'ok' ? 'error' : fc.status), { at: tFc - tRun, reason: fc.reason || null, ai: fc.ai || null, attempts: fc.attempts || [], context_chars: fc.context_chars || null });
+    } catch (e) {
+      delete parsed.final_conclusion;
+      console.log('[final-conclusion]', JSON.stringify({ op: 'attach', error: String((e && e.message) || e).slice(0, 160), vin: listing.vin || null }));
+      mark('final_conclusion', Date.now() - tFc, 'error', { at: tFc - tRun, reason: 'attach_failed' });
     }
-    mark('final_conclusion', fc.ms || 0, fc.status === 'ok' ? 'executed' : fc.status, { at: tFc - tRun, reason: fc.reason || null, ai: fc.ai || null, attempts: fc.attempts || [], context_chars: fc.context_chars || null });
     timings.total_ms = Date.now() - tRun;
 
     return res.status(200).json(parsed);

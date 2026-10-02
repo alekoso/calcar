@@ -21,9 +21,8 @@ export const CONCLUSION_TIMEOUT_MS = 150000;
 export const CONCLUSION_MIN_BUDGET_MS = 45000;
 
 /* вимикач етапу: env FINAL_CONCLUSION=on | off перекриває типове значення.
-   Поки триває A/B на збережених звітах, у production етап вимкнений:
-   benchmark-ендпоінт вмикає його для себе явно */
-export const CONCLUSION_DEFAULT_ON = false;
+   Вимкнений етап звіт не ламає: сторінка показує попередній формат висновку */
+export const CONCLUSION_DEFAULT_ON = true;
 export function conclusionEnabled(env) {
   const e = env || (typeof process !== 'undefined' ? process.env : {}) || {};
   const v = String(e.FINAL_CONCLUSION || '').toLowerCase();
@@ -31,11 +30,16 @@ export function conclusionEnabled(env) {
   if (v === 'off') return false;
   return CONCLUSION_DEFAULT_ON;
 }
-/* модель і reasoning лише цього етапу; основний Check вони не зачіпають */
+/* модель і reasoning лише цього етапу; основний Check вони не зачіпають.
+   A/B 2026-10-02 на 12 збережених звітах (gpt-5.6-terra medium, gpt-6-sol
+   high, gpt-6.1-sol high і medium): gpt-6.1-sol найкраще звʼязує факти і
+   знає особливості версій; high p50 53 с, medium 23 с при близькій якості.
+   Перемикання без коду: env CONCLUSION_MODEL і CONCLUSION_EFFORT */
+export const CONCLUSION_MODEL_DEFAULT = 'gpt-6.1-sol';
 export function conclusionModel(env) {
   const e = env || (typeof process !== 'undefined' ? process.env : {}) || {};
   return {
-    model: e.CONCLUSION_MODEL || e.OPENAI_MODEL || 'gpt-5.6-terra',
+    model: e.CONCLUSION_MODEL || CONCLUSION_MODEL_DEFAULT,
     fallback_model: e.OPENAI_MODEL || 'gpt-5.6-terra',
     effort: e.CONCLUSION_EFFORT || 'high',
   };

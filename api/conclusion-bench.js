@@ -12,8 +12,8 @@
    - run: { conclusion, ms, ai, attempts, context_chars }.
 
    Доступ: заголовок x-calcar-bench, що збігається з env BENCH_KEY. Без
-   ключа ендпоінт відповідає лише до OPEN_UNTIL (вікно A/B перед beta),
-   після цієї дати закривається сам. */
+   ключа ендпоінт відповідав лише до OPEN_UNTIL (вікно A/B 2026-10-02 перед
+   beta); вікно закрите, тепер потрібен ключ. */
 
 export const config = { maxDuration: 300 };
 
@@ -22,7 +22,7 @@ import { runFinalConclusion, buildConclusionContext, conclusionModel } from './c
 import { applyConclusionLanguage, directiveVerdictHits } from './check.js';
 import { resolveLocale, languageDirective } from './locale.js';
 
-export const OPEN_UNTIL = '2026-10-04T00:00:00Z';
+export const OPEN_UNTIL = '2026-10-02T00:00:00Z';
 export const MODEL_RE = /^(?:gpt-|o\d|chatgpt-)[A-Za-z0-9._-]{1,60}$/;
 export const EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh'];
 

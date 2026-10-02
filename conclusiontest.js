@@ -144,7 +144,10 @@ const REPORT = {
   const r6 = await runFinalConclusion({ report: REPORT, env: { FINAL_CONCLUSION: 'off' }, callModel: async () => { called = true; return good; } });
   ok(r6.status === 'skipped' && r6.reason === 'disabled' && !called, 'вимикач FINAL_CONCLUSION=off не працює');
   const cm = conclusionModel({ OPENAI_MODEL: 'base-1' });
-  ok(cm.effort === 'high' && cm.fallback_model === 'base-1', 'типові model/effort етапу не ті');
+  ok(cm.model === 'gpt-6.1-sol' && cm.effort === 'high' && cm.fallback_model === 'base-1', 'типові model/effort етапу не ті');
+  ok(conclusionModel({ CONCLUSION_MODEL: 'm', CONCLUSION_EFFORT: 'medium' }).model === 'm' && conclusionModel({ CONCLUSION_EFFORT: 'medium' }).effort === 'medium', 'env не перемикає модель або reasoning етапу');
+  ok(fcMod.conclusionEnabled({}) === true && fcMod.conclusionEnabled({ FINAL_CONCLUSION: 'off' }) === false, 'етап не ввімкнений типово або не вимикається env');
+  ok(Date.parse(fs.readFileSync('api/conclusion-bench.js', 'utf8').match(/OPEN_UNTIL = '([^']+)'/)[1]) < Date.now(), 'benchmark-ендпоінт лишився відкритим без ключа');
 
   /* ---------- вбудовування в Check ---------- */
   const src = fs.readFileSync('api/check.js', 'utf8');
@@ -156,12 +159,17 @@ const REPORT = {
   const iFc = src.indexOf('runFinalConclusion({ report: parsed');
   const iRet = src.indexOf('return res.status(200).json(parsed);');
   ok(iFc > 0 && [iConf, iScore, iValue, iMv, iMeta].every(i => i > 0 && i < iFc) && iFc < iRet, 'Final Conclusion стартує не після Score, Confidence, ринкової вартості і _meta');
-  ok(/parsed\.final_conclusion = applyConclusionLanguage\(\{ headline: fc\.conclusion\.headline, body: fc\.conclusion\.body \}/.test(src), 'звіт не отримує final_conclusion {headline, body}');
+  ok(/const attached = attachFinalConclusion\(parsed, fc, lang\);/.test(src) && /delete parsed\.final_conclusion;/.test(src), 'результат етапу не додається у звіт або збій кроку не ізольований');
   ok(/mark\('final_conclusion'/.test(src) && /no_time_budget/.test(src), 'нема таймінгу етапу або захисту бюджету часу');
   ok(!/purchase_decision/.test(fs.readFileSync('api/conclusion.js', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')), 'conclusion.js читає purchase_decision');
   const chk = await import('file://' + path.join(dir, 'api', 'check.js'));
   const lang1 = chk.applyConclusionLanguage({ headline: 'Стан SRS важливий', body: 'Перевірка SRS потрібна.' }, { score_breakdown: null }, 'ua');
   ok(!/SRS/.test(lang1.headline + lang1.body), 'внутрішні позначки не знімаються з фінального висновку');
+  const rep1 = { vehicle: {}, _meta: {} };
+  ok(chk.attachFinalConclusion(rep1, { status: 'ok', version: 'v', ai: { model: 'm' }, conclusion: { headline: 'H', body: 'A.\n\nB.' } }, 'ru') === true
+    && JSON.stringify(rep1.final_conclusion) === '{"headline":"H","body":"A.\\n\\nB."}' && rep1._meta.final_conclusion.model === 'm', 'звіт не отримує final_conclusion {headline, body}');
+  const rep2 = { vehicle: {}, _meta: {} };
+  ok(chk.attachFinalConclusion(rep2, { status: 'error', conclusion: null }, 'ru') === false && !('final_conclusion' in rep2) && chk.attachFinalConclusion(rep2, null, 'ru') === false, 'невдалий етап лишає слід у звіті');
   /* регресія: словесне калібрування тяжкості ламало заперечення у тексті висновку */
   const neg = 'На фото значительных повреждений и следов сильного удара не видно.';
   const lang2 = chk.applyConclusionLanguage({ headline: 'H', body: neg }, { score_breakdown: { score_version: 'v4' }, score_breakdown_shadow: { accident_events: [{ resolved_severity: 'minor' }], events: [{ severity: 'minor' }] } }, 'ru');
