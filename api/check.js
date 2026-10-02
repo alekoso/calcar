@@ -46,7 +46,6 @@ import { findAuctionRecord, shouldRecheck, discoverVinCandidates, photoHasProven
 /* Model Intelligence: тінь. Вмикається лише серверним MI_SHADOW_ENABLED,
    працює у фоні ПІСЛЯ запису готового звіту і у звіт нічого не додає */
 import { runMiShadow } from './mi-shadow.js';
-import { presaveOptedInReport, deliverReportEmail } from './check-email.js';
 import { fetchMiEquipmentCandidates, candidatePromptBlock, visionHintBlock, supplementVisionEquipment, applyMiEquipment, equipmentMemoryObservations, recordMiEquipment, miIdentityGeneration } from './mi-equipment.js';
 /* Model Intelligence Research v1: наявне MI плюс малий паралельний веб-пошук
    у контекст поточного звіту, придатні знахідки у конвеєр MI */
@@ -2392,6 +2391,18 @@ export function vercelWaitUntil() {
     return g && typeof g.waitUntil === 'function' ? g.waitUntil.bind(g) : null;
   } catch (e) { return null; }
 }
+/* лист "звіт готовий" (api/check-email.js) підвантажується динамічно і
+   всередині try: збій завантаження чи роботи модуля листа не може зламати
+   сам Check (так уже було в c52d160, коли статичний імпорт поклав /api/check) */
+async function reportEmailHook(fn, ...args) {
+  try {
+    const m = await import('./check-email.js');
+    return await m[fn](...args);
+  } catch (e) {
+    console.error(JSON.stringify({ op: 'report_email_hook', fn, error_type: 'load_or_run', message: String((e && e.message) || e).slice(0, 200) }));
+    return null;
+  }
+}
 async function jobCreate(row) {
   const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!base || !key) return false;
@@ -2444,12 +2455,12 @@ export default async function handler(req, res) {
         if (shim._o._meta && typeof shim._o._meta === 'object') shim._o._meta.share_token = token;
         /* opt-in на лист від того, хто увійшов: звіт у кабінет ще до done,
            щоб сторінка знайшла готовий рядок, а не створила дубль */
-        await presaveOptedInReport(token, shim._o);
+        await reportEmailHook('presaveOptedInReport', token, shim._o);
         const ok = await jobWrite(token, { status: 'done', stage: 'done', report: shim._o, vin: (shim._o._meta && shim._o._meta.vin) || null, finished_at: new Date().toISOString() });
         console.log('[job]', token, 'done', ok ? 'saved' : 'SAVE FAILED');
         /* лист "звіт готовий": лише за явним opt-in для цього job, один раз;
            збій провайдера готовий звіт не зачіпає (функція не кидає) */
-        if (ok) await deliverReportEmail(token);
+        if (ok) await reportEmailHook('deliverReportEmail', token);
         /* Тінь Model Intelligence: лише після успішного запису звіту,
            лише за прапорцем, лише у фоні. Звіт уже відданий користувачу,
            тому ні падіння, ні таймаут тіні на Check не впливають. */

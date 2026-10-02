@@ -252,8 +252,15 @@ const TOK = n => ('tok' + n + 'AAAAAAAAAAAAAAAAAAAAAA').slice(0, 22);
 
   /* ---- сервер: сторожі в коді ---- */
   const chk = fs.readFileSync('api/check.js', 'utf8');
-  const iPre = chk.indexOf('await presaveOptedInReport(token, shim._o);'), iDone = chk.indexOf("const ok = await jobWrite(token, { status: 'done'"), iSend = chk.indexOf('if (ok) await deliverReportEmail(token);'), iMi = chk.indexOf('await runMiShadow({ token');
+  const iPre = chk.indexOf("await reportEmailHook('presaveOptedInReport', token, shim._o);"), iDone = chk.indexOf("const ok = await jobWrite(token, { status: 'done'"), iSend = chk.indexOf("if (ok) await reportEmailHook('deliverReportEmail', token);"), iMi = chk.indexOf('await runMiShadow({ token');
   ok(iPre > 0 && iPre < iDone && iDone < iSend && iSend < iMi, 'check.js: порядок presave -> done -> лист -> тінь MI порушено');
+  ok(!/^import [^\n]*check-email/m.test(chk) && /const m = await import\('\.\/check-email\.js'\);/.test(chk), 'check.js: модуль листа має підвантажуватись динамічно, не статичним імпортом');
+  /* збій модуля листа не ламає Check: хук ловить помилку */
+  {
+    const hookSrc = chk.slice(chk.indexOf('async function reportEmailHook('), chk.indexOf('async function jobCreate('));
+    const hook = new Function('console', hookSrc.replace("await import('./check-email.js')", "(() => { throw new Error('boom'); })()") + '; return reportEmailHook;')({ error() {} });
+    ok((await hook('deliverReportEmail', 'x')) === null, 'check.js: збій модуля листа не перехоплено');
+  }
   const jobSrc = fs.readFileSync('api/check-job.js', 'utf8');
   ok(!/email_/.test(jobSrc), 'check-job.js вибирає колонки листа в публічну відповідь');
   const sql = fs.readFileSync('supabase-check-email.sql', 'utf8');
