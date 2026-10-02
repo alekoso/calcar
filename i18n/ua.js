@@ -3,15 +3,6 @@
    коли обрано цю мову. Згенеровано розворотом попередніх словників UA -> EN/RU. */
 window.CALCAR_DICTS = window.CALCAR_DICTS || {};
 window.CALCAR_DICTS.ua = {
-  'You do not have to wait': 'Можна не чекати',
-  'We will send the finished report to your email': 'Надішлемо готовий звіт на твою пошту',
-  'Do not want to wait?': 'Не хочеш чекати?',
-  'Leave your email and we will send a link when the analysis is ready.': 'Залиш email, і ми надішлемо посилання, коли аналіз буде готовий.',
-  'Send me the finished report': 'Надіслати готовий звіт',
-  'The finished report will be sent to {email}': 'Готовий звіт прийде на {email}',
-  'You can close this page.': 'Сторінку можна закрити.',
-  'Check the email address': 'Перевір адресу пошти',
-  'Could not set up the email, try again': 'Не вдалося налаштувати лист, спробуй ще раз',
   '{n} sec': '{n} с',
   'Usually ~90 sec': 'Зазвичай ~90 с',
   'What to check': 'Що перевірити',

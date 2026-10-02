@@ -76,8 +76,7 @@ function browser(opts) {
   const WANT = ['check_started', 'check_completed', 'report_viewed', 'report_active_30s', 'report_active_60s', 'report_active_180s',
     'report_scroll_25', 'report_scroll_50', 'report_scroll_75', 'report_scroll_100', 'seller_description_opened', 'share_clicked',
     'calcar_ai_clicked', 'feedback_yes', 'feedback_no', 'feedback_submitted',
-    'chat_opened', 'chat_message_sent', 'settings_opened', 'memory_opened', 'memory_updated',
-    'report_email_opted_in', 'report_opened_from_email'];
+    'chat_opened', 'chat_message_sent', 'settings_opened', 'memory_opened', 'memory_updated'];
   if (JSON.stringify(b.win.calcar.events.slice().sort()) !== JSON.stringify(WANT.slice().sort())) errs.push('таксономія не збігається з beta-списком: ' + b.win.calcar.events.join(','));
   for (const old of ['landing_view', 'analysis_started', 'analysis_completed', 'report_shared', 'assistant_opened', 'youtube_block_viewed']) if (b.win.calcar.track(old, {})) errs.push('стара подія ' + old + ' пройшла');
   for (const w of WANT) if (!b.win.calcar.events.includes(w)) errs.push('події "' + w + '" нема в таксономії');
