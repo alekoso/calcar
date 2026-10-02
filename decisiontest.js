@@ -9,7 +9,7 @@ const errs = [];
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'calcar_dec_'));
 fs.mkdirSync(path.join(dir, 'api'));
 fs.writeFileSync(path.join(dir, 'package.json'), '{"type":"module"}');
-for (const x of ['check.js', 'check-schema.js', 'current-visual.js', 'canonical-merge.js', 'score.js', 'score-v3.js', 'score-v4.js', 'confidence.js', 'vision-reliability.js', 'auction.js', 'locale.js', 'visual-signals.js', 'share.js', 'vehicle-memory.js', 'mi-shadow.js', 'mi-equipment.js', 'mi-research.js', 'value.js', 'historical-claims.js', 'history-owners.js', 'youtube.js']) {
+for (const x of ['check.js', 'check-schema.js', 'current-visual.js', 'canonical-merge.js', 'score.js', 'score-v3.js', 'score-v4.js', 'confidence.js', 'vision-reliability.js', 'auction.js', 'locale.js', 'visual-signals.js', 'share.js', 'vehicle-memory.js', 'mi-shadow.js', 'mi-equipment.js', 'mi-research.js', 'value.js', 'conclusion.js', 'historical-claims.js', 'history-owners.js', 'youtube.js']) {
   fs.writeFileSync(path.join(dir, 'api', x), fs.readFileSync('api/' + x, 'utf8'));
 }
 
@@ -121,7 +121,7 @@ const VALID = {
     if (!page.includes(el)) errs.push('result-check.html: нема ' + el);
   }
   if (!page.includes("if (pd && pd.headline)")) errs.push('result-check.html: нема гілки нового рішення');
-  if (!page.includes("if (!(pd && pd.headline)) $('verdictCard').style.display = ''")) errs.push('result-check.html: фолбек на verdict.summary зламаний');
+  if (!page.includes("if (!(pd && pd.headline) && !(fc && fc.headline && fc.body)) $('verdictCard').style.display = ''")) errs.push('result-check.html: фолбек на verdict.summary зламаний');
   if (!page.includes("$('vText').style.display = 'none'")) errs.push('result-check.html: старий текст не ховається при новому блоці');
   /* екран на v2 із фолбеком на легасі для старих звітів, підпис на місці */
   if (!page.includes('D.score_v2_preview')) errs.push('result-check.html: екран не читає score_v2_preview');

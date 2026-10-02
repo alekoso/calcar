@@ -2250,7 +2250,21 @@ function boot2(D){
   /* ---- вердикт: бейдж оцінки в шапці картки, як ризик-скор в Import ---- */
   const vd = D.verdict;
   const pd = D.purchase_decision;
-  if (pd && pd.headline) {
+  const fc = D.final_conclusion;
+  if (fc && typeof fc.headline === 'string' && fc.headline.trim() && typeof fc.body === 'string' && fc.body.trim()) {
+    /* Final Conclusion: заголовок і весь текст абзацами, без згортання і
+       без обрізання. Абзаци розділені порожнім рядком */
+    $('verdictCard').style.display = '';
+    $('pdBlock').style.display = '';
+    $('vText').style.display = 'none';
+    $('pdHeadline').textContent = clean(fc.headline);
+    $('pdShort').innerHTML = clean(fc.body).split(/\n\s*\n/).map(p => p.trim()).filter(Boolean).map(p => '<p class="pd-short">' + esc(p) + '</p>').join('');
+    $('pdMoreBtn').style.display = 'none';
+    $('pdReasoning').style.display = 'none';
+    /* відгук живе в кінці повного тексту висновку: тут він увесь на екрані */
+    window.calcarConclusionFull = true;
+    if (window.calcarFeedbackSync) window.calcarFeedbackSync(true);
+  } else if (pd && pd.headline) {
     /* нове рішення шарами; старий verdict.summary лишається фолбеком нижче */
     $('verdictCard').style.display = '';
     /* рішення несе сам заголовок, окремої плашки немає */
@@ -2301,7 +2315,7 @@ function boot2(D){
     }
   }
   if (vd && vd.summary) {
-    if (!(pd && pd.headline)) $('verdictCard').style.display = '';
+    if (!(pd && pd.headline) && !(fc && fc.headline && fc.body)) $('verdictCard').style.display = '';
     $('vText').textContent = clean(vd.summary);
     /* Оцінка CalCar і повнота перевірки: один компонент зі ЗБЕРЕЖЕНИХ даних
        звіту (breakdown і знімок confidence); сторінка нічого не перераховує */
@@ -2685,7 +2699,7 @@ function isAmongFirstChecks(rows, ids, n, truncated) {
     /* згорнутий розбір ховає і питання, і подяку: вони належать розгорнутому розбору */
     if (!isOpen) { box.hidden = true; return; }
     if (!done.hidden) { box.hidden = false; return; }
-    if (await decide() && $('pdReasoning').style.display !== 'none') box.hidden = false;
+    if (await decide() && (window.calcarConclusionFull === true || $('pdReasoning').style.display !== 'none')) box.hidden = false;
   };
   ask.addEventListener('click', async e => {
     const b = e.target.closest('.fbx-btn'); if (!b || busy) return;
@@ -3322,7 +3336,9 @@ async function loadOtherReports(){
 function chatCtx(){
   const d = DATA || {};
   return {
-    vehicle: d.vehicle, verdict: d.verdict, purchase_decision: d.purchase_decision || null, risks: d.risks,
+    /* висновок, який людина бачить у звіті: новий Final Conclusion, а для
+       старих звітів попередній purchase_decision */
+    vehicle: d.vehicle, verdict: d.verdict, final_conclusion: d.final_conclusion || null, purchase_decision: d.final_conclusion ? null : (d.purchase_decision || null), risks: d.risks,
     /* структурована комплектація з provenance: первинне джерело правди
        для помічника; легасі-поле лише для старих звітів */
     equipment: Array.isArray(d.equipment_v2) && d.equipment_v2.length

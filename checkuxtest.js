@@ -172,7 +172,8 @@ const page = fs.readFileSync('result-check.html', 'utf8');
   if (!f([{ id: 'r1' }, { share_token: 'tok' }, { id: 'r3' }], { token: 'tok' }, 3, false)) errs.push('збіг за share_token не знайдено');
   /* ворота: публічне посилання, уже залишений відгук, лише розгорнутий розбір */
   if (!/eligible = !READONLY && !!r && await firstChecks\(\) && !\(await alreadySent\(r\)\)/.test(page)) errs.push('ворота відгуку неповні: READONLY, ref, перші три, уже залишено');
-  if (!/if \(\$\('pdReasoning'\)\.style\.display !== 'none'\) box\.hidden = false/.test(page.replace(/await decide\(\) && /, ''))) errs.push('відгук може зʼявитись поза розгорнутим розбором');
+  /* повний текст висновку: або розгорнутий розбір старого формату, або Final Conclusion, який увесь на екрані */
+  if (!/if \(\(window\.calcarConclusionFull === true \|\| \$\('pdReasoning'\)\.style\.display !== 'none'\)\) box\.hidden = false/.test(page.replace(/await decide\(\) && /, ''))) errs.push('відгук може зʼявитись поза повним текстом висновку');
   if (/<div class="fbx-more"[^>]*>[\s\S]{0,20}<textarea/.test(page) && !/<div class="fbx-more" id="fbMore" inert data-private-block>/.test(page)) errs.push('поле тексту доступне до кліку "Не зовсім"');
   /* display:flex рядка перебиває атрибут hidden без явного правила: питання лишалось на екрані */
   if (!/\.fbx\[hidden\], \.fbx \[hidden\]\{display:none\}/.test(page)) errs.push('атрибут hidden у блоці відгуку перебивається display класів');

@@ -17,6 +17,8 @@ import {
   gateSeverityRaisingSignals,
 } from './visual-signals.js';
 import { hasHistoricalPhotoEvidence, stripUnbackedPhotoClaims } from './historical-claims.js';
+/* Final Conclusion: окремий synthesis-виклик по вже готовому звіту */
+import { runFinalConclusion, CONCLUSION_TIMEOUT_MS, CONCLUSION_MIN_BUDGET_MS } from './conclusion.js';
 import { parseOwnerEvents, annotateOwnerOrdinals, describeOwnerEvents } from './history-owners.js';
 import { validEngineCode, resolveGeneration } from './youtube.js';
 import {
@@ -1336,6 +1338,18 @@ export function applyDecisionLanguage(pd, { severity = null, lang = 'en' } = {})
     if (Array.isArray(pd[k])) pd[k] = pd[k].map(x => typeof x === 'string' ? one(x) : x);
   }
   return pd;
+}
+
+/* Final Conclusion проходить ті самі дві страхувальні сітки, що й решта
+   текстів звіту: слова про тяжкість ДТП не сильніші за вирішену кодом, і
+   без внутрішніх позначок. Сам текст код не переписує */
+export function applyConclusionLanguage(fc, report, lang = 'en') {
+  if (!fc || typeof fc !== 'object') return fc;
+  const bd = report && report.score_breakdown;
+  const sev = maxResolvedSeverity(bd && bd.score_version === 'v4' ? report.score_breakdown_shadow : bd);
+  const one = x => humanizeDecisionJargon(calibrateSeverityWording(x, sev, lang), lang);
+  for (const k of ['headline', 'body']) if (typeof fc[k] === 'string') fc[k] = one(fc[k]);
+  return fc;
 }
 
 /* resolved severity це ЄДИНЕ джерело правди про тяжкість ДТП для всіх
@@ -4177,6 +4191,20 @@ async function runCheck(req, res, job) {
       confirmed_high_value: miEqApplied ? miEqApplied.confirmed_high_value : 0, confirmed_keys: miEqApplied ? miEqApplied.keys : [],
       ms: miEq.ms || 0,
     };
+    /* ---- Final Conclusion ----
+       Звіт уже зібраний: Score, Confidence, ризики, історія, Vision,
+       ринкова вартість і ліквідність готові. Окремий текстовий виклик пише
+       "Висновок CalCar" з нуля по компактному контексту цих фактів (старий
+       purchase_decision у нього не передається). Контекст знімається тут,
+       синхронно; сам виклик іде паралельно із записом знань і завершенням
+       дослідження моделі, результат забирається перед відповіддю. Збій чи
+       брак часу звіт не ламають: сторінка покаже попередній формат висновку */
+    const tFc = Date.now();
+    const fcBudget = Math.min(CONCLUSION_TIMEOUT_MS, 285000 - (Date.now() - tRun) - 10000);
+    const fcPromise = fcBudget >= CONCLUSION_MIN_BUDGET_MS
+      ? runFinalConclusion({ report: parsed, langDirective, callModel, timeoutMs: fcBudget })
+          .catch(e => ({ status: 'error', reason: String((e && e.message) || e).slice(0, 160), conclusion: null, ms: Date.now() - tFc, ai: null, attempts: [] }))
+      : Promise.resolve({ status: 'skipped', reason: 'no_time_budget', conclusion: null, ms: 0, ai: null, attempts: [] });
     mark('persistence', Date.now() - tPers, photoPreservation && photoPreservation.listing === 'pending' ? 'pending' : 'executed');
     if (snapshot.id) patchSnapshotClaims(snapshot.id, parsed).catch(() => {});
     /* шар знань: спостереження цього Check. Ніколи не ламає відповідь.
@@ -4223,6 +4251,17 @@ async function runCheck(req, res, job) {
       knowledge: (rs.context && rs.context.knowledge_count) || 0, batches: rs.batches.length, queries: rs.totals.queries, sources: rs.totals.sources,
       findings: rs.findings.length, findings_at_cutoff: rs.cutoff_findings, cutoff_at: rs.cutoff_at, aborted_at: rs.aborted_at, waited_ms: miResearchWaited,
       persisted: rs.batches.filter(b => b.persist && b.persist.ok).map(b => ({ n: b.n, published: b.persist.published, merged: b.persist.merged, candidates: b.persist.candidates, staged_cold: b.persist.staged_cold })) }));
+    const fc = await fcPromise;
+    if (fc.status === 'ok' && fc.conclusion) {
+      parsed.final_conclusion = applyConclusionLanguage({ headline: fc.conclusion.headline, body: fc.conclusion.body }, parsed, lang);
+      /* директива "купуй / не купуй" у новому висновку: лише діагностика */
+      const fcHits = directiveVerdictHits({ headline: parsed.final_conclusion.headline, reasoning: parsed.final_conclusion.body });
+      if (fcHits.length) console.log('[final-conclusion]', JSON.stringify({ op: 'directive', lang, hits: fcHits }));
+      parsed._meta.final_conclusion = { version: fc.version || null, truncated: fc.conclusion.truncated === true, directive: fcHits.length ? fcHits : null };
+    } else {
+      console.log('[final-conclusion]', JSON.stringify({ op: 'check', status: fc.status, reason: fc.reason || null, vin: listing.vin || null }));
+    }
+    mark('final_conclusion', fc.ms || 0, fc.status === 'ok' ? 'executed' : fc.status, { at: tFc - tRun, reason: fc.reason || null, ai: fc.ai || null, attempts: fc.attempts || [], context_chars: fc.context_chars || null });
     timings.total_ms = Date.now() - tRun;
 
     return res.status(200).json(parsed);

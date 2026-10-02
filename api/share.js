@@ -17,7 +17,7 @@ export const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 /* верхній рівень звіту, дозволений публічно */
 const PUBLIC_TOP = [
-  'vehicle', 'verdict', 'purchase_decision', 'risks', 'discrepancies',
+  'vehicle', 'verdict', 'purchase_decision', 'final_conclusion', 'risks', 'discrepancies',
   'history', 'history_note', 'photo_findings', 'auction', 'model_notes',
   'checklist', 'equipment_v2', 'equipment', 'body_wrap', 'data_notes',
   'presentation_damage', 'historical_visual',
