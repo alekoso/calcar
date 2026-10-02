@@ -65,7 +65,11 @@ function browser(opts) {
   if (!lv) errs.push('на /check нема автоматичної landing_view');
   else if (lv.props.product !== 'check' || lv.props.lang !== 'ru') errs.push('landing_view без product/lang: ' + JSON.stringify(lv.props));
   /* плейсхолдери з коментаря конфігу (phc_..., G-XXXXXXX) це не ключі */
-  if (/phc_[A-Za-z0-9]{10,}|G-(?!X+\b)[A-Z0-9]{6,}/.test(an + pub)) errs.push('у коді захардкоджений ключ аналітики');
+  if (/phc_[A-Za-z0-9]{10,}|G-(?!X+\b)[A-Z0-9]{6,}/.test(an)) errs.push('у analytics.js захардкоджений ключ аналітики (місце ключа: calcar-public.js)');
+  /* у публічному конфігу ключ або порожній, або справжній публічний phc_ */
+  const pk = (pub.match(/posthog_key: '([^']*)'/) || [])[1];
+  if (pk === undefined || (pk && !/^phc_[A-Za-z0-9]{20,}$/.test(pk))) errs.push('calcar-public.js: posthog_key не phc_ і не порожній');
+  if (!/posthog_host: 'https:\/\/eu\.i\.posthog\.com'/.test(pub)) errs.push('calcar-public.js: PostHog не в EU-регіоні');
 }
 
 /* ---------- 2. таксономія: лише відомі імена ---------- */
@@ -86,16 +90,17 @@ function browser(opts) {
   b.win.calcar.track('assistant_opened', {
     text: 'мій бюджет 20 тисяч', message: 'hello', memory: 'Людина: ...', seller_description: 'продам авто',
     description: 'x', prompt: 'p', content: 'c', email: 'a@b.c', phone: '+380', token: 'abc', vin: 'WBA12345678901234',
-    listing_url: 'https://auto.ria.com/uk/auto_x.html', title: 'BMW X5', note: 'n', payment_card: '4111',
+    listing_url: 'https://auto.ria.com/uk/auto_x.html', title: 'BMW X5', car_vin: 'x', plate: 'AA1234BB',
+    model_ref: 'WBAJA7C51KWW12345', contact: 'a@b.co', note: 'n', payment_card: '4111',
     long: 'x'.repeat(200), multiline: 'a\nb', ok_number: 3, ok_flag: true, marketplace: 'auto.ria.com',
   });
   const p = b.win.CALCAR_EVENTS[b.win.CALCAR_EVENTS.length - 1].props;
-  for (const k of ['text', 'message', 'memory', 'seller_description', 'description', 'prompt', 'content', 'email', 'phone', 'token', 'listing_url', 'title', 'note', 'payment_card', 'long', 'multiline']) {
+  for (const k of ['text', 'message', 'memory', 'seller_description', 'description', 'prompt', 'content', 'email', 'phone', 'token', 'vin', 'car_vin', 'plate', 'model_ref', 'contact', 'listing_url', 'title', 'note', 'payment_card', 'long', 'multiline']) {
     if (k in p) errs.push('приватна властивість пройшла в подію: ' + k);
   }
   if (p.ok_number !== 3 || p.ok_flag !== true || p.marketplace !== 'auto.ria.com') errs.push('нешкідливі властивості загублені');
-  /* VIN: без потреби не шлемо; у санітайзері окремої заборони нема, тому
-     жодна сторінка не має передавати vin у track() */
+  /* VIN і email відкидаються і за ключем, і за формою значення; плюс жодна
+     сторінка не передає vin у track() */
   for (const f of PAGES) if (/calcar\.track\([^)]*\bvin\b/.test(S[f])) errs.push(f + ': VIN передається в аналітику');
   /* адреса події без токена звіту */
   if (p.page !== '/check/*') errs.push('адреса звіту не знеособлена: ' + p.page);
@@ -125,14 +130,36 @@ function browser(opts) {
   if (b4.win.calcar.acquisition().source !== 'tg') errs.push('utm першого торкання перезаписано пізнішим візитом');
 }
 
-/* ---------- 5. session replay: маскування і блокування ---------- */
+/* ---------- 5. PostHog: лише кастомні події, без replay/heatmaps/web vitals ---------- */
 {
+  const b = browser({ path: '/check/r/bmw-x5-2019/AbCdEfGh123', pub: { analytics: { posthog_key: 'phc_' + 'x'.repeat(40), posthog_host: 'https://eu.i.posthog.com', ga4_id: '' }, contacts: {} } });
+  b.win.location.origin = 'https://calcar.io';
+  const init = b.win.posthog && b.win.posthog._i && b.win.posthog._i[0];
+  if (!init) errs.push('з ключем PostHog не ініціалізується');
+  else {
+    const c = init[1];
+    if (c.api_host !== 'https://eu.i.posthog.com') errs.push('PostHog не на EU-хості: ' + c.api_host);
+    const OFF = { autocapture: false, capture_pageview: false, capture_pageleave: false, disable_session_recording: true, capture_heatmaps: false, enable_heatmaps: false, capture_performance: false, capture_dead_clicks: false, capture_exceptions: false, rageclick: false, disable_surveys: true, disable_external_dependency_loading: true };
+    for (const [k, v] of Object.entries(OFF)) if (c[k] !== v) errs.push('PostHog: ' + k + ' має бути ' + v + ', а не ' + c[k]);
+    if (typeof c.before_send !== 'function') errs.push('PostHog без before_send: адреса з токеном звіту піде як є');
+    else {
+      const ev = c.before_send({ event: 'report_viewed', properties: {
+        $current_url: 'https://calcar.io/check/r/bmw-x5-2019/AbCdEfGh123?vin=WBA12345678901234&email=a@b.c',
+        $pathname: '/check/r/bmw-x5-2019/AbCdEfGh123', $referrer: 'https://auto.ria.com/uk/auto_bmw_x5_123.html?id=9',
+        $set_once: { $initial_current_url: 'https://calcar.io/check/r/bmw-x5-2019/AbCdEfGh123?vin=WBA12345678901234', $initial_referrer: '$direct' },
+      } });
+      const p = ev.properties, flat = JSON.stringify(ev);
+      if (p.$current_url !== 'https://calcar.io/check/r/*') errs.push('$current_url не знеособлений: ' + p.$current_url);
+      if (p.$pathname !== '/check/r/*') errs.push('$pathname не знеособлений: ' + p.$pathname);
+      if (p.$referrer !== 'https://auto.ria.com') errs.push('$referrer не зведений до хоста: ' + p.$referrer);
+      if (p.$set_once.$initial_referrer !== '$direct') errs.push('$direct реферер зіпсований');
+      if (/WBA12345678901234|a@b\.c|AbCdEfGh123|auto_bmw/.test(flat)) errs.push('VIN, email, токен або адреса оголошення пройшли в PostHog: ' + flat);
+    }
+  }
+  /* страховка replay лишається: якщо колись увімкнуть, приватне закрите */
   if (!/maskAllInputs: true/.test(an)) errs.push('replay не маскує поля вводу');
   const block = (an.match(/blockSelector: '([^']+)'/) || [])[1] || '';
-  for (const sel of ['.cc-panel', '#memCard', '#authBox']) if (!block.includes(sel)) errs.push('replay не блокує ' + sel);
-  if (!block.includes('[data-private-block]')) errs.push('нема загального маркера приватного блоку для replay');
-  if (!/autocapture: false/.test(an)) errs.push('autocapture увімкнений: він тягне текст кнопок і полів');
-  /* поле відгуку і редактор памʼяті позначені приватними */
+  for (const sel of ['.cc-panel', '#memCard', '#authBox', '[data-private-block]']) if (!block.includes(sel)) errs.push('replay не блокує ' + sel);
   if (!/<div class="fbx-more" id="fbMore" inert data-private-block>/.test(S['result-check.html'])) errs.push('поле відгуку не приховане від replay');
   for (const id of ['memCard', 'authBox']) if (!S['cabinet.html'].includes('id="' + id + '"')) errs.push('cabinet.html: нема #' + id + ', селектор блокування replay порожній');
   if (!fs.readFileSync('chat.js', 'utf8').includes('cc-panel')) errs.push('chat.js: панель помічника не .cc-panel, replay її не блокує');
@@ -352,6 +379,6 @@ tourChecks();
 
 function finish() {
   if (errs.length) { console.log('ANALYTICS TEST FAILED:'); errs.forEach(e => console.log('  - ' + e)); process.exit(1); }
-  console.log('аналітика: вхолосту без ключів · таксономія · приватне не проходить · uuid без fingerprinting · replay маскує · 6 сторінок + identify · відгук sanitize/UI/SQL · тур: спільний блок, 2 кроки, один раз · контакти з конфігу · копірайт Check · мова памʼяті');
+  console.log('аналітика: вхолосту без ключів · таксономія · приватне не проходить · uuid без fingerprinting · PostHog лише кастомні події, URL знеособлений · 6 сторінок + identify · відгук sanitize/UI/SQL · тур: спільний блок, 2 кроки, один раз · контакти з конфігу · копірайт Check · мова памʼяті');
   console.log('ANALYTICS TEST PASSED');
 }

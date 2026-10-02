@@ -13,7 +13,7 @@
      contacts.email          адреса для звʼязку, напр. hello@calcar.io */
 window.CALCAR_PUBLIC = {
   analytics: {
-    posthog_key: '',
+    posthog_key: 'phc_oLA6beJDywTJPmpwrZRkhyFywBREYTQUqjnCfdSfwHEe',
     posthog_host: 'https://eu.i.posthog.com',
     ga4_id: '',
   },

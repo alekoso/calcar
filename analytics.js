@@ -1,7 +1,8 @@
 /* CalCar analytics: один тонкий шар подій для всіх сторінок.
 
    Архітектура:
-   - PostHog: продуктові події, воронки, retention, шляхи, session replay.
+   - PostHog: лише кастомні продуктові події (воронки, retention). Session
+     replay, autocapture, pageview, heatmaps і web vitals вимкнені.
    - GA4: залучення, UTM, реклама, нові/повернені користувачі.
    - Обидва вмикаються лише коли в calcar-public.js задано ключі. Без них
      цей файл працює "вхолосту": події складаються в буфер window.CALCAR_EVENTS
@@ -17,9 +18,8 @@
 
    Приватність: у події НІКОЛИ не потрапляють текст чату, вміст памʼяті,
    опис продавця, приватні поля форм, платіжні дані. Санітайзер пропускає
-   лише короткі примітивні значення з дозволених ключів. Session replay
-   маскує всі поля вводу і повністю блокує панель помічника, редактор
-   памʼяті та поля входу.
+   лише короткі примітивні значення з дозволених ключів. Адресу сторінки,
+   яку PostHog додає сам, before_send зводить до шляху без токенів і query.
 
    Таксономія (мінімум для beta):
      landing_view, analysis_started, analysis_completed, report_viewed,
@@ -35,7 +35,9 @@
     /* необовʼязковий блок відео про модель у звіті Check */
     'youtube_block_viewed', 'youtube_video_opened', 'youtube_show_more', 'youtube_opened_external'];
   /* ключі, які можуть нести приватний текст: відкидаються завжди */
-  var DENY = /text|message|memory|description|seller|prompt|content|email|phone|token|password|card|payment|query|url|title|note/i;
+  var DENY = /text|message|memory|description|seller|prompt|content|email|phone|token|password|card|payment|query|url|title|note|vin|plate/i;
+  /* значення, схожі на VIN чи email, відкидаються під будь-яким ключем */
+  var DENY_VALUE = /\b[A-HJ-NPR-Z0-9]{17}\b|[^\s@]+@[^\s@]+\.[^\s@]+/i;
   var ALLOW_URL_KEYS = /^(page|product)$/;
 
   function ls(get, k, v) { try { return get ? localStorage.getItem(k) : localStorage.setItem(k, v); } catch (e) { return null; } }
@@ -89,7 +91,7 @@
       var v = props[k];
       if (DENY.test(k) && !ALLOW_URL_KEYS.test(k)) return;
       if (typeof v === 'number' || typeof v === 'boolean') { out[k] = v; return; }
-      if (typeof v === 'string') { if (v.length <= 80 && !/\s{2,}|\n/.test(v)) out[k] = v; return; }
+      if (typeof v === 'string') { if (v.length <= 80 && !/\s{2,}|\n/.test(v) && !DENY_VALUE.test(v)) out[k] = v; return; }
     });
     return out;
   }
@@ -127,6 +129,23 @@
   }
 
   /* ---------- PostHog ---------- */
+  var URL_PROPS = ['$current_url', '$initial_current_url', '$session_entry_url'];
+  var PATH_PROPS = ['$pathname', '$initial_pathname', '$session_entry_pathname'];
+  var REF_PROPS = ['$referrer', '$initial_referrer', '$session_entry_referrer'];
+  function scrubProps(o) {
+    if (!o || typeof o !== 'object') return;
+    URL_PROPS.forEach(function (k) { if (k in o) o[k] = location.origin + page(); });
+    PATH_PROPS.forEach(function (k) { if (k in o) o[k] = page(); });
+    REF_PROPS.forEach(function (k) { if (k in o && o[k] && o[k] !== '$direct') { try { o[k] = new URL(o[k]).origin; } catch (e) { o[k] = null; } } });
+  }
+  function scrub(ev) {
+    if (!ev) return ev;
+    scrubProps(ev.properties);
+    scrubProps(ev.$set);
+    scrubProps(ev.$set_once);
+    if (ev.properties) { scrubProps(ev.properties.$set); scrubProps(ev.properties.$set_once); }
+    return ev;
+  }
   function loadPostHog() {
     if (!PUB.posthog_key || !/^phc_/.test(PUB.posthog_key)) return;
     var host = PUB.posthog_host || 'https://eu.i.posthog.com';
@@ -137,16 +156,34 @@
       persistence: 'localStorage+cookie',
       /* анонімний distinct_id це наш стабільний calcar_aid */
       bootstrap: { distinctID: aid() },
-      capture_pageview: true,
-      capture_pageleave: true,
-      /* autocapture вимкнено: він тягне текст полів і кнопок, нам потрібні лише наші події */
+      /* лише наші кастомні події: без $pageview/$pageleave (адреса звіту несе токен),
+         без autocapture (тягне текст кнопок і полів), без replay, heatmaps,
+         web vitals, dead/rage clicks, винятків і опитувань */
+      capture_pageview: false,
+      capture_pageleave: false,
       autocapture: false,
-      disable_session_recording: false,
+      rageclick: false,
+      disable_session_recording: true,
+      capture_heatmaps: false,
+      enable_heatmaps: false,
+      capture_performance: false,
+      capture_dead_clicks: false,
+      capture_exceptions: false,
+      disable_surveys: true,
+      disable_web_experiments: true,
+      advanced_disable_feature_flags: true,
+      /* жодних догружених модулів (recorder, web-vitals, surveys, toolbar) */
+      disable_external_dependency_loading: true,
+      person_profiles: 'always',
+      /* страховка, якщо replay колись увімкнуть: поля і приватні панелі закриті */
       session_recording: {
         maskAllInputs: true,
         maskTextSelector: '[data-private], .cc-panel, .cc-msg, #memView, #memText, .mem-view',
         blockSelector: '.cc-panel, #memCard, #authBox, [data-private-block]',
       },
+      /* SDK сам додає адресу і реферер до кожної події: залишаємо лише
+         знеособлений шлях сторінки і хост реферера, без query і токенів */
+      before_send: scrub,
       loaded: function (inst) { ph = inst; ready.ph = true; var uid = ls(true, UID_KEY); if (uid) { try { inst.identify(uid); } catch (e) {} } },
     });
     ph = window.posthog;
