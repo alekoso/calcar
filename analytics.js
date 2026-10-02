@@ -28,7 +28,9 @@
      report_scroll_25/50/75/100 (кожен поріг раз),
      seller_description_opened, share_clicked, calcar_ai_clicked,
      feedback_yes, feedback_no, feedback_submitted (useful + reason, без тексту),
-     chat_opened, chat_message_sent, settings_opened, memory_opened, memory_updated.
+     chat_opened, chat_message_sent, settings_opened, memory_opened, memory_updated,
+     report_email_opted_in, report_opened_from_email (з браузера),
+     report_email_sent (із сервера після відправки листа; без адреси).
    Номер перевірки: лічильник браузера calcar_checks_n (стартує не нижче
    кількості вже збережених локальних перевірок), плюс властивість людини
    checks_started; після входу identify склеює анонімну історію з акаунтом. */
@@ -41,7 +43,10 @@
     'seller_description_opened', 'share_clicked', 'calcar_ai_clicked',
     'feedback_yes', 'feedback_no', 'feedback_submitted',
     /* якими функціями користуються: лише факт дії, без тексту чату і памʼяті */
-    'chat_opened', 'chat_message_sent', 'settings_opened', 'memory_opened', 'memory_updated'];
+    'chat_opened', 'chat_message_sent', 'settings_opened', 'memory_opened', 'memory_updated',
+    /* лист "звіт готовий": лише факт, адреса у властивості не потрапляє.
+       report_email_sent надсилає сервер (api/check-email.js) */
+    'report_email_opted_in', 'report_opened_from_email'];
   var CHECKS_N_KEY = 'calcar_checks_n', DONE_KEY = 'calcar_done_checks';
   /* ключі, які можуть нести приватний текст: відкидаються завжди */
   var DENY = /text|message|memory|description|seller|prompt|content|email|phone|token|password|card|payment|query|url|title|note|vin|plate/i;

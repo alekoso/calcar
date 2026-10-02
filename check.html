@@ -641,6 +641,22 @@
   @media (max-width:560px){.ld{padding:12px 14px}}
   /* progress:end */
 
+  /* лист "звіт готовий": вторинний блок під індикатором, лише під час аналізу */
+  .em{margin-top:10px;background:var(--surface-2);border:1px solid var(--line);border-radius:14px;padding:12px 18px;display:none;text-align:left}
+  .em.on{display:block}
+  .em-t{font-size:13.5px;font-weight:600;color:var(--ink)}
+  .em-s{font-size:12.5px;color:var(--muted);margin-top:2px}
+  .em-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;margin-top:10px}
+  .em-in{flex:1 1 190px;min-width:0;height:38px;border:1px solid var(--line-strong);border-radius:10px;padding:0 12px;background:var(--card);color:var(--ink);font-family:inherit;font-size:14px}
+  .em-in:focus{outline:none;border-color:var(--ink)}
+  .em-btn{flex:0 0 auto;height:38px;padding:0 14px;border:1px solid var(--line-strong);border-radius:10px;background:var(--card);color:var(--ink);font-family:inherit;font-size:13.5px;font-weight:600;cursor:pointer}
+  .em-btn:disabled{opacity:.6;cursor:default}
+  .em-addr{font-size:12.5px;color:var(--muted)}
+  .em-ok{font-size:13.5px;font-weight:600;color:var(--text)}
+  .em-err{font-size:12.5px;color:var(--red);margin-top:6px;display:none}
+  .em-err.on{display:block}
+  @media (max-width:560px){.em{padding:12px 14px}.em-in{font-size:16px}.em-btn{flex:1 1 auto}}
+
   .hf-status{font-size:13.5px;color:var(--muted);margin-top:10px;display:none}
   .hf-status.on{display:block}
   .hero-form .btn-primary{height:52px;padding:0 26px;font-size:15px;font-weight:800;border-radius:12px;min-width:158px}
@@ -835,6 +851,7 @@
       </div>
       <div class="hf-status" id="status"></div>
       <div class="ld" id="loadBox"></div>
+      <div class="em" id="emailBox" data-private-block></div>
     </div>
   </div>
 </div>
@@ -1173,7 +1190,10 @@ async function finalizeReport(data, token){
   if (token && data && data._meta && !data._meta.share_token) data._meta.share_token = token;
   sessionStorage.setItem('calcarCheck', JSON.stringify(data));
   sessionStorage.removeItem('calcarCheckId');
+  const pj0 = pendingGet();
+  const serverSaves = !!(token && pj0 && pj0.token === token && pj0.mailedAuth);
   pendingSet(null);
+  emailBoxHide();
   const title = data.vehicle?.title || t('Check');
   const slug = (data._meta && data._meta.share_slug) || 'car';
   if (token) rememberRecent({ token, slug, title, photo: (data._meta?.photos || [])[0] || null, score: (data.score_breakdown && data.score_breakdown.final) ?? null, odometer_km: data._meta?.odometer_km || null, created_at: new Date().toISOString() });
@@ -1182,14 +1202,17 @@ async function finalizeReport(data, token){
     if (SB) {
       const { data: s } = await SB.auth.getSession();
       if (s?.session) {
-        const pid = makePid();
-        let ins = await SB.from('reports').insert({
-          user_id: s.session.user.id, kind: 'check', public_id: pid, title, data,
-        }).select('id,public_id').single();
-        if (ins.error) ins = await SB.from('reports').insert({
-          user_id: s.session.user.id, kind: 'check', title, data,
-        }).select('id').single();
-        const row = ins.data;
+        let row = token ? await findSavedByToken(token, serverSaves ? 4 : 1) : null;
+        if (!row) {
+          const pid = makePid();
+          let ins = await SB.from('reports').insert({
+            user_id: s.session.user.id, kind: 'check', public_id: pid, title, data,
+          }).select('id,public_id').single();
+          if (ins.error) ins = await SB.from('reports').insert({
+            user_id: s.session.user.id, kind: 'check', title, data,
+          }).select('id').single();
+          row = ins.data;
+        }
         if (row?.id) {
           sessionStorage.setItem('calcarCheckId', row.id);
           dest = row.public_id ? '/check/' + row.public_id : '/result-check.html?id=' + row.id;
@@ -1199,6 +1222,90 @@ async function finalizeReport(data, token){
   } catch (e) { /* збереження не блокує показ результату */ }
   return dest;
 }
+/* ---------- лист "звіт готовий" ----------
+   Лише за явним натисканням для КОНКРЕТНОГО Check: opt-in іде на сервер
+   (/api/check-email) і лежить у рядку job, тому вкладку можна закрити.
+   Хто увійшов: адреса акаунта, іншу ввести не можна. Гість: адреса з поля;
+   після успішного opt-in вона запамʼятовується в цьому браузері
+   (calcar_guest_email) і наступного разу лише підставляється в поле, сама
+   нічого не вмикає. Адреса не йде в аналітику, URL чи консоль. */
+const GUEST_EMAIL_KEY = 'calcar_guest_email';
+function maskEmail(e){ const s = String(e || ''), at = s.lastIndexOf('@'); return at < 1 ? '' : s[0] + '***' + s.slice(at); }
+function emailBoxHide(){ const box = document.getElementById('emailBox'); if (box) { box.className = 'em'; box.innerHTML = ''; } }
+function emailBoxDone(masked){
+  const box = document.getElementById('emailBox');
+  if (!box) return;
+  box.innerHTML = '<div class="em-ok">✓ ' + esc(t('The finished report will be sent to {email}').replace('{email}', masked)) + '</div>'
+    + '<div class="em-s">' + esc(t('You can close this page.')) + '</div>';
+  box.className = 'em on';
+}
+async function emailBoxShow(token){
+  const box = document.getElementById('emailBox');
+  if (!box || !token) return;
+  const pj = pendingGet();
+  if (pj && pj.token === token && pj.mailed) { emailBoxDone(pj.mailed); return; }
+  let session = null;
+  try { if (SB) session = (await SB.auth.getSession()).data?.session || null; } catch (e) {}
+  const acct = session ? (session.user?.email || '') : '';
+  if (session && !acct) return;
+  let saved = '';
+  if (!session) { try { saved = localStorage.getItem(GUEST_EMAIL_KEY) || ''; } catch (e) {} }
+  const cta = '<button class="em-btn" id="emBtn" type="submit">' + esc(t('Send me the finished report')) + '</button>';
+  box.innerHTML = (session
+    ? '<div class="em-t">' + esc(t('You do not have to wait')) + '</div><div class="em-s">' + esc(t('We will send the finished report to your email')) + '</div>'
+      + '<form class="em-row" id="emForm" novalidate>' + cta + '<span class="em-addr">' + esc(maskEmail(acct)) + '</span></form>'
+    : '<div class="em-t">' + esc(t('Do not want to wait?')) + '</div><div class="em-s">' + esc(t('Leave your email and we will send a link when the analysis is ready.')) + '</div>'
+      + '<form class="em-row" id="emForm" novalidate><input class="em-in" id="emIn" type="email" inputmode="email" autocomplete="email" spellcheck="false" placeholder="Email" aria-label="Email" value="' + esc(saved) + '">' + cta + '</form>')
+    + '<div class="em-err" id="emErr"></div>';
+  box.className = 'em on';
+  const form = document.getElementById('emForm'), emBtn = document.getElementById('emBtn'), errEl = document.getElementById('emErr');
+  const fail = msg => { errEl.textContent = msg; errEl.className = 'em-err on'; };
+  let busy = false;
+  form.onsubmit = async ev => {
+    ev.preventDefault();
+    if (busy) return;
+    const email = session ? null : document.getElementById('emIn').value.trim();
+    if (!session && !/^[^\s@]+@[^\s@]+\.[^\s@.]{2,}$/.test(email)) { fail(t('Check the email address')); return; }
+    busy = true; emBtn.disabled = true; errEl.className = 'em-err';
+    try {
+      const headers = { 'content-type': 'application/json' };
+      if (session) {
+        const fresh = (await SB.auth.getSession()).data?.session;
+        if (!fresh) throw new Error(t('Could not set up the email, try again'));
+        headers.authorization = 'Bearer ' + fresh.access_token;
+      }
+      const r = await fetch('/api/check-email', {
+        method: 'POST', headers,
+        body: JSON.stringify({ token, email: email || undefined, aid: (window.calcar && window.calcar.aid) ? window.calcar.aid() : undefined, lang: window.calcarLang() }),
+      });
+      const j = await safeJson(r);
+      if (!r.ok || !j.ok) throw new Error(j.error || t('Could not set up the email, try again'));
+      if (!session) { try { localStorage.setItem(GUEST_EMAIL_KEY, email); } catch (e) {} }
+      const masked = j.masked || maskEmail(email || acct);
+      const cur = pendingGet();
+      if (cur && cur.token === token) pendingSet({ ...cur, mailed: masked, mailedAuth: !!session });
+      try { if (window.calcar) window.calcar.track('report_email_opted_in', { product: 'check' }); } catch (e) {}
+      emailBoxDone(masked);
+    } catch (e) {
+      busy = false; emBtn.disabled = false;
+      fail(e.message || t('Could not set up the email, try again'));
+    }
+  };
+}
+/* звіт цього job уже в кабінеті? Після opt-in того, хто увійшов, його
+   зберігає сервер; сторінка тоді бере готовий рядок і дубля не створює */
+async function findSavedByToken(token, tries){
+  for (let i = 0; i < tries; i++) {
+    if (i) await sleep(1000);
+    try {
+      const { data: rows } = await SB.from('reports').select('id,public_id').eq('kind', 'check')
+        .eq('data->_meta->>share_token', token).order('created_at', { ascending: true }).limit(1);
+      if (Array.isArray(rows) && rows[0]) return rows[0];
+    } catch (e) {}
+  }
+  return null;
+}
+
 /* повернення на сторінку з незавершеним аналізом: продовжуємо опитування */
 async function resumePending(){
   const pj = pendingGet();
@@ -1209,6 +1316,7 @@ async function resumePending(){
   statusEl.className = 'hf-status';
   const rid = loadingStart();
   const note = document.getElementById('ldNote'); if (note) { note.textContent = t('Resuming your analysis…'); note.className = 'ld-note on'; }
+  emailBoxShow(pj.token);
   try {
     const report = await pollJob(pj.token);
     trackCompleted(report, pj.token, pj.at);
@@ -1218,6 +1326,7 @@ async function resumePending(){
     location.href = dest;
   } catch (e) {
     pendingSet(null);
+    emailBoxHide();
     loadingError(rid, e.message || t('Something went wrong, please try again'));
   } finally { btn.disabled = false; }
   return true;
@@ -1459,6 +1568,7 @@ async function run() {
          заблокувати екран, аналіз на сервері від цього не зупиниться */
       token = data.job;
       pendingSet({ token, url, at: Date.now() });
+      emailBoxShow(token);
       data = await pollJob(token);
     }
 
@@ -1468,6 +1578,7 @@ async function run() {
     await finPromise;
     location.href = dest;
   } catch (e) {
+    emailBoxHide();
     loadingError(rid, e.message || t('Something went wrong, please try again'));
   } finally {
     btn.disabled = false;

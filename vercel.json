@@ -1,4 +1,14 @@
 {
+  "functions": {
+    "api/check.js": {
+      "maxDuration": 300,
+      "includeFiles": "calcar-public.js"
+    },
+    "api/check-email.js": {
+      "maxDuration": 30,
+      "includeFiles": "calcar-public.js"
+    }
+  },
   "redirects": [
     {
       "source": "/index.html",
