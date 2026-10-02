@@ -31,7 +31,7 @@ import {
    і Vehicle Memory його не отримують */
 import { CURRENT_VISUAL_RULES, currentVisualResponseFormat, frameContent, normalizeFrames, frameDetailPlan, gateCurrentVisual, frameSetFingerprint, summarizeCurrentVisual, odometerDiscrepancy, CURRENT_VISUAL_VERSION,
   ODOMETER_VERIFIER_RULES, odometerVerifierResponseFormat, odometerVerifyFrames, gateOdometerVerifier, reconcileOdometer,
-  currentVisualEvidenceBlock, currentVisualConcepts, applyCurrentVisualEquipmentGate, compactCurrentVisual, contextualPhotoPositions, CONTEXT_PHOTOS_DEFAULT } from './current-visual.js';
+  currentVisualEvidenceBlock, currentVisualConcepts, applyCurrentVisualEquipmentGate, compactCurrentVisual, contextualPhotoPositions, CONTEXT_PHOTOS_DEFAULT, currentVisualLanguageNote } from './current-visual.js';
 import { decisionEvidenceBlock, mergeCanonicalEquipment, mergeCanonicalConditions, canonicalGaps } from './canonical-merge.js';
 /* спільні ідентичності і версії: тести і сусідні модулі беруть їх звідси */
 export { HISTORICAL_VISUAL_VERSION, photoIdentity, photoSetFingerprint, listingFingerprint, snapshotRow, listingKey, NHTSA_DECODER_VERSION, LISTING_FINGERPRINT_VERSION };
@@ -2712,7 +2712,7 @@ async function runCheck(req, res, job) {
           body = {
             model: process.env.OPENAI_MODEL || 'gpt-5.6-terra', max_completion_tokens: 12000, reasoning_effort: 'low',
             response_format: currentVisualResponseFormat(),
-            messages: [{ role: 'system', content: CURRENT_VISUAL_RULES }, { role: 'user', content: miVisionHint ? [{ type: 'text', text: miVisionHint }, ...frameContent(sent, 'mixed')] : frameContent(sent, 'mixed') }],
+            messages: [{ role: 'system', content: CURRENT_VISUAL_RULES }, { role: 'user', content: [{ type: 'text', text: currentVisualLanguageNote(lang) }, ...(miVisionHint ? [{ type: 'text', text: miVisionHint }] : []), ...frameContent(sent, 'mixed')] }],
           };
           d = await callModel(body, Math.max(30000, Math.min(95000, 262000 - (Date.now() - tRun))));
           if (!d || d.error) return { status: 'failed', error: String((d && d.error && (d.error.message || d.error.code)) || 'no response').slice(0, 160) };

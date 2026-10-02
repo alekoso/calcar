@@ -65,7 +65,23 @@ export const UI_NOISE_RE = new RegExp([
   '(?:медіа|медиа|media)\\s*[/|]',
   '(?:гучність|громкость|volume)',
 ].join('|'), 'i');
-export const SOFT_SIGN_RE = /відблиск|відбит|блік|reflection|glare|освітлен|lighting|light angle|здається|можливо|ніби|схоже|мабуть|ймовірно|seems|appears|might|could be/i;
+/* ознака пишеться мовою звіту (currentVisualLanguageNote), тому сумнів
+   розпізнається українською, російською й англійською */
+export const SOFT_SIGN_RE = /відблиск|відбит|блік|reflection|glare|освітлен|lighting|light angle|здається|можливо|ніби|схоже|мабуть|ймовірно|seems|appears|might|could be|отблеск|отраж|блик|освещени|кажется|возможно|будто|похоже|вероятно/i;
+
+/* Мова пояснень Vision: пояснювальні поля (sign, summary, coverage.note)
+   користувач бачить у звіті, тому вони пишуться мовою звіту. Назви
+   (normalized_name і подібні) лишаються за правилами вище: за ними код
+   зіставляє опції зі словником; показання і написи на кадрі цитуються
+   дослівно. Окремим текстом у повідомленні користувача, а не в системному
+   промпті: кешований префікс системного промпту однаковий для всіх мов */
+const CV_LANG_NAME = { ua: 'українською', ru: 'російською', en: 'англійською (English)' };
+export function currentVisualLanguageNote(lang) {
+  const name = CV_LANG_NAME[lang] || CV_LANG_NAME.en;
+  return 'МОВА ПОЯСНЕНЬ: поля sign, summary і coverage.note пиши ' + name + '. '
+    + 'normalized_name, visible_label_or_feature, feature і light пиши так, як вимагають правила вище, незалежно від мови пояснень. '
+    + 'dashboard.odometer_reading.sign і readable_messages.text цитуй з кадру дослівно. Ключі JSON та enum-значення лишай латиницею точно за схемою.';
+}
 
 /* ---------- strict json_schema ---------- */
 const S = (type, description, extra = {}) => ({ type, ...(description ? { description } : {}), ...extra });

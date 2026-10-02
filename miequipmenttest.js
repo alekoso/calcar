@@ -225,7 +225,7 @@ function grab(src, name) {
   /* ---- 9. проводка в api/check.js ---- */
   const core = CHECK_SRC.slice(CHECK_SRC.indexOf('async function runCheck('));
   ok('9. кандидати запитуються після Vehicle Memory', core.indexOf('fetchMiEquipmentCandidates(listing.vin)') > core.indexOf('const observation = await observeListing('));
-  ok('9b. Vision отримує підказку перед кадрами і чекає обмежено', /content: miVisionHint \? \[\{ type: 'text', text: miVisionHint \}, \.\.\.frameContent\(sent, 'mixed'\)\] : frameContent\(sent, 'mixed'\)/.test(core)
+  ok('9b. Vision отримує підказку перед кадрами і чекає обмежено', /content: \[\{ type: 'text', text: currentVisualLanguageNote\(lang\) \}, \.\.\.\(miVisionHint \? \[\{ type: 'text', text: miVisionHint \}\] : \[\]\), \.\.\.frameContent\(sent, 'mixed'\)\]/.test(core)
     && /MI_EQ_VISION_WAIT_MS - \(Date\.now\(\) - tCv\)/.test(core));
   ok('9c. блок основного виклику після тексту оголошення', /if \(miEqBlock\) content\.splice\(1, 0, \{ type: 'text', text: miEqBlock \}\);/.test(core));
   ok('9d. позначка після верифікатора', core.indexOf('applyMiEquipment(parsed.equipment_v2') > core.indexOf('applyEquipmentVerifier(parsed.equipment_v2'));
