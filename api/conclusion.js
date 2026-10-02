@@ -145,14 +145,17 @@ function currentConditionBlock(report, meta) {
   const cv = isObj(cvs.current_visual) ? cvs.current_visual : {};
   const zones = isObj(cv.zones) ? cv.zones : {};
   const dash = isObj(cv.dashboard) ? cv.dashboard : {};
+  /* лампи і повідомлення панелі: у контекст лише сам текст, без кадрів */
+  const label = x => (typeof x === 'string' ? str(x, 120) : (isObj(x) ? str(x.text || x.name || x.label || x.sign, 160) : null));
   return {
     photo_findings: arr(report.photo_findings).filter(isObj).map(f => ({ status: f.status || null, text: str(f.text, 320) })),
-    visual_summary: str(cv.summary, 700),
+    /* службові посилання на кадри в тексті Vision людині нічого не кажуть */
+    visual_summary: str(typeof cv.summary === 'string' ? cv.summary.replace(/\s*\[gallery_index=\d+\]/g, '') : null, 700),
     photo_coverage_note: str(cv.coverage && cv.coverage.note, 300),
     photos_usable: num(cv.coverage && cv.coverage.frames_usable),
     zones_not_shown: Object.entries(zones).filter(([, z]) => isObj(z) && z.visibility === 'not_visible').map(([k]) => k),
-    dashboard_warning_lights: arr(dash.warning_lights).slice(0, 6),
-    dashboard_messages: arr(dash.readable_messages).slice(0, 4),
+    dashboard_warning_lights: arr(dash.warning_lights).map(label).filter(Boolean).slice(0, 6),
+    dashboard_messages: arr(dash.readable_messages).map(label).filter(Boolean).slice(0, 4),
     body_wrap_present: report.body_wrap && report.body_wrap.present === true ? true : null,
     odometer_photo_vs_listing: cvs.odometer_vs_listing && cvs.odometer_vs_listing.status ? cvs.odometer_vs_listing.status : null,
   };

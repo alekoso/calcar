@@ -60,7 +60,7 @@ const REPORT = {
     decision_inputs: { mileage_context: { band: 'low', age_years: 16.3, annual_km: 8000, reference_km_year: 15000, current_km: 130000, confirmed_by_history: true, historical_points: [] }, personal_context: 'excluded' },
     price_context: { currency: 'USD', average_price: 28000, delta_percent: 36, source_name: 'AUTO.RIA', listing_price: 38000 },
     value_curve: { new_price: { value: 90000, basis: 'source_msrp', msrp: { exact: { version: 'Panamera 4' } } }, retention: { state: 'heavy_depreciation', observed_retention: 0.3, expected_retention: 0.4 }, future: { value: 20000, years: 5 }, points: [1, 2, 3] },
-    current_visual_shadow: { current_visual: { summary: 'Кузов без помітних пошкоджень.', coverage: { note: 'Днище не показане.', frames_usable: 10 }, zones: { underbody: { visibility: 'not_visible' }, front: { visibility: 'sufficient' } }, dashboard: { warning_lights: ['check engine'] } }, odometer_vs_listing: { status: 'no_visual_reading' } },
+    current_visual_shadow: { current_visual: { summary: 'Кузов без помітних пошкоджень [gallery_index=23].', coverage: { note: 'Днище не показане.', frames_usable: 10 }, zones: { underbody: { visibility: 'not_visible' }, front: { visibility: 'sufficient' } }, dashboard: { warning_lights: ['check engine'], readable_messages: [{ text: 'Stop/Start inactive', gallery_index: 6, photo_identity: 'cdn/y.webp' }] } }, odometer_vs_listing: { status: 'no_visual_reading' } },
     timings: { main_analysis: { ms: 1 } }, photos: ['https://cdn/x.jpg'],
   },
 };
@@ -87,6 +87,7 @@ const REPORT = {
   ok(ctx.accidents.events[0].severity === 'heavy' && ctx.accidents.events[0].airbags_deployed === true, 'вирішена тяжкість ДТП не доходить');
   ok(ctx.accidents.archive_photos.possible_structural_damage === true, 'архівний візуал не доходить');
   ok(ctx.current_condition.zones_not_shown.join() === 'underbody' && ctx.current_condition.dashboard_warning_lights.length === 1, 'нинішній стан за Vision не доходить');
+  ok(ctx.current_condition.dashboard_messages[0] === 'Stop/Start inactive' && !/gallery_index|photo_identity/.test(flat), 'службові посилання на кадри потрапили в контекст');
   ok(ctx.equipment.expensive_desirable.length === 1 && /retrofit/.test(ctx.equipment.notable[0]) && !flat.includes('Підлокітник'), 'комплектація: лише вагомі опції, retrofit позначений');
   ok(ctx.price_and_market.listing_price.amount === 38000 && ctx.price_and_market.marketplace_average.listing_vs_average_percent === 36, 'ціна оголошення і середня площадки не доходять');
   ok(ctx.price_and_market.price_when_new.amount_usd === 90000 && ctx.price_and_market.liquidity.level === 'low' && ctx.price_and_market.why_this_price.reasons.length === 1, 'ціна нової, ліквідність або why-price не доходять');
