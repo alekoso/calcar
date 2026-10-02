@@ -732,12 +732,10 @@ const THIN = {
   /* компонент оцінки показує лише бал і повноту: ні ризик-лейбла, ні штрафів (scoreuitest.js) */
   if (/Low detected risk|scoreCausalRows/.test(pageSrc)) errs.push('result-check: ризик-лейбл чи штрафи повернулись у компонент оцінки');
   if (!/No auction records found in the checked sources/.test(pageSrc)) errs.push('result-check: нейтральне повідомлення checked_absent нема');
-  /* AI-висновок: старий стиль головного виклику; числові підоцінки в текст
-     не вплітаються; в кінці ОДНА фраза з точним бекенд-балом */
+  /* старий висновок головного виклику виведений з ужитку разом із фразою
+     з балом у його reasoning; числові підоцінки в текст не вплітаються */
   if (/buildScoreDigest|nPrompt/.test(checkSrc)) errs.push('check.js: залишки narrative-переписування');
-  if (!/Оцінка CalCar цього автомобіля становить/.test(checkSrc)) errs.push('check.js: нема фінальної фрази з балом (ua)');
-  if (!/оценка CalCar этого автомобиля составляет/.test(checkSrc)) errs.push('check.js: нема фінальної фрази з балом (ru)');
-  if (!/CalCar Score of this car is/.test(checkSrc)) errs.push('check.js: нема фінальної фрази з балом (en)');
+  if (/Оцінка CalCar цього автомобіля становить|CalCar Score of this car is/.test(checkSrc)) errs.push('check.js: фраза з балом старого висновку повернулась');
   if (!/vehicle: vehicleV3/.test(checkSrc)) errs.push('check.js: vehicle-вхід осі Пробіг не передається');
   /* старі псевдо-підоцінки v3 на екрані не показуються; переклади міток
      лишаються у словниках (ними користуються інші блоки звіту) */

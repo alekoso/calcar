@@ -133,15 +133,6 @@ export function buildMainSchema({ hvProvided = false } = {}) {
       })),
     }),
     checklist: ARR(S('string')),
-    purchase_decision: OBJ({
-      recommendation: E(['buy', 'go_see', 'negotiate', 'skip']),
-      headline: S('string'),
-      summary_short: S('string'),
-      reasoning: S('string'),
-      questions_for_seller: ARR(S('string')),
-      value_context: NS('null без price_context'),
-      missing_but_important: ARR(S('string')),
-    }),
     seller_disclosures: ARR(OBJ({
       category: E(SELLER_CATEGORIES),
       unit: E(SELLER_UNITS),

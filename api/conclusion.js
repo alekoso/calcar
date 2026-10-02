@@ -21,7 +21,7 @@ export const CONCLUSION_TIMEOUT_MS = 150000;
 export const CONCLUSION_MIN_BUDGET_MS = 45000;
 
 /* вимикач етапу: env FINAL_CONCLUSION=on | off перекриває типове значення.
-   Вимкнений етап звіт не ламає: сторінка показує попередній формат висновку */
+   Вимкнений етап звіт не ламає: звіт лишається без блоку висновку */
 export const CONCLUSION_DEFAULT_ON = true;
 export function conclusionEnabled(env) {
   const e = env || (typeof process !== 'undefined' ? process.env : {}) || {};
@@ -33,15 +33,16 @@ export function conclusionEnabled(env) {
 /* модель і reasoning лише цього етапу; основний Check вони не зачіпають.
    A/B 2026-10-02 на 12 збережених звітах (gpt-5.6-terra medium, gpt-6-sol
    high, gpt-6.1-sol high і medium): gpt-6.1-sol найкраще звʼязує факти і
-   знає особливості версій; high p50 53 с, medium 23 с при близькій якості.
-   Перемикання без коду: env CONCLUSION_MODEL і CONCLUSION_EFFORT */
+   знає особливості версій; high p50 53 с, medium 23 с при близькій якості,
+   тому типово medium (рішення власника). Перемикання без коду: env
+   CONCLUSION_MODEL і CONCLUSION_EFFORT */
 export const CONCLUSION_MODEL_DEFAULT = 'gpt-6.1-sol';
 export function conclusionModel(env) {
   const e = env || (typeof process !== 'undefined' ? process.env : {}) || {};
   return {
     model: e.CONCLUSION_MODEL || CONCLUSION_MODEL_DEFAULT,
     fallback_model: e.OPENAI_MODEL || 'gpt-5.6-terra',
-    effort: e.CONCLUSION_EFFORT || 'high',
+    effort: e.CONCLUSION_EFFORT || 'medium',
   };
 }
 
@@ -418,8 +419,7 @@ function usageOf(data, body) {
 const logLine = o => console.log('[final-conclusion]', JSON.stringify(o));
 
 /* Повертає { status, conclusion, ms, ai, attempts, reason }. Ніколи не кидає:
-   збій фінального висновку звіт не ламає, сторінка показує попередній
-   формат висновку. callModel(body, timeoutMs, signal) це той самий транспорт,
+   збій фінального висновку звіт не ламає, звіт лишається без висновку. callModel(body, timeoutMs, signal) це той самий транспорт,
    що й в інших викликах Check */
 export async function runFinalConclusion({ report, langDirective = '', callModel, timeoutMs = CONCLUSION_TIMEOUT_MS, model = null, effort = null, env = null, signal = null } = {}) {
   const t0 = Date.now();

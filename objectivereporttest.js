@@ -1,5 +1,5 @@
 /* ЗВІТ = ПРО АВТО, ЧАТ = ПРО АВТО ДЛЯ ЦІЄЇ ЛЮДИНИ.
-   Висновок звіту (purchase_decision) будується без особистого контексту:
+   Висновок звіту (Final Conclusion) і головний аналіз будуються без особистого контексту:
    бюджет, вподобання, памʼять помічника, інші авто людини не доходять до
    моделі висновку взагалі (межа даних, а не фільтр слів після генерації).
    Публічний звіт не успадковує вподобань автора. Чат CalCar AI і далі
@@ -16,7 +16,7 @@ fs.writeFileSync(path.join(dir, 'package.json'), '{"type":"module"}');
 for (const x of fs.readdirSync('api').filter(f => f.endsWith('.js'))) {
   let s = fs.readFileSync('api/' + x, 'utf8');
   /* збирачі промпту внутрішні: у тимчасовій копії відкриваємо їх для перевірки */
-  if (x === 'check.js') s += '\nexport { PROMPT as __PROMPT, renderDecisionContext as __renderDecisionContext };\n';
+  if (x === 'check.js') s += '\nexport { PROMPT as __PROMPT };\n';
   fs.writeFileSync(path.join(dir, 'api', x), s);
 }
 const src = fs.readFileSync('api/check.js', 'utf8');
@@ -45,7 +45,7 @@ const PERSONAL_MARKERS = ['30 000', '50 000', '30000', '50000', 'Бюджет д
   /* ---------- 1. модель висновку не отримує особистого контексту ---------- */
   /* обробник читає з тіла запиту лише службові поля; особисті не читаються зовсім */
   const bodyFields = new Set([...src.matchAll(/req\.body(?:\?\.|\s*&&\s*req\.body\.|\.)([A-Za-z_]+)/g)].map(m => m[1]));
-  const ALLOWED = new Set(['url', 'lang', 'sync', 'bench_effort', 'cv_mode', 'cv_odo_verify', 'decision_style', 'photo_pick']);
+  const ALLOWED = new Set(['url', 'lang', 'sync', 'bench_effort', 'cv_mode', 'cv_odo_verify', 'photo_pick']);
   for (const f of bodyFields) ok(ALLOWED.has(f), 'check.js читає з тіла запиту неслужбове поле: ' + f);
   ok(!/const\s*\{[^}]*\}\s*=\s*req\.body/.test(src) && !/\.\.\.req\.body/.test(src), 'check.js розпаковує тіло запиту цілком');
   ok(!/buyer_context|recent_reports|sanitizeBuyerContext|selectRecentReports/.test(src.replace(/buyer_context_used/g, '')), 'check.js досі знає про особистий контекст');
@@ -66,15 +66,18 @@ const PERSONAL_MARKERS = ['30 000', '50 000', '30000', '50000', 'Бюджет д
     price_context: { position: 'below_average', delta_percent: -9, avg_price: 36800, sample_size: 42, position_classifier: 'calcar_threshold' },
   };
   const langDir = 'Мова відповіді: русский.';
-  const pA = C.__PROMPT(listing, null, null, langDir, 'a', null, dcA, null);
-  const pB = C.__PROMPT(listing, null, null, langDir, 'a', null, dcB, null);
+  const pA = C.__PROMPT(listing, null, null, langDir, null, null);
   const flat = p => JSON.stringify(p);
-  ok(flat(pA) === flat(pB), 'користувачі з бюджетом 30k і 50k отримали РІЗНИЙ вхід моделі висновку');
-  /* і той самий вхід, що й для анонімного гостя без жодного профілю */
-  const pGuest = C.__PROMPT(listing, null, null, langDir, 'a', null, C.objectiveDecisionContext({ mileage }), null);
-  ok(flat(pA) === flat(pGuest), 'вхід моделі висновку для людини з профілем відрізняється від гостьового');
-  for (const mk of PERSONAL_MARKERS) ok(!flat(pA).includes(mk), 'у вхід моделі висновку потрапило особисте: ' + mk);
-  ok(/MILEAGE_CONTEXT/.test(flat(pA)), 'обʼєктивний контекст пробігу зник із входу');
+  for (const mk of PERSONAL_MARKERS) ok(!flat(pA).includes(mk), 'у вхід головного аналізу потрапило особисте: ' + mk);
+  /* модель висновку тепер Final Conclusion: її вхід збирається з готового
+     звіту, у якому від людини лише позначка, що особисте виключене */
+  const FC = await import('file://' + path.join(dir, 'api', 'conclusion.js'));
+  const repFor = dc => ({ vehicle: { title: 'BMW X5 2019' }, _meta: { price: 33500, currency: 'USD', price_context: { ...listing.price_context, average_price: 36800 }, decision_inputs: { mileage_context: dc.mileage, personal_context: 'excluded' } } });
+  const cA = flat(FC.buildConclusionContext(repFor(dcA)));
+  ok(cA === flat(FC.buildConclusionContext(repFor(dcB))), 'користувачі з бюджетом 30k і 50k отримали РІЗНИЙ вхід моделі висновку');
+  ok(cA === flat(FC.buildConclusionContext(repFor(C.objectiveDecisionContext({ mileage })))), 'вхід моделі висновку для людини з профілем відрізняється від гостьового');
+  for (const mk of PERSONAL_MARKERS) ok(!cA.includes(mk), 'у вхід моделі висновку потрапило особисте: ' + mk);
+  ok(/"usage_band"/.test(cA), 'обʼєктивний контекст пробігу зник із входу висновку');
 
   /* ---------- 3. обʼєктивний ринковий контекст ціни лишається ---------- */
   ok(flat(pA).includes('below_average') && flat(pA).includes('delta_percent'), 'ринковий price_context зник із входу висновку');
@@ -123,17 +126,17 @@ const PERSONAL_MARKERS = ['30 000', '50 000', '30000', '50000', 'Бюджет д
 
   /* ---------- 7. генерація звіту працює: промпт зібраний, контракт на місці ---------- */
   ok(pA.system && pA.system.length > 5000 && pA.user, 'промпт основного виклику не зібрався');
-  ok(/purchase_decision/.test(pA.system), 'промпт без purchase_decision');
+  ok(!/purchase_decision/.test(pA.system), 'головний виклик досі просить старий висновок');
 
   /* ---------- нинішній стан: обʼєктивний факт про авто доходить до висновку ---------- */
   {
     const cond = { exterior: { state: 'below_good', cosmetic_defects: 4, areas: ['front', 'rear', 'left_side'], other_defects: ['panel_misalignment@right_front'] }, interior: { state: 'below_good', seat_rows_affected: ['front', 'rear'], severe_damage: false }, glass: { windshield: 'chip' } };
     const dc = C.objectiveDecisionContext({ mileage, condition: cond, ...USER_30K });
     ok(dc && Object.keys(dc).sort().join() === 'condition,mileage', 'обʼєктивний контекст без стану авто або з особистим: ' + JSON.stringify(Object.keys(dc || {})));
-    const block = C.__renderDecisionContext(dc);
-    ok(/CURRENT_CONDITION/.test(block) && block.includes('below_good') && block.includes('windshield'), 'стан авто не доходить до основного аналізу');
-    ok(/decisionContext = objectiveDecisionContext\(\{ mileage: decisionContext && decisionContext\.mileage, condition \}\)/.test(src) && /currentConditionSummary\(compactCurrentVisual\(cvFeed\.current_visual, \{ includeMinor: true \}\)\)/.test(src), 'зведення стану не підключене перед основним викликом');
-    ok(/НИНІШНІЙ СТАН ЯК ФАКТОР: якщо в контексті є CURRENT_CONDITION зі state below_good/.test(src), 'нема правила: поганий стан не можна описувати як добрий');
+    const block = JSON.stringify(dc);
+    /* нинішній стан доходить до Final Conclusion з канонічного Vision звіту */
+    const fcSrc = fs.readFileSync('api/conclusion.js', 'utf8');
+    ok(/current_condition: currentConditionBlock\(report, meta\)/.test(fcSrc) && /Нинішній стан\. Що видно зараз на фото/.test(fcSrc), 'нинішній стан не доходить до висновку');
     for (const mk of PERSONAL_MARKERS) ok(!block.includes(mk), 'у контекст зі станом потрапило особисте: ' + mk);
   }
 

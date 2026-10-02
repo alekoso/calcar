@@ -86,7 +86,8 @@ if (/_meta\.timings|\.timings\b/.test(ui)) errs.push('сторінка звіт�
     /* жодних даних авто у префіксі: лише правила і статичні варіанти */
     const dyn = (rules.match(/\$\{[^}]*\}/g) || []).filter(x => /\bl\.|nhtsa|langDirective|decisionContext|auction\.text|photos_sent\b(?!\s*\?)/.test(x));
     if (dyn.length) errs.push('у статичному префіксі динамічні дані: ' + dyn.join(' | ').slice(0, 200));
-    if (!/\$\{DECISION_RULES\}\$\{decisionStyle === 'a' \? DECISION_PRINCIPLES : ''\}/.test(rules)) errs.push('правила рішення не в префіксі');
+    if (!/\$\{REPORT_TEXT_RULES\}\n/.test(rules)) errs.push('загальні правила текстів не в префіксі');
+    if (/DECISION_RULES|DECISION_PRINCIPLES|decisionStyle|DECISION_CONTEXT/.test(src)) errs.push('залишки старого висновку в промпті');
     if (/renderDecisionContext\(/.test(rules)) errs.push('контекст рішення (дані) потрапив у префікс');
     if (!/mainResponseFormat\(\{ hvProvided: !!\(auction && auction\.hv_provided\) \}\)/.test(src)) errs.push('структурна схема не знає про канонічний hv (historical_visual: null)');
   }
@@ -100,7 +101,7 @@ if (/_meta\.timings|\.timings\b/.test(ui)) errs.push('сторінка звіт�
     if ((md.match(/l\.text/g) || []).length !== 1) errs.push('текст сторінки передається не один раз');
     if ((md.match(/l\.price_context/g) || []).length !== 1) errs.push('price_context передається не один раз');
     if (/seller_text/.test(md)) errs.push('опис продавця дублюється поза текстом сторінки');
-    for (const blk of ['VEHICLE (', 'LISTING, ФАКТИ', 'LISTING, ТЕКСТ', 'VEHICLE_HISTORY', 'HISTORICAL_VISUAL_EVIDENCE', 'DECISION_CONTEXT']) if (!md.includes(blk)) errs.push('нема блоку даних ' + blk);
+    for (const blk of ['VEHICLE (', 'LISTING, ФАКТИ', 'LISTING, ТЕКСТ', 'VEHICLE_HISTORY', 'HISTORICAL_VISUAL_EVIDENCE']) if (!md.includes(blk)) errs.push('нема блоку даних ' + blk);
     if (!/compactHistoricalVisual\(auction\.hv\)/.test(md)) errs.push('історичний візуал іде в основний виклик не компактно');
   }
   /* повідомлення: system = правила, user = дані + кадри; кадри після тексту */

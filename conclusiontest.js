@@ -126,16 +126,16 @@ const REPORT = {
   const calls = [];
   const r1 = await runFinalConclusion({ report: REPORT, langDirective: 'L.', env: { FINAL_CONCLUSION: 'on', CONCLUSION_MODEL: 'strong-1', OPENAI_MODEL: 'base-1' }, callModel: async (body) => { calls.push(body); return good; } });
   ok(r1.status === 'ok' && r1.conclusion.body === 'Абзац один.\n\nАбзац два.' && r1.ai.reasoning_tokens === 30, 'успішний виклик не дає висновку');
-  ok(calls.length === 1 && calls[0].model === 'strong-1' && calls[0].reasoning_effort === 'high' && calls[0].messages[0].content === CONCLUSION_RULES, 'виклик не на сильній моделі з high reasoning');
+  ok(calls.length === 1 && calls[0].model === 'strong-1' && calls[0].reasoning_effort === 'medium' && calls[0].messages[0].content === CONCLUSION_RULES, 'виклик не на сильній моделі з medium reasoning');
   ok(!JSON.stringify(calls[0]).includes(OLD_HEADLINE) && !JSON.stringify(calls[0]).includes(OLD_SUMMARY), 'старий висновок потрапив у запит до моделі');
   ok(!calls[0].messages.some(m => Array.isArray(m.content)), 'у фінальний виклик пішли зображення');
 
   const seq = [];
   const r2 = await runFinalConclusion({ report: REPORT, env: { FINAL_CONCLUSION: 'on', CONCLUSION_MODEL: 'strong-1', OPENAI_MODEL: 'base-1' }, callModel: async (body) => { seq.push([body.model, body.reasoning_effort || null]); return body.model === 'strong-1' ? { error: { message: 'The model strong-1 does not exist' } } : good; } });
-  ok(r2.status === 'ok' && JSON.stringify(seq) === '[["strong-1","high"],["base-1","high"]]', 'нема fallback на модель основного Check: ' + JSON.stringify(seq));
+  ok(r2.status === 'ok' && JSON.stringify(seq) === '[["strong-1","medium"],["base-1","medium"]]', 'нема fallback на модель основного Check: ' + JSON.stringify(seq));
   const seq3 = [];
   const r3 = await runFinalConclusion({ report: REPORT, env: { FINAL_CONCLUSION: 'on', OPENAI_MODEL: 'base-1' }, callModel: async (body) => { seq3.push(body.reasoning_effort || null); return body.reasoning_effort ? { error: { message: 'Unsupported parameter: reasoning_effort' } } : good; } });
-  ok(r3.status === 'ok' && JSON.stringify(seq3) === '["high",null]', 'нема повтору без reasoning_effort: ' + JSON.stringify(seq3));
+  ok(r3.status === 'ok' && JSON.stringify(seq3) === '["medium",null]', 'нема повтору без reasoning_effort: ' + JSON.stringify(seq3));
   const r4 = await runFinalConclusion({ report: REPORT, env: { FINAL_CONCLUSION: 'on', OPENAI_MODEL: 'base-1' }, callModel: async () => { throw new Error('network down'); } });
   ok(r4.status === 'error' && r4.conclusion === null && r4.reason === 'network down', 'збій транспорту кидає або губить причину');
   const r5 = await runFinalConclusion({ report: REPORT, env: { FINAL_CONCLUSION: 'on', OPENAI_MODEL: 'base-1' }, callModel: async () => ({ choices: [{ message: { content: 'not json' } }] }) });
@@ -144,8 +144,8 @@ const REPORT = {
   const r6 = await runFinalConclusion({ report: REPORT, env: { FINAL_CONCLUSION: 'off' }, callModel: async () => { called = true; return good; } });
   ok(r6.status === 'skipped' && r6.reason === 'disabled' && !called, 'вимикач FINAL_CONCLUSION=off не працює');
   const cm = conclusionModel({ OPENAI_MODEL: 'base-1' });
-  ok(cm.model === 'gpt-6.1-sol' && cm.effort === 'high' && cm.fallback_model === 'base-1', 'типові model/effort етапу не ті');
-  ok(conclusionModel({ CONCLUSION_MODEL: 'm', CONCLUSION_EFFORT: 'medium' }).model === 'm' && conclusionModel({ CONCLUSION_EFFORT: 'medium' }).effort === 'medium', 'env не перемикає модель або reasoning етапу');
+  ok(cm.model === 'gpt-6.1-sol' && cm.effort === 'medium' && cm.fallback_model === 'base-1', 'типові model/effort етапу не ті');
+  ok(conclusionModel({ CONCLUSION_MODEL: 'm', CONCLUSION_EFFORT: 'high' }).model === 'm' && conclusionModel({ CONCLUSION_EFFORT: 'high' }).effort === 'high', 'env не перемикає модель або reasoning етапу');
   ok(fcMod.conclusionEnabled({}) === true && fcMod.conclusionEnabled({ FINAL_CONCLUSION: 'off' }) === false, 'етап не ввімкнений типово або не вимикається env');
   ok(Date.parse(fs.readFileSync('api/conclusion-bench.js', 'utf8').match(/OPEN_UNTIL = '([^']+)'/)[1]) < Date.now(), 'benchmark-ендпоінт лишився відкритим без ключа');
 
@@ -159,7 +159,7 @@ const REPORT = {
   const iFc = src.indexOf('runFinalConclusion({ report: parsed');
   const iRet = src.indexOf('return res.status(200).json(parsed);');
   ok(iFc > 0 && [iConf, iScore, iValue, iMv, iMeta].every(i => i > 0 && i < iFc) && iFc < iRet, 'Final Conclusion стартує не після Score, Confidence, ринкової вартості і _meta');
-  ok(/const attached = attachFinalConclusion\(parsed, fc, lang\);/.test(src) && /delete parsed\.final_conclusion;/.test(src), 'результат етапу не додається у звіт або збій кроку не ізольований');
+  ok(/const attached = attachFinalConclusion\(parsed, fc, lang\);/.test(src) && (src.match(/parsed\.final_conclusion = null;/g) || []).length === 2 && /parsed\._meta\.final_conclusion = \{ status: fc\.status \|\| 'error', reason: fc\.reason \|\| null/.test(src), 'результат етапу не додається у звіт або збій кроку не ізольований');
   ok(/mark\('final_conclusion'/.test(src) && /no_time_budget/.test(src), 'нема таймінгу етапу або захисту бюджету часу');
   ok(!/purchase_decision/.test(fs.readFileSync('api/conclusion.js', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')), 'conclusion.js читає purchase_decision');
   const chk = await import('file://' + path.join(dir, 'api', 'check.js'));
@@ -181,8 +181,10 @@ const REPORT = {
   ok(pub.final_conclusion && pub.final_conclusion.body === 'B' && !pub._meta.timings && !pub._meta.final_conclusion, 'публічний звіт без final_conclusion або з діагностикою етапу');
   const page = fs.readFileSync('result-check.html', 'utf8');
   ok(/const fc = D\.final_conclusion;/.test(page) && /clean\(fc\.body\)\.split\(\/\\n\\s\*\\n\/\)/.test(page), 'сторінка не рендерить final_conclusion абзацами');
-  ok(/\} else if \(pd && pd\.headline\) \{/.test(page), 'старий формат висновку не лишився fallback');
-  ok(/final_conclusion: d\.final_conclusion \|\| null, purchase_decision: d\.final_conclusion \? null :/.test(page), 'чат отримує не той висновок, який бачить людина');
+  /* новий звіт без висновку не воскрешає старий: purchase_decision лише у старих збережених звітах */
+  ok(/\} else if \(!fcGen && pd && pd\.headline\) \{/.test(page) && /if \(!fcGen && !\(pd && pd\.headline\)\) \$\('verdictCard'\)\.style\.display = ''/.test(page), 'звіт нового покоління без висновку показує старий висновок');
+  ok(!/purchase_decision/.test(src.replace(/delete parsed\.purchase_decision;/, '').replace(/\/\*[\s\S]*?\*\//g, '')), 'check.js досі генерує чи обробляє purchase_decision');
+  ok(/final_conclusion: d\.final_conclusion \|\| null, purchase_decision: Object\.prototype\.hasOwnProperty\.call\(d, 'final_conclusion'\) \? null :/.test(page), 'чат отримує не той висновок, який бачить людина');
   ok(/window\.calcarConclusionFull === true \|\|/.test(page), 'відгук не показується під повним висновком');
 
   /* ---------- benchmark-ендпоінт ---------- */

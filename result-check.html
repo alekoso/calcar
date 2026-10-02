@@ -2251,6 +2251,11 @@ function boot2(D){
   const vd = D.verdict;
   const pd = D.purchase_decision;
   const fc = D.final_conclusion;
+  /* звіт нового покоління завжди має ключ final_conclusion (обʼєкт або null
+     при збої етапу). Для нього старий висновок не показується ніколи: при
+     null блок "Висновок CalCar" просто прихований. Старі збережені звіти без
+     цього ключа показують свій збережений purchase_decision чи verdict.summary */
+  const fcGen = !!D && Object.prototype.hasOwnProperty.call(D, 'final_conclusion');
   if (fc && typeof fc.headline === 'string' && fc.headline.trim() && typeof fc.body === 'string' && fc.body.trim()) {
     /* Final Conclusion: заголовок і весь текст абзацами, без згортання і
        без обрізання. Абзаци розділені порожнім рядком */
@@ -2264,7 +2269,7 @@ function boot2(D){
     /* відгук живе в кінці повного тексту висновку: тут він увесь на екрані */
     window.calcarConclusionFull = true;
     if (window.calcarFeedbackSync) window.calcarFeedbackSync(true);
-  } else if (pd && pd.headline) {
+  } else if (!fcGen && pd && pd.headline) {
     /* нове рішення шарами; старий verdict.summary лишається фолбеком нижче */
     $('verdictCard').style.display = '';
     /* рішення несе сам заголовок, окремої плашки немає */
@@ -2315,7 +2320,7 @@ function boot2(D){
     }
   }
   if (vd && vd.summary) {
-    if (!(pd && pd.headline) && !(fc && fc.headline && fc.body)) $('verdictCard').style.display = '';
+    if (!fcGen && !(pd && pd.headline)) $('verdictCard').style.display = '';
     $('vText').textContent = clean(vd.summary);
     /* Оцінка CalCar і повнота перевірки: один компонент зі ЗБЕРЕЖЕНИХ даних
        звіту (breakdown і знімок confidence); сторінка нічого не перераховує */
@@ -3336,9 +3341,9 @@ async function loadOtherReports(){
 function chatCtx(){
   const d = DATA || {};
   return {
-    /* висновок, який людина бачить у звіті: новий Final Conclusion, а для
-       старих звітів попередній purchase_decision */
-    vehicle: d.vehicle, verdict: d.verdict, final_conclusion: d.final_conclusion || null, purchase_decision: d.final_conclusion ? null : (d.purchase_decision || null), risks: d.risks,
+    /* висновок, який людина бачить у звіті: Final Conclusion; збережений
+       purchase_decision лише у старих звітах без ключа final_conclusion */
+    vehicle: d.vehicle, verdict: d.verdict, final_conclusion: d.final_conclusion || null, purchase_decision: Object.prototype.hasOwnProperty.call(d, 'final_conclusion') ? null : (d.purchase_decision || null), risks: d.risks,
     /* структурована комплектація з provenance: первинне джерело правди
        для помічника; легасі-поле лише для старих звітів */
     equipment: Array.isArray(d.equipment_v2) && d.equipment_v2.length

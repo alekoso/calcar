@@ -19,14 +19,15 @@ const ui = fs.readFileSync('result-check.html', 'utf8');
   const SCH = await import('./api/check-schema.js');
 
   /* ---------- 1. мертві поля прибрані з контракту, інструкцій і консюмерів ---------- */
-  const rulesArea = src.slice(src.indexOf('const DECISION_RULES = `'), src.indexOf('export function compactHistoricalVisual'));
+  const rulesArea = src.slice(src.indexOf('const REPORT_TEXT_RULES = `'), src.indexOf('export function compactHistoricalVisual'));
   for (const dead of ['why_consider', 'main_concerns', 'must_check', 'info_notes', 'verdict.grade', 'verdict.score']) {
     if (rulesArea.includes(dead)) errs.push('у правилах промпту лишилось мертве/заборонене поле: ' + dead);
   }
   const schemaStr = JSON.stringify(SCH.buildMainSchema({ hvProvided: false }));
   for (const dead of ['why_consider', 'main_concerns', 'must_check', 'info_notes', '"grade"', '"score"']) if (schemaStr.includes(dead)) errs.push('у структурній схемі лишилось поле ' + dead);
-  const san = src.slice(src.indexOf('export function sanitizePurchaseDecision'), src.indexOf('export function buildMileageContext'));
-  for (const dead of ['why_consider', 'main_concerns', 'must_check']) if (san.includes(dead)) errs.push('sanitizePurchaseDecision досі знає ' + dead);
+  /* старий висновок головного виклику виведений з ужитку повністю */
+  if (/sanitizePurchaseDecision|applyDecisionLanguage|DECISION_RULES|DECISION_PRINCIPLES|decisionStyle|score_conflict/.test(src)) errs.push('check.js досі генерує чи обробляє старий purchase_decision');
+  if (/purchase_decision/.test(schemaStr)) errs.push('у структурній схемі лишився purchase_decision');
   if (/'why_consider', 'main_concerns', 'must_check'/.test(src)) errs.push('applyDecisionLanguage досі обробляє мертві списки');
   if (/why_consider/.test(chatSrc)) errs.push('api/chat.js посилається на why_consider');
   if (/why_consider|main_concerns|must_check/.test(ui)) errs.push('UI посилається на прибрані поля');
@@ -38,7 +39,6 @@ const ui = fs.readFileSync('result-check.html', 'utf8');
   if (!/parsed\.verdict\.score = \(parsed\.score_breakdown && parsed\.score_breakdown\.score_available !== false && typeof parsed\.score_breakdown\.final === 'number'\)\s*\? parsed\.score_breakdown\.final : null;/.test(src)) errs.push('verdict.score не ставиться кодом');
   const scoreSet = src.indexOf('parsed.verdict.score = (parsed.score_breakdown');
   if (scoreSet < src.indexOf('parsed.score_breakdown = breakdown;')) errs.push('verdict.score ставиться до розрахунку Score v3');
-  if (scoreSet > src.indexOf('const cleanDecision = sanitizePurchaseDecision')) errs.push('verdict.score ставиться після санітайзера рішення (конфлікт бал/рішення читав би старе значення)');
   /* консюмери далі отримують verdict.score: картки, публічний звіт, чат */
   if (!/report\.verdict && typeof report\.verdict\.score === 'number' \? report\.verdict\.score/.test(share)) errs.push('reportSummary без фолбека verdict.score');
   if (!/'vehicle', 'verdict', 'purchase_decision'/.test(share)) errs.push('publicReport не віддає verdict');
@@ -60,7 +60,7 @@ const ui = fs.readFileSync('result-check.html', 'utf8');
   };
   const sc = SCH.buildMainSchema({ hvProvided: false });
   strictOk(sc, 'root');
-  for (const k of ['vehicle', 'auction', 'body_wrap', 'historical_visual', 'risks', 'equipment_v2', 'discrepancies', 'history', 'history_note', 'photo_findings', 'data_notes', 'model_notes', 'checklist', 'purchase_decision', 'score_facts', 'verdict']) if (!sc.properties[k]) errs.push('у схемі нема ' + k);
+  for (const k of ['vehicle', 'auction', 'body_wrap', 'historical_visual', 'risks', 'equipment_v2', 'discrepancies', 'history', 'history_note', 'photo_findings', 'data_notes', 'model_notes', 'checklist', 'score_facts', 'verdict']) if (!sc.properties[k]) errs.push('у схемі нема ' + k);
   if (SCH.buildMainSchema({ hvProvided: true }).properties.historical_visual.type !== 'null') errs.push('при готовому hv схема не вимагає historical_visual: null');
   if (!/mainResponseFormat\(\{ hvProvided: !!\(auction && auction\.hv_provided\) \}\)/.test(src)) errs.push('основний виклик не використовує json_schema');
   if (!/json_schema\|response_format\|schema\|strict\|structured/.test(src) || !/fallback_json_object/.test(src)) errs.push('нема fallback на json_object при відмові endpoint');
@@ -88,7 +88,8 @@ const ui = fs.readFileSync('result-check.html', 'utf8');
     if (descs.some(d => d.includes(dup))) errs.push('description дублює правило промпту: ' + dup);
   }
   const prose = SCH.schemaProse({ hvProvided: true });
-  for (const k of ['"purchase_decision"', '"score_facts"', '"verdict"', '"checklist"']) if (!prose.includes(k)) errs.push('prose-схема без ' + k);
+  for (const k of ['"score_facts"', '"verdict"', '"checklist"']) if (!prose.includes(k)) errs.push('prose-схема без ' + k);
+  if (prose.includes('"purchase_decision"')) errs.push('prose-схема досі просить purchase_decision');
   if (/why_consider|must_check|info_notes/.test(prose)) errs.push('prose-схема з мертвими полями');
   /* у промпті більше нема механічного JSON-опису схеми (лише у fallback) */
   if (/"vehicle": \{"title":"Марка Модель Рік"/.test(src)) errs.push('механічний JSON-опис схеми лишився в промпті');
@@ -103,20 +104,15 @@ const ui = fs.readFileSync('result-check.html', 'utf8');
   if (ready.includes('HISTORICAL_VISUAL_RULES')) errs.push('повні правила hv дублюються при готовому розборі');
   if (!cold.includes('${HISTORICAL_VISUAL_RULES}') || !cold.includes('визнач РЕАЛЬНИЙ обсяг')) errs.push('холодний варіант (без hv) втратив повні правила');
 
-  /* ---------- 5. принципи рішення замість старого few-shot ---------- */
-  if (/DECISION_FEWSHOT|ПРИКЛАДИ СТИЛЮ МІРКУВАННЯ|Tesla Model Y 2022|Mercedes-Benz S-Class 2008/.test(src)) errs.push('старий few-shot лишився');
-  const pr = src.slice(src.indexOf('const DECISION_PRINCIPLES = `'), src.indexOf('`;', src.indexOf('const DECISION_PRINCIPLES = `')));
-  const n = (pr.match(/\n\d\. /g) || []).length;
-  if (n < 5 || n > 7) errs.push('принципів рішення ' + n + ', очікували 5-7');
-  if (pr.length > 2500) errs.push('принципи рішення задовгі: ' + pr.length);
-  for (const need of ['structured price_context', 'deal-breaker', 'Не вигадуй фактів', 'Оцінка CalCar', '1-3 умови']) if (!pr.includes(need)) errs.push('принципи без "' + need + '"');
+  /* ---------- 5. старий few-shot і принципи рішення прибрані ---------- */
+  if (/DECISION_FEWSHOT|ПРИКЛАДИ СТИЛЮ МІРКУВАННЯ|Tesla Model Y 2022|Mercedes-Benz S-Class 2008|ПРИНЦИПИ РІШЕННЯ/.test(src)) errs.push('старий few-shot чи принципи рішення лишились');
 
   /* ---------- 6. спільний статичний префікс між варіантами ---------- */
   const rulesIdx = src.indexOf('const MAIN_RULES = (');
   const rulesTpl = src.slice(rulesIdx, src.indexOf('`;', rulesIdx));
   const variantAt = rulesTpl.indexOf('${MAIN_HISTORICAL_RULES(auction)}');
   const metaAt = rulesTpl.indexOf("${auctionMeta && auctionMeta.status === 'found' ? METADATA_RULES : ''}");
-  const decAt = rulesTpl.indexOf('${DECISION_RULES}');
+  const decAt = rulesTpl.indexOf('${REPORT_TEXT_RULES}');
   const schemaAt = rulesTpl.indexOf('${proseSchema');
   if (variantAt < 0 || metaAt < 0) errs.push('варіантні блоки не знайдені');
   else if (variantAt < decAt || variantAt < schemaAt || metaAt < variantAt) errs.push('варіантні блоки стоять раніше за спільні правила: спільний префікс зруйнований');
@@ -141,7 +137,6 @@ const ui = fs.readFileSync('result-check.html', 'utf8');
     ['SRS direct evidence', 'Не підвищуй відкрите питання до підтвердженого ризику припущенням'],
     ['canonical HV authoritative', 'джерелом правди про історичне пошкодження'],
     ['objective conclusion', 'висновок оцінює ЛИШЕ сам автомобіль і пропозицію, а не те, чи підходить він конкретній людині'],
-    ['objective Score vs decision', 'Обʼєктивний стан авто (Оцінка CalCar) і привабливість самої пропозиції це різні речі'],
     ['no unsupported accusation', 'Verdict "contradicted" стався ЛИШЕ коли твердження у природному прочитанні прямо суперечить знайденому факту'],
     ['checks follow evidence', 'Кожен пункт мусить випливати з КОНКРЕТНОЇ знахідки цього звіту'],
     ['no generic service boilerplate', 'Загальні ритуали ("діагностика на СТО"'],
@@ -149,12 +144,10 @@ const ui = fs.readFileSync('result-check.html', 'utf8');
     ['equipment name not wider than evidence', 'НАЗВА НЕ ШИРША ЗА ДОКАЗ'],
     ['possible structural in risks+checklist', 'і в checklist з формулюванням "пошкодження в потенційно структурній зоні'],
   ];
-  const RB = R + src.slice(src.indexOf('function renderDecisionContext'), src.indexOf('const SIDE_RULE'));
-  for (const [name, phrase] of INV) if (!RB.includes(phrase)) errs.push('інваріант зник: ' + name);
+  for (const [name, phrase] of INV) if (!R.includes(phrase)) errs.push('інваріант зник: ' + name);
 
-  /* ---------- 8. функціональні: санітайзер рішення без мертвих полів, checklist fallback ---------- */
-  const pd = C.sanitizePurchaseDecision({ recommendation: 'go_see', headline: 'h', summary_short: 's', reasoning: 'r', questions_for_seller: ['q'], value_context: null, missing_but_important: [], why_consider: ['x'], must_check: ['y'] }, 7);
-  if (!pd || 'why_consider' in pd || 'must_check' in pd || pd.questions_for_seller[0] !== 'q') errs.push('санітайзер рішення пропускає мертві поля або губить живі');
+  /* ---------- 8. відповідь моделі зі старим полем: поле не зберігається ---------- */
+  if (!/delete parsed\.purchase_decision;/.test(src)) errs.push('purchase_decision із fallback-відповіді не прибирається');
 
   if (errs.length) { console.log('CONTRACT TEST FAILED:'); errs.forEach(e => console.log('  - ' + e)); process.exit(1); }
   console.log('контракт: мертві поля прибрані (why_consider, main_concerns, must_check, info_notes, grade) · бал ставить код зі Score v3 · strict json_schema + fallback · hv-контракт без суперечності · принципи замість few-shot · спільний префікс · ' + INV.length + ' інваріантів на місці');

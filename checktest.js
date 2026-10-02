@@ -522,7 +522,7 @@ const REPORTS = [
     /* без першої особи */
     if (!api.includes('БЕЗ ПЕРШОЇ ОСОБИ')) errs.push('нема заборони першої особи в рішенні');
     if (apiOnly.includes('прямо "я б шукав інше авто"')) errs.push('ТОН досі диктує першу особу');
-    if (!api.includes('їхнє "я бы" не переймай')) errs.push('few-shot граматика не відсічена');
+    if (/їхнє "я бы" не переймай|DECISION_FEWSHOT/.test(api)) errs.push('залишки few-shot старого висновку');
     if (!fs.readFileSync('api/chat.js', 'utf8').includes('БЕЗ ПЕРШОЇ ОСОБИ')) errs.push('чат без правила першої особи');
     /* timeline: одна вісь для будь-якої точності дати */
     /* детермінована сітка: дата центрована у власній колонці, рейка на всю висоту рядка й інтервалу */
@@ -584,7 +584,7 @@ const REPORTS = [
     if (!api.includes('"historical_visual":')) errs.push('промпт без схеми historical_visual');
     if (!api.includes('НІКОЛИ не дорівнює "структура ціла"')) errs.push('нема семантики no_obvious_severe_signs');
     if (!api.includes('НЕ "SRS справна"')) errs.push('нема семантики no_deployment_visible');
-    if (!api.includes('purchase_decision ЗОБОВʼЯЗАНИЙ враховувати historical_visual')) errs.push('check.js: decision не бачить historical_visual');
+    if (!api.includes('verdict.summary і risks ЗОБОВʼЯЗАНІ враховувати historical_visual')) errs.push('check.js: тексти звіту не бачать historical_visual');
     const sanHv = grab(api, 'sanitizeHistoricalVisual');
     if (!sanHv) errs.push('нема sanitizeHistoricalVisual');
     else {

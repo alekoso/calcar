@@ -1,5 +1,6 @@
-/* Decision Engine: валідація purchase_decision і контракт рендера.
-   Битий висновок не валить звіт, а вмикає старий рендер verdict.summary. */
+/* Decision Engine після Final Conclusion: старий purchase_decision головним
+   викликом не генерується і не обробляється; старі збережені звіти з ним
+   і далі рендеряться. Детектор порад, привід, пробіг, обʼєктивність. */
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -13,68 +14,31 @@ for (const x of ['check.js', 'check-schema.js', 'current-visual.js', 'canonical-
   fs.writeFileSync(path.join(dir, 'api', x), fs.readFileSync('api/' + x, 'utf8'));
 }
 
-const VALID = {
-  recommendation: 'go_see',
-  headline: 'Їхати дивитись, але спершу два питання продавцю',
-  summary_short: 'Ціна нижча за ринок через ДТП у США, але удар за фото некритичний. Історія пробігу логічна. Головна невідомість: якість відновлення SRS.',
-  reasoning: 'Абзац один.\n\nАбзац два.',
-  questions_for_seller: ['Чому пробіг у поточному оголошенні менший, ніж торік?', 'Чи є документи на ремонт SRS?'],
-  value_context: 'Ціна виглядає нижчою за аналоги, і причина цьому: аукціонне минуле.',
-  missing_but_important: ['Сервісної історії нема: попросити виписку з СТО'],
-};
-
 (async () => {
   const {
-    sanitizePurchaseDecision, buildMileageContext, objectiveDecisionContext,
-    calibrateSeverityWording, humanizeDecisionJargon, applyDecisionLanguage, maxResolvedSeverity,
+    buildMileageContext, objectiveDecisionContext,
+    calibrateSeverityWording, humanizeDecisionJargon, maxResolvedSeverity,
     directiveVerdictHits, localizeDrive,
   } = await import('file://' + path.join(dir, 'api', 'check.js'));
   const quiet = fn => { const l = console.log; console.log = () => {}; try { return fn(); } finally { console.log = l; } };
 
-  /* 1. валідна структура проходить цілою */
-  let out = sanitizePurchaseDecision(VALID, 6.5);
-  if (!out || out.recommendation !== 'go_see' || out.questions_for_seller.length !== 2) errs.push('валідне рішення покалічене');
-  for (const dead of ['why_consider', 'main_concerns', 'must_check']) if (dead in out) errs.push('мертве поле ' + dead + ' повернулось у purchase_decision');
-  if (out.score_conflict) errs.push('go_see при 6.5 позначений конфліктом');
-
-  /* 2. битий чи відсутній: null, звіт живе, рендер старий */
-  for (const bad of [null, undefined, 42, 'text', [], {}, { recommendation: 'maybe' },
-    { ...VALID, headline: '' }, { ...VALID, reasoning: null }, { ...VALID, summary_short: '   ' }]) {
-    if (sanitizePurchaseDecision(bad, 6.5) !== null) errs.push('битий висновок пройшов: ' + JSON.stringify(bad).slice(0, 60));
-  }
-
-  /* 3. summary_short ріжеться по 400, списки по 8, сміття в списках відсіюється */
-  out = sanitizePurchaseDecision({ ...VALID, summary_short: 'Д'.repeat(500), questions_for_seller: [...Array(12)].map((x, i) => 'пункт ' + i).concat([42, '', null]) }, 6.5);
-  if (out.summary_short.length !== 400) errs.push('summary_short не обрізаний по 400: ' + out.summary_short.length);
-  if (out.questions_for_seller.length !== 8) errs.push('questions_for_seller не обрізаний по 8: ' + out.questions_for_seller.length);
-
-  /* 4. сумісність із балом: червоні прапорці */
-  out = quiet(() => sanitizePurchaseDecision({ ...VALID, recommendation: 'skip' }, 8.4));
-  if (!out.score_conflict) errs.push('skip при 8.4 без прапорця');
-  out = quiet(() => sanitizePurchaseDecision({ ...VALID, recommendation: 'buy' }, 4.2));
-  if (!out.score_conflict) errs.push('buy при 4.2 без прапорця');
-  out = sanitizePurchaseDecision({ ...VALID, recommendation: 'buy' }, 8.8);
-  if (out.score_conflict) errs.push('buy при 8.8 хибно позначений');
-
-  /* 5. промпт: структура, стиль, заборони, узгодженість, два варіанти */
+  /* 1-5. старий висновок виведений з ужитку: ні в промпті, ні в схемі, ні в обробці */
   const src = fs.readFileSync('api/check.js', 'utf8');
-  for (const k of ['"purchase_decision"', 'recommendation": buy | go_see | negotiate | skip',
-    'покупця-перекупника', 'без страхувальної ковдри', 'ЗВІТ ОЦІНЮЄ АВТО, А НЕ РАДИТЬ ЛЮДИНІ ДІЮ', 'пасує будь-якому авто цієї моделі, це брак',
-    'ПРИНЦИПИ РІШЕННЯ', 'decision_style', 'DECISION_STYLE',
-    '"історія чиста", коли джерела історії не підтверджені, це брак']) {
-    if (!src.includes(k)) errs.push('check.js: нема "' + k.slice(0, 40) + '"');
+  const schemaAll = fs.readFileSync('api/check-schema.js', 'utf8');
+  for (const gone of ['sanitizePurchaseDecision', 'applyDecisionLanguage', 'DECISION_RULES', 'DECISION_PRINCIPLES', 'decisionStyle', 'decision_style', 'DECISION_STYLE', 'score_conflict', 'questions_for_seller', 'missing_but_important', 'purchase_decision.value_context', 'recommendation": buy']) {
+    if (src.includes(gone)) errs.push('check.js досі знає старий висновок: ' + gone);
   }
-  if (!/decisionStyle === 'a' \? DECISION_PRINCIPLES : ''/.test(src)) errs.push('check.js: варіант B не вимикає принципи рішення');
+  if (/purchase_decision|recommendation/.test(schemaAll)) errs.push('схема відповіді досі просить старий висновок');
+  if (!/ЗВІТ ОЦІНЮЄ АВТО, А НЕ РАДИТЬ ЛЮДИНІ ДІЮ: verdict\.summary, risks та інші тексти звіту/.test(src)) errs.push('правило без порад не перенесене на verdict.summary і ризики');
   if (/DECISION_FEWSHOT|ПРИКЛАДИ СТИЛЮ МІРКУВАННЯ/.test(src)) errs.push('check.js: старий конфліктний few-shot повернувся');
 
   /* 5b. висновок звіту оцінює авто, а не радить людині дію */
   {
-    const rules = src.slice(src.indexOf('const DECISION_RULES = `'), src.indexOf('export function compactHistoricalVisual'));
+    const rules = src.slice(src.indexOf('const REPORT_TEXT_RULES = `'), src.indexOf('export function compactHistoricalVisual'));
     for (const bad of ['як жива порада', 'так, їхати дивитись', 'краще розглянути інший екземпляр', 'варто поїхати на огляд', 'цей екземпляр варто розглядати',
       'чи варто розглядати САМЕ ЦЕЙ', 'чи варто далі розглядати', 'мусять підтвердитись до купівлі', 'прямо скажи, що її варто продовжувати розглядати']) {
       if (rules.includes(bad)) errs.push('правила висновку досі радять дію: "' + bad + '"');
     }
-    if (!/headline": ОЦІНКА ЕКЗЕМПЛЯРА одним рядком/.test(rules)) errs.push('headline не описаний як оцінка екземпляра');
     if (!/Що це означає для конкретної людини, обговорює чат CalCar AI, не звіт/.test(rules)) errs.push('нема межі звіт проти чату');
     if (!/"лучше рассмотреть другой экземпляр"/.test(rules) || !/"look for another"/.test(rules)) errs.push('заборона не покриває RU і EN');
     const schemaSrc = fs.readFileSync('api/check-schema.js', 'utf8');
@@ -120,8 +84,11 @@ const VALID = {
   for (const el of ['id="pdBlock"', 'id="pdHeadline"', 'id="pdShort"', 'id="pdMoreBtn"', 'id="pdReasoning"']) {
     if (!page.includes(el)) errs.push('result-check.html: нема ' + el);
   }
-  if (!page.includes("if (pd && pd.headline)")) errs.push('result-check.html: нема гілки нового рішення');
-  if (!page.includes("if (!(pd && pd.headline) && !(fc && fc.headline && fc.body)) $('verdictCard').style.display = ''")) errs.push('result-check.html: фолбек на verdict.summary зламаний');
+  /* старі збережені звіти (без ключа final_conclusion) рендерять свій висновок;
+     звіт нового покоління без висновку ховає блок, а не воскрешає старий */
+  if (!page.includes("} else if (!fcGen && pd && pd.headline) {")) errs.push('result-check.html: старий збережений purchase_decision не рендериться або показується новим звітам');
+  if (!page.includes("if (!fcGen && !(pd && pd.headline)) $('verdictCard').style.display = ''")) errs.push('result-check.html: verdict.summary показується як висновок нового звіту');
+  if (!page.includes("const fcGen = !!D && Object.prototype.hasOwnProperty.call(D, 'final_conclusion');")) errs.push('result-check.html: нема ознаки звіту нового покоління');
   if (!page.includes("$('vText').style.display = 'none'")) errs.push('result-check.html: старий текст не ховається при новому блоці');
   /* екран на v2 із фолбеком на легасі для старих звітів, підпис на місці */
   if (!page.includes('D.score_v2_preview')) errs.push('result-check.html: екран не читає score_v2_preview');
@@ -135,35 +102,12 @@ const VALID = {
   }
 
   fs.rmSync(dir, { recursive: true, force: true });
-  /* ---- висновок зважує ризик + бажаність + цінність, а не лише ризики ---- */
+  /* ---- правила зважування старого висновку прибрані з головного виклику ---- */
 {
   const src = fs.readFileSync('api/check.js', 'utf8');
-  /* A/B: комплектація і ціна стають факторами рішення */
-  if (!/ГОЛОВНЕ ПИТАННЯ ВИСНОВКУ/.test(src)) errs.push('нема вимоги відповісти "чи варто саме цей екземпляр"');
-  for (const k of ['decision_positives', 'decision_negatives', 'decision_unknowns', 'deal_breakers', 'reasons_to_choose_this_car', 'conditions_that_change_decision']) {
-    if (!src.includes(k)) errs.push('нема внутрішнього списку ' + k);
+  for (const gone of ['ГОЛОВНЕ ПИТАННЯ ВИСНОВКУ', 'decision_positives', 'deal_breakers', 'КОМПЛЕКТАЦІЯ ЯК ФАКТОР РІШЕННЯ', 'ОЦІНКА CALCAR НЕ Є ВЕРДИКТОМ ПРО ПОКУПКУ', 'СТРУКТУРА reasoning', 'ПРОБІГ ЯК ФАКТОР РІШЕННЯ', 'Оцінка CalCar цього автомобіля становить']) {
+    if (src.includes(gone)) errs.push('у головному виклику лишилось правило старого висновку: ' + gone);
   }
-  if (!/НЕ виводь ці списки у відповідь/.test(src)) errs.push('внутрішні списки не позначені як службові');
-  if (!/шість питань/.test(src)) errs.push('нема шести обовʼязкових питань');
-  /* C: комплектація не рятує поганий екземпляр -> deal_breakers існують */
-  if (!/deal_breakers: те, що робить покупку нерозумною за будь-якої ціни/.test(src)) errs.push('нема семантики deal_breaker');
-  /* B: опції не рівноцінні, лише підтверджені і найвагоміші */
-  if (!/КОМПЛЕКТАЦІЯ ЯК ФАКТОР РІШЕННЯ/.test(src)) errs.push('комплектація не піднята до фактора рішення');
-  if (!/Називай 3-7 найвагоміших ПІДТВЕРДЖЕНИХ опцій/.test(src)) errs.push('нема обмеження на кілька ключових опцій');
-  if (!/value_tier high_value/.test(src)) errs.push('рішення не спирається на value_tier');
-  /* F: нічого не вигадувати про рідкість */
-  if (!/РІДКІСНІСТЬ на ринку стверджуй ЛИШЕ за наявними порівняльними даними/.test(src)) errs.push('дозволена вигадана рідкість');
-  /* 3: заводське проти доробок */
-  if (!/retrofit НЕ видавай за заводську комплектацію/.test(src)) errs.push('retrofit не відділений від заводської комплектації');
-  if (!/НЕ означає "за машиною добре стежили"/.test(src)) errs.push('вкладені гроші прирівняні до догляду');
-  /* D/5: бал не є вердиктом про покупку в обидва боки */
-  if (!/ОЦІНКА CALCAR НЕ Є ВЕРДИКТОМ ПРО ПОКУПКУ/.test(src)) errs.push('бал досі трактується як вердикт покупки');
-  if (!/низький бал = погана покупка/.test(src) || !/високий бал = хороша покупка/.test(src)) errs.push('нема заборони механічного мапінгу балу');
-  /* 7: без перестраховки */
-  if (!/не закінчуй кожен висновок універсальним/.test(src)) errs.push('нема заборони універсальної кінцівки');
-  /* 9: структура виводу */
-  if (!/СТРУКТУРА reasoning/.test(src)) errs.push('нема структури висновку');
-  /* Score v3 не зачеплений цією ітерацією */
   const v3 = fs.readFileSync('api/score-v3.js', 'utf8');
   if (/equipment|price|value_tier/i.test(v3)) errs.push('комплектація або ціна протекли у Score v3');
 }
@@ -193,8 +137,8 @@ const VALID = {
     const milNoAge = buildMileageContext({ odometer_km: 49000 });
     if (!milNoAge || milNoAge.band !== 'unknown' || milNoAge.annual_km !== null) errs.push('без віку смуга мала бути unknown');
     if (buildMileageContext({}) !== null) errs.push('без одометра контекст пробігу мав бути null');
-    if (!/MILEAGE_CONTEXT/.test(src)) errs.push('промпт не отримує MILEAGE_CONTEXT');
-    if (!/не пиши "49 000 км", пиши, що це означає/.test(src)) errs.push('нема вимоги пояснювати значення пробігу');
+    /* контекст пробігу тепер їде у Final Conclusion через _meta.decision_inputs */
+    if (!/meta\.decision_inputs && isObj\(meta\.decision_inputs\.mileage_context\)/.test(fs.readFileSync('api/conclusion.js', 'utf8'))) errs.push('Final Conclusion не отримує контекст пробігу');
 
     /* ---- 11. висновок обʼєктивний: контекст рішення лише з фактів про авто ----
        (повні сценарії в objectivereporttest.js) */
@@ -205,10 +149,9 @@ const VALID = {
     if (!/ОБʼЄКТИВНІСТЬ ВИСНОВКУ: висновок оцінює ЛИШЕ сам автомобіль/.test(src)) errs.push('нема правила обʼєктивності висновку');
 
     /* ---- проводка: контекст збирається ДО виклику і їде в промпт ---- */
-    if (!/PROMPT\(listing, nhtsa, auction, langDirective, decisionStyle, auctionSearch, decisionContext, cvEvidence\)/.test(src)) errs.push('decisionContext не переданий у промпт');
+    if (!/PROMPT\(listing, nhtsa, auction, langDirective, auctionSearch, cvEvidence\)/.test(src) || /DECISION_CONTEXT|renderDecisionContext/.test(src)) errs.push('контекст старого висновку досі йде в головний виклик');
     if (!/const decisionContext = buildDecision|let decisionContext = null/.test(src)) errs.push('decisionContext не збирається в хендлері');
     if (!/decision_inputs: decisionContext/.test(src)) errs.push('_meta не зберігає входи рішення');
-    if (!/applyDecisionLanguage\(parsed\.purchase_decision/.test(src)) errs.push('мова висновку не нормалізується після моделі');
     /* resolved severity живе у breakdown v3; при активному v4 він у тіні */
     if (!/maxResolvedSeverity\(parsed\.score_breakdown && parsed\.score_breakdown\.score_version === 'v4' \? parsed\.score_breakdown_shadow : parsed\.score_breakdown\)/.test(src)) errs.push('нормалізація мови не спирається на вирішену тяжкість');
 
@@ -261,6 +204,6 @@ const VALID = {
   }
 
 if (errs.length) { console.log('FAILED:', errs); process.exit(1); }
-  console.log('валідація структури · битий висновок дає старий рендер · 400/8 ліміти · сумісність із балом · промпт і два стилі · словники');
+  console.log('старий висновок головного виклику прибраний (промпт, схема, обробка) · старі звіти рендерять свій висновок · детектор порад · привід · пробіг у Final Conclusion · обʼєктивність');
   console.log('DECISION TEST PASSED');
 })().catch(e => { console.log('FAILED:', e.stack || e.message); process.exit(1); });
