@@ -572,7 +572,12 @@
   }
 
   /* ---- відгук: лише в кінці повного розбору, стримано ---- */
-  .fbx{margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
+  .fbx-lbl{margin:12px 0 8px;font-size:13px;font-weight:600;color:var(--ink-2)}
+  .fbx-reasons{display:flex;flex-wrap:wrap;gap:8px}
+  .fbx-chip{min-height:32px;padding:5px 12px;border:1px solid var(--line-strong);border-radius:10px;background:var(--card);color:var(--ink);font-size:13px;font-family:inherit;text-align:left;cursor:pointer}
+  .fbx-chip:hover{background:var(--surface-2)}
+  .fbx-chip:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  .fbx-chip[aria-checked="true"]{border-color:var(--ink);background:var(--ink);color:#fff}
   .fbx-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .fbx[hidden], .fbx [hidden]{display:none}
   .fbx-q{font-size:13.5px;font-weight:600;color:var(--ink-2)}
@@ -1330,13 +1335,6 @@
         <div id="pdShort"></div>
         <button class="pd-more" id="pdMoreBtn" type="button" aria-expanded="false" aria-controls="pdReasoning"><span id="pdMoreLabel">Read the full reasoning</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
         <div class="pd-reasoning" id="pdReasoning" style="display:none"></div>
-        <!-- відгук: лише в кінці розгорнутого повного розбору; поле тексту приховане від session replay -->
-        <div class="fbx" id="fbBox" hidden>
-          <div class="fbx-row" id="fbAsk"><span class="fbx-q">Did this analysis help you decide?</span><button class="fbx-btn" type="button" data-fb="positive">Yes</button><button class="fbx-btn" type="button" data-fb="negative">Not really</button></div>
-          <div class="fbx-more" id="fbMore" inert data-private-block><div><label for="fbText">What was missing?</label><textarea id="fbText" rows="3" maxlength="1000"></textarea><button class="fbx-send" id="fbSend" type="button">Send</button></div></div>
-          <div class="fbx-done" id="fbDone" role="status" hidden></div>
-          <div class="fbx-err" id="fbErr" role="alert" hidden></div>
-        </div>
         <div class="pd-cta">
           <button class="pd-cta-btn" id="pdChatBtn" type="button"><span>Discuss with CalCar AI</span></button>
           <div class="pd-ai-line"><span class="pd-cta-hint">Discuss the car with your preferences in mind.</span><span class="pd-ai-msg" id="pdAiMsg" hidden>CalCar AI left a message<span class="pd-ai-badge" id="pdAiBadge"></span></span></div>
@@ -1468,6 +1466,27 @@
       <div class="final-actions">
         <button class="btn-primary" id="shareBtn2" type="button" style="height:44px;display:none">Share</button>
       </div>
+    </div>
+  </div>
+
+  <!-- beta-відгук: останній блок звіту. Текст іде лише в report_feedback,
+       в аналітику тільки так/ні і категорія причини -->
+  <div class="card fbx" id="fbBox" hidden>
+    <div class="card-body">
+      <div class="fbx-row" id="fbAsk"><span class="fbx-q">Was the report useful?</span><button class="fbx-btn" type="button" data-fb="positive">Yes</button><button class="fbx-btn" type="button" data-fb="negative">Not really</button></div>
+      <div class="fbx-more" id="fbMore" inert data-private-block><div>
+        <div class="fbx-lbl" id="fbReasonLbl">What went wrong?</div>
+        <div class="fbx-reasons" id="fbReasons" role="radiogroup" aria-labelledby="fbReasonLbl">
+          <button class="fbx-chip" type="button" role="radio" aria-checked="false" data-reason="data_error">There is an error in the data</button>
+          <button class="fbx-chip" type="button" role="radio" aria-checked="false" data-reason="missing_information">Information is missing</button>
+          <button class="fbx-chip" type="button" role="radio" aria-checked="false" data-reason="unclear_conclusion">The conclusion is unclear</button>
+          <button class="fbx-chip" type="button" role="radio" aria-checked="false" data-reason="not_helpful">The analysis did not help me decide</button>
+          <button class="fbx-chip" type="button" role="radio" aria-checked="false" data-reason="other">Other</button>
+        </div>
+        <label for="fbText">What would you improve?</label><textarea id="fbText" rows="3" maxlength="1000"></textarea><button class="fbx-send" id="fbSend" type="button" disabled>Send</button>
+      </div></div>
+      <div class="fbx-done" id="fbDone" role="status" hidden></div>
+      <div class="fbx-err" id="fbErr" role="alert" hidden></div>
     </div>
   </div>
 
@@ -1770,7 +1789,11 @@ async function loadByToken(sleep) {
     if (res.kind !== 'ok') { jobLoadFailed(); return null; }
     const j = res.job;
     if (j.status === 'done' && j.report && j.report.vehicle) {
-      if (ld) { await loadingFinish(ld.rid); document.body.classList.remove('await-job'); if (AWAIT_TITLE) document.title = AWAIT_TITLE; }
+      if (ld) {
+        /* автор дочекався аналізу тут: check_completed раз на job (той самий ключ, що й на сторінці запуску) */
+        try { if (window.calcar && isLocalAuthor(OPEN_TOKEN)) window.calcar.checkCompleted(OPEN_TOKEN, { product: 'check', generation_time_bucket: 'unknown', score_bucket: window.calcar.scoreBucket(j.report.score_breakdown && j.report.score_breakdown.final) }); } catch (e) {}
+        await loadingFinish(ld.rid); document.body.classList.remove('await-job'); if (AWAIT_TITLE) document.title = AWAIT_TITLE;
+      }
       return j;
     }
     if (j.status === 'error') {
@@ -1991,7 +2014,6 @@ function fill(cardId, listId, arr, tpl) {
 }
 
 function boot(){
-  if (window.calcar) window.calcar.track('report_viewed', { product: 'check', readonly: !!READONLY, shared_link: !!OPEN_TOKEN });
   M = DATA._meta || {};
   boot2(DATA);
   shareSetup();
@@ -2002,6 +2024,15 @@ function boot(){
   /* відео про модель уже ПІСЛЯ готового звіту і без await: повільний або
      мертвий YouTube не затримує і не ламає звіт */
   try { videosInit(DATA); } catch (e) {}
+  /* report_viewed: лише готовий звіт і лише коли вкладка видима; далі
+     активний час і глибина прокрутки до кінця звіту. Збій аналітики звіт не чіпає */
+  try {
+    const lvl = { 'Data is limited': 'limited', 'Partially checked': 'partial', 'Enough data': 'enough', 'Studied in detail': 'detailed' };
+    if (window.calcar) window.calcar.reportViewed({ product: 'check', readonly: !!READONLY, shared_link: !!OPEN_TOKEN,
+      score_bucket: window.calcar.scoreBucket(DATA.score_breakdown && DATA.score_breakdown.final),
+      confidence_level: lvl[DATA.confidence && DATA.confidence.text_key] || 'none' }, document.querySelector('.wrap'));
+  } catch (e) {}
+  if (window.calcarFeedbackInit) window.calcarFeedbackInit();
 }
 
 /* ---------- відео про модель ----------
@@ -2061,7 +2092,6 @@ async function videosInit(D) {
     + '<span class="yt-meta">' + esc(v.channel || '') + '</span></button>';
   grid.innerHTML = videos.map(cardHtml).join('');
   card.style.display = '';
-  if (window.calcar) window.calcar.track('youtube_block_viewed', { product: 'check', count: videos.length });
   if (videos.length > YT_INITIAL) {
     let shown = YT_INITIAL;
     const apply = () => {
@@ -2075,7 +2105,6 @@ async function videosInit(D) {
       if (shown >= videos.length) { shown = YT_INITIAL; apply(); return; }
       shown = Math.min(videos.length, shown + YT_STEP);
       apply();
-      if (window.calcar) window.calcar.track('youtube_show_more', { product: 'check', count: shown });
     };
   }
   /* один обробник на сітку: повторний виклик не подвоює відкриття */
@@ -2140,7 +2169,6 @@ async function videosInit(D) {
     modal.setAttribute('aria-hidden', 'false');
     document.documentElement.style.overflow = 'hidden';
     setTimeout(() => closeBtn.focus(), 30);
-    if (window.calcar) window.calcar.track('youtube_video_opened', { product: 'check' });
   };
   function close() {
     if (!modal.classList.contains('open')) return;
@@ -2154,7 +2182,6 @@ async function videosInit(D) {
   }
   closeBtn.addEventListener('click', close);
   ov.addEventListener('click', close);
-  link.addEventListener('click', () => { if (window.calcar) window.calcar.track('youtube_opened_external', { product: 'check' }); });
   modal.addEventListener('keydown', e => {
     if (e.key === 'Escape') { e.preventDefault(); close(); return; }
     if (e.key === 'Tab') {
@@ -2266,9 +2293,6 @@ function boot2(D){
     $('pdShort').innerHTML = clean(fc.body).split(/\n\s*\n/).map(p => p.trim()).filter(Boolean).map(p => '<p class="pd-short">' + esc(p) + '</p>').join('');
     $('pdMoreBtn').style.display = 'none';
     $('pdReasoning').style.display = 'none';
-    /* відгук живе в кінці повного тексту висновку: тут він увесь на екрані */
-    window.calcarConclusionFull = true;
-    if (window.calcarFeedbackSync) window.calcarFeedbackSync(true);
   } else if (!fcGen && pd && pd.headline) {
     /* нове рішення шарами; старий verdict.summary лишається фолбеком нижче */
     $('verdictCard').style.display = '';
@@ -2312,8 +2336,6 @@ function boot2(D){
         $('pdReasoning').style.display = open ? 'none' : '';
         $('pdMoreLabel').textContent = open ? t('Read the full reasoning') : t('Collapse the reasoning');
         $('pdMoreBtn').setAttribute('aria-expanded', open ? 'false' : 'true');
-        /* відгук живе лише в кінці розгорнутого повного розбору */
-        if (window.calcarFeedbackSync) window.calcarFeedbackSync(open === false);
       };
     } else {
       $('pdMoreBtn').style.display = 'none';
@@ -2621,10 +2643,11 @@ function shareToast(msg){
   clearTimeout(shareToast._t); shareToast._t = setTimeout(() => el.classList.remove('on'), 2200);
 }
 /* ---------- відгук про звіт ----------
-   Лише в кінці ПОВНОГО розбору, який людина відкрила сама, і лише для її
-   перших трьох завершених перевірок. Жодних модалок, таймерів чи відсотка
-   прокрутки. Пишеться в report_feedback через /api/feedback, на Score не
-   впливає; текст відгуку в аналітику не йде. Джерела правди:
+   Компактний останній блок звіту, лише для перших трьох завершених перевірок
+   автора. Жодних модалок і таймерів. Пишеться в report_feedback через
+   /api/feedback (так/ні, причина, текст), на Score не впливає. В аналітику
+   йдуть лише feedback_yes/feedback_no і feedback_submitted {useful, reason},
+   текст ніколи. Збій API чи аналітики не ламає звіт. Джерела правди:
    - автор чи публічне посилання: READONLY (локальний список перевірок цього
      пристрою calcar_recent_checks, той самий, що визначає авторство звіту);
    - перші три перевірки: у залогіненого таблиця reports (kind = check), у
@@ -2647,8 +2670,9 @@ function isAmongFirstChecks(rows, ids, n, truncated) {
 }
 (function () {
   const box = $('fbBox'); if (!box) return;
-  const ask = $('fbAsk'), more = $('fbMore'), txt = $('fbText'), sendBtn = $('fbSend'), done = $('fbDone'), err = $('fbErr');
-  let verdict = null, busy = false, eligible = null;
+  const ask = $('fbAsk'), more = $('fbMore'), txt = $('fbText'), sendBtn = $('fbSend'), done = $('fbDone'), err = $('fbErr'), reasons = $('fbReasons');
+  const REASONS = ['data_error', 'missing_information', 'unclear_conclusion', 'not_helpful', 'other'];
+  let verdict = null, reason = null, busy = false, eligible = null;
   function ref() { return OPEN_TOKEN || (DATA && DATA._meta && DATA._meta.share_token) || OPEN_ID || null; }
   async function authHeaders() {
     const h = {};
@@ -2688,9 +2712,10 @@ function isAmongFirstChecks(rows, ids, n, truncated) {
   async function post(text) {
     const r = ref(); if (!r || !verdict) return false;
     const headers = Object.assign({ 'content-type': 'application/json' }, await authHeaders());
-    const body = { report_ref: r, product: 'check', verdict, text: text || '', anon_id: window.calcar ? window.calcar.aid() : null, page: location.pathname.replace(/\/check\/.*/, '/check/*'), lang: window.calcarLang() };
+    const body = { report_ref: r, product: 'check', verdict, reason: reason || null, text: text || '', anon_id: window.calcar ? window.calcar.aid() : null, page: location.pathname.replace(/\/check\/.*/, '/check/*'), lang: window.calcarLang() };
     try { const res = await fetch('/api/feedback', { method: 'POST', headers, body: JSON.stringify(body) }); return res.ok; } catch (e) { return false; }
   }
+  function track(name, props) { try { if (window.calcar) window.calcar.track(name, Object.assign({ product: 'check' }, props || {})); } catch (e) {} }
   function finish() {
     ask.hidden = true; more.classList.remove('open'); more.setAttribute('inert', '');
     err.hidden = true;
@@ -2699,34 +2724,40 @@ function isAmongFirstChecks(rows, ids, n, truncated) {
     eligible = false; /* у цій сесії більше не питаємо */
   }
   function fail() { err.textContent = t('Could not send, try again'); err.hidden = false; }
-  /* викликає кнопка "Читати повний розбір": відгук живе лише в розгорнутому розборі */
-  window.calcarFeedbackSync = async function (isOpen) {
-    /* згорнутий розбір ховає і питання, і подяку: вони належать розгорнутому розбору */
-    if (!isOpen) { box.hidden = true; return; }
-    if (!done.hidden) { box.hidden = false; return; }
-    if (await decide() && (window.calcarConclusionFull === true || $('pdReasoning').style.display !== 'none')) box.hidden = false;
-  };
+  let started = false;
+  async function init() {
+    if (started) return; started = true;
+    if (await decide()) box.hidden = false;
+  }
   ask.addEventListener('click', async e => {
     const b = e.target.closest('.fbx-btn'); if (!b || busy) return;
     verdict = b.dataset.fb;
+    track(verdict === 'positive' ? 'feedback_yes' : 'feedback_no');
     ask.querySelectorAll('.fbx-btn').forEach(x => { x.disabled = true; });
     busy = true; const ok = await post(''); busy = false;
     ask.querySelectorAll('.fbx-btn').forEach(x => { x.disabled = false; });
     if (!ok) { fail(); return; }
     err.hidden = true;
-    if (verdict === 'positive') { finish(); return; }
-    /* "не зовсім": відповідь уже записана, далі лише необовʼязкове пояснення */
+    if (verdict === 'positive') { track('feedback_submitted', { useful: true }); finish(); return; }
+    /* "не зовсім": відповідь уже записана, далі причина і необовʼязковий текст */
     ask.hidden = true;
     more.removeAttribute('inert'); more.classList.add('open');
-    setTimeout(() => txt.focus(), 230);
+  });
+  reasons.addEventListener('click', e => {
+    const c = e.target.closest('.fbx-chip'); if (!c) return;
+    reason = REASONS.indexOf(c.dataset.reason) > -1 ? c.dataset.reason : null;
+    reasons.querySelectorAll('.fbx-chip').forEach(x => x.setAttribute('aria-checked', x === c ? 'true' : 'false'));
+    sendBtn.disabled = !reason;
   });
   sendBtn.addEventListener('click', async () => {
-    if (busy || !verdict) return;
+    if (busy || !verdict || !reason) return;
     sendBtn.disabled = true; busy = true;
     const ok = await post(txt.value.trim().slice(0, 1000));
     busy = false; sendBtn.disabled = false;
-    if (ok) finish(); else fail();
+    if (ok) { track('feedback_submitted', { useful: false, reason }); finish(); } else fail();
   });
+  /* звіт уже готовий (синхронне завантаження) або стане готовим пізніше */
+  if (document.body.classList.contains('report-ready') && DATA) init(); else window.calcarFeedbackInit = init;
 })();
 
 /* ---------- шкала інтенсивності пробігу ----------
@@ -3058,6 +3089,8 @@ function renderScoreBlock(D) {
     if (sheet.classList.contains('open') && lastTrig === btn && sheet.classList.contains('pop') === asPop) return;
     lastTrig = btn || null;
     fill();
+    /* раз на перегляд звіту; текст опису в аналітику не йде */
+    if (!open.tracked) { open.tracked = true; try { if (window.calcar) window.calcar.track('seller_description_opened', { product: 'check', mode: asPop ? 'popover' : 'sheet' }); } catch (e) {} }
     sheet.classList.toggle('pop', asPop);
     sheet.style.left = sheet.style.top = sheet.style.maxHeight = '';
     sheet.classList.add('open');
@@ -3117,8 +3150,8 @@ function renderScoreBlock(D) {
 })();
 
 async function shareReport(){
+  try { if (window.calcar) window.calcar.track('share_clicked', { product: 'check', method: (/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) && navigator.share) ? 'web_share' : 'copy' }); } catch (e) {}
   const url = await ensureShareToken(); if (!url) { shareToast(t('Could not copy the link')); return; }
-  if (window.calcar) window.calcar.track('report_shared', { product: 'check', method: (/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) && navigator.share) ? 'web_share' : 'copy' });
   const title = t('Check this car: {title}').replace('{title}', (DATA && DATA.vehicle && DATA.vehicle.title) || 'CalCar');
   const mobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
   if (mobile && navigator.share) {

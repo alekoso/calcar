@@ -60,10 +60,8 @@ function browser(opts) {
   const en = b.win.calcar.enabled();
   if (en.posthog || en.ga4) errs.push('без ключів аналітика вважає себе увімкненою');
   if (!Array.isArray(b.win.CALCAR_EVENTS)) errs.push('нема буфера подій CALCAR_EVENTS');
-  /* автоматична подія лендингу */
-  const lv = b.win.CALCAR_EVENTS.find(e => e.name === 'landing_view');
-  if (!lv) errs.push('на /check нема автоматичної landing_view');
-  else if (lv.props.product !== 'check' || lv.props.lang !== 'ru') errs.push('landing_view без product/lang: ' + JSON.stringify(lv.props));
+  /* жодних автоматичних подій на завантаженні: лише кастомні дії */
+  if (b.win.CALCAR_EVENTS.length) errs.push('на завантаженні сторінки пішли автоматичні події: ' + b.win.CALCAR_EVENTS.map(e => e.name).join(','));
   /* плейсхолдери з коментаря конфігу (phc_..., G-XXXXXXX) це не ключі */
   if (/phc_[A-Za-z0-9]{10,}|G-(?!X+\b)[A-Z0-9]{6,}/.test(an)) errs.push('у analytics.js захардкоджений ключ аналітики (місце ключа: calcar-public.js)');
   /* у публічному конфігу ключ або порожній, або справжній публічний phc_ */
@@ -75,19 +73,24 @@ function browser(opts) {
 /* ---------- 2. таксономія: лише відомі імена ---------- */
 {
   const b = browser({ path: '/' });
-  const WANT = ['landing_view', 'analysis_started', 'analysis_completed', 'report_viewed', 'report_shared', 'assistant_opened', 'memory_opened', 'memory_saved', 'deep_check_clicked'];
+  const WANT = ['check_started', 'check_completed', 'report_viewed', 'report_active_30s', 'report_active_60s', 'report_active_180s',
+    'report_scroll_25', 'report_scroll_50', 'report_scroll_75', 'report_scroll_100', 'seller_description_opened', 'share_clicked',
+    'calcar_ai_clicked', 'feedback_yes', 'feedback_no', 'feedback_submitted',
+    'chat_opened', 'chat_message_sent', 'settings_opened', 'memory_opened', 'memory_updated'];
+  if (JSON.stringify(b.win.calcar.events.slice().sort()) !== JSON.stringify(WANT.slice().sort())) errs.push('таксономія не збігається з beta-списком: ' + b.win.calcar.events.join(','));
+  for (const old of ['landing_view', 'analysis_started', 'analysis_completed', 'report_shared', 'assistant_opened', 'youtube_block_viewed']) if (b.win.calcar.track(old, {})) errs.push('стара подія ' + old + ' пройшла');
   for (const w of WANT) if (!b.win.calcar.events.includes(w)) errs.push('події "' + w + '" нема в таксономії');
   if (b.win.calcar.track('page_view_custom', {})) errs.push('невідома подія пройшла');
-  if (!b.win.calcar.track('analysis_started', { marketplace: 'auto.ria.com' })) errs.push('відома подія не пройшла');
+  if (!b.win.calcar.track('check_started', { marketplace: 'auto.ria.com' })) errs.push('відома подія не пройшла');
   const ev = b.win.CALCAR_EVENTS[b.win.CALCAR_EVENTS.length - 1];
   if (ev.props.marketplace !== 'auto.ria.com') errs.push('дозволена властивість загублена');
-  for (const k of ['page', 'product', 'lang', 'signed_in', 'acq_source']) if (!(k in ev.props)) errs.push('у події нема базової властивості ' + k);
+  for (const k of ['page', 'product', 'locale', 'authenticated', 'acq_source']) if (!(k in ev.props)) errs.push('у події нема базової властивості ' + k);
 }
 
 /* ---------- 3. приватне не проходить, навіть якщо передали ---------- */
 {
   const b = browser({ path: '/check/AB12CD' });
-  b.win.calcar.track('assistant_opened', {
+  b.win.calcar.track('chat_message_sent', {
     text: 'мій бюджет 20 тисяч', message: 'hello', memory: 'Людина: ...', seller_description: 'продам авто',
     description: 'x', prompt: 'p', content: 'c', email: 'a@b.c', phone: '+380', token: 'abc', vin: 'WBA12345678901234',
     listing_url: 'https://auto.ria.com/uk/auto_x.html', title: 'BMW X5', car_vin: 'x', plate: 'AA1234BB',
@@ -165,6 +168,65 @@ function browser(opts) {
   if (!fs.readFileSync('chat.js', 'utf8').includes('cc-panel')) errs.push('chat.js: панель помічника не .cc-panel, replay її не блокує');
 }
 
+/* ---------- 5b. поведінка подій: раз, пауза, номер, приватність payload ---------- */
+{
+  /* активний час: у прихованій вкладці стоїть, кожен поріг раз */
+  const b = browser({ path: '/check/r/x/AbCdEfGh123' });
+  let clock = 0; const fired = [];
+  const tm = b.win.calcar._activeTimer(n => fired.push(n), () => clock);
+  tm.visible(true); clock = 20000; tm.tick();
+  tm.visible(false); clock = 600000; tm.tick();
+  if (fired.length) errs.push('активний час біг у прихованій вкладці: ' + fired.join(','));
+  tm.visible(true); clock = 610000; tm.tick();
+  if (fired.join() !== 'report_active_30s') errs.push('30 с активного часу не дали рівно report_active_30s: ' + fired.join());
+  clock = 650000; tm.tick(); clock = 800000; tm.tick(); tm.tick(); tm.visible(false); tm.visible(true); tm.tick();
+  if (fired.join() !== 'report_active_30s,report_active_60s,report_active_180s') errs.push('пороги активного часу не по разу: ' + fired.join());
+  /* прокрутка: кожен поріг раз, без проміжних подій */
+  const sf = []; const depth = b.win.calcar._scrollDepth(n => sf.push(n));
+  [10, 30, 30, 55, 20, 80, 97, 99, 100, 120].forEach(depth);
+  if (sf.join() !== 'report_scroll_25,report_scroll_50,report_scroll_75,report_scroll_100') errs.push('пороги прокрутки не по разу: ' + sf.join());
+  /* номер перевірки: зростає, не нижче вже збережених локальних перевірок */
+  const n1 = b.win.calcar.nextCheckNumber(1), n2 = b.win.calcar.nextCheckNumber(1), n3 = b.win.calcar.nextCheckNumber(2);
+  if (n1 !== 1 || n2 !== 2 || n3 !== 3) errs.push('check_number не 1,2,3: ' + [n1, n2, n3]);
+  const bOld = browser({ path: '/' });
+  if (bOld.win.calcar.nextCheckNumber(5) !== 5) errs.push('check_number нижчий за вже збережені перевірки');
+  /* check_completed раз на job */
+  const before = b.win.CALCAR_EVENTS.length;
+  b.win.calcar.checkCompleted('job-tok-1', { product: 'check', score_bucket: '7-8' });
+  b.win.calcar.checkCompleted('job-tok-1', { product: 'check' });
+  b.win.calcar.checkCompleted('job-tok-2', { product: 'check' });
+  if (b.win.CALCAR_EVENTS.slice(before).filter(e => e.name === 'check_completed').length !== 2) errs.push('check_completed не раз на job');
+  if (b.win.calcar.scoreBucket(7.4) !== '7-8' || b.win.calcar.scoreBucket(10) !== '9-10' || b.win.calcar.scoreBucket(null) !== 'none') errs.push('score_bucket не той');
+  if (b.win.calcar.bucketSec(95000) !== '60-120s') errs.push('generation_time_bucket не той');
+  /* report_viewed: прихована вкладка відкладає, потім рівно раз */
+  const b2 = browser({ path: '/check/r/x/AbCdEfGh123' });
+  const d2 = b2.win.document; d2.visibilityState = 'hidden'; d2.removeEventListener = () => {};
+  d2.documentElement = { getBoundingClientRect: () => ({ top: 0, height: 1000 }) };
+  Object.assign(b2.win, { setInterval: () => 1, clearInterval() {}, addEventListener() {}, innerHeight: 800 });
+  b2.win.calcar.reportViewed({ product: 'check', readonly: false });
+  const views = () => b2.win.CALCAR_EVENTS.filter(e => e.name === 'report_viewed').length;
+  if (views() !== 0) errs.push('report_viewed у прихованій вкладці');
+  d2.visibilityState = 'visible'; b2.fire('visibilitychange');
+  b2.win.calcar.reportViewed({ product: 'check' }); b2.fire('visibilitychange');
+  if (views() !== 1) errs.push('report_viewed не рівно раз: ' + views());
+  /* PostHog недоступний: track не кидає, звіт живе */
+  const b3 = browser({ path: '/check/r/x/AbCdEfGh123', pub: { analytics: { posthog_key: 'phc_' + 'y'.repeat(40), posthog_host: 'https://eu.i.posthog.com', ga4_id: '' }, contacts: {} } });
+  b3.win.posthog.capture = () => { throw new Error('blocked'); };
+  try { b3.win.calcar.track('share_clicked', {}); b3.win.calcar.checkCompleted('t', {}); } catch (e) { errs.push('збій PostHog ламає виклик track'); }
+  /* payload у PostHog: чат, памʼять, відгук без тексту, VIN, email, токена */
+  const sent = []; b3.win.posthog.capture = (n, p) => sent.push({ n, p });
+  b3.win.calcar.track('chat_message_sent', { page_type: 'check_report', attachments: 1, message: 'мій бюджет 20к', content: 'x', body: 'y', text: 'z' });
+  b3.win.calcar.track('memory_updated', { action: 'saved', memory: 'Людина шукає X5', content: 'пам', note: 'n' });
+  b3.win.calcar.track('feedback_submitted', { useful: false, reason: 'data_error', comment: 'VIN WBAJA7C51KWW12345 неправильний', text: 'приватний текст' });
+  b3.win.calcar.track('chat_opened', { page_type: 'check_report', email: 'a@b.co', vin: 'WBAJA7C51KWW12345', plate: 'AA1234BB', listing_url: 'https://auto.ria.com/x', token: 'AbCdEfGh123' });
+  const flat = JSON.stringify(sent);
+  if (sent.length !== 4) errs.push('у PostHog дійшло не 4 події: ' + sent.length);
+  if (/бюджет|Людина|пам|приватний|WBAJA7C51KWW12345|a@b\.co|AA1234BB|auto\.ria\.com\/x|AbCdEfGh123/.test(flat)) errs.push('чутливі дані в payload PostHog: ' + flat);
+  const fs1 = sent.find(x => x.n === 'feedback_submitted');
+  if (!fs1 || fs1.p.useful !== false || fs1.p.reason !== 'data_error') errs.push('feedback_submitted загубив useful/reason');
+  if (sent[0].p.attachments !== 1 || sent[0].p.page_type !== 'check_report') errs.push('безпечні властивості чату загублені');
+}
+
 /* ---------- 6. підключення і події на сторінках ---------- */
 {
   const INCLUDE = '<script src="/calcar-public.js"></script>\n<script src="/analytics.js"></script>';
@@ -176,17 +238,32 @@ function browser(opts) {
     if (!s.includes("if (signedIn && window.CALCAR_USER_ID && window.calcar) window.calcar.identify(window.CALCAR_USER_ID);")) errs.push(f + ': identify не викликається зі спільного блоку шапки');
   }
   const EV = {
-    'check.html': ['analysis_started', 'analysis_completed'],
-    'import.html': ['analysis_started', 'analysis_completed'],
-    'result-check.html': ['report_viewed', 'report_shared'],
-    'result.html': ['report_viewed'],
-    'cabinet.html': ['memory_opened', 'memory_saved'],
+    'check.html': ["track('check_started'", 'calcar.checkCompleted('],
+    'result-check.html': ['calcar.reportViewed(', "track('share_clicked'", "track('seller_description_opened'", "'feedback_yes'", "'feedback_no'", "track('feedback_submitted'", 'calcar.checkCompleted('],
+    'cabinet.html': ["memory: 'memory_opened'", "account: 'settings_opened'", "track('memory_updated'"],
   };
-  for (const [f, names] of Object.entries(EV)) for (const n of names) if (!S[f].includes("track('" + n + "'")) errs.push(f + ': нема події ' + n);
-  if (!/track\('analysis_completed', \{ [^}]*success: true/.test(S['check.html']) || !/duration_ms/.test(S['check.html'])) errs.push('check.html: analysis_completed без success/duration_ms');
-  if (!/setPerson\(\{ checks_started/.test(S['check.html'])) errs.push('check.html: лічильник перевірок людини не ведеться (другий/третій Check)');
-  /* assistant_opened і data-track живуть у самому шарі */
-  if (!/calcar-chat-state/.test(an) || !/data-track/.test(an)) errs.push('шар не слухає відкриття помічника або data-track');
+  const chatSrc = fs.readFileSync('chat.js', 'utf8');
+  for (const [f, names] of Object.entries(EV)) for (const n of names) if (!S[f].includes(n)) errs.push(f + ': нема ' + n);
+  for (const n of ["ctrack('chat_opened'", "ctrack('chat_message_sent'"]) if (!chatSrc.includes(n)) errs.push('chat.js: нема ' + n);
+  /* старі події не шлються ніде */
+  for (const f of PAGES) if (/track\('(analysis_started|analysis_completed|report_shared|memory_saved|landing_view|youtube_)/.test(S[f])) errs.push(f + ': стара подія поза beta-таксономією');
+  if (!/setPerson\(\{ checks_started: n \}\)/.test(S['check.html'])) errs.push('check.html: лічильник перевірок людини не ведеться');
+  /* check_completed лише на успіху: у catch завершення нема */
+  const runFn = S['check.html'].slice(S['check.html'].indexOf("statusEl.className = 'hf-status';\n  const runStart"), S['check.html'].indexOf('/* Спільна поведінка шапки'));
+  if (/catch \(e\) \{[^}]*trackCompleted/.test(runFn)) errs.push('check_completed шлеться на помилці');
+  if (!/data = await pollJob\(token\);\n    \}\n\n    trackCompleted\(data, token, runStart\);/.test(S['check.html'])) errs.push('check_completed не після готового звіту');
+  if (!/const report = await pollJob\(pj\.token\);\n    trackCompleted\(report, pj\.token, pj\.at\);/.test(S['check.html'])) errs.push('відновлене опитування не шле check_completed');
+  /* CalCar AI: кнопка шапки і CTA висновку */
+  if (!/closest\('#aiBtn, #pdChatBtn'\)/.test(an)) errs.push('calcar_ai_clicked не слухає #aiBtn/#pdChatBtn');
+  /* chat_opened лише на перехід закрито -> відкрито; chat_message_sent лише після успішної відповіді */
+  if (!/var wasOpen = els\.panel\.classList\.contains\('open'\);\n\s*els\.panel\.classList\.add\('open'\);\n\s*if \(!wasOpen\) ctrack\('chat_opened'/.test(chatSrc)) errs.push('chat_opened не ідемпотентний');
+  if (!/if \(!r\.ok \|\| !data\.reply\) throw[\s\S]{0,400}ctrack\('chat_message_sent'/.test(chatSrc)) errs.push('chat_message_sent не після успішної відповіді');
+  const cmsCall = (chatSrc.match(/ctrack\('chat_message_sent', \{[^}]*\}\)/) || [''])[0];
+  if (/text|shown|content|message|body|memory|data\.reply|messages/.test(cmsCall.replace("'chat_message_sent'", ''))) errs.push('chat_message_sent несе текст: ' + cmsCall);
+  const memCall = (S['cabinet.html'].match(/track\('memory_updated', \{[^}]*\}\)/) || [''])[0];
+  if (!memCall || /ta\.value|memory:|saved =|okMsg|text[,}]/.test(memCall)) errs.push('memory_updated несе вміст памʼяті: ' + memCall);
+  if (!/\{ error \} = await SB\.from\('user_memory'\)[\s\S]{0,200}else \{[\s\S]{0,200}track\('memory_updated'/.test(S['cabinet.html'])) errs.push('memory_updated не лише після успішного збереження');
+  if (!/if \(name !== curTab && TAB_EVENTS\[name\]\)/.test(S['cabinet.html'])) errs.push('memory_opened/settings_opened не раз на фактичне відкриття');
 }
 
 /* ---------- 7. відгук про звіт ---------- */
@@ -205,23 +282,28 @@ function browser(opts) {
   if (sanitizeFeedback({ report_ref: '../../etc', verdict: 'negative' }).error !== 'bad_ref') errs.push('report_ref зі сміттям пройшов');
   /* UI: після вердикту, два стани, без модалки, на Score не впливає */
   const r = S['result-check.html'];
-  const vc = r.slice(r.indexOf('id="verdictCard"'), r.indexOf('id="risksCard"'));
-  /* відгук лише в кінці повного розбору: одразу після #pdReasoning, до CTA чату,
-     схований до відкриття; у самій картці рішення після CTA відгуку нема */
-  if (!/<div class="pd-reasoning" id="pdReasoning" style="display:none"><\/div>\n\s*<!--[^>]*-->\n\s*<div class="fbx" id="fbBox" hidden>/.test(vc)) errs.push('відгук не стоїть одразу після повного розбору або не схований');
-  if (vc.indexOf('id="fbBox"') > vc.indexOf('class="pd-cta"')) errs.push('відгук опинився після CTA чату');
+  const vc = r.slice(r.indexOf('<div class="card fbx" id="fbBox" hidden>'), r.indexOf('\n</div>\n\n<footer>'));
+  /* beta-відгук: останній блок звіту, схований до перевірки воріт */
+  if (!vc) errs.push('відгук не останній блок звіту або не схований');
   if (/class="fb" id="fbBox"|data-fb="positive"[^>]*>👍/.test(r)) errs.push('старий постійний блок відгуку повернувся');
-  if (!/data-fb="positive">Yes</.test(vc) || !/data-fb="negative">Not really</.test(vc)) errs.push('нема кнопок Так / Не зовсім');
-  if (!/id="fbText"[^>]*maxlength="1000"/.test(vc)) errs.push('поле "чого не вистачило" без ліміту');
-  /* без модалок, таймерів і прокрутки: блок відкриває лише кнопка повного розбору */
-  if (!/calcarFeedbackSync\(open === false\)/.test(r)) errs.push('відгук не привʼязаний до кнопки повного розбору');
+  if (!/Was the report useful\?/.test(vc) || !/data-fb="positive">Yes</.test(vc) || !/data-fb="negative">Not really</.test(vc)) errs.push('нема питання і кнопок Так / Не зовсім');
+  if (!/id="fbText"[^>]*maxlength="1000"/.test(vc)) errs.push('поле "що покращити" без ліміту');
   if (/fbBox[\s\S]{0,400}setTimeout\(\s*\(\)\s*=>\s*\{?\s*box\.hidden\s*=\s*false/.test(r)) errs.push('відгук показується за таймером');
   if (!/fetch\('\/api\/feedback'/.test(r)) errs.push('відгук не йде в /api/feedback');
-  if (!/report_ref: r, product: 'check', verdict, text: text \|\| '', anon_id: window\.calcar \? window\.calcar\.aid\(\) : null/.test(r)) errs.push('тіло відгуку не те (report_ref/verdict/text/anon_id)');
-  if (/calcar\.track\('[^']*feedback/.test(r)) errs.push('текст відгуку або сама подія відгуку йде в аналітику');
+  if (!/report_ref: r, product: 'check', verdict, reason: reason \|\| null, text: text \|\| '', anon_id: window\.calcar \? window\.calcar\.aid\(\) : null/.test(r)) errs.push('тіло відгуку не те (report_ref/verdict/reason/text/anon_id)');
+  /* в аналітику лише так/ні і категорія причини, текст ніколи */
+  const fbJs = r.slice(r.indexOf('const FEEDBACK_FIRST_N'), r.indexOf('window.calcarFeedbackInit = init'));
+  const fbTracks = fbJs.match(/track\([^;]*'feedback_[a-z]+'[^;]*;/g) || [];
+  if (fbTracks.length < 3) errs.push('події відгуку не знайдені: ' + fbTracks.length);
+  for (const c of fbTracks) if (/txt|text|value/.test(c)) errs.push('текст відгуку йде в аналітику: ' + c);
+  if (!/track\('feedback_submitted', \{ useful: false, reason \}\)/.test(fbJs)) errs.push('feedback_submitted без useful/reason');
+  /* причина лише з переліку і лише для "не зовсім" */
+  if (sanitizeFeedback({ report_ref: 'AbC123xyz', verdict: 'negative', reason: 'data_error' }).reason !== 'data_error') errs.push('причина загублена');
+  if (sanitizeFeedback({ report_ref: 'AbC123xyz', verdict: 'negative', reason: 'drop table' }).reason !== null) errs.push('невідома причина пройшла');
+  if (sanitizeFeedback({ report_ref: 'AbC123xyz', verdict: 'positive', reason: 'other' }).reason !== null) errs.push('причина в позитивного відгуку');
   if (/score[^\n]*fb|fb[^\n]*score/i.test((r.match(/\/\* Відгук про звіт[\s\S]*?\}\)\(\);/) || [''])[0])) errs.push('відгук чіпає Score');
   const table = fs.readFileSync('supabase-feedback.sql', 'utf8');
-  for (const col of ['report_ref', 'user_id', 'anon_id', 'verdict', 'text', 'created_at']) if (!table.includes(col)) errs.push('supabase-feedback.sql: нема колонки ' + col);
+  for (const col of ['report_ref', 'user_id', 'anon_id', 'verdict', 'reason', 'text', 'lang', 'created_at']) if (!table.includes(col)) errs.push('supabase-feedback.sql: нема колонки ' + col);
   if (!/enable row level security/i.test(table)) errs.push('supabase-feedback.sql: RLS не увімкнений');
   finish();
 })().catch(e => { errs.push('feedback: ' + (e.stack || e.message)); finish(); });

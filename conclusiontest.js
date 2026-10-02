@@ -185,7 +185,6 @@ const REPORT = {
   ok(/\} else if \(!fcGen && pd && pd\.headline\) \{/.test(page) && /if \(!fcGen && !\(pd && pd\.headline\)\) \$\('verdictCard'\)\.style\.display = ''/.test(page), 'звіт нового покоління без висновку показує старий висновок');
   ok(!/purchase_decision/.test(src.replace(/delete parsed\.purchase_decision;/, '').replace(/\/\*[\s\S]*?\*\//g, '')), 'check.js досі генерує чи обробляє purchase_decision');
   ok(/final_conclusion: d\.final_conclusion \|\| null, purchase_decision: Object\.prototype\.hasOwnProperty\.call\(d, 'final_conclusion'\) \? null :/.test(page), 'чат отримує не той висновок, який бачить людина');
-  ok(/window\.calcarConclusionFull === true \|\|/.test(page), 'відгук не показується під повним висновком');
 
   /* ---------- benchmark-ендпоінт ---------- */
   const bench = await import('file://' + path.join(dir, 'api', 'conclusion-bench.js'));

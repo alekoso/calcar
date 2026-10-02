@@ -21,19 +21,28 @@
    лише короткі примітивні значення з дозволених ключів. Адресу сторінки,
    яку PostHog додає сам, before_send зводить до шляху без токенів і query.
 
-   Таксономія (мінімум для beta):
-     landing_view, analysis_started, analysis_completed, report_viewed,
-     report_shared, assistant_opened, memory_opened, memory_saved,
-     deep_check_clicked.
-   Другий/третій Check визначаються в PostHog як "analysis_started виконано
-   N разів" (властивість людини checks_started дублює це для зручності). */
+   Таксономія beta (лише ці події, кліки поодинці не трекаються):
+     check_started (check_number), check_completed (раз на job),
+     report_viewed (раз на перегляд готового звіту),
+     report_active_30s/60s/180s (накопичений ВИДИМИЙ час),
+     report_scroll_25/50/75/100 (кожен поріг раз),
+     seller_description_opened, share_clicked, calcar_ai_clicked,
+     feedback_yes, feedback_no, feedback_submitted (useful + reason, без тексту),
+     chat_opened, chat_message_sent, settings_opened, memory_opened, memory_updated.
+   Номер перевірки: лічильник браузера calcar_checks_n (стартує не нижче
+   кількості вже збережених локальних перевірок), плюс властивість людини
+   checks_started; після входу identify склеює анонімну історію з акаунтом. */
 (function () {
   var PUB = (window.CALCAR_PUBLIC && window.CALCAR_PUBLIC.analytics) || {};
   var AID_KEY = 'calcar_aid', UTM_KEY = 'calcar_utm', UID_KEY = 'calcar_uid';
-  var EVENTS = ['landing_view', 'analysis_started', 'analysis_completed', 'report_viewed', 'report_shared',
-    'assistant_opened', 'memory_opened', 'memory_saved', 'deep_check_clicked',
-    /* необовʼязковий блок відео про модель у звіті Check */
-    'youtube_block_viewed', 'youtube_video_opened', 'youtube_show_more', 'youtube_opened_external'];
+  var EVENTS = ['check_started', 'check_completed', 'report_viewed',
+    'report_active_30s', 'report_active_60s', 'report_active_180s',
+    'report_scroll_25', 'report_scroll_50', 'report_scroll_75', 'report_scroll_100',
+    'seller_description_opened', 'share_clicked', 'calcar_ai_clicked',
+    'feedback_yes', 'feedback_no', 'feedback_submitted',
+    /* якими функціями користуються: лише факт дії, без тексту чату і памʼяті */
+    'chat_opened', 'chat_message_sent', 'settings_opened', 'memory_opened', 'memory_updated'];
+  var CHECKS_N_KEY = 'calcar_checks_n', DONE_KEY = 'calcar_done_checks';
   /* ключі, які можуть нести приватний текст: відкидаються завжди */
   var DENY = /text|message|memory|description|seller|prompt|content|email|phone|token|password|card|payment|query|url|title|note|vin|plate/i;
   /* значення, схожі на VIN чи email, відкидаються під будь-яким ключем */
@@ -102,7 +111,7 @@
 
   function base() {
     var ft = firstTouch();
-    return { page: page(), product: product(), lang: (window.calcarLang ? window.calcarLang() : 'en'), signed_in: !!window.CALCAR_SIGNED_IN, acq_source: ft.source, acq_medium: ft.medium, acq_campaign: ft.campaign };
+    return { page: page(), product: product(), locale: (window.calcarLang ? window.calcarLang() : 'en'), authenticated: !!window.CALCAR_SIGNED_IN, acq_source: ft.source, acq_medium: ft.medium, acq_campaign: ft.campaign };
   }
   function track(name, props) {
     if (EVENTS.indexOf(name) < 0) { try { console.warn('[calcar-analytics] unknown event', name); } catch (e) {} return false; }
@@ -202,23 +211,108 @@
     ga = true;
   }
 
+  /* ---------- номер перевірки і завершення ---------- */
+  /* наступний номер Check цього браузера: не нижче seed (кількість уже
+     збережених локальних перевірок + 1), далі лише зростає */
+  function nextCheckNumber(seed) {
+    var n = parseInt(ls(true, CHECKS_N_KEY), 10);
+    if (!(n >= 0)) n = 0;
+    n = Math.max(n + 1, seed > 0 ? Math.floor(seed) : 1);
+    ls(false, CHECKS_N_KEY, String(n));
+    return n;
+  }
+  /* check_completed рівно раз на job: ключ це токен job (або інший стабільний ref) */
+  function checkCompleted(ref, props) {
+    if (!ref) return false;
+    var done = [];
+    try { done = JSON.parse(ls(true, DONE_KEY) || '[]'); } catch (e) {}
+    if (!Array.isArray(done)) done = [];
+    var key = String(ref).slice(0, 80);
+    if (done.indexOf(key) > -1) return false;
+    done.push(key); ls(false, DONE_KEY, JSON.stringify(done.slice(-50)));
+    return track('check_completed', props);
+  }
+  function bucketSec(ms) {
+    var s = ms / 1000;
+    return s < 60 ? '<60s' : s < 120 ? '60-120s' : s < 180 ? '120-180s' : s < 300 ? '180-300s' : '300s+';
+  }
+  function scoreBucket(v) {
+    if (typeof v !== 'number' || !isFinite(v)) return 'none';
+    var f = Math.max(0, Math.min(9, Math.floor(v)));
+    return f + '-' + (f + 1);
+  }
+
+  /* ---------- активний час і глибина прокрутки звіту ----------
+     Час рахується лише поки вкладка видима (document.visibilityState),
+     у фоні таймер стоїть. Кожен поріг раз на перегляд звіту. */
+  var ACTIVE_STEPS = [30, 60, 180], SCROLL_STEPS = [25, 50, 75, 100];
+  function makeActiveTimer(fire, now) {
+    now = now || function () { return Date.now(); };
+    var acc = 0, since = null, sent = {};
+    function check() {
+      var total = acc + (since !== null ? now() - since : 0);
+      ACTIVE_STEPS.forEach(function (sec) { if (!sent[sec] && total >= sec * 1000) { sent[sec] = true; fire('report_active_' + sec + 's'); } });
+      return total;
+    }
+    return {
+      visible: function (on) {
+        if (on && since === null) since = now();
+        else if (!on && since !== null) { acc += now() - since; since = null; }
+        check();
+      },
+      tick: check,
+      done: function () { return ACTIVE_STEPS.every(function (sec) { return sent[sec]; }); },
+    };
+  }
+  function makeScrollDepth(fire) {
+    var sent = {};
+    return function (pct) {
+      SCROLL_STEPS.forEach(function (st) { if (!sent[st] && pct >= (st === 100 ? 98 : st)) { sent[st] = true; fire('report_scroll_' + st); } });
+    };
+  }
+  /* report_viewed лише коли готовий звіт справді видимий; потім таймер і прокрутка */
+  var viewed = false;
+  function reportViewed(props, endEl) {
+    if (viewed) return;
+    var base = clean(props);
+    function start() {
+      if (viewed || document.visibilityState === 'hidden') return;
+      viewed = true;
+      document.removeEventListener('visibilitychange', start);
+      track('report_viewed', base);
+      var fire = function (n) { track(n, { product: base.product }); };
+      var timer = makeActiveTimer(fire);
+      timer.visible(true);
+      var iv = setInterval(function () { timer.tick(); if (timer.done()) clearInterval(iv); }, 1000);
+      document.addEventListener('visibilitychange', function () { timer.visible(document.visibilityState !== 'hidden'); });
+      var depth = makeScrollDepth(fire), pend = false;
+      function measure() {
+        pend = false;
+        var el = endEl || document.documentElement;
+        var r = el.getBoundingClientRect(), h = r.height || 1;
+        depth(Math.round((window.innerHeight - r.top) / h * 100));
+      }
+      /* не на кожну подію прокрутки: вимір не частіше ніж раз на 200 мс */
+      window.addEventListener('scroll', function () { if (!pend) { pend = true; setTimeout(measure, 200); } }, { passive: true });
+    }
+    start();
+    if (!viewed) document.addEventListener('visibilitychange', start);
+  }
+
   /* ---------- автоматичні події ---------- */
   function autoEvents() {
-    var p = location.pathname.replace(/\.html$/, '');
-    if (p === '/' || p === '/check' || p === '/import') track('landing_view', { product: product() });
-    /* помічник відкрився: chat.js повідомляє подією стану, лічимо лише відкриття */
-    document.addEventListener('calcar-chat-state', function (e) { if (e.detail && e.detail.open) track('assistant_opened', {}); });
-    /* контекстні кнопки: data-track="deep_check_clicked" достатньо */
+    /* CalCar AI: кнопка шапки і CTA висновку звіту; лічимо клік, не текст */
     document.addEventListener('click', function (e) {
-      var el = e.target && e.target.closest ? e.target.closest('[data-track]') : null;
-      if (!el) return;
-      var name = el.getAttribute('data-track');
-      if (EVENTS.indexOf(name) > -1) track(name, {});
+      var el = e.target && e.target.closest ? e.target.closest('#aiBtn, #pdChatBtn') : null;
+      if (el) track('calcar_ai_clicked', { placement: el.id === 'pdChatBtn' ? 'report_conclusion' : 'header' });
     });
   }
 
   aid(); firstTouch();
   loadPostHog(); loadGA();
-  window.calcar = { track: track, identify: identify, setPerson: setPerson, aid: aid, acquisition: firstTouch, events: EVENTS, enabled: function () { return { posthog: !!PUB.posthog_key, ga4: !!PUB.ga4_id }; } };
+  window.calcar = { track: track, identify: identify, setPerson: setPerson, aid: aid, acquisition: firstTouch, events: EVENTS,
+    nextCheckNumber: nextCheckNumber, checkCompleted: checkCompleted, reportViewed: reportViewed, bucketSec: bucketSec, scoreBucket: scoreBucket,
+    _activeTimer: makeActiveTimer, _scrollDepth: makeScrollDepth,
+    enabled: function () { return { posthog: !!PUB.posthog_key, ga4: !!PUB.ga4_id }; } };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', autoEvents); else autoEvents();
 })();

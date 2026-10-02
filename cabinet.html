@@ -893,7 +893,11 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  try {
  const { error } = await SB.from('user_memory').upsert({ user_id: uid, memory: text || null, updated_at: new Date().toISOString() });
  if (error) { st.textContent = t('Not saved'); }
- else { saved = text || ''; st.textContent = okMsg; setMode(false); if (window.calcar) window.calcar.track('memory_saved', { length_bucket: !text ? 'empty' : text.length < 500 ? 'short' : text.length < 1500 ? 'medium' : 'long' }); }
+ else {
+ saved = text || ''; st.textContent = okMsg; setMode(false);
+ /* лише факт успішного збереження: вміст памʼяті в аналітику не йде */
+ try { if (window.calcar) window.calcar.track('memory_updated', { action: text ? 'saved' : 'erased' }); } catch (e) {}
+ }
  } catch (e) { st.textContent = t('Not saved'); }
  setTimeout(() => { st.textContent = ''; }, 2600);
  }
@@ -917,9 +921,13 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  /* розділ кабінету обирається в меню кнопки Кабінет (шапка), сторінка
     показує лише обраний. Дублювати навігацію на сторінці не потрібно */
  const TAB_TITLES = { reports: 'Reports', memory: 'Assistant memory', account: 'Account settings' };
+ /* відкриття розділу: подія раз на фактичний перехід, повторний той самий хеш не рахується */
+ const TAB_EVENTS = { memory: 'memory_opened', account: 'settings_opened' };
+ let curTab = null;
  function switchTab(name) {
  if (!document.getElementById('tab-' + name)) name = 'reports';
- if (name === 'memory' && window.calcar) window.calcar.track('memory_opened', {});
+ if (name !== curTab && TAB_EVENTS[name]) { try { if (window.calcar) window.calcar.track(TAB_EVENTS[name], {}); } catch (e) {} }
+ curTab = name;
  ['reports', 'memory', 'account'].forEach(n => {
  document.getElementById('tab-' + n).style.display = n === name ? '' : 'none';
  });

@@ -1211,6 +1211,7 @@ async function resumePending(){
   const note = document.getElementById('ldNote'); if (note) { note.textContent = t('Resuming your analysis…'); note.className = 'ld-note on'; }
   try {
     const report = await pollJob(pj.token);
+    trackCompleted(report, pj.token, pj.at);
     const finPromise = loadingFinish(rid);
     const dest = await finalizeReport(report, pj.token);
     await finPromise;
@@ -1389,6 +1390,21 @@ input.addEventListener('keydown', e => { if (e.key === 'Enter') run(); });
 
 /* аналітика: скільки перевірок уже запускав цей браузер (гість: локальний
    список; акаунт: PostHog рахує події сам, це лише підказка) */
+/* check_completed: раз на job (ключ токен або час аналізу), лише для готового звіту */
+function trackCompleted(data, token, t0){
+  try {
+    if (!window.calcar || !data || !data.vehicle) return;
+    const m = data._meta || {}, bd = data.score_breakdown || {};
+    const conf = data.confidence && data.confidence.text_key;
+    window.calcar.checkCompleted(token || m.share_token || m.analyzed_at, {
+      product: 'check',
+      generation_time_bucket: t0 ? window.calcar.bucketSec(Date.now() - t0) : 'unknown',
+      score_bucket: window.calcar.scoreBucket(bd.final),
+      confidence_level: CONF_LEVEL[conf] || 'none',
+    });
+  } catch (e) {}
+}
+const CONF_LEVEL = { 'Data is limited': 'limited', 'Partially checked': 'partial', 'Enough data': 'enough', 'Studied in detail': 'detailed' };
 function checkIndex(){ try { return (localRecent().filter(x => x && x.token).length || 0) + 1; } catch (e) { return 1; } }
 function marketplaceOf(u){ try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return 'unknown'; } }
 async function run() {
@@ -1426,7 +1442,7 @@ async function run() {
   statusEl.className = 'hf-status';
   const runStart = Date.now();
   const marketplace = marketplaceOf(url);
-  if (window.calcar) { const idx = checkIndex(); window.calcar.track('analysis_started', { product: 'check', marketplace, check_index: idx, signed_in: !!window.CALCAR_SIGNED_IN }); window.calcar.setPerson({ checks_started: idx }); }
+  try { if (window.calcar) { const n = window.calcar.nextCheckNumber(checkIndex()); window.calcar.track('check_started', { product: 'check', marketplace, check_number: n }); window.calcar.setPerson({ checks_started: n }); } } catch (e) {}
   const rid = loadingStart();
 
   try {
@@ -1446,13 +1462,12 @@ async function run() {
       data = await pollJob(token);
     }
 
-    if (window.calcar) window.calcar.track('analysis_completed', { product: 'check', marketplace, success: true, duration_ms: Date.now() - runStart });
+    trackCompleted(data, token, runStart);
     const finPromise = loadingFinish(rid);
     const dest = await finalizeReport(data, token);
     await finPromise;
     location.href = dest;
   } catch (e) {
-    if (window.calcar) window.calcar.track('analysis_completed', { product: 'check', marketplace, success: false, duration_ms: Date.now() - runStart });
     loadingError(rid, e.message || t('Something went wrong, please try again'));
   } finally {
     btn.disabled = false;

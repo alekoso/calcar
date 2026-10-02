@@ -1053,9 +1053,6 @@ async function run() {
   LOAD_STAGE_AT = query ? [0, 25000, 45000, 105000]
     : (photos.length ? [0, 8000, 25000, 95000] : [0, 4000, 9000]);
   const rid = loadingStart();
-  const runStart = Date.now();
-  const marketplace = query ? (/copart/i.test(query) ? 'copart.com' : /iaai/i.test(query) ? 'iaai.com' : 'lot') : (photos.length ? 'own_photos' : 'vin_only');
-  if (window.calcar) window.calcar.track('analysis_started', { product: 'import', marketplace, signed_in: !!window.CALCAR_SIGNED_IN });
 
   /* пошук уже готового звіту за цим самим лотом.
      Головний ключ це НОМЕР ЛОТА, витягнутий із посилання: збережений у звіті
@@ -1177,11 +1174,9 @@ async function run() {
     } catch (e) {
       try { sessionStorage.setItem('calcarPhotos', JSON.stringify((photos || []).slice(0, 6))); } catch (e2) {}
     }
-    if (window.calcar) window.calcar.track('analysis_completed', { product: 'import', marketplace, success: true, duration_ms: Date.now() - runStart });
     await loadingFinish(rid);
     location.href = '/result.html';
   } catch (e) {
-    if (window.calcar) window.calcar.track('analysis_completed', { product: 'import', marketplace, success: false, duration_ms: Date.now() - runStart });
     loadingError(rid, e.message || t('Something went wrong, please try again'));
   } finally {
     btn.disabled = false;

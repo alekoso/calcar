@@ -16,3 +16,13 @@ create table if not exists report_feedback (
 create index if not exists report_feedback_report on report_feedback (report_ref, created_at desc);
 create index if not exists report_feedback_created on report_feedback (created_at desc);
 alter table report_feedback enable row level security;
+
+-- Beta feedback v2 (аддитивно): причина "не зовсім" з фіксованого переліку.
+-- Старі рядки лишаються з reason = null; RLS і доступ не змінюються.
+alter table report_feedback add column if not exists reason text;
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'report_feedback_reason_check') then
+    alter table report_feedback add constraint report_feedback_reason_check
+      check (reason is null or reason in ('data_error', 'missing_information', 'unclear_conclusion', 'not_helpful', 'other'));
+  end if;
+end $$;

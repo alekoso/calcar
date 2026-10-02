@@ -170,16 +170,21 @@ const page = fs.readFileSync('result-check.html', 'utf8');
   if (!f([], { row_id: 'x' }, 3, false)) errs.push('звіт ще не в історії залогіненого, а перевірок менше трьох: мав показатись');
   if (f([{ id: 'r1' }, { id: 'r2' }, { id: 'r3' }], { row_id: 'r9' }, 3, false)) errs.push('залогінений, чужа четверта: не мав показатись');
   if (!f([{ id: 'r1' }, { share_token: 'tok' }, { id: 'r3' }], { token: 'tok' }, 3, false)) errs.push('збіг за share_token не знайдено');
-  /* ворота: публічне посилання, уже залишений відгук, лише розгорнутий розбір */
+  /* ворота: публічне посилання, уже залишений відгук, перші три перевірки */
   if (!/eligible = !READONLY && !!r && await firstChecks\(\) && !\(await alreadySent\(r\)\)/.test(page)) errs.push('ворота відгуку неповні: READONLY, ref, перші три, уже залишено');
-  /* повний текст висновку: або розгорнутий розбір старого формату, або Final Conclusion, який увесь на екрані */
-  if (!/if \(\(window\.calcarConclusionFull === true \|\| \$\('pdReasoning'\)\.style\.display !== 'none'\)\) box\.hidden = false/.test(page.replace(/await decide\(\) && /, ''))) errs.push('відгук може зʼявитись поза повним текстом висновку');
+  /* beta-відгук: останній блок звіту (після "Що зробити перед купівлею"), показ після готового звіту */
+  const wrapEnd = page.indexOf('\n</div>\n\n<footer>');
+  if (!(page.indexOf('id="chkCard"') < page.indexOf('id="fbBox"') && page.indexOf('id="fbBox"') < wrapEnd)) errs.push('відгук не останній блок звіту');
+  if (page.slice(page.indexOf('id="verdictCard"'), page.indexOf('id="risksCard"')).includes('fbBox')) errs.push('відгук лишився всередині висновку');
+  if (!/if \(await decide\(\)\) box\.hidden = false;/.test(page) || !/if \(window\.calcarFeedbackInit\) window\.calcarFeedbackInit\(\);/.test(page)) errs.push('відгук не показується після готового звіту');
+  for (const r of ['data_error', 'missing_information', 'unclear_conclusion', 'not_helpful', 'other']) if (!page.includes('data-reason="' + r + '"')) errs.push('нема причини ' + r);
+  if (!/id="fbSend" type="button" disabled>/.test(page) || !/sendBtn\.disabled = !reason;/.test(page)) errs.push('"Надіслати" доступне без причини');
   if (/<div class="fbx-more"[^>]*>[\s\S]{0,20}<textarea/.test(page) && !/<div class="fbx-more" id="fbMore" inert data-private-block>/.test(page)) errs.push('поле тексту доступне до кліку "Не зовсім"');
   /* display:flex рядка перебиває атрибут hidden без явного правила: питання лишалось на екрані */
   if (!/\.fbx\[hidden\], \.fbx \[hidden\]\{display:none\}/.test(page)) errs.push('атрибут hidden у блоці відгуку перебивається display класів');
-  if (!/verdict === 'positive'\) \{ finish\(\); return; \}/.test(page)) errs.push('"Так" не завершує відгук одразу');
+  if (!/verdict === 'positive'\) \{ track\('feedback_submitted', \{ useful: true \}\); finish\(\); return; \}/.test(page)) errs.push('"Так" не завершує відгук одразу');
   if (!/more\.removeAttribute\('inert'\); more\.classList\.add\('open'\)/.test(page)) errs.push('"Не зовсім" не розкриває поле');
-  const fbCode = page.slice(page.indexOf('const FEEDBACK_FIRST_N'), page.indexOf('calcarFeedbackSync = '));
+  const fbCode = page.slice(page.indexOf('const FEEDBACK_FIRST_N'), page.indexOf('window.calcarFeedbackInit = init'));
   if (!fbCode || /setTimeout|setInterval|IntersectionObserver|scrollY|scrollTop/.test(fbCode)) errs.push('відгук привʼязаний до таймера чи прокрутки');
   if (!/localRecent\(\)\.filter\(x => x && x\.token\)/.test(page)) errs.push('історія гостя не з існуючого calcar_recent_checks');
   if (!/SB\.from\('reports'\)\s*\n?\s*\.select\([^)]*\)\s*\n?\s*\.eq\('kind', 'check'\)/.test(page)) errs.push('історія залогіненого не з таблиці reports');
@@ -681,7 +686,7 @@ const page = fs.readFileSync('result-check.html', 'utf8');
   /* словники */
   for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
     const s = fs.readFileSync(d, 'utf8');
-    for (const k of ['Average mileage', 'Average calculated from the vehicle age.', 'Seller description', 'Did this analysis help you decide?', 'CalCar AI left a message', 'Unread messages: {n}', 'Yes', 'Not really', 'What was missing?', 'Send', 'Thanks for the feedback', 'km/mo', 'CalCar conclusion', 'Expensive options', 'What to check', '{n} sec', 'How videos are selected', 'CalCar AI Chat', 'Archive photos were used in the analysis but are not available to view right now.', 'Archive photos are unavailable.', 'Owner #{n}']) {
+    for (const k of ['Average mileage', 'Average calculated from the vehicle age.', 'Seller description', 'Did this analysis help you decide?', 'CalCar AI left a message', 'Unread messages: {n}', 'Yes', 'Not really', 'Was the report useful?', 'What went wrong?', 'There is an error in the data', 'Information is missing', 'The conclusion is unclear', 'The analysis did not help me decide', 'Other', 'What would you improve?', 'Send', 'Thanks for the feedback', 'km/mo', 'CalCar conclusion', 'Expensive options', 'What to check', '{n} sec', 'How videos are selected', 'CalCar AI Chat', 'Archive photos were used in the analysis but are not available to view right now.', 'Archive photos are unavailable.', 'Owner #{n}']) {
       if (!s.includes("'" + k + "':")) errs.push(d + ': нема ключа "' + k + '"');
     }
   }

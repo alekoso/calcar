@@ -546,6 +546,7 @@
      Вузьке вікно і телефон: звична шторка з підкладкою. */
   /* єдине джерело правди про стан це сама панель; подія лише повідомляє
      сторінку, щоб та не заводила власний прапорець */
+  function ctrack(name, props) { try { if (window.calcar) window.calcar.track(name, props); } catch (e) {} }
   function announce(open) {
     try { document.dispatchEvent(new CustomEvent('calcar-chat-state', { detail: { open: open } })); } catch (e) {}
   }
@@ -617,6 +618,8 @@
       thread.messages.push(Object.assign({ role: 'assistant', content: data.reply }, tag));
       saveThread();
       msg('ai', data.reply);
+      /* лише факт успішної відповіді: ні тексту, ні вкладень, ні контексту */
+      ctrack('chat_message_sent', { page_type: ctx.page_type || null, attachments: atts.length, quoted: !!q });
       saveChatMemory(data.memory_update, shown, data.reply, f);
       scheduleMemoryUpdate();
       ac.forEach(function (c) { if (c.afterReply) { try { c.afterReply(data, shown, data.reply, ctx); } catch (e) {} } });
@@ -636,7 +639,10 @@
       if (opts.focus) { focus = opts.focus; focusDismissed = false; }
       if (typeof opts.quote === 'string') { quote = opts.quote.trim().slice(0, 500); renderQuote(); }
       renderFocus(); renderEmpty(); renderSugg();
+      /* chat_opened лише на фактичний перехід закрито -> відкрито */
+      var wasOpen = els.panel.classList.contains('open');
       els.panel.classList.add('open');
+      if (!wasOpen) ctrack('chat_opened', { page_type: pageCtx().page_type || null });
       announce(true);
       layout();
       loadMemory();

@@ -327,12 +327,8 @@ const vid = (id, title, extra = {}) => Object.assign({
   /* мобільний: одна колонка, без горизонтального переповнення */
   if (!/@media\(max-width:620px\)\{\.yt-grid\{grid-template-columns:1fr\}/.test(page)) errs.push('на телефоні картки не в одну колонку');
   if (!/\.yt-grid\{display:grid;grid-template-columns:repeat\(3,1fr\)/.test(page)) errs.push('на десктопі не три картки в ряд');
-  /* аналітика на наявному шарі */
-  const an = fs.readFileSync('analytics.js', 'utf8');
-  for (const e of ['youtube_block_viewed', 'youtube_video_opened', 'youtube_show_more', 'youtube_opened_external']) {
-    if (!an.includes("'" + e + "'")) errs.push('подія ' + e + ' не зареєстрована в analytics.js');
-    if (!page.includes("track('" + e + "'")) errs.push('сторінка не шле подію ' + e);
-  }
+  /* beta-таксономія аналітики без подій відео: блок не шле нічого в аналітику */
+  if (/track\('youtube_/.test(page)) errs.push('блок відео шле подію поза beta-таксономією');
   /* ідентичність моделі доїжджає до сторінки і не тягне за собою VIN-даних */
   const sh = fs.readFileSync('api/share.js', 'utf8');
   if (!/'model_identity'/.test(sh.slice(sh.indexOf('const PUBLIC_META'), sh.indexOf('];', sh.indexOf('const PUBLIC_META'))))) errs.push('model_identity не дозволений у публічному звіті');

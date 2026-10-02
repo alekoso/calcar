@@ -1,5 +1,6 @@
 /* CalCar: відгук на звіт. POST /api/feedback
-   { report_ref, product, verdict: 'positive'|'negative', text?, anon_id?, page? }
+   { report_ref, product, verdict: 'positive'|'negative', reason?, text?, anon_id?, page?, lang? }
+   reason: data_error | missing_information | unclear_conclusion | not_helpful | other
    GET /api/feedback?report_ref=&anon_id= -> { submitted: bool }: чи ця людина
    вже залишила відгук на цей звіт (звіт не питає вдруге після перезавантаження).
    Відповідь лише булева: ні тексту, ні вердикту, ні чужих записів.
@@ -14,6 +15,7 @@ import { resolveLocale, errText } from './locale.js';
 
 const REF_RE = /^[A-Za-z0-9_-]{4,64}$/;
 const ANON_RE = /^[0-9a-f-]{36}$/;
+export const FEEDBACK_REASONS = ['data_error', 'missing_information', 'unclear_conclusion', 'not_helpful', 'other'];
 
 export function sanitizeFeedback(body) {
   const b = body && typeof body === 'object' ? body : {};
@@ -25,7 +27,9 @@ export function sanitizeFeedback(body) {
   const product = b.product === 'import' ? 'import' : 'check';
   const anon_id = typeof b.anon_id === 'string' && ANON_RE.test(b.anon_id) ? b.anon_id : null;
   const page = typeof b.page === 'string' ? b.page.slice(0, 80) : null;
-  return { report_ref, verdict, text: text || null, product, anon_id, page };
+  /* причина лише з переліку і лише для "не зовсім" */
+  const reason = verdict === 'negative' && FEEDBACK_REASONS.includes(b.reason) ? b.reason : null;
+  return { report_ref, verdict, reason, text: text || null, product, anon_id, page };
 }
 
 /* параметри читання стану: ті самі формати, що й у записі */
@@ -95,14 +99,17 @@ export default async function handler(req, res) {
     const since = new Date(Date.now() - 3600 * 1000).toISOString();
     const q = await fetch(root + '/rest/v1/report_feedback?report_ref=eq.' + encodeURIComponent(fb.report_ref) + '&' + who + '&created_at=gte.' + encodeURIComponent(since) + '&select=id&limit=1', { headers: hdr });
     const rows = q.ok ? await q.json().catch(() => []) : [];
-    const row = { report_ref: fb.report_ref, product: fb.product, user_id, anon_id: user_id ? null : fb.anon_id, verdict: fb.verdict, text: fb.text, lang, page: fb.page };
+    const row = { report_ref: fb.report_ref, product: fb.product, user_id, anon_id: user_id ? null : fb.anon_id, verdict: fb.verdict, reason: fb.reason, text: fb.text, lang, page: fb.page };
     let r;
     if (Array.isArray(rows) && rows[0]) {
-      r = await fetch(root + '/rest/v1/report_feedback?id=eq.' + encodeURIComponent(rows[0].id), { method: 'PATCH', headers: { ...hdr, prefer: 'return=minimal' }, body: JSON.stringify({ verdict: fb.verdict, text: fb.text }) });
+      r = await fetch(root + '/rest/v1/report_feedback?id=eq.' + encodeURIComponent(rows[0].id), { method: 'PATCH', headers: { ...hdr, prefer: 'return=minimal' }, body: JSON.stringify({ verdict: fb.verdict, reason: fb.reason, text: fb.text }) });
     } else {
       r = await fetch(root + '/rest/v1/report_feedback', { method: 'POST', headers: { ...hdr, prefer: 'return=minimal' }, body: JSON.stringify(row) });
     }
-    if (!r.ok) return res.status(500).json({ error: errText(lang, 'internal') });
+    if (!r.ok) {
+      console.error(JSON.stringify({ op: 'feedback_write', status: r.status, has_user: !!user_id, verdict: fb.verdict, has_reason: !!fb.reason }));
+      return res.status(500).json({ error: errText(lang, 'internal') });
+    }
     return res.status(200).json({ ok: true, updated: !!(Array.isArray(rows) && rows[0]) });
   } catch (e) {
     return res.status(500).json({ error: errText(lang, 'internal', e.message) });
