@@ -155,10 +155,13 @@ const read = f => fs.readFileSync(f, 'utf8');
   /* ===== 3. проводка локалі в AI-потоки ===== */
   const chat = read('api/chat.js'), check = read('api/check.js'), analyze = read('api/analyze.js');
   const translate = read('api/check-translate.js'), memory = read('api/memory.js'), lot = read('api/lot.js');
-  if (/якою користувач поставив останнє питання/.test(chat)) errs.push('chat: лишилось правило "мовою останнього питання"');
+  /* чат відповідає мовою ОСТАННЬОГО повідомлення людини (рішення власника
+     2026-10-03); мова інтерфейсу лише запасна, коли мову повідомлення не
+     визначити. Мова звіту і нотатки памʼяті від цього не залежить */
   if (!/const lang = resolveLocale\(req\.body\?\.lang\)/.test(chat)) errs.push('chat: не читає локаль');
-  if (!/МОВА ВІДПОВІДІ: \$\{LANG_NAME\[lang\]\}/.test(chat)) errs.push('chat: системний промпт без директиви обраної мови');
-  if (!/Мова питання, мова звіту і мова джерел мову відповіді НЕ визначають/.test(chat)) errs.push('chat: нема заборони визначати мову з питання');
+  if (!/МОВА ВІДПОВІДІ: відповідай мовою ОСТАННЬОГО повідомлення користувача/.test(chat)) errs.push('chat: відповідь не мовою повідомлення людини');
+  if (!/мовою попередніх повідомлень користувача в цій розмові; якщо і їх немає, мовою інтерфейсу CalCar: \$\{LANG_NAME\[lang\]\}/.test(chat)) errs.push('chat: нема запасного порядку мови (розмова, потім інтерфейс)');
+  if (/відповідай нею ЗАВЖДИ, навіть якщо питання поставлене іншою мовою/.test(chat)) errs.push('chat: лишилось правило відповідати лише мовою інтерфейсу');
   if (!/SYSTEM\(product, memory, wantMemory, turns, refs\.length > 0, quoted, lang\)/.test(chat)) errs.push('chat: lang не переданий у SYSTEM');
   for (const [name, src] of [['check', check], ['analyze', analyze], ['translate', translate], ['memory', memory], ['lot', lot]]) {
     if (!/resolveLocale\(req\.(body|query)\?\.lang\)/.test(src)) errs.push(name + ': локаль не через resolveLocale');

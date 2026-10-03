@@ -645,12 +645,16 @@ window.calcarAuthState = function (signedIn) {
 if (window.CALCAR_SIGNED_IN !== undefined) window.calcarAuthState(window.CALCAR_SIGNED_IN);
 </script>
 <script>
-/* Перший запуск CalCar: тур із двох кроків, без бібліотек. Спільний блок,
-   однаковий на всіх сторінках.
+/* Перший запуск CalCar: тур із двох кроків, для гостя з трьох, без бібліотек.
+   Спільний блок, однаковий на всіх сторінках.
    Крок 1 підсвічує кнопку "Мій CalCar AI" у шапці. Крок 2 сам відкриває
    меню, підсвічує рядок "Памʼять помічника" і ставить поповер ПОРУЧ із
    меню (праворуч від панелі на десктопі, над шторкою на телефоні), тому
    меню лишається видимим і робочим, а поповер не ховається під нього.
+   Крок 3 лише для того, хто не увійшов: у тому самому відкритому меню
+   підсвічує "Увійти" і пояснює, навіщо акаунт (звіти зберігаються, до
+   минулих перевірок можна повернутись). Реєстрацію не вимагає і нічого не
+   блокує: "Готово" закриває тур. Хто увійшов, третього кроку не бачить.
    Стан у localStorage calcar_tour: step2 (крок 1 пройдено, крок 2 попереду;
    переживає перехід між сторінками), done, skip. Не показується тому, хто
    вже користувався помічником (у треді є повідомлення) чи памʼяттю (кабінет
@@ -676,6 +680,8 @@ if (window.CALCAR_SIGNED_IN !== undefined) window.calcarAuthState(window.CALCAR_
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function mobile() { return window.matchMedia('(max-width:620px)').matches; }
   function panel() { return document.getElementById('lncPanel'); }
+  /* гість: шапка тримає на .acc-wrap клас anon, доки немає сесії */
+  function anon() { var w = document.querySelector('.acc-wrap'); return !!(w && w.classList.contains('anon')); }
   var css = '.tour-pulse{position:relative;z-index:61}.tour-pulse::after{content:"";position:absolute;inset:-6px;border-radius:26px;border:2px solid var(--brand);animation:tour-pulse 1.6s ease-out infinite;pointer-events:none}.tour-pulse.tour-row::after{inset:-3px;border-radius:12px}@keyframes tour-pulse{0%{transform:scale(.9);opacity:.9}100%{transform:scale(1.25);opacity:0}}'
     /* z-index вищий за панель меню (410): поповер стоїть поруч із меню і ніколи не під ним */
     + '.tour-pop{position:fixed;z-index:420;width:min(320px,calc(100vw - 24px));background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:14px 16px;box-shadow:0 14px 40px rgba(20,22,25,.16);font-size:13.5px;line-height:1.5}'
@@ -696,7 +702,7 @@ if (window.CALCAR_SIGNED_IN !== undefined) window.calcarAuthState(window.CALCAR_
   function place() {
     if (!pop || !target) return;
     var w = pop.offsetWidth || 320, h = pop.offsetHeight || 160, r = target.getBoundingClientRect(), x, y;
-    if (step === 2 && panel()) {
+    if (step >= 2 && panel()) {
       /* поруч із відкритим меню, не поверх нього: праворуч від панелі (або
          ліворуч, якщо праворуч нема місця); на телефоні над шторкою */
       var p = panel().getBoundingClientRect();
@@ -722,27 +728,38 @@ if (window.CALCAR_SIGNED_IN !== undefined) window.calcarAuthState(window.CALCAR_
     if (p && b && !p.classList.contains('open')) b.click();
   }
   function show(n) {
+    var guest = anon(), total = guest ? 3 : 2;
     clear(); step = n;
     if (n === 2) { set('step2'); openMenu(); target = memoryRow(); }
+    else if (n === 3) { openMenu(); target = document.getElementById('authLink'); }
     else target = document.getElementById('aiBtn');
     if (!target) return finish('done');
     target.classList.add('tour-pulse'); if (n === 2) target.classList.add('tour-row');
-    var text = n === 1
+    var text = n === 3
+      ? tr('Create an account and your reports will be saved: you can come back to previous checks at any time.')
+      : n === 1
       ? tr('This is your personal car assistant. It knows your current reports, can explain any conclusion, and over time remembers which cars and conditions suit you.')
       : tr('This is where CalCar keeps what it knows about your preferences. If you have already discussed choosing a car with another AI assistant, you can bring that context here instead of starting from scratch.');
-    var main = n === 1 ? tr('Next') : tr('Open memory'), side = n === 1 ? tr('Skip') : tr('Done');
+    /* гість на кроці 2 йде далі до кроку про акаунт; памʼять відкриває сам рядок меню */
+    var more = n === 1 || (n === 2 && guest);
+    var main = more ? tr('Next') : n === 3 ? tr('Sign in') : tr('Open memory'), side = more ? tr('Skip') : tr('Done');
     pop = document.createElement('div'); pop.className = 'tour-pop'; pop.setAttribute('role', 'dialog');
-    pop.innerHTML = '<div class="tour-step">' + n + ' / 2</div><p>' + esc(text) + '</p><div class="tour-act"><button type="button" class="tour-side">' + esc(side) + '</button><button type="button" class="tour-main">' + esc(main) + '</button></div>';
+    pop.innerHTML = '<div class="tour-step">' + n + ' / ' + total + '</div><p>' + esc(text) + '</p><div class="tour-act"><button type="button" class="tour-side">' + esc(side) + '</button><button type="button" class="tour-main">' + esc(main) + '</button></div>';
     /* кліки по поповеру не доходять до документа: інакше лаунчер вважав би
        їх кліком "поза меню" і закривав його */
     pop.addEventListener('click', function (e) { e.stopPropagation(); });
     document.body.appendChild(pop); place();
-    pop.querySelector('.tour-main').onclick = function () { if (n === 1) next(); else { finish('done'); location.href = MEMORY_HREF; } };
-    pop.querySelector('.tour-side').onclick = function () { finish(n === 1 ? 'skip' : 'done'); };
-    if (n === 2 && panel()) {
+    pop.querySelector('.tour-main').onclick = function () {
+      if (n === 1) next();
+      else if (n === 2 && guest) show(3);
+      else if (n === 3) { var href = target.getAttribute && target.getAttribute('href') || '/cabinet.html'; finish('done'); location.href = href; }
+      else { finish('done'); location.href = MEMORY_HREF; }
+    };
+    pop.querySelector('.tour-side').onclick = function () { finish(more ? 'skip' : 'done'); };
+    if (n >= 2 && panel()) {
       /* меню закрили повз тур (клік поза ним, Esc): підказка без меню не має сенсу */
       var p = panel();
-      mo = new MutationObserver(function () { if (step === 2 && !p.classList.contains('open')) finish('done'); });
+      mo = new MutationObserver(function () { if (step >= 2 && !p.classList.contains('open')) finish('done'); });
       mo.observe(p, { attributes: true, attributeFilter: ['class'] });
     }
   }

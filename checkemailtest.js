@@ -363,7 +363,26 @@ const TOK = n => ('tok' + n + 'AAAAAAAAAAAAAAAAAAAAAA').slice(0, 22);
   ok(!/console\.\w+\([^)]*(email|emIn|acct)/i.test(block), '15: адреса в console');
   ok(!/track\([^)]*(email:|acct|masked)/.test(block) && !/[?&]email=/.test(block), '15: адреса в події або URL');
   ok(/findSavedByToken\(token, serverSaves \? 4 : 1\)/.test(ch), 'check.html: сторінка не шукає готовий рядок перед збереженням');
-  ok(/emailBoxShow\(token\);\n\s+data = await pollJob\(token\);/.test(ch) && /emailBoxShow\(pj\.token\);/.test(ch), 'check.html: блок не показується під час аналізу');
+  /* блок зʼявляється одразу з індикатором, не після відповіді сервера з токеном */
+  ok(/const rid = loadingStart\(\);\n[^\n]*\n  let tokenReady = \(\) => \{\};\n  emailBoxShow\(new Promise\(res => \{ tokenReady = res; \}\)\);\n\n  try \{\n    const r = await fetch\('\/api\/check'/.test(ch) && /tokenReady\(token\);\n\s+data = await pollJob\(token\);/.test(ch) && /emailBoxShow\(pj\.token\);/.test(ch), 'check.html: блок листа зʼявляється із запізненням');
+  /* токен ще не прийшов: блок уже є, запит чекає на токен і йде з ним */
+  let rel = null;
+  let pw = page({ session: null, stored: {} });
+  await pw.ctx.emailBoxShow(new Promise(r => { rel = r; }));
+  ok(pw.els.emailBox.className === 'em on' && /id="emIn"/.test(pw.els.emailBox.innerHTML), 'блок листа не показано до токена');
+  pw.doc.getElementById('emIn').value = 'guest@example.com';
+  const sub = pw.submit();
+  await new Promise(r => setImmediate(r));
+  ok(pw.calls.length === 0, 'opt-in пішов на сервер без токена');
+  pw.store.calcar_pending_check = JSON.stringify({ token: T1, url: 'https://x.test/1', at: Date.now() });
+  rel(T1); await sub;
+  ok(pw.calls.length === 1 && pw.calls[0].body.token === T1 && /em-ok/.test(pw.els.emailBox.innerHTML) && JSON.parse(pw.store.calcar_pending_check).mailed, 'opt-in після появи токена не пішов з цим токеном');
+  /* Check упав до токена: opt-in на сервер не йде, показано помилку */
+  pw = page({ session: null, stored: {} });
+  await pw.ctx.emailBoxShow(new Promise(r => { rel = r; }));
+  pw.doc.getElementById('emIn').value = 'guest@example.com';
+  const sub2 = pw.submit(); rel(null); await sub2;
+  ok(pw.calls.length === 0 && pw.els.emErr.className === 'em-err on', 'без токена opt-in пішов на сервер');
 
   /* аналітика: події в таксономії, санітайзер ріже адресу під будь-яким ключем */
   const an = fs.readFileSync('analytics.js', 'utf8');

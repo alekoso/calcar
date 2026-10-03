@@ -83,6 +83,8 @@
   /* textarea і накладка з пілюлями збігаються в метриках до пікселя: одне правило */
   '.cc-box textarea,.cc-ta-overlay{display:block;width:100%;border:none;background:transparent;resize:none;outline:none;font-family:inherit;font-size:14.5px;line-height:1.5;letter-spacing:normal;padding:2px 6px;min-height:calc(3em + 4px);max-height:120px;box-sizing:border-box;white-space:pre-wrap;overflow-wrap:break-word;word-break:normal}' +
   '.cc-box textarea{color:transparent;caret-color:var(--text)}' +
+  /* iOS Safari наближає сторінку на полі з кеглем менше 16px; накладка тримає ті самі метрики */
+  '@media (hover:none) and (pointer:coarse){.cc-box textarea,.cc-ta-overlay{font-size:16px}}' +
   '.cc-box textarea::selection{color:transparent}' +
   '.cc-box textarea::placeholder{color:var(--faint)}' +
   '.cc-ta-overlay{position:absolute;inset:0;pointer-events:none;overflow:hidden;color:var(--text)}' +

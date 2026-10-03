@@ -22,7 +22,7 @@ const grab = name => {
   }
   return '';
 };
-const src = ['popoverPosition', 'coverageRail', 'renderScoreBlock'].map(grab).join('\n');
+const src = ['popoverPosition', 'sheetScrollLock', 'coverageRail', 'renderScoreBlock'].map(grab).join('\n');
 
 function stub(id, extra = {}) {
   const attrs = {}, listeners = {};
@@ -42,7 +42,7 @@ function mount(D, { hover = false } = {}) {
   els.scoreCard = stub('scoreCard', { querySelectorAll: sel => (sel === '.sc-info' ? infos : []) });
   const $ = id => els[id] || null;
   const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  const doc = stub('document');
+  const doc = stub('document', { documentElement: { style: {} } });
   const win = stub('window', { matchMedia: q => ({ matches: hover && /hover:hover/.test(q) }), innerWidth: 1280, innerHeight: 800 });
   const fn = new Function('$', 'esc', 't', 'document', 'window', src + '\nreturn { renderScoreBlock };');
   fn($, esc, s => s, doc, win).renderScoreBlock(D);
@@ -89,7 +89,9 @@ for (const [final, cov] of [[9.0, 91], [5.1, 74], [3.2, 50]]) {
   const knobs = [...(r.slot + r.pop).matchAll(/cv-knob" data-pos="([\d.]+)" style="left:([\d.]+)%/g)];
   ok(knobs.length === 2 && knobs.every(k => Number(k[1]) === cov && Number(k[2]) === cov), 'маркер не на збереженому overall_internal ' + cov);
   ok((r.slot.match(/cv-tick" style="left:70%/g) || []).length === 1 && /cv-tick" style="left:70%/.test(r.pop), 'риска достатньо не на 70');
-  ok(card.includes('Limited data') && card.includes('Sufficient') && card.includes('Well covered'), 'підписи шкали в картці');
+  ok(card.includes('Limited data') && card.includes('Well covered'), 'підписи кінців шкали в картці');
+  /* над шкалою лише заголовок стану: окремого підпису "Достатньо" біля позначки немає */
+  ok(!/sc-tick-l/.test(r.slot + r.pop) && !/>Sufficient</.test(r.slot + r.pop), 'над шкалою знову зайвий підпис "Достатньо"');
   /* 4. панель: пояснення, впевненість в оцінці, далі повнота перевірки з доменами */
   const pt = text(r.pop);
   ok(pt.includes('An assessment of this specific car based on confirmed data'), 'нема пояснення оцінки');
@@ -256,7 +258,7 @@ for (const [final, cov] of [[9.0, 91], [5.1, 74], [3.2, 50]]) {
 }
 /* 11. словники */
 {
-  const keys = ['CalCar Score', 'Confidence in the score', 'Check coverage', 'Sufficient', 'Limited data', 'Well covered', 'Data is limited', 'Partially checked', 'Enough data', 'Studied in detail',
+  const keys = ['CalCar Score', 'Confidence in the score', 'Check coverage', 'Limited data', 'Well covered', 'Data is limited', 'Partially checked', 'Enough data', 'Studied in detail',
     'Photos and current condition', 'Vehicle identification', 'Not applicable', 'About CalCar Score', 'About confidence in the score', 'Show score details',
     'An assessment of this specific car based on confirmed data about its history, condition, mileage and other available facts.',
     ...[...TIPS_SRC.matchAll(/'([^']{20,})'/g)].map(m => m[1])];

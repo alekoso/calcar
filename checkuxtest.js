@@ -722,6 +722,59 @@ const page = fs.readFileSync('result-check.html', 'utf8');
     if (!/<button class="ss-x" id="sellerClose" type="button" aria-label="Close">/.test(page)) errs.push('шторка телефону втратила хрестик');
   }
 
+  /* ---------- 10. мобільне полірування перед бетою ---------- */
+  {
+    const home = fs.readFileSync('check.html', 'utf8'), imp = fs.readFileSync('import.html', 'utf8'), chatJs = fs.readFileSync('chat.js', 'utf8');
+    /* iOS Safari наближає сторінку на полі з кеглем менше 16px: дотикові поля мають 16px, viewport без заборони масштабу */
+    const TOUCH = '@media (hover:none) and (pointer:coarse){';
+    if (!home.includes(TOUCH + '.hf-row input[type=text],.em-in{font-size:16px}}')) errs.push('check.html: поле посилання менше 16px на дотикових пристроях');
+    if (!imp.includes(TOUCH + '.hf-row input[type=text]{font-size:16px}}')) errs.push('import.html: поле посилання менше 16px на дотикових пристроях');
+    if (!chatJs.includes(TOUCH + '.cc-box textarea,.cc-ta-overlay{font-size:16px}}')) errs.push('chat.js: поле помічника менше 16px на дотикових пристроях');
+    if (!page.includes(TOUCH + '.fbx-more textarea{font-size:16px}}')) errs.push('поле відгуку менше 16px на дотикових пристроях');
+    for (const [f, src] of [['check.html', home], ['result-check.html', page], ['import.html', imp]]) {
+      if (/maximum-scale|user-scalable/.test((src.match(/<meta name="viewport"[^>]*>/) || [''])[0])) errs.push(f + ': масштабування сторінки заборонене глобально');
+    }
+    if (!/try \{ input\.blur\(\); \} catch \(e\) \{\}\n  const runStart = Date\.now\(\);/.test(home)) errs.push('поле посилання не втрачає фокус зі стартом перевірки');
+    /* звʼязок перед Decision Engine на телефоні: риска на всю висоту, від картки до картки */
+    if (!/\.join\{height:22px;margin:-10px 0\}\n\s*\.join i\{display:none\}\n\s*\.join i\.d,\.join\.fan i\.d,\.join\.split i\.d\{display:block;top:0;bottom:0;height:auto;left:50%\}/.test(home)) errs.push('мобільний звʼязок перед Decision Engine знову обрубаний');
+    /* шторка оцінки: фон не їде, шторка прокручується лише у своїх межах */
+    if (!/if \(phone\(\) && ov\) \{ ov\.hidden = false; sheetScrollLock\(pop, ov, true\); \}/.test(page) || !/if \(ov\) ov\.hidden = true;\n    sheetScrollLock\(pop, ov, false\);/.test(page)) errs.push('шторка оцінки не блокує прокрутку фону');
+    const lockSrc = page.slice(page.indexOf('function sheetScrollLock('), page.indexOf('function coverageRail('));
+    const html = { style: { overflow: '' } };
+    const mkEl = () => { const l = {}; return { l, scrollHeight: 300, clientHeight: 300, scrollTop: 0, addEventListener(n, f, o) { l[n] = { f, o }; } }; };
+    const sheet = mkEl(), ovEl = mkEl();
+    const lock = new Function('document', lockSrc + 'return sheetScrollLock;')({ documentElement: html });
+    lock(sheet, ovEl, true);
+    if (html.style.overflow !== 'hidden') errs.push('відкрита шторка не блокує прокрутку сторінки');
+    const swipe = (el, from, to) => { let stopped = false; if (el.l.touchstart) el.l.touchstart.f({ touches: [{ clientY: from }] }); el.l.touchmove.f({ touches: [{ clientY: to }], preventDefault() { stopped = true; } }); return stopped; };
+    if (sheet.l.touchmove.o.passive !== false || ovEl.l.touchmove.o.passive !== false) errs.push('слухачі жесту пасивні: preventDefault не спрацює на iOS');
+    if (!swipe(ovEl, 300, 100)) errs.push('жест по затемненню прокручує звіт');
+    if (!swipe(sheet, 300, 100) || !swipe(sheet, 100, 300)) errs.push('жест по шторці без власної прокрутки прокручує звіт');
+    sheet.scrollHeight = 900; sheet.scrollTop = 200;
+    if (swipe(sheet, 300, 100) || swipe(sheet, 100, 300)) errs.push('шторка з довгим вмістом не прокручується сама');
+    sheet.scrollTop = 0;
+    if (!swipe(sheet, 100, 300) || swipe(sheet, 300, 100)) errs.push('на верхньому краї шторки жест униз тягне звіт');
+    sheet.scrollTop = 600;
+    if (!swipe(sheet, 300, 100)) errs.push('на нижньому краї шторки жест угору тягне звіт');
+    lock(sheet, ovEl, false);
+    if (html.style.overflow !== '') errs.push('після закриття шторки прокрутка сторінки не повернулась');
+    /* висновок: "Згорнути розбір" у кінці повного тексту, "Читати повний розбір" під превʼю */
+    const tg = page.slice(page.indexOf('const pdMorePlace = open => {'), page.indexOf('  pdMorePlace(false);'));
+    const order = [];
+    const btnEl = { textContent: '', attrs: {}, setAttribute(k, v) { this.attrs[k] = v; }, getBoundingClientRect: () => ({ top: 100 }), scrollIntoView() { order.push('scroll'); } };
+    const fullEl = { style: { display: 'none' }, after(b) { order.push('after'); }, before(b) { order.push('before'); } };
+    const lbl = { textContent: '' };
+    const toggle = new Function('$', 't', tg + 'return pdMoreToggle;')(id => ({ pdMoreBtn: btnEl, pdReasoning: fullEl, pdMoreLabel: lbl }[id]), x => x);
+    toggle();
+    if (fullEl.style.display !== '' || order.join() !== 'after' || lbl.textContent !== 'Collapse the reasoning' || btnEl.attrs['aria-expanded'] !== 'true') errs.push('розгорнутий висновок: кнопка не в кінці повного тексту (' + order.join() + ')');
+    btnEl.getBoundingClientRect = () => ({ top: -400 });
+    toggle();
+    if (fullEl.style.display !== 'none' || order.join() !== 'after,before,scroll' || lbl.textContent !== 'Read the full reasoning' || btnEl.attrs['aria-expanded'] !== 'false') errs.push('згорнутий висновок: кнопка не під превʼю або зникла з екрана (' + order.join() + ')');
+    if (!/  pdMorePlace\(false\);\n  if \(fc && typeof fc\.headline/.test(page)) errs.push('після перемалювання звіту кнопка розбору не повертається під превʼю');
+    /* відгук: на телефоні питання окремим рядком, обидві відповіді в один ряд */
+    if (!page.includes('@media(max-width:620px){.fbx-row .fbx-q{flex:1 0 100%}.fbx-row .fbx-btn{flex:1 1 0;min-width:112px;height:38px;white-space:nowrap}}')) errs.push('кнопки відгуку на телефоні не в один ряд');
+  }
+
   /* словники */
   for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
     const s = fs.readFileSync(d, 'utf8');

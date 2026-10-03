@@ -250,9 +250,9 @@ function browser(opts) {
   for (const f of PAGES) if (/track\('(analysis_started|analysis_completed|report_shared|memory_saved|landing_view|youtube_)/.test(S[f])) errs.push(f + ': стара подія поза beta-таксономією');
   if (!/setPerson\(\{ checks_started: n \}\)/.test(S['check.html'])) errs.push('check.html: лічильник перевірок людини не ведеться');
   /* check_completed лише на успіху: у catch завершення нема */
-  const runFn = S['check.html'].slice(S['check.html'].indexOf("statusEl.className = 'hf-status';\n  const runStart"), S['check.html'].indexOf('/* Спільна поведінка шапки'));
+  const runFn = S['check.html'].slice(S['check.html'].indexOf("statusEl.className = 'hf-status';\n"), S['check.html'].indexOf('/* Спільна поведінка шапки'));
   if (/catch \(e\) \{[^}]*trackCompleted/.test(runFn)) errs.push('check_completed шлеться на помилці');
-  if (!/data = await pollJob\(token\);\n    \}\n\n    trackCompleted\(data, token, runStart\);/.test(S['check.html'])) errs.push('check_completed не після готового звіту');
+  if (!/data = await pollJob\(token\);\n    \} else \{[\s\S]{0,160}?\n    \}\n\n    trackCompleted\(data, token, runStart\);/.test(S['check.html'])) errs.push('check_completed не після готового звіту');
   if (!/const report = await pollJob\(pj\.token\);\n    trackCompleted\(report, pj\.token, pj\.at\);/.test(S['check.html'])) errs.push('відновлене опитування не шле check_completed');
   /* CalCar AI: кнопка шапки і CTA висновку */
   if (!/closest\('#aiBtn, #pdChatBtn'\)/.test(an)) errs.push('calcar_ai_clicked не слухає #aiBtn/#pdChatBtn');
@@ -325,7 +325,7 @@ function tourChecks() {
   if (!src) return;
   if (!/prefers-reduced-motion:reduce\)\{\.tour-pulse::after\{animation:none/.test(src)) errs.push('пульсація не вимикається за prefers-reduced-motion');
   if (!/'calcar_tour'/.test(src)) errs.push('стан туру не в localStorage calcar_tour');
-  for (const k of ['Next', 'Skip', 'Done', 'Open memory', 'This is your personal car assistant. It knows your current reports, can explain any conclusion, and over time remembers which cars and conditions suit you.', 'This is where CalCar keeps what it knows about your preferences. If you have already discussed choosing a car with another AI assistant, you can bring that context here instead of starting from scratch.']) {
+  for (const k of ['Next', 'Skip', 'Done', 'Open memory', 'Sign in', 'Create an account and your reports will be saved: you can come back to previous checks at any time.', 'This is your personal car assistant. It knows your current reports, can explain any conclusion, and over time remembers which cars and conditions suit you.', 'This is where CalCar keeps what it knows about your preferences. If you have already discussed choosing a car with another AI assistant, you can bring that context here instead of starting from scratch.']) {
     if (!src.includes("'" + k + "'")) errs.push('у турі нема тексту "' + k.slice(0, 30) + '"');
     for (const d of ['i18n/ua.js', 'i18n/ru.js']) if (!fs.readFileSync(d, 'utf8').includes("'" + k + "':")) errs.push('нема перекладу туру "' + k.slice(0, 30) + '" у ' + d);
   }
@@ -340,7 +340,8 @@ function tourChecks() {
     const listeners = {}; const els = {}; let pops = []; let timers = [];
     const mkCls = () => { const set = new Set(); return { add(...c) { c.forEach(x => set.add(x)); }, remove(...c) { c.forEach(x => set.delete(x)); }, contains: c => set.has(c), _set: set }; };
     const mk = id => { const e = { id, classList: mkCls(), getBoundingClientRect: () => ({ left: 100, width: 120, top: 30, bottom: 50, right: 456 }), closest(sel) { return sel === '#' + id ? e : null; } }; e.cls = e.classList._set; return e; };
-    for (const id of ['aiBtn', 'lncBtn', 'lncPanel']) els[id] = mk(id);
+    for (const id of ['aiBtn', 'lncBtn', 'lncPanel', 'authLink']) els[id] = mk(id);
+    els.authLink.getAttribute = () => '/cabinet.html';
     els.lncBtn.click = () => { els.lncPanel.classList.add('open'); };
     const wrap = mk('accWrap'); if (opts.anon) wrap.classList.add('anon');
     const memRow = mk('memRow');
@@ -380,11 +381,35 @@ function tourChecks() {
   if (r.store.calcar_tour !== 'done' || r.pops().length || r.memRow.cls.has('tour-pulse')) errs.push('Готово не завершує тур');
   /* гість: рядок памʼяті тимчасово показується, після туру ховається знову */
   r = run({ path: '/', anon: true });
+  if (!/1 \/ 3/.test(r.pops()[0]._html)) errs.push('гість не бачить, що кроків три');
   r.pops()[0].buttons['.tour-main'].onclick(); r.flush();
   if (!r.wrap.cls.has('tour-memory')) errs.push('гостю не показується рядок памʼяті на кроці 2');
+  if (!/2 \/ 3/.test(r.pops()[0]._html) || !/>Next</.test(r.pops()[0]._html) || !/>Skip</.test(r.pops()[0]._html)) errs.push('крок 2 гостя не веде далі до кроку про акаунт');
+  /* крок 3 лише гостю: "Увійти" в тому самому меню, пояснення про збережені звіти */
+  r.pops()[0].buttons['.tour-main'].onclick(); r.flush();
+  if (r.pops().length !== 1 || !/3 \/ 3/.test(r.pops()[0]._html) || !/Create an account and your reports will be saved/.test(r.pops()[0]._html)) errs.push('гостю не показано крок про акаунт');
+  if (!r.els.authLink.cls.has('tour-pulse') || r.memRow.cls.has('tour-pulse') || !r.els.lncPanel.cls.has('open')) errs.push('крок 3 не підсвічує "Увійти" у відкритому меню');
+  if (r.wrap.cls.has('tour-memory')) errs.push('гостьовий показ рядка памʼяті не знімається після кроку 2');
+  if (!/>Sign in</.test(r.pops()[0]._html) || !/>Done</.test(r.pops()[0]._html)) errs.push('крок 3 без "Увійти" і "Готово"');
+  /* "Готово" закриває тур без реєстрації і нікуди не веде */
+  r.pops()[0].buttons['.tour-side'].onclick();
+  if (r.store.calcar_tour !== 'done' || r.pops().length || r.win.location.href !== '' || r.els.authLink.cls.has('tour-pulse')) errs.push('крок 3: "Готово" не завершує тур або змушує входити');
+  /* "Увійти" веде на вхід */
+  r = run({ path: '/', anon: true });
+  r.pops()[0].buttons['.tour-main'].onclick(); r.flush();
+  r.pops()[0].buttons['.tour-main'].onclick(); r.flush();
   r.pops()[0].buttons['.tour-main'].onclick();
-  if (r.store.calcar_tour !== 'done' || r.win.location.href !== '/cabinet.html#memory') errs.push('Відкрити памʼять не веде в памʼять кабінету');
-  if (r.wrap.cls.has('tour-memory')) errs.push('гостьовий показ рядка памʼяті не знімається після туру');
+  if (r.store.calcar_tour !== 'done' || r.win.location.href !== '/cabinet.html') errs.push('крок 3: "Увійти" не веде на вхід');
+  /* "Пропустити" на кроці 2 гостя завершує тур */
+  r = run({ path: '/', anon: true });
+  r.pops()[0].buttons['.tour-main'].onclick(); r.flush();
+  r.pops()[0].buttons['.tour-side'].onclick();
+  if (r.store.calcar_tour !== 'skip' || r.pops().length) errs.push('гість не може пропустити тур на кроці 2');
+  /* хто увійшов: кроків два, третього немає, крок 2 веде в памʼять */
+  r = run({ path: '/' });
+  r.pops()[0].buttons['.tour-main'].onclick(); r.flush();
+  r.pops()[0].buttons['.tour-main'].onclick(); r.flush();
+  if (r.store.calcar_tour !== 'done' || r.win.location.href !== '/cabinet.html#memory' || r.pops().length || r.els.authLink.cls.has('tour-pulse')) errs.push('тому, хто увійшов, показано крок про акаунт або "Відкрити памʼять" не веде в памʼять');
   /* телефон: поповер над шторкою */
   r = run({ path: '/', mobile: true });
   r.pops()[0].buttons['.tour-main'].onclick(); r.flush();

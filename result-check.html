@@ -488,7 +488,7 @@
   /* міні-рейки доменів: тонка чорна риска поточного значення, у межах рейки від 0 до 100 */
   .cv-mark{position:absolute;top:-3px;bottom:-3px;width:2px;border-radius:1px;background:var(--ink)}
   /* шкала у картці: майже вся ширина правої колонки, але не безмежно */
-  .sc-card .sc-meter{max-width:720px;margin:24px 0 6px}
+  .sc-card .sc-meter{max-width:720px;margin:14px 0 6px}
   .sc-card .sc-scale{max-width:720px}
   /* підказки до інфо-кнопок: у мові плаваючої панелі шкали пробігу */
   .sc-tip{position:fixed;z-index:170;width:300px;max-width:calc(100vw - 32px);background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 28px rgba(20,22,25,.16);padding:12px 14px;font-size:13px;line-height:1.5;color:var(--ink-2)}
@@ -510,12 +510,11 @@
   .sc-x:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
   .sc-sec{margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}
   .sc-cov-text{display:block;margin-top:3px;font-size:15px;font-weight:700;color:var(--ink)}
-  .sc-meter{position:relative;margin:26px 0 7px}
+  .sc-meter{position:relative;margin:14px 0 7px}
   .sc-meter .cv-rail{height:8px;border-radius:8px}
   .sc-meter .cv-fill{border-radius:8px}
   .sc-meter .cv-tick{top:-6px;bottom:-6px;opacity:.7}
   .sc-meter .cv-knob{width:16px;height:16px;margin:-8px 0 0 -8px}
-  .sc-tick-l{position:absolute;bottom:calc(100% + 8px);transform:translateX(-50%);font-size:11.5px;color:var(--ink-2);white-space:nowrap}
   .sc-scale{display:flex;justify-content:space-between;gap:8px;font-size:11.5px;color:var(--muted)}
   .sc-note{display:block;margin-top:9px;font-size:12px;line-height:1.45;color:var(--muted)}
   .sc-list{margin-top:7px}
@@ -583,6 +582,9 @@
   .fbx-chip[aria-checked="true"]{border-color:var(--ink);background:var(--ink);color:#fff}
   .fbx-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .fbx[hidden], .fbx [hidden]{display:none}
+  /* телефон: питання окремим рядком, під ним обидві відповіді в один ряд порівну;
+     на дуже вузькому екрані кнопки все одно можуть перенестись */
+  @media(max-width:620px){.fbx-row .fbx-q{flex:1 0 100%}.fbx-row .fbx-btn{flex:1 1 0;min-width:112px;height:38px;white-space:nowrap}}
   .fbx-q{font-size:13.5px;font-weight:600;color:var(--ink-2)}
   .fbx-btn{height:32px;padding:0 13px;border:1px solid var(--line-strong);border-radius:10px;background:var(--card);color:var(--ink);font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;transition:background .15s,border-color .15s}
   .fbx-btn:hover{background:var(--surface-2)}
@@ -593,6 +595,8 @@
   .fbx-more > div{overflow:hidden}
   .fbx-more label{display:block;margin:12px 0 6px;font-size:13px;font-weight:600;color:var(--ink-2)}
   .fbx-more textarea{display:block;width:100%;box-sizing:border-box;border:1px solid var(--line-strong);border-radius:10px;padding:9px 12px;font:inherit;font-size:13.5px;color:var(--text);resize:vertical;min-height:64px}
+  /* iOS Safari наближає сторінку на полі з кеглем менше 16px */
+  @media (hover:none) and (pointer:coarse){.fbx-more textarea{font-size:16px}}
   .fbx-more textarea:focus{outline:none;border-color:var(--ink)}
   .fbx-send{margin-top:8px;height:34px;padding:0 14px;border:none;border-radius:10px;background:var(--ink);color:#fff;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer}
   .fbx-send:disabled{opacity:.55;cursor:default}
@@ -2502,12 +2506,23 @@ function boot2(D){
   const fcGen = !!D && Object.prototype.hasOwnProperty.call(D, 'final_conclusion');
   /* розкриття повного тексту: той самий компонент .pd-more і та сама
      поведінка, що були до Final Conclusion (153687d), для обох гілок */
+  /* згорнуто: превʼю, під ним "Читати повний розбір". Розгорнуто: весь
+     текст, "Згорнути розбір" у самому кінці. Кнопка та сама, міняється лише
+     її місце: перед прихованим продовженням або після показаного */
+  const pdMorePlace = open => {
+    const b = $('pdMoreBtn'), full = $('pdReasoning');
+    if (open) full.after(b); else full.before(b);
+  };
   const pdMoreToggle = () => {
     const open = $('pdReasoning').style.display !== 'none';
     $('pdReasoning').style.display = open ? 'none' : '';
     $('pdMoreLabel').textContent = open ? t('Read the full reasoning') : t('Collapse the reasoning');
     $('pdMoreBtn').setAttribute('aria-expanded', open ? 'false' : 'true');
+    pdMorePlace(!open);
+    /* згорнули довгий текст знизу: кнопка лишається перед очима */
+    if (open && $('pdMoreBtn').getBoundingClientRect().top < 0) $('pdMoreBtn').scrollIntoView({ block: 'center' });
   };
+  pdMorePlace(false);
   if (fc && typeof fc.headline === 'string' && fc.headline.trim() && typeof fc.body === 'string' && fc.body.trim()) {
     /* Final Conclusion: заголовок, превʼю і решта тексту за кнопкою "Читати
        повний розбір". Превʼю закінчується лише на межі абзацу чи речення.
@@ -3107,9 +3122,31 @@ function popoverPosition(r, w, h, vw, vh) {
   if (r.right + GAP + w <= vw - EDGE) return { left: r.right + GAP, top, side: 'right' };
   return { left, top, side: 'overlap' };
 }
+/* Фон не прокручується, поки на телефоні відкрита шторка. overflow на html
+   (так само робить шторка опису продавця) і, для iOS Safari, де жест по
+   шторці без власної прокрутки тягне сторінку під нею: дотик по затемненню
+   і по шторці не рухає документ, а сама шторка прокручується лише в межах
+   свого вмісту. Позиція звіту не змінюється, тож після закриття людина там
+   само. Слухачі ставляться на елемент один раз */
+function sheetScrollLock(sheet, ov, on) {
+  document.documentElement.style.overflow = on ? 'hidden' : '';
+  if (!on || sheet._scrollGuard) return;
+  sheet._scrollGuard = true;
+  let y0 = 0;
+  sheet.addEventListener('touchstart', e => { y0 = e.touches[0].clientY; }, { passive: true });
+  sheet.addEventListener('touchmove', e => {
+    const dy = e.touches[0].clientY - y0;
+    const room = sheet.scrollHeight - sheet.clientHeight;
+    /* нема чого прокручувати або вже край: жест не йде далі в сторінку */
+    if (room <= 0 || (dy > 0 && sheet.scrollTop <= 0) || (dy < 0 && sheet.scrollTop >= room - 1)) e.preventDefault();
+  }, { passive: false });
+  if (ov) ov.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+}
 function coverageRail(value, withLabels) {
   const v = Math.max(0, Math.min(100, value));
-  return '<div class="sc-meter" aria-hidden="true"><span class="sc-tick-l" style="left:70%">' + esc(t('Sufficient')) + '</span>'
+  /* над шкалою лише заголовок стану ("Достатньо даних"); окремого підпису
+     біля позначки 70% немає, сама позначка лишилась */
+  return '<div class="sc-meter" aria-hidden="true">'
     + '<div class="cv-rail"><div class="cv-fill" style="width:' + v.toFixed(1) + '%"></div><div class="cv-tick" style="left:70%"></div><div class="cv-knob" data-pos="' + v + '" style="left:' + v.toFixed(1) + '%"></div></div></div>'
     + (withLabels ? '<div class="sc-scale" aria-hidden="true"><span>' + esc(t('Limited data')) + '</span><span>' + esc(t('Well covered')) + '</span></div>' : '');
 }
@@ -3197,7 +3234,7 @@ function renderScoreBlock(D) {
        зривалось би в цикл відкриття і закриття (мерехтіння) */
     pop.classList.toggle('hover-open', !!byHover);
     pop.hidden = false;
-    if (phone() && ov) ov.hidden = false;
+    if (phone() && ov) { ov.hidden = false; sheetScrollLock(pop, ov, true); }
     toggle.setAttribute('aria-expanded', 'true');
     place();
   }
@@ -3205,6 +3242,7 @@ function renderScoreBlock(D) {
     if (pop.hidden) return;
     pop.hidden = true;
     if (ov) ov.hidden = true;
+    sheetScrollLock(pop, ov, false);
     toggle.setAttribute('aria-expanded', 'false');
     if (returnFocus) toggle.focus();
   }
@@ -3715,12 +3753,16 @@ window.calcarAuthState = function (signedIn) {
 if (window.CALCAR_SIGNED_IN !== undefined) window.calcarAuthState(window.CALCAR_SIGNED_IN);
 </script>
 <script>
-/* Перший запуск CalCar: тур із двох кроків, без бібліотек. Спільний блок,
-   однаковий на всіх сторінках.
+/* Перший запуск CalCar: тур із двох кроків, для гостя з трьох, без бібліотек.
+   Спільний блок, однаковий на всіх сторінках.
    Крок 1 підсвічує кнопку "Мій CalCar AI" у шапці. Крок 2 сам відкриває
    меню, підсвічує рядок "Памʼять помічника" і ставить поповер ПОРУЧ із
    меню (праворуч від панелі на десктопі, над шторкою на телефоні), тому
    меню лишається видимим і робочим, а поповер не ховається під нього.
+   Крок 3 лише для того, хто не увійшов: у тому самому відкритому меню
+   підсвічує "Увійти" і пояснює, навіщо акаунт (звіти зберігаються, до
+   минулих перевірок можна повернутись). Реєстрацію не вимагає і нічого не
+   блокує: "Готово" закриває тур. Хто увійшов, третього кроку не бачить.
    Стан у localStorage calcar_tour: step2 (крок 1 пройдено, крок 2 попереду;
    переживає перехід між сторінками), done, skip. Не показується тому, хто
    вже користувався помічником (у треді є повідомлення) чи памʼяттю (кабінет
@@ -3746,6 +3788,8 @@ if (window.CALCAR_SIGNED_IN !== undefined) window.calcarAuthState(window.CALCAR_
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function mobile() { return window.matchMedia('(max-width:620px)').matches; }
   function panel() { return document.getElementById('lncPanel'); }
+  /* гість: шапка тримає на .acc-wrap клас anon, доки немає сесії */
+  function anon() { var w = document.querySelector('.acc-wrap'); return !!(w && w.classList.contains('anon')); }
   var css = '.tour-pulse{position:relative;z-index:61}.tour-pulse::after{content:"";position:absolute;inset:-6px;border-radius:26px;border:2px solid var(--brand);animation:tour-pulse 1.6s ease-out infinite;pointer-events:none}.tour-pulse.tour-row::after{inset:-3px;border-radius:12px}@keyframes tour-pulse{0%{transform:scale(.9);opacity:.9}100%{transform:scale(1.25);opacity:0}}'
     /* z-index вищий за панель меню (410): поповер стоїть поруч із меню і ніколи не під ним */
     + '.tour-pop{position:fixed;z-index:420;width:min(320px,calc(100vw - 24px));background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:14px 16px;box-shadow:0 14px 40px rgba(20,22,25,.16);font-size:13.5px;line-height:1.5}'
@@ -3766,7 +3810,7 @@ if (window.CALCAR_SIGNED_IN !== undefined) window.calcarAuthState(window.CALCAR_
   function place() {
     if (!pop || !target) return;
     var w = pop.offsetWidth || 320, h = pop.offsetHeight || 160, r = target.getBoundingClientRect(), x, y;
-    if (step === 2 && panel()) {
+    if (step >= 2 && panel()) {
       /* поруч із відкритим меню, не поверх нього: праворуч від панелі (або
          ліворуч, якщо праворуч нема місця); на телефоні над шторкою */
       var p = panel().getBoundingClientRect();
@@ -3792,27 +3836,38 @@ if (window.CALCAR_SIGNED_IN !== undefined) window.calcarAuthState(window.CALCAR_
     if (p && b && !p.classList.contains('open')) b.click();
   }
   function show(n) {
+    var guest = anon(), total = guest ? 3 : 2;
     clear(); step = n;
     if (n === 2) { set('step2'); openMenu(); target = memoryRow(); }
+    else if (n === 3) { openMenu(); target = document.getElementById('authLink'); }
     else target = document.getElementById('aiBtn');
     if (!target) return finish('done');
     target.classList.add('tour-pulse'); if (n === 2) target.classList.add('tour-row');
-    var text = n === 1
+    var text = n === 3
+      ? tr('Create an account and your reports will be saved: you can come back to previous checks at any time.')
+      : n === 1
       ? tr('This is your personal car assistant. It knows your current reports, can explain any conclusion, and over time remembers which cars and conditions suit you.')
       : tr('This is where CalCar keeps what it knows about your preferences. If you have already discussed choosing a car with another AI assistant, you can bring that context here instead of starting from scratch.');
-    var main = n === 1 ? tr('Next') : tr('Open memory'), side = n === 1 ? tr('Skip') : tr('Done');
+    /* гість на кроці 2 йде далі до кроку про акаунт; памʼять відкриває сам рядок меню */
+    var more = n === 1 || (n === 2 && guest);
+    var main = more ? tr('Next') : n === 3 ? tr('Sign in') : tr('Open memory'), side = more ? tr('Skip') : tr('Done');
     pop = document.createElement('div'); pop.className = 'tour-pop'; pop.setAttribute('role', 'dialog');
-    pop.innerHTML = '<div class="tour-step">' + n + ' / 2</div><p>' + esc(text) + '</p><div class="tour-act"><button type="button" class="tour-side">' + esc(side) + '</button><button type="button" class="tour-main">' + esc(main) + '</button></div>';
+    pop.innerHTML = '<div class="tour-step">' + n + ' / ' + total + '</div><p>' + esc(text) + '</p><div class="tour-act"><button type="button" class="tour-side">' + esc(side) + '</button><button type="button" class="tour-main">' + esc(main) + '</button></div>';
     /* кліки по поповеру не доходять до документа: інакше лаунчер вважав би
        їх кліком "поза меню" і закривав його */
     pop.addEventListener('click', function (e) { e.stopPropagation(); });
     document.body.appendChild(pop); place();
-    pop.querySelector('.tour-main').onclick = function () { if (n === 1) next(); else { finish('done'); location.href = MEMORY_HREF; } };
-    pop.querySelector('.tour-side').onclick = function () { finish(n === 1 ? 'skip' : 'done'); };
-    if (n === 2 && panel()) {
+    pop.querySelector('.tour-main').onclick = function () {
+      if (n === 1) next();
+      else if (n === 2 && guest) show(3);
+      else if (n === 3) { var href = target.getAttribute && target.getAttribute('href') || '/cabinet.html'; finish('done'); location.href = href; }
+      else { finish('done'); location.href = MEMORY_HREF; }
+    };
+    pop.querySelector('.tour-side').onclick = function () { finish(more ? 'skip' : 'done'); };
+    if (n >= 2 && panel()) {
       /* меню закрили повз тур (клік поза ним, Esc): підказка без меню не має сенсу */
       var p = panel();
-      mo = new MutationObserver(function () { if (step === 2 && !p.classList.contains('open')) finish('done'); });
+      mo = new MutationObserver(function () { if (step >= 2 && !p.classList.contains('open')) finish('done'); });
       mo.observe(p, { attributes: true, attributeFilter: ['class'] });
     }
   }
