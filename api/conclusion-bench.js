@@ -6,10 +6,14 @@
    приймає: вхід це лише токен готового звіту.
 
    POST /api/conclusion-bench
-   { job_token, mode?: 'run' | 'models' | 'context', model?, effort? }
+   { job_token, mode?: 'run' | 'models' | 'context', model?, effort?, rules? }
    - models: які моделі бачить production-ключ (лише ідентифікатори);
    - context: компактний контекст, який отримає модель;
    - run: { conclusion, ms, ai, attempts, context_chars }.
+   rules (лише mode run): текст кандидатних редакційних правил для A/B. Він
+   підміняє system-повідомлення ТІЛЬКИ в цьому одному bench-виклику; правила
+   production (CONCLUSION_RULES), звичайні Check і збережені звіти не
+   змінюються. Без rules виклик іде з правилами production.
 
    Доступ: заголовок x-calcar-bench, що збігається з env BENCH_KEY. Без
    ключа ендпоінт відповідав лише до OPEN_UNTIL (вікно A/B 2026-10-02 перед
@@ -25,6 +29,18 @@ import { resolveLocale, languageDirective } from './locale.js';
 export const OPEN_UNTIL = '2026-10-02T00:00:00Z';
 export const MODEL_RE = /^(?:gpt-|o\d|chatgpt-)[A-Za-z0-9._-]{1,60}$/;
 export const EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh'];
+
+/* кандидатні правила: лише рядок розумного розміру, інакше production */
+export const RULES_LIMITS = { min: 200, max: 40000 };
+export function candidateRules(v) {
+  return typeof v === 'string' && v.trim().length >= RULES_LIMITS.min && v.length <= RULES_LIMITS.max ? v : null;
+}
+/* транспорт, що підміняє system-повідомлення кандидатними правилами.
+   Решта запиту (модель, reasoning, схема, контекст звіту) та сама */
+export function withRules(call, rules) {
+  if (!rules) return call;
+  return (body, ms, signal) => call({ ...body, messages: (body.messages || []).map(m => (m && m.role === 'system' ? { ...m, content: rules } : m)) }, ms, signal);
+}
 
 export function benchAllowed(req, env, nowMs = Date.now()) {
   const key = env && env.BENCH_KEY;
@@ -84,14 +100,16 @@ export default async function handler(req, res) {
     const model = typeof b.model === 'string' && MODEL_RE.test(b.model) ? b.model : null;
     const effort = EFFORTS.includes(b.effort) || b.effort === 'off' ? b.effort : null;
     const lang = resolveLocale(row.lang || (report._meta && report._meta.lang));
-    const out = await runFinalConclusion({ report, langDirective: languageDirective(lang), callModel, timeoutMs: 270000, model, effort, env: { ...process.env, FINAL_CONCLUSION: 'on' } });
+    if (b.rules !== undefined && b.rules !== null && !candidateRules(b.rules)) return res.status(400).json({ error: 'bad rules' });
+    const rules = candidateRules(b.rules);
+    const out = await runFinalConclusion({ report, langDirective: languageDirective(lang), callModel: withRules(callModel, rules), timeoutMs: 270000, model, effort, env: { ...process.env, FINAL_CONCLUSION: 'on' } });
     let conclusion = null, directive = null;
     if (out.status === 'ok' && out.conclusion) {
       conclusion = applyConclusionLanguage({ headline: out.conclusion.headline, body: out.conclusion.body }, report, lang);
       const hits = directiveVerdictHits({ headline: conclusion.headline, reasoning: conclusion.body });
       directive = hits.length ? hits : null;
     }
-    return res.status(200).json({ ok: out.status === 'ok', status: out.status, reason: out.reason, lang, ms: out.ms, ai: out.ai, attempts: out.attempts, context_chars: out.context_chars, version: out.version, conclusion, directive });
+    return res.status(200).json({ ok: out.status === 'ok', status: out.status, reason: out.reason, lang, ms: out.ms, ai: out.ai, attempts: out.attempts, context_chars: out.context_chars, version: out.version, rules: rules ? 'candidate' : 'production', rules_chars: rules ? rules.length : null, conclusion, directive });
   } catch (e) {
     console.error('[conclusion-bench]', JSON.stringify({ op: mode, error: String((e && e.message) || e).slice(0, 200) }));
     return res.status(500).json({ error: 'internal' });

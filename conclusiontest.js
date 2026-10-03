@@ -192,7 +192,19 @@ const REPORT = {
   ok(bench.benchAllowed({ headers: {} }, {}, open - 1000) === true && bench.benchAllowed({ headers: {} }, {}, open + 1000) === false, 'benchmark не закривається сам після OPEN_UNTIL');
   ok(bench.benchAllowed({ headers: { 'x-calcar-bench': 'k' } }, { BENCH_KEY: 'k' }, open + 1000) === true && bench.benchAllowed({ headers: { 'x-calcar-bench': 'z' } }, { BENCH_KEY: 'k' }, open + 1000) === false, 'benchmark після закриття не відкривається ключем');
   ok(bench.MODEL_RE.test('gpt-5.6-terra') && !bench.MODEL_RE.test('http://x') && !bench.MODEL_RE.test('claude'), 'benchmark приймає довільну назву моделі');
+  /* кандидатні правила A/B: лише всередині bench-виклику, production-правила незмінні */
+  ok(bench.candidateRules('x'.repeat(300)) !== null && bench.candidateRules('short') === null && bench.candidateRules('x'.repeat(bench.RULES_LIMITS.max + 1)) === null && bench.candidateRules({}) === null, 'bench приймає непридатні кандидатні правила');
+  const seen = [];
+  const base = async body => { seen.push(body); return good; };
+  ok(bench.withRules(base, null) === base, 'без кандидатних правил транспорт має лишатись production');
+  const CAND = 'КАНДИДАТ '.repeat(40);
+  const rc = await runFinalConclusion({ report: REPORT, langDirective: 'L.', env: { FINAL_CONCLUSION: 'on' }, callModel: bench.withRules(base, CAND) });
+  ok(rc.status === 'ok' && seen.length === 1 && seen[0].messages[0].content === CAND && seen[0].messages[1].role === 'user' && seen[0].messages[1].content.includes('"calcar_score"'), 'кандидатні правила не підміняють system або псують контекст');
+  ok(seen[0].model === 'gpt-6.1-sol' && seen[0].reasoning_effort === 'medium' && seen[0].response_format.json_schema.name === 'calcar_final_conclusion', 'bench з кандидатними правилами змінює модель, reasoning або схему');
+  ok(fcMod.CONCLUSION_RULES !== CAND && !fcMod.CONCLUSION_RULES.includes('КАНДИДАТ'), 'кандидатні правила змінили production-правила');
   const benchSrc = fs.readFileSync('api/conclusion-bench.js', 'utf8');
+  ok(/if \(!benchAllowed\(req, process\.env\)\) return res\.status\(404\)/.test(benchSrc) && benchSrc.indexOf('benchAllowed(req, process.env)') < benchSrc.indexOf('candidateRules(b.rules)'), 'кандидатні правила доступні без BENCH_KEY');
+  ok(!/CONCLUSION_RULES\s*=/.test(benchSrc) && !/writeFile|\/rest\/v1\/reports/.test(benchSrc), 'bench змінює production-правила або пише у звіти');
   ok(!/method: 'P(?:ATCH|UT)'|method: 'DELETE'/.test(benchSrc) && (benchSrc.match(/method: 'POST'/g) || []).length === 1, 'benchmark щось пише');
 
   for (const f of ['api/conclusion.js', 'api/conclusion-bench.js', 'conclusiontest.js']) ok(!fs.readFileSync(f, 'utf8').includes(DASH), 'довге тире у ' + f);
