@@ -125,8 +125,8 @@ MI_TEST_DB_URL=postgres://localhost/calcar_mi_test node mibackloadtest.js
 `docs/model-intelligence/equipment-availability-audit.md`, реалізація
 `docs/model-intelligence/equipment-v1.md`.
 MI зростає з реальних Check (малий паралельний веб-пошук, знахідки через
-той самий gate, міграції 028, 029 і 030: канонічна ідентичність, памʼять
-покоління по машині, вхід нового покоління у каталог):
+той самий gate, міграції 028..031: канонічна ідентичність, памʼять
+покоління по машині, вхід нового покоління і версії у каталог):
 `docs/model-intelligence/check-research-v1.md`.
 
 ## Що свідомо лишилось поза Phase 4

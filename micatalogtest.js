@@ -1160,6 +1160,112 @@ t(72, 'повний цикл: вхід у каталог, той самий gate
   ${A(`(select cl = any (mi_test.pack_claims(payload)) from mi.pack_fragment where id = frag)`, 'the pack compiler does not see the published claim')}
   end;`);
 
+/* ---- MI Research v1.3 (міграція 031): субʼєкт версії з дослідження ---- */
+
+const VFIN = (gen, extra) => `,"listing_generation":"${gen}","analysis_generation":"${gen}","research_generation":"${gen}","powertrain":"ice"${extra}`;
+const inKnowledge = (ctx, claim) => `exists (select 1 from jsonb_array_elements(${ctx}->'knowledge') k where (k->>'claim_id')::bigint = ${claim})`;
+const ROLL = 'Specialists rebuild the active roll stabilisation pump of the AMG version instead of replacing the complete unit.';
+const SCORE = 'Owners of the AMG version report cylinder scoring at high mileage.';
+const GENFACT = 'Mercedes recalled this generation because the front passenger airbag may deploy incorrectly.';
+
+t(73, 'сильна версія: субʼєкт версії створюється один раз, кандидати саме цієї версії проходять той самий gate', `
+  declare r jsonb; f jsonb; g bigint; av bigint; c1 bigint; c2 bigint; n_claims bigint; gate_src text;
+  begin
+  gate_src := (select md5(prosrc) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'mi' and p.proname = 'check_gate');
+  ${seedv(GL_B, 'MERCEDES-BENZ', 'GL-Class', 'GL63 AMG', 2015)}
+  ${seedv(GL_D, 'MERCEDES-BENZ', 'GL-Class', 'GL 63 AMG', 2014)}
+  -- знахідки версії лежать холодними: субʼєкта версії ще немає
+  r := ${persist(GL_B, 'w1', ID_GL63, rfind('version', 'specialist_practice', ROLL, rev('https://spec.example/amg-acs', 'specialist', 'primary', 'we rebuild the pump')) + ',' + rfind('version', 'owner_pattern', SCORE, rev('https://mbworld.org/forums/amg/9', 'owner', 'low', 'scored at 100k')))};
+  c1 := (r->'results'->0->>'candidate_id')::bigint; c2 := (r->'results'->1->>'candidate_id')::bigint;
+  ${A(`(r->>'staged_cold')::int = 2 and r->'results'->0->'gate_failed' = '["subject_resolved"]'::jsonb`, 'the version findings were not staged, or the sufficient one fails more than the subject rule')}
+  n_claims := (select count(*) from mi.claim);
+  -- фінал: покоління сильне, версію декодера підтверджує аналіз в іншому написанні
+  f := ${fin(GL_B, 'w1', idf('MERCEDES-BENZ', 'GL-Class', 'X166', 'listing', 'GL63 AMG'), VFIN('X166', ',"version_trusted":true,"analysis_version":"GL 63 AMG"'))};
+  g := (f->>'generation_subject_id')::bigint; av := (f->>'version_subject_id')::bigint;
+  ${A(`(f->>'catalogued_now')::boolean and (f->>'version_created')::boolean and av is not null and (f->>'version_attached')::int = 2 and (f->>'attached')::int = 0`, 'the strong version did not get a subject')}
+  ${A(`(select vv.generation_id = g and vv.version_code = 'X166 GL63 AMG' and vv.powertrain = 'ice' and ks.kind = 'vehicle_version' and ks.label = 'MERCEDES-BENZ GL-Class X166 GL63 AMG' from mi.vehicle_version vv join mi.knowledge_subject ks on ks.id = vv.subject_id where vv.subject_id = av)`, 'the version subject is wrong')}
+  -- достатні докази: той самий gate пропускає і клейм публікується саме на версії
+  ${A(`(f->>'published')::int = 1 and (select review_status = 'approved' and resolved_subject_id = av from mi.candidate_claim where id = c1)`, 'the sufficiently evidenced version candidate was not published')}
+  ${A(`(select c.subject_id = av and c.status = 'published' and c.reviewed_by = 'check-research' from mi.claim c join mi.candidate_claim cc on cc.published_claim_id = c.id where cc.id = c1) and (select count(*) = 1 and bool_and(a.dimension = 'version' and a.ref_subject_id = av) from mi.claim_applicability a join mi.candidate_claim cc on cc.published_claim_id = a.claim_id where cc.id = c1)`, 'the claim is not scoped to the version')}
+  -- недостатні докази: субʼєкт є, кандидат лишається на gate
+  ${A(`(select review_status = 'gate_pending' and resolved_subject_id = av and (select jsonb_agg(x->>'code') from jsonb_array_elements(gate_result->'rules') x where not (x->>'ok')::boolean) = '["owner_pattern_groups", "owner_pattern_context"]'::jsonb from mi.candidate_claim where id = c2)`, 'the weak version candidate was published or not re-evaluated')}
+  ${A(`(select count(*) from mi.claim) = n_claims + 1 and gate_src = (select md5(prosrc) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'mi' and p.proname = 'check_gate')`, 'something else was published or the gate changed')}
+  -- повторний Check тієї самої версії і інше написання: той самий субʼєкт
+  f := ${fin(GL_B, 'w2', idf('MERCEDES-BENZ', 'GL-Class', 'X166', 'listing', 'GL63 AMG'), VFIN('X166', ',"version_trusted":true,"analysis_version":"GL63 AMG"'))};
+  ${A(`(f->>'version_subject_id')::bigint = av and not (f->>'version_created')::boolean and (f->>'version_attached')::int = 0 and (f->>'published')::int = 0`, 'a repeated check did not reuse the version subject')}
+  f := ${fin(GL_D, 'w3', idf('Mercedes-Benz', 'GL Class', 'X166', 'listing', 'GL 63 AMG'), VFIN('X166', ',"version_trusted":true,"listing_version":"GL 63 AMG"'))};
+  ${A(`(f->>'version_subject_id')::bigint = av and not (f->>'version_created')::boolean and (select count(*) from mi.vehicle_version where generation_id = g) = 1`, 'an alias spelling created a duplicate version')}
+  -- наступні знахідки цієї версії пишуться прямо на субʼєкт
+  r := ${persist(GL_D, 'w4', idj('x', 'Mercedes-Benz', 'GL-Class', 'X166', 'GL 63 AMG'), rfind('version', 'owner_pattern', SCORE, rev('https://benzworld.org/amg/3', 'owner', 'low', 'same scoring', ',"mileage_km":160000')))};
+  ${A(`r->'results'->0->>'status' = 'candidate' and (r->'results'->0->>'candidate_id')::bigint = c2 and (r->'results'->0->>'subject_id')::bigint = av and (r->'results'->0->>'strengthened')::boolean`, 'a later finding of the same version did not land on its subject')}
+  -- міст резолвера версію з дослідження по всьому бренду не підхоплює
+  ${A(`mi.match_version('MERCEDES-BENZ', array['GL63 AMG', 'GL-Class', 'GL-Class GL63 AMG']) ->> 'version_id' is null`, 'the brand-wide decoder bridge picked up the research version')}
+  end;`);
+
+t(74, 'слабка або неоднозначна версія: субʼєкт не створюється, кандидат лишається холодним; створення субʼєкта саме нічого не публікує', `
+  declare r jsonb; f jsonb; g bigint; n_claims bigint; cid bigint;
+  begin
+  ${seedv(GL_C, 'MERCEDES-BENZ', 'GL-Class', 'GL450', 2016)}
+  r := ${persist(GL_C, 'x1', ID_GL450, rfind('version', 'specialist_practice', 'Specialists replace the intake camshaft adjusters of this version as a pair.', rev('https://spec.example/gl450-cam', 'specialist', 'primary', 'always as a pair')))};
+  cid := (r->'results'->0->>'candidate_id')::bigint;
+  n_claims := (select count(*) from mi.claim);
+  f := ${fin(GL_C, 'x1', idf('MERCEDES-BENZ', 'GL-Class', 'X166', 'listing', 'GL450'), VFIN('X166', ',"version_trusted":false,"analysis_version":"GL450"'))};
+  g := (f->>'generation_subject_id')::bigint;
+  ${A(`(f->>'catalogued_now')::boolean and f->>'version_subject_id' is null and f->>'version_note' = 'decoder version is not trusted'`, 'an untrusted decoder version got a subject')}
+  f := ${fin(GL_C, 'x2', idf('MERCEDES-BENZ', 'GL-Class', 'X166', 'listing', 'GL450'), VFIN('X166', ',"version_trusted":true'))};
+  ${A(`f->>'version_subject_id' is null and f->>'version_note' = 'no second source confirms the version'`, 'a single-source version got a subject')}
+  f := ${fin(GL_C, 'x3', idf('MERCEDES-BENZ', 'GL-Class', 'X166', 'listing', 'GL450'), VFIN('X166', ',"version_trusted":true,"analysis_version":"GL550","listing_version":"GL 350 BlueTEC"'))};
+  ${A(`f->>'version_subject_id' is null and f->>'version_note' = 'no second source confirms the version'`, 'a contradicted version got a subject')}
+  f := ${fin(GL_C, 'x4', idf('MERCEDES-BENZ', 'GL-Class', 'X166', 'listing', 'Ltd/Platinum'), VFIN('X166', ',"version_trusted":true,"analysis_version":"Ltd/Platinum"'))};
+  ${A(`f->>'version_subject_id' is null and f->>'version_note' = 'version text names several versions'`, 'an ambiguous version text got a subject')}
+  f := ${fin(GL_C, 'x5', idf('MERCEDES-BENZ', 'GL-Class', 'X166', 'listing', 'GL-Class'), VFIN('X166', ',"version_trusted":true,"analysis_version":"GL-Class"'))};
+  ${A(`f->>'version_subject_id' is null and f->>'version_note' = 'version text repeats the model'`, 'the model name became a version')}
+  f := ${fin(GL_C, 'x6', idf('MERCEDES-BENZ', 'GL-Class', 'X166', 'listing', 'S'), VFIN('X166', ',"version_trusted":true,"analysis_version":"S"'))};
+  ${A(`f->>'version_subject_id' is null and f->>'version_note' = 'version text is too short'`, 'a one-letter trim became a version')}
+  f := ${fin(GL_C, 'x7', idf('MERCEDES-BENZ', 'GL-Class', 'X166', 'listing', 'GL450'), ',"listing_generation":"X166","analysis_generation":"X166","version_trusted":true,"analysis_version":"GL450"')};
+  ${A(`f->>'version_subject_id' is null and f->>'version_note' = 'powertrain is unknown'`, 'a version was created with a guessed powertrain')}
+  ${A(`(select count(*) from mi.vehicle_version where generation_id = g) = 0 and (select resolved_subject_id is null and review_status = 'gate_pending' from mi.candidate_claim where id = cid) and (select count(*) from mi.claim) = n_claims`, 'a weak version changed the catalogue or published something')}
+  -- сильна версія без кандидатів: субʼєкт є, опублікованого нічого
+  f := ${fin(GL_C, 'x8', idf('MERCEDES-BENZ', 'GL-Class', 'X166', 'listing', 'GL450'), VFIN('X166', ',"version_trusted":true,"analysis_version":"GL450 4MATIC","research_generation":"X166"'))};
+  ${A(`(f->>'version_created')::boolean and (f->>'version_attached')::int = 1 and (f->>'published')::int = 1`, 'the sufficiently evidenced candidate did not pass once its version was confirmed')}
+  f := ${fin("'4JGDF7DE0HA500005'", 'x9', idf('MERCEDES-BENZ', 'GL-Class', 'X166', 'listing', 'GL350 BlueTEC'), VFIN('X166', ',"version_trusted":true,"listing_version":"GL350 BlueTEC"'))};
+  ${A(`(f->>'version_created')::boolean and (f->>'version_attached')::int = 0 and (f->>'published')::int = 0 and (select count(*) from mi.claim) = n_claims + 1`, 'creating a version subject alone published something')}
+  -- покоління з версіями ручних карток: версії з дослідження туди не додаються
+  f := ${fin("'WP1ZZZ92ZDLA45900'", 'p1', idf('Porsche', 'Cayenne', '958', 'listing', 'Turbo S'), VFIN('958', ',"version_trusted":true,"analysis_version":"Turbo S"'))};
+  ${A(`f->>'status' = 'catalogued' and f->>'version_subject_id' is null and f->>'version_note' = 'generation has catalogue versions' and (select count(*) from mi.vehicle_version where version_code like '958 %') = 0`, 'a research version was added to a curated generation')}
+  end;`);
+
+t(75, 'знання версії не тече: GL63 бачить клейм версії і покоління через компілятор, GL450 лише клейм покоління', `
+  declare r jsonb; f jsonb; c jsonb; g bigint; av bigint; vcl bigint; gcl bigint; p jsonb;
+  begin
+  ${seedv(GL_B, 'MERCEDES-BENZ', 'GL-Class', 'GL63 AMG', 2015)}
+  ${seedv(GL_C, 'MERCEDES-BENZ', 'GL-Class', 'GL450', 2016)}
+  r := ${persist(GL_B, 'y1', ID_GL63, rfind('version', 'specialist_practice', ROLL, rev('https://spec.example/amg-acs', 'specialist', 'primary', 'we rebuild the pump')))};
+  f := ${fin(GL_B, 'y1', idf('MERCEDES-BENZ', 'GL-Class', 'X166', 'listing', 'GL63 AMG'), VFIN('X166', ',"version_trusted":true,"analysis_version":"GL63 AMG"'))};
+  g := (f->>'generation_subject_id')::bigint; av := (f->>'version_subject_id')::bigint;
+  vcl := (select published_claim_id from mi.candidate_claim where id = (r->'results'->0->>'candidate_id')::bigint);
+  ${A(`vcl is not null and (f->>'published')::int = 1`, 'the version claim was not published')}
+  -- клейм покоління з офіційного джерела: звичайний шлях 030
+  r := ${persist(GL_C, 'y2', ID_GL450, rfind('generation', 'official_fact', GENFACT, rev('https://www.nhtsa.gov/recalls/x166-airbag', 'legal', 'primary', 'recall of the generation')))};
+  gcl := (r->'results'->0->>'claim_id')::bigint;
+  ${A(`(r->>'published')::int = 1 and (select subject_id = g from mi.claim where id = gcl)`, 'the generation claim was not published on the generation')}
+  -- GL63: область версії, пакет компілятора несе обидва клейми
+  c := mi.research_context(${GL_D}, ${ctxj(idj('q', 'Mercedes-Benz', 'GL-Class', 'X166', 'GL 63 AMG'))});
+  ${A(`c->>'mi_scope' = 'version' and (c->'subjects'->>'version')::bigint = av and (c->'research_identity'->>'version_subject')::bigint = av and (c->>'pack_available')::boolean`, 'a compatible check does not resolve the research version')}
+  ${A(`${inKnowledge('c', 'vcl')} and ${inKnowledge('c', 'gcl')}`, 'the compatible version does not get the version and generation knowledge')}
+  p := mi.request_pack(jsonb_build_object('brand', (select brand_id from mi.model_line m join mi.generation gg on gg.model_line_id = m.subject_id where gg.subject_id = g), 'model_line', (select model_line_id from mi.generation where subject_id = g), 'generation', g, 'version', av, 'components', '[]'::jsonb, 'equipment', '[]'::jsonb, 'entitlements', '[]'::jsonb, 'states', '[]'::jsonb), 'report');
+  ${A(`vcl = any (mi_test.pack_claims(p)) and gcl = any (mi_test.pack_claims(p))`, 'the pack compiler does not serve the version claim to its version')}
+  -- GL450: лише покоління; клейм GL63 відсутній і в контексті, і в памʼяті кандидатів
+  c := mi.research_context(${GL_C}, ${ctxj(ID_GL450)});
+  ${A(`c->>'mi_scope' = 'generation' and c->'subjects'->>'version' is null and ${inKnowledge('c', 'gcl')} and not ${inKnowledge('c', 'vcl')} and (c->>'open_candidates_count')::int = 0`, 'GL63 knowledge leaked to GL450')}
+  -- без тексту версії: теж лише покоління
+  c := mi.research_context(${GL_A}, ${ctxj(ID_GL13)});
+  ${A(`c->>'mi_scope' = 'generation' and not ${inKnowledge('c', 'vcl')} and ${inKnowledge('c', 'gcl')}`, 'a check without a version got version knowledge')}
+  -- версійна знахідка GL450 на субʼєкт GL63 не лягає
+  r := ${persist(GL_C, 'y3', ID_GL450, rfind('version', 'specialist_practice', ROLL, rev('https://spec.example/other', 'specialist', 'primary', 'pump')))};
+  ${A(`r->'results'->0->>'status' = 'staged_cold' and r->'results'->0->>'subject_id' is null and (r->>'published')::int = 0`, 'a GL450 finding was attached to the GL63 version')}
+  end;`);
+
 /* ---- Підсумок ---- */
 
 if (errs.length) {

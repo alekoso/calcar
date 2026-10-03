@@ -775,6 +775,7 @@ export async function finalizeResearch(vin, payload, opts = {}) {
   if (b.publish_failed) logLine('mi_research_finalize', { reason: 'publish_failed', count: b.publish_failed, generation: b.generation || null });
   return { ok: b.ok !== false, reason: b.reason || null, identity_key: b.identity_key || null, generation: b.generation || null, status: b.status || null, basis: b.basis || null, note: b.note || null,
     sources: Array.isArray(b.sources) ? b.sources : [], generation_subject_id: b.generation_subject_id || null, catalogued_now: b.catalogued_now === true, vehicle_remembered: b.vehicle_remembered === true, rekeyed: b.rekeyed || 0, attached: b.attached || 0,
+    version_subject_id: b.version_subject_id || null, version_created: b.version_created === true, version_note: b.version_note || null, version_attached: b.version_attached || 0,
     published: b.published || 0, merged: b.merged || 0, publish_failed: b.publish_failed || 0, fragments_rebuilt: b.fragments_rebuilt || 0, ms: r.ms };
 }
 
@@ -943,6 +944,11 @@ export function startCheckResearch(input = {}, opts = {}) {
         /* під яким кодом ішло дослідження цього Check, якщо йшло */
         research_generation: state.batches.length ? state.identity.generation : null,
         powertrain: miPowertrain(final.powertrain),
+        /* версія (міграція 031): імʼя дає лише декодер VIN з чистим розбором
+           (identity.version_text), підтвердити його мусить друге джерело:
+           структурна модифікація площадки або версія з основного аналізу */
+        version_trusted: final.version_trusted === true,
+        listing_version: clean(final.listing_version).slice(0, 80) || null, analysis_version: clean(final.analysis_version).slice(0, 80) || null,
       };
       state.finalize = await (opts.finalize || finalizeResearch)(input.vin || null, payload, opts);
       return state.finalize;

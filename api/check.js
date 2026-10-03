@@ -4128,6 +4128,9 @@ async function runCheck(req, res, job) {
       listing_generation: resolveGeneration([{ value: listing.generation, source: 'listing', notTrim: [parsed.vehicle && parsed.vehicle.trim, nhtsa && nhtsa.Trim, nhtsa && nhtsa.Series], notModel: (nhtsa && nhtsa.Model) || listing.model }]).generation,
       analysis_generation: resolveGeneration([{ value: parsed.vehicle && parsed.vehicle.generation, source: 'analysis', notTrim: parsed.vehicle && parsed.vehicle.trim }]).generation,
       powertrain: resolvePowertrainClass({ nhtsa, fuel: (parsed.vehicle && parsed.vehicle.fuel) || null }),
+      /* версія для каталогу MI: декодер з чистим розбором плюс друге джерело */
+      version_trusted: decoderYearTrusted(nhtsa) && !!(nhtsa && (nhtsa.Trim || nhtsa.Series)),
+      listing_version: listing.modification || null, analysis_version: (parsed.vehicle && parsed.vehicle.trim) || null,
     });
     parsed._meta.mi_research = researchMeta(miResearch.state);
     const rs = miResearch.state;

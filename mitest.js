@@ -39,7 +39,7 @@ const UPS = ['001_schemas_enums_lookups', '002_subjects_hierarchy_source',
   '022_partial_identity', '023_report_version_inference',
   '024_safeupdate_temp_clear', '025_decoder_model_year_plausibility',
   '026_applicability_known_contradiction', '027_equipment_candidates', '028_check_research', '029_check_research_cold_start',
-  '030_research_identity'];
+  '030_research_identity', '031_research_version_subject'];
 
 function run(args, sql) {
   return execFileSync(PSQL, ['-X', '-q', '-v', 'ON_ERROR_STOP=1', '-d', DB, ...args],
