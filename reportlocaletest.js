@@ -92,11 +92,11 @@ const NAME = { ru: 'російською', ua: 'українською', en: 'а
 
   /* ---- 4. звіт: зміна мови інтерфейсу після збереження ---- */
   const rc = fs.readFileSync('result-check.html', 'utf8');
-  ok((rc.match(/translateNow\(/g) || []).length === 1 && /async function translateNow\(\)/.test(rc) && (rc.match(/translateNow\b/g) || []).length === 2, 'result-check.html: переклад викликається не лише кнопкою');
+  ok((rc.match(/\btranslateNow\b/g) || []).length === 2 && /async function translateNow\(\)\{/.test(rc) && /function trClick\(\)\{\n  if \(TR\.busy\) return;\n  if \(TR\.shown === 'translated'\) \{ showOriginal\(\); return; \}\n  translateNow\(\);\n\}/.test(rc), 'result-check.html: переклад викликається не лише кнопкою банера');
   ok(/\n  trSetup\(\);\n  if \(!READONLY\) chatInit\(\);/.test(rc), 'result-check.html: плашка перекладу не налаштовується при показі звіту (і гостю теж)');
   ok(!/body\.readonly #trBar/.test(rc), 'result-check.html: гість за публічним посиланням не бачить пропозиції перекладу');
   ok(/<div class="trbar" id="trBar" style="display:none">[\s\S]{0,200}This report was created in another language[\s\S]{0,120}id="trBtn"[^>]*>Translate</.test(rc), 'result-check.html: плашки "звіт іншою мовою / перекласти" немає');
-  const trSrc = rc.slice(rc.indexOf('function trOffer('), rc.indexOf('function reportLocaleTag(')) + rc.slice(rc.indexOf('function trSetup(){'), rc.indexOf('/* ---------- ринкова вартість'));
+  const trSrc = rc.slice(rc.indexOf('function trOffer('), rc.indexOf('function reportLocaleTag(')) + rc.slice(rc.indexOf('const TR = { view: null'), rc.indexOf('/* ---------- ринкова вартість'));
   const RES = x => { const n = String(x || '').toLowerCase(); return n === 'uk' || n === 'ua' ? 'ua' : n === 'ru' ? 'ru' : 'en'; };
   function page(reportLang, uiLang, translations) {
     const els = {}, calls = { fetch: 0, applied: [] };
@@ -112,21 +112,19 @@ const NAME = { ru: 'російською', ua: 'українською', en: 'а
   for (const [rl, ui] of [['ru', 'ua'], ['ua', 'en'], ['en', 'ru'], ['ru', 'en']]) {
     const p = page(rl, ui, undefined);
     ok(p.els.trBar && p.els.trBar.style.display === '', rl + '->' + ui + ': плашка перекладу не показана');
-    ok(p.els.trBtn.listeners.includes('click') && p.calls.fetch === 0 && p.calls.applied.length === 0, rl + '->' + ui + ': переклад запущено без натискання');
+    ok(typeof p.els.trBtn.onclick === 'function' && p.calls.fetch === 0 && p.calls.applied.length === 0, rl + '->' + ui + ': переклад запущено без натискання');
     ok(JSON.stringify(p.DATA) === p.before, rl + '->' + ui + ': текст звіту змінився від зміни мови інтерфейсу');
   }
   for (const l of LANGS) {
     const p = page(l, l, undefined);
     ok(!p.els.trBar || p.els.trBar.style.display === 'none', l + ': плашка показана, хоча мова звіту збігається з інтерфейсом');
   }
-  /* збережений переклад НЕ підставляється мовчки: звіт відкривається мовою
-     створення з пропозицією перекладу, а "Перекласти" бере кеш миттєво */
+  /* старий повний переклад від моделі (DATA.translations) не застосовується
+     ніколи: перекладений вигляд складається лише з оригіналу і рядків за id
+     (translatetest.js); без натискання нічого не перекладається */
   const pc = page('ru', 'en', { en: { final_conclusion: { headline: 'Cached' } } });
-  ok(pc.calls.applied.length === 0 && pc.els.trBar.style.display === '', 'кешований переклад підставлено без натискання');
-  await pc.ctx.translateNow();
-  ok(pc.calls.applied.length === 1 && pc.calls.applied[0].final_conclusion.headline === 'Cached' && pc.calls.fetch === 0, 'кешований переклад не застосовано за натисканням');
-  ok(pc.ctx.REPORT_LOCALE === 'en' && pc.calls.static === 'en', 'після перекладу підписи звіту лишились мовою створення');
-  ok(JSON.stringify(pc.DATA) === pc.before, 'кешований переклад переписав вихідний звіт');
+  ok(pc.calls.applied.length === 0 && pc.calls.fetch === 0 && pc.els.trBar.style.display === '', 'збережений переклад підставлено без натискання');
+  ok(!/DATA\.translations/.test(rc) && !/function applyTranslation\(/.test(rc), 'сторінка знову бере повний звіт-переклад від моделі');
   /* старий звіт без _meta.lang: без плашки, як і раніше */
   const pOld = page(undefined, 'ua', undefined);
   ok(!pOld.els.trBar || pOld.els.trBar.style.display === 'none', 'звіт без мови показав плашку перекладу');
@@ -140,7 +138,8 @@ const NAME = { ru: 'російською', ua: 'українською', en: 'а
     ok(/if \(document\.readyState === 'loading'\) \{ document\.addEventListener\('DOMContentLoaded', boot, \{ once: true \}\); return; \}\n  M = DATA\._meta \|\| \{\};\n  REPORT_LOCALE = M\.lang \? window\.calcarResolveLocale\(M\.lang\) : null;\n  ensureDict\(REPORT_LOCALE\)\.then\(bootRender\);/.test(rc), 'звіт рендериться до ядра i18n або без мови звіту');
     ok(/function bootRender\(\)\{\n  localizeReportStatic\(REPORT_LOCALE \|\| window\.calcarLang\(\)\);\n  boot2\(DATA\);/.test(rc), 'підписи звіту не переводяться на мову звіту перед рендером');
     ok(/const nf = n => Number\(n\)\.toLocaleString\(reportLocaleTag\(\)\);/.test(rc), 'числа звіту форматуються мовою глядача');
-    ok(/btn\.textContent = window\.t\('Translating…'\)/.test(rc) && /btn\.textContent = window\.t\('Translate'\)/.test(rc), 'плашка перекладу пише мовою звіту, а не глядача');
+    const trSetSrc = rc.slice(rc.indexOf('function trSet(state){'), rc.indexOf('function trStop('));
+    ok(/window\.t\('Translating the report… \{n\} sec'\)/.test(trSetSrc) && /btn\.textContent = window\.t\('Translate'\)/.test(trSetSrc) && !/[^.\w]t\(/.test(trSetSrc), 'плашка перекладу пише мовою звіту, а не глядача');
     /* поведінка: глядач UA, звіт EN -> тексти звіту англійською, плашка українською */
     const dict = { ua: { Mileage: 'Пробіг', Translate: 'Перекласти' }, ru: { Mileage: 'Пробег', Translate: 'Перевести' } };
     for (const [report, viewer, want] of [['en', 'ua', 'Mileage'], ['ua', 'en', 'Пробіг'], ['ru', 'ru', 'Пробег']]) {

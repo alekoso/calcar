@@ -172,7 +172,8 @@ const read = f => fs.readFileSync(f, 'utf8');
   for (const re of [/SEV_LEX\.ua/, /SEV_ADV\.ua/, /JARGON\.ua/, /PHOTO_LABELS\.ua\b/, /lang = 'ua'/]) {
     if (re.test(check)) errs.push('check: серверний фолбек на ua лишився: ' + re);
   }
-  if (!/LANG_NAME_ACC\[lang\]/.test(translate) || /!LANG_NAME\[lang\]/.test(translate)) errs.push('translate: невідома локаль не падає в English');
+  /* мова перекладу: явна локаль CalCar, невідома -> English; назва мови в промпті з report-translate.js */
+  if (!/const lang = resolveLocale\(req\.body\?\.lang\);/.test(translate) || !/const LANG_EN = \{ ua: 'Ukrainian', ru: 'Russian', en: 'English' \};/.test(read('api/report-translate.js'))) errs.push('translate: невідома локаль не падає в English');
   /* фронт: кожен AI-потік шле обрану локаль */
   const rc = read('result-check.html'), rs = read('result.html'), im = read('import.html'), ch = read('check.html'), as = read('chat.js');
   /* тіло запиту може збиратись і до виклику fetch (спільний помічник), тому дивимось навколо */

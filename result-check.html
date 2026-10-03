@@ -897,6 +897,13 @@
   .trbar button:disabled{opacity:.6;cursor:default}
   .trbar .tr-x{margin-left:0;background:transparent;border:none;height:34px;width:30px;padding:0;font-size:14px;color:var(--brand-ink);opacity:.65}
   .trbar .tr-x:hover{opacity:1}
+  /* перебіг перекладу: прошедший час, а не відсоток (реального прогресу API немає) */
+  .trbar .tr-txt{display:flex;flex-direction:column;gap:2px;min-width:0}
+  .trbar .tr-hint{font-size:12.5px;color:var(--brand-ink);opacity:.8}
+  .trbar .tr-hint[hidden],.trbar .tr-spin[hidden]{display:none}
+  .trbar .tr-spin{width:15px;height:15px;flex:0 0 auto;border:2px solid rgba(63,93,17,.25);border-top-color:var(--brand-ink);border-radius:50%;animation:trsp 1s linear infinite}
+  @keyframes trsp{to{transform:rotate(360deg)}}
+  @media (prefers-reduced-motion:reduce){.trbar .tr-spin{animation-duration:2.4s}}
 
   /* ---- США: до ремонту і зараз ---- */
   .ba-label{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);padding:16px 20px 0}
@@ -1287,7 +1294,8 @@
 <div class="wrap">
 
   <div class="trbar" id="trBar" style="display:none">
-    <span>This report was created in another language</span>
+    <span class="tr-spin" id="trSpin" hidden aria-hidden="true"></span>
+    <span class="tr-txt"><span id="trMsg">This report was created in another language</span><span class="tr-hint" id="trHint" hidden></span></span>
     <button id="trBtn" type="button">Translate</button>
     <button id="trClose" type="button" class="tr-x" title="Close">✕</button>
   </div>
@@ -1894,7 +1902,6 @@ async function openTokenReport() {
         if (own) {
           READONLY = false;
           ROW_ID = own.id;
-          if (own.data && own.data.translations) DATA.translations = own.data.translations;
         }
       }
     } catch (e) {}
@@ -1937,55 +1944,127 @@ async function openTokenReport() {
   saveIfNeeded();
 })();
 
-/* ---------- переклад звіту на мову інтерфейсу ---------- */
+/* ---------- переклад звіту на мову глядача ----------
+   Порядок: кеш цієї вкладки -> спільний кеш сервера -> один пакетний виклик
+   OpenAI (два останні робить /api/check-translate за токеном звіту).
+   Звіт від сервера сторінка не приймає: перекладений вигляд складається з
+   ОРИГІНАЛУ DATA, рядок підставляється за шляхом лише там, де вихідний текст
+   збігається з тим, що перекладав сервер. DATA і збережений звіт не
+   змінюються, "Показати оригінал" перемикає назад без API.
+   Перебіг у банері: прошедший час від запиту, без вигаданих відсотків;
+   кешована відповідь приходить раніше, ніж банер встигає показати перебіг */
+const TR = { view: null, busy: false, t0: 0, tick: null, reveal: null, shown: 'original' };
+const TR_REVEAL_MS = 400;
+const TR_LONG_SEC = 20;
+const TR_DONE_MSG = { en: 'The report has been translated into English', ua: 'The report has been translated into Ukrainian', ru: 'The report has been translated into Russian' };
+function trToken(){ return OPEN_TOKEN || (M && M.share_token) || null; }
+function trCacheKey(tok){ return 'calcarTr:' + tok + ':' + window.calcarLang(); }
+/* банер мовою глядача: пропозиція, перебіг, готово, помилка */
+function trSet(state){
+  const btn = $('trBtn'), msg = $('trMsg'), hint = $('trHint'), spin = $('trSpin');
+  spin.hidden = state !== 'progress';
+  hint.hidden = state !== 'progress';
+  btn.disabled = state === 'progress';
+  if (state === 'progress') {
+    const sec = Math.max(1, Math.ceil((Date.now() - TR.t0) / 1000));
+    msg.textContent = window.t('Translating the report… {n} sec').replace('{n}', sec);
+    hint.textContent = window.t(sec > TR_LONG_SEC ? 'Large reports can take a little longer.' : 'Usually this takes about 15-20 seconds.');
+    btn.textContent = window.t('Translate');
+  } else if (state === 'done') {
+    msg.textContent = window.t(TR_DONE_MSG[window.calcarLang()] || TR_DONE_MSG.en);
+    btn.textContent = window.t('Show original');
+  } else if (state === 'error') {
+    msg.textContent = window.t('Could not translate the report.');
+    btn.textContent = window.t('Try again');
+  } else {
+    msg.textContent = window.t('This report was created in another language');
+    btn.textContent = window.t('Translate');
+  }
+}
+function trStop(){ clearTimeout(TR.reveal); clearInterval(TR.tick); TR.reveal = TR.tick = null; }
+/* перекладений вигляд з оригіналу; будь-яка розбіжність = переклад не застосовується */
+function trBuild(items){
+  if (!Array.isArray(items)) return null;
+  const view = JSON.parse(JSON.stringify(DATA));
+  for (const it of items) {
+    if (!it || typeof it.id !== 'string' || typeof it.src !== 'string' || typeof it.text !== 'string' || !it.text.trim()) return null;
+    const segs = it.id.split('.');
+    let o = view;
+    for (let i = 0; i < segs.length - 1 && o != null; i++) o = o[segs[i]];
+    const last = segs[segs.length - 1];
+    if (o == null || typeof o !== 'object' || o[last] !== it.src) return null;
+    o[last] = it.text;
+  }
+  return view;
+}
+function showTranslated(){
+  REPORT_LOCALE = window.calcarLang();
+  localizeReportStatic(REPORT_LOCALE);
+  boot2(TR.view);
+  TR.shown = 'translated';
+  trSet('done');
+}
+function showOriginal(){
+  REPORT_LOCALE = M.lang ? window.calcarResolveLocale(M.lang) : null;
+  localizeReportStatic(REPORT_LOCALE || window.calcarLang());
+  boot2(DATA);
+  TR.shown = 'original';
+  trSet('offer');
+}
+function trClick(){
+  if (TR.busy) return;
+  if (TR.shown === 'translated') { showOriginal(); return; }
+  translateNow();
+}
 function trSetup(){
   const ui = window.calcarLang();
   if (!trOffer(M.lang, ui)) return;
-  /* збережений переклад не підставляється мовчки: звіт відкривається мовою
-     створення, а готовий переклад лише робить "Перекласти" миттєвим */
   const dismissKey = 'calcarTrDismiss:' + (ROW_ID || M.url || '');
   try { if (sessionStorage.getItem(dismissKey)) return; } catch (e) {}
   $('trBar').style.display = '';
-  $('trBtn').addEventListener('click', translateNow, { once: true });
-  $('trClose').addEventListener('click', () => {
+  $('trBtn').onclick = trClick;
+  $('trClose').onclick = () => {
     $('trBar').style.display = 'none';
     try { sessionStorage.setItem(dismissKey, '1'); } catch (e) {}
-  });
-}
-function applyTranslation(tr){
-  const merged = Object.assign({}, DATA, tr);
-  merged._meta = DATA._meta;
-  merged.translations = DATA.translations;
-  /* перекладений звіт цілком мовою глядача: і тексти, і підписи */
-  REPORT_LOCALE = window.calcarLang();
-  localizeReportStatic(REPORT_LOCALE);
-  boot2(merged);
+  };
 }
 async function translateNow(){
+  if (TR.busy) return;
   const ui = window.calcarLang();
-  const btn = $('trBtn');
-  const cached = DATA.translations?.[ui];
-  if (cached) { $('trBar').style.display = 'none'; applyTranslation(cached); return; }
-  /* банер мовою глядача, не звіту */
-  btn.disabled = true; btn.textContent = window.t('Translating…');
+  if (!trOffer(M.lang, ui)) return;
+  /* 1. уже перекладено в цій вкладці: миттєво */
+  if (TR.view) { showTranslated(); return; }
+  TR.busy = true;
+  $('trBtn').disabled = true;
   try {
-    const { _meta, translations, ...body } = DATA;
-    const r = await fetch('/api/check-translate', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ report: body, lang: ui }),
-    });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok || !data.report) throw new Error(data.error || window.t('Translation failed, try again'));
-    DATA.translations = Object.assign({}, DATA.translations, { [ui]: data.report });
-    try { sessionStorage.setItem('calcarCheck', JSON.stringify(DATA)); } catch (e) {}
-    /* кеш перекладу в збережений звіт: наступного разу миттєво */
-    if (SB && ROW_ID) { try { await SB.from('reports').update({ data: DATA }).eq('id', ROW_ID); } catch (e) {} }
-    $('trBar').style.display = 'none';
-    applyTranslation(data.report);
+    /* старий звіт кабінету без токена: власник отримує його тут */
+    let tok = trToken();
+    if (!tok) { const u = await ensureShareToken(); tok = u ? u.split('/').pop() : null; }
+    if (!tok) throw new Error('no_token');
+    let items = null;
+    try { const raw = sessionStorage.getItem(trCacheKey(tok)); if (raw) items = JSON.parse(raw); } catch (e) { items = null; }
+    let view = items ? trBuild(items) : null;
+    if (!view) {
+      /* 2-3. спільний кеш сервера або переклад */
+      TR.t0 = Date.now();
+      TR.reveal = setTimeout(() => { trSet('progress'); TR.tick = setInterval(() => trSet('progress'), 1000); }, TR_REVEAL_MS);
+      const r = await fetch('/api/check-translate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: tok, lang: ui }) });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !Array.isArray(data.items)) throw new Error('translate_http_' + r.status);
+      view = trBuild(data.items);
+      if (!view) throw new Error('translate_mismatch');
+      try { sessionStorage.setItem(trCacheKey(tok), JSON.stringify(data.items)); } catch (e) {}
+    }
+    trStop();
+    TR.view = view;
+    TR.busy = false;
+    showTranslated();
   } catch (e) {
-    btn.disabled = false; btn.textContent = window.t('Translate');
-    alert(e.message);
+    /* оригінал лишається як є; повторити можна тією самою кнопкою */
+    trStop();
+    TR.busy = false;
+    try { console.warn('[translate]', String(e && e.message || e)); } catch (e2) {}
+    trSet('error');
   }
 }
 
