@@ -583,7 +583,7 @@ window.CALCAR_DICTS.ru = {
   'This report was created in another language': 'Отчет создан на другом языке',
   'Translate': 'Перевести',
   'Translating the report… {n} sec': 'Переводим отчёт… {n} сек.',
-  'Usually this takes about 15-20 seconds.': 'Обычно это занимает около 15–20 секунд.',
+  'Usually this takes about 15-30 seconds.': 'Обычно это занимает около 15–30 секунд.',
   'Large reports can take a little longer.': 'Большие отчёты могут переводиться немного дольше.',
   'The report has been translated into English': 'Отчёт переведён на английский',
   'The report has been translated into Ukrainian': 'Отчёт переведён на украинский',

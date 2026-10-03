@@ -1955,7 +1955,8 @@ async function openTokenReport() {
    кешована відповідь приходить раніше, ніж банер встигає показати перебіг */
 const TR = { view: null, busy: false, t0: 0, tick: null, reveal: null, shown: 'original' };
 const TR_REVEAL_MS = 400;
-const TR_LONG_SEC = 20;
+/* звичний час з реальних вимірів після оптимізації (14-28 с, медіана ~25 с) */
+const TR_LONG_SEC = 30;
 const TR_DONE_MSG = { en: 'The report has been translated into English', ua: 'The report has been translated into Ukrainian', ru: 'The report has been translated into Russian' };
 function trToken(){ return OPEN_TOKEN || (M && M.share_token) || null; }
 function trCacheKey(tok){ return 'calcarTr:' + tok + ':' + window.calcarLang(); }
@@ -1968,7 +1969,7 @@ function trSet(state){
   if (state === 'progress') {
     const sec = Math.max(1, Math.ceil((Date.now() - TR.t0) / 1000));
     msg.textContent = window.t('Translating the report… {n} sec').replace('{n}', sec);
-    hint.textContent = window.t(sec > TR_LONG_SEC ? 'Large reports can take a little longer.' : 'Usually this takes about 15-20 seconds.');
+    hint.textContent = window.t(sec > TR_LONG_SEC ? 'Large reports can take a little longer.' : 'Usually this takes about 15-30 seconds.');
     btn.textContent = window.t('Translate');
   } else if (state === 'done') {
     msg.textContent = window.t(TR_DONE_MSG[window.calcarLang()] || TR_DONE_MSG.en);
