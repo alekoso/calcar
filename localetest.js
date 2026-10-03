@@ -161,6 +161,7 @@ const read = f => fs.readFileSync(f, 'utf8');
   if (!/const lang = resolveLocale\(req\.body\?\.lang\)/.test(chat)) errs.push('chat: не читає локаль');
   if (!/МОВА ВІДПОВІДІ: відповідай мовою ОСТАННЬОГО повідомлення користувача/.test(chat)) errs.push('chat: відповідь не мовою повідомлення людини');
   if (!/мовою попередніх повідомлень користувача в цій розмові; якщо і їх немає, мовою інтерфейсу CalCar: \$\{LANG_NAME\[lang\]\}/.test(chat)) errs.push('chat: нема запасного порядку мови (розмова, потім інтерфейс)');
+  if (!/Мова цих інструкцій \(українська\) НЕ є підказкою і НЕ є мовою відповіді за замовчуванням/.test(chat)) errs.push('chat: без ознак мови модель бере мову інструкцій замість мови інтерфейсу');
   if (/відповідай нею ЗАВЖДИ, навіть якщо питання поставлене іншою мовою/.test(chat)) errs.push('chat: лишилось правило відповідати лише мовою інтерфейсу');
   if (!/SYSTEM\(product, memory, wantMemory, turns, refs\.length > 0, quoted, lang\)/.test(chat)) errs.push('chat: lang не переданий у SYSTEM');
   for (const [name, src] of [['check', check], ['analyze', analyze], ['translate', translate], ['memory', memory], ['lot', lot]]) {
