@@ -163,7 +163,7 @@ const read = f => fs.readFileSync(f, 'utf8');
   if (!/мовою попередніх повідомлень користувача в цій розмові; якщо і їх немає, мовою інтерфейсу CalCar: \$\{LANG_NAME\[lang\]\}/.test(chat)) errs.push('chat: нема запасного порядку мови (розмова, потім інтерфейс)');
   if (!/Мова цих інструкцій \(українська\) НЕ є підказкою і НЕ є мовою відповіді за замовчуванням/.test(chat)) errs.push('chat: без ознак мови модель бере мову інструкцій замість мови інтерфейсу');
   if (/відповідай нею ЗАВЖДИ, навіть якщо питання поставлене іншою мовою/.test(chat)) errs.push('chat: лишилось правило відповідати лише мовою інтерфейсу');
-  if (!/SYSTEM\(product, memory, wantMemory, turns, refs\.length > 0, quoted, lang\)/.test(chat)) errs.push('chat: lang не переданий у SYSTEM');
+  if (!/SYSTEM\(product, memory, wantMemory, turns, refs\.length > 0, quoted, lang, replyLanguageMode\(hist\)\)/.test(chat)) errs.push('chat: lang не переданий у SYSTEM');
   for (const [name, src] of [['check', check], ['analyze', analyze], ['translate', translate], ['memory', memory], ['lot', lot]]) {
     if (!/resolveLocale\(req\.(body|query)\?\.lang\)/.test(src)) errs.push(name + ': локаль не через resolveLocale');
     if (/\? req\.body\.lang : 'ua'/.test(src)) errs.push(name + ': старий фолбек ua лишився');
@@ -276,6 +276,25 @@ const read = f => fs.readFileSync(f, 'utf8');
   for (const k of RUN) if (!UAN.has(k)) errs.push('ключ є в ru.js, нема в ua.js: "' + k.slice(0, 60) + '"');
 
   fs.rmSync(dir, { recursive: true, force: true });
+  /* запасний порядок мови чату вирішує код, а не модель */
+  {
+    const cdir = fs.mkdtempSync(path.join(os.tmpdir(), 'calcar_chatlang_'));
+    fs.mkdirSync(path.join(cdir, 'api'));
+    fs.writeFileSync(path.join(cdir, 'package.json'), '{"type":"module"}');
+    for (const f of ['locale.js', 'chat.js']) fs.writeFileSync(path.join(cdir, 'api', f), read('api/' + f));
+    const C = await import('file://' + path.join(cdir, 'api', 'chat.js'));
+    fs.rmSync(cdir, { recursive: true, force: true });
+    for (const x of ['2.4?', '3C4PDCAB9HT691645', 'BMW X5?', 'ok', '👍', 'https://auto.ria.com/1']) if (C.hasLanguageSignal(x) && x !== 'https://auto.ria.com/1') errs.push('chat: "' + x + '" вважається повідомленням з мовою');
+    for (const x of ['Какой главный риск?', 'Чи варто торгуватися?', 'What should I check?', [{ type: 'text', text: 'цена нормальная?' }]]) if (!C.hasLanguageSignal(x)) errs.push('chat: не видно мови у ' + JSON.stringify(x));
+    const u = c => ({ role: 'user', content: c }), a = c => ({ role: 'assistant', content: c });
+    if (C.replyLanguageMode([u('Какой риск?')]) !== 'message') errs.push('chat: повідомлення з мовою не визначає мову відповіді');
+    if (C.replyLanguageMode([u('2.4?')]) !== 'ui') errs.push('chat: без ознак мови і без історії не мова інтерфейсу');
+    if (C.replyLanguageMode([u('Какой риск?'), a('Прийняв. Питай.'), u('3C4PDCAB9HT691645')]) !== 'history') errs.push('chat: без ознак мови не береться мова попередніх повідомлень людини');
+    if (C.replyLanguageMode([a('Прийняв, я вивчив дані. Питай.'), u('2.4?')]) !== 'ui') errs.push('chat: мову відповіді задала репліка помічника, а не людина');
+    const src = read('api/chat.js');
+    if (!/mode === 'ui'\n  \? `- МОВА ВІДПОВІДІ: \$\{LANG_NAME\[lang\]\}\. У повідомленнях користувача немає слів/.test(src)) errs.push('chat: режим ui не задає мову інтерфейсу прямо');
+    if ((src.match(/chat\/completions/g) || []).length !== 1) errs.push('chat: зʼявився окремий виклик моделі');
+  }
   if (errs.length) { console.log('LOCALE TEST FAILED:'); errs.forEach(e => console.log('  - ' + e)); process.exit(1); }
   console.log('resolveLocale · помилки трьома мовами · ядро побайтово одне · saved > browser > en · t() з EN-фолбеком · локаль у Check/Import/Chat/Memory/Translate · English фізична база: raw без кирилиці, UA/RU повні (' + need.size + ' фраз)');
   console.log('LOCALE TEST PASSED');
