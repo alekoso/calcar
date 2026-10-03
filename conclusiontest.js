@@ -100,10 +100,13 @@ const REPORT = {
 
   /* ---------- правила ---------- */
   ok(!CONCLUSION_RULES.includes(DASH), 'довге тире у правилах висновку');
-  for (const k of ['ЗВʼЯЗУЙ ФАКТИ', 'ТИПОВИЙ РИЗИК ВЕРСІЇ І ЗНАЙДЕНА ПРОБЛЕМА ЦЬОГО ЕКЗЕМПЛЯРА ЦЕ РІЗНІ РЕЧІ', 'Власники', 'Ліквідність і майбутній продаж', 'Що ми знаємо і чого не знаємо', 'ЗАБОРОНЕНИЙ канцелярит', 'не є директивою "купуй" чи "не купуй"', 'Порожній model_knowledge_from_report НЕ означає']) {
+  /* fc-v2.2: English internal rules, output language from the report locale */
+  for (const k of ['OUTPUT LANGUAGE', 'CONNECT FACTS AND EXPLAIN CONSEQUENCES', 'Always distinguish a known weakness of this version from a confirmed defect of this exact vehicle', 'Owners.', 'Resale.', 'What we know and what we do not.', 'Bad tone:', 'The conclusion is not a "buy" or "do not buy" directive', 'an empty model_knowledge_from_report does not mean', 'Before drafting, explicitly consider', 'Do not target four paragraphs', 'Do not introduce service campaigns, TSBs, recall-like technical details or campaign numbers unless their applicability']) {
     ok(CONCLUSION_RULES.includes(k), 'у правилах висновку нема: ' + k);
   }
   ok(!/МАКСИМУМ \d+ символів|рівно \d+ речен|один плюс|один мінус/i.test(CONCLUSION_RULES), 'у правилах лишилась жорстка стара структура');
+  ok(!/[А-Яа-яІіЇїЄєҐґ]/.test(CONCLUSION_RULES) && fcMod.CONCLUSION_VERSION === 'fc-v2.2', 'production rules are not the English fc-v2.2');
+  ok(!/exactly \d+ sentences|one plus|one minus|four paragraphs\./i.test(CONCLUSION_RULES.replace('Do not target four paragraphs', '')), 'rigid old structure in the rules');
   const fmt = conclusionResponseFormat();
   ok(fmt.json_schema.strict === true && fmt.json_schema.schema.required.join() === 'headline,paragraphs', 'схема відповіді не headline + paragraphs');
   const um = conclusionUserMessage({ langDirective: 'LANG_DIRECTIVE.', context: ctx });

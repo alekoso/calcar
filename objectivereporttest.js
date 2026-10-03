@@ -136,7 +136,7 @@ const PERSONAL_MARKERS = ['30 000', '50 000', '30000', '50000', 'Бюджет д
     const block = JSON.stringify(dc);
     /* нинішній стан доходить до Final Conclusion з канонічного Vision звіту */
     const fcSrc = fs.readFileSync('api/conclusion.js', 'utf8');
-    ok(/current_condition: currentConditionBlock\(report, meta\)/.test(fcSrc) && /Нинішній стан\. Що видно зараз на фото/.test(fcSrc), 'нинішній стан не доходить до висновку');
+    ok(/current_condition: currentConditionBlock\(report, meta\)/.test(fcSrc) && /If the car looks genuinely good in the photos, say so clearly/.test(fcSrc), 'нинішній стан не доходить до висновку');
     for (const mk of PERSONAL_MARKERS) ok(!block.includes(mk), 'у контекст зі станом потрапило особисте: ' + mk);
   }
 
