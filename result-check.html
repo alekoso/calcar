@@ -1954,7 +1954,10 @@ async function openTokenReport() {
    Перебіг у банері: прошедший час від запиту, без вигаданих відсотків;
    кешована відповідь приходить раніше, ніж банер встигає показати перебіг */
 const TR = { view: null, busy: false, t0: 0, tick: null, reveal: null, shown: 'original' };
-const TR_REVEAL_MS = 400;
+/* блок відео малюється поза boot2: його підпис кнопки перемикається окремо */
+let ytRelabel = null;
+/* спільний кеш відповідає за 0,4-0,8 с: перебіг зʼявляється лише якщо справді чекаємо */
+const TR_REVEAL_MS = 1000;
 /* звичний час з реальних вимірів після оптимізації (14-28 с, медіана ~25 с) */
 const TR_LONG_SEC = 30;
 const TR_DONE_MSG = { en: 'The report has been translated into English', ua: 'The report has been translated into Ukrainian', ru: 'The report has been translated into Russian' };
@@ -2002,6 +2005,7 @@ function showTranslated(){
   REPORT_LOCALE = window.calcarLang();
   localizeReportStatic(REPORT_LOCALE);
   boot2(TR.view);
+  if (ytRelabel) ytRelabel();
   TR.shown = 'translated';
   trSet('done');
 }
@@ -2009,6 +2013,7 @@ function showOriginal(){
   REPORT_LOCALE = M.lang ? window.calcarResolveLocale(M.lang) : null;
   localizeReportStatic(REPORT_LOCALE || window.calcarLang());
   boot2(DATA);
+  if (ytRelabel) ytRelabel();
   TR.shown = 'original';
   trSet('offer');
 }
@@ -2280,6 +2285,7 @@ async function videosInit(D) {
     };
     moreBtn.hidden = false;
     apply();
+    ytRelabel = apply;
     moreBtn.onclick = () => {
       /* усе вже показано: згортаємо назад до трьох */
       if (shown >= videos.length) { shown = YT_INITIAL; apply(); return; }

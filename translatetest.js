@@ -186,6 +186,7 @@ const ok = (c, m) => { if (!c) errs.push(m); };
   const page = fs.readFileSync('result-check.html', 'utf8');
   const block = page.slice(page.indexOf('const TR = { view: null'), page.indexOf('/* ---------- ринкова вартість'));
   const offerSrc = page.slice(page.indexOf('function trOffer('), page.indexOf('function reportLocaleTag('));
+  ok(/  boot2\(TR\.view\);\n  if \(ytRelabel\) ytRelabel\(\);/.test(page) && /  boot2\(DATA\);\n  if \(ytRelabel\) ytRelabel\(\);/.test(page) && /ytRelabel = apply;/.test(page), '6: кнопка блоку відео лишається мовою звіту після перекладу');
   ok(/<span class="tr-spin" id="trSpin" hidden aria-hidden="true"><\/span>/.test(page) && /<span id="trMsg">This report was created in another language<\/span><span class="tr-hint" id="trHint" hidden><\/span>/.test(page), 'банер без спінера чи підказки');
   function client(opts = {}) {
     let now = 1000000;
@@ -226,7 +227,9 @@ const ok = (c, m) => { if (!c) errs.push(m); };
   ok(c.st.fetches.length === 1 && c.st.fetches[0].url === '/api/check-translate' && c.st.fetches[0].body.token === 'AbCdEfGhIjKlMnOpQrStUv' && c.st.fetches[0].body.lang === 'en' && !c.st.fetches[0].body.report, '6: запит перекладу не той або дубль (' + c.st.fetches.length + ')');
   ok(c.els.trBtn.disabled === true, '6: кнопка не вимкнена під час перекладу');
   ok(c.els.trSpin.hidden === true, '6: перебіг блимнув до затримки');
-  c.advance(400);
+  c.advance(900);
+  ok(c.els.trSpin.hidden === true, '6: перебіг зʼявився до 1 с (кеш блимав би)');
+  c.advance(100);
   ok(c.els.trSpin.hidden === false && c.els.trMsg.textContent === 'Переводим отчёт… 1 сек.' && c.els.trHint.textContent === 'Usually this takes about 15-30 seconds.', '6: перебіг не почався з 1 с: ' + c.els.trMsg.textContent);
   c.advance(1000);
   ok(c.els.trMsg.textContent === 'Переводим отчёт… 2 сек.', '6: лічильник не +1 за секунду: ' + c.els.trMsg.textContent);
@@ -253,7 +256,7 @@ const ok = (c, m) => { if (!c) errs.push(m); };
   ok(c.st.fetches.length === 0 && c.els.trSpin.hidden === true && c.els.trMsg.textContent === 'The report has been translated into English', '6: кеш вкладки пішов на сервер або показав таймер');
   /* швидка відповідь сервера (спільний кеш): перебіг не зʼявляється */
   c = client(); c.ctx.trSetup(); c.els.trBtn.onclick(); await c.flush();
-  c.advance(150); c.respond(200, { items: c.serverItems, cached: true }); await c.flush(); await c.flush(); c.advance(2000);
+  c.advance(800); c.respond(200, { items: c.serverItems, cached: true }); await c.flush(); await c.flush(); c.advance(2000);
   ok(c.els.trSpin.hidden === true && !/сек/.test(c.els.trMsg.textContent), '6: кешована відповідь показала довгий перебіг');
   /* помилка: таймер стоп, оригінал, можна повторити */
   c = client(); c.ctx.trSetup(); c.els.trBtn.onclick(); await c.flush(); c.advance(3400);
@@ -273,6 +276,6 @@ const ok = (c, m) => { if (!c) errs.push(m); };
   ok(c.els.trBar.style.display === 'none' && c.st.fetches.length === 0, '6: та сама мова показала банер або пішла в API');
 
   if (errs.length) { console.log('TRANSLATE TEST FAILED:'); errs.forEach(e => console.log('  - ' + e)); process.exit(1); }
-  console.log('translate: у модель лише текст для людини · id/порядок/кількість перевіряються · вигляд з оригіналу, Score/Confidence/коди/числа незмінні · спільний кеш токен+мова+відбиток (гість і власник) · один виклик, reasoning low, без етапів Check · банер: прошедший час, >20 с інша підказка, стоп на успіху і помилці, без дубля, оригінал без API');
+  console.log('translate: у модель лише текст для людини · id/порядок/кількість перевіряються · вигляд з оригіналу, Score/Confidence/коди/числа незмінні · спільний кеш токен+мова+відбиток (гість і власник) · один виклик, reasoning low, без етапів Check · банер: прошедший час з 1 с, >30 с інша підказка, стоп на успіху і помилці, без дубля, оригінал без API');
   console.log('TRANSLATE TEST PASSED');
 })().catch(e => { console.error('TRANSLATE TEST CRASHED', e); process.exit(1); });
