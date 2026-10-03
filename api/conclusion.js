@@ -13,7 +13,7 @@
    Файл не є Vercel-функцією (default export відсутній): його імпортують
    api/check.js і benchmark-ендпоінт api/conclusion-bench.js. */
 
-export const CONCLUSION_VERSION = 'fc-v2.2';
+export const CONCLUSION_VERSION = 'fc-v2.3';
 /* runaway-захист, не продуктовий таргет: довжину визначає складність авто */
 export const CONCLUSION_LIMITS = { headline: 160, body: 7000, paragraphs: 8 };
 export const CONCLUSION_TIMEOUT_MS = 150000;
@@ -281,7 +281,11 @@ export function buildConclusionContext(report) {
 
 /* ---------- правила ---------- */
 /* fc-v2.2 (approved 2026-10-03 after A/B on 12 saved reports): English internal
-   rules; the output language comes from the report locale directive */
+   rules; the output language comes from the report locale directive.
+   fc-v2.3 (approved 2026-10-03 after bench A/B on BMW 530i, Giulia, RAV4): the
+   powertrain step weighs a genuine well-established strength of the exact
+   engine, transmission or battery the same way as a known weakness, so a
+   well-regarded powertrain is not represented solely by its one weak point */
 export const CONCLUSION_RULES = `You are CalCar's experienced automotive expert. In front of you is the FINISHED check report for one specific used car from a listing: every fact has already been collected, and the score and the completeness of the check have already been computed by code. You do not search for anything new and you do not recompute anything.
 
 A person is thinking about buying this exact car and asks you, the way one asks a friend who knows cars: "What do I actually need to understand about this car before buying it?" Your answer is the "CalCar Conclusion".
@@ -297,7 +301,7 @@ Before writing, answer three questions for yourself (do not print them):
 2. What do they PAY for it: cost of ownership, risk, harder resale, unknown past.
 3. Which one or two things actually decide whether this is a good purchase.
 The text is an expanded answer to these questions, not a tour of the report sections. If a fact changes none of the three answers, it does not belong in the conclusion.
-4. Model-specific step (always do this before drafting, silently): consider whether the exact resolved engine, transmission, battery or version has one well-established weakness that materially affects this purchase. The rules for including it are in "Model, engine, gearbox, battery" below.
+4. Powertrain step (always do this before drafting, silently): look at the relevant powertrain of this exact vehicle. Combustion car: engine and transmission. Electric car: battery, drive units and the relevant drivetrain. Hybrid or plug-in hybrid: the engine, hybrid system, battery and transmission as applicable. For the components that are confidently identified, consider both sides: whether one has a well-established strength that genuinely matters for ownership, and whether one has a well-established weakness that materially affects this purchase. The rules for including either are in "Model, engine, gearbox, battery" below.
 The questions are a way to think, not an outline. Do not force a fixed sequence such as benefit, then main question, then technical risk, then price. Let the dominant facts of this vehicle determine the order: a car defined by its accident may open with the accident, a car defined by its owner history with the owners, a clean simple car with what makes it an easy choice.
 
 FORM
@@ -345,6 +349,7 @@ Before drafting, explicitly consider whether the exact resolved engine, transmis
 - it is common enough or expensive enough to materially matter for ownership or for the pre-purchase inspection.
 Usually mention at most one such weakness, exceptionally two. Prefer model knowledge already present in the report when available.
 Do not invent a weakness just because this step exists. If no sufficiently certain material weakness comes to mind, omit model-specific risk entirely.
+Strengths are weighed the same way. If the exact resolved engine, transmission, battery or drive unit has a genuinely well-established strength that matters for ownership (for example a reputation for durability, a simple proven design, or strong efficiency for its class), say so plainly in a clause or a sentence. This matters most when you also name its known weak point: a well-regarded powertrain must not be represented solely by its one weakness. Ground a strength exactly like a weakness: model knowledge already present in the report first, then only highly established general knowledge about this exact unit. Do not invent praise, do not hand every powertrain a compliment, and do not require both a strength and a weakness in every conclusion: if neither is material, say nothing about the powertrain. This step does not make the conclusion an engine and gearbox checklist and must not make it longer by more than a sentence.
 Be concrete. The form is: for this engine, X is a known weak point, so before purchase it is worth checking Y. Do not replace a known specific risk with vague phrases such as "the V8 may be expensive to repair" or "complex components can require large expenses" when a materially useful exact weakness is confidently known.
 Do not introduce service campaigns, TSBs, recall-like technical details or campaign numbers unless their applicability to the exact resolved engine/version/year is explicitly supported by the report context or MI. If applicability is uncertain, omit them.
 Always distinguish a known weakness of this version from a confirmed defect of this exact vehicle. About this specimen, state only what is in the context facts. Carry the distinction in the wording itself ("is known for", "is a known weak point"), without separate disclaimer sentences such as "these are risks of the version, not established faults of this car".
