@@ -280,7 +280,7 @@ const TOK = n => ('tok' + n + 'AAAAAAAAAAAAAAAAAAAAAA').slice(0, 22);
   ok(a > 0 && b > a, 'check.html: блок листа не знайдено');
   ok(/<div class="ld" id="loadBox"><\/div>\s*<div class="em" id="emailBox" data-private-block><\/div>/.test(ch), 'check.html: блок листа не під індикатором аналізу');
   const block = ch.slice(a, b);
-  function page({ session, stored }) {
+  function page({ session, stored, hint, sessionP }) {
     const els = {}, store = { ...(stored || {}) }, calls = [], tracked = [];
     const el = id => els[id] || (els[id] = { id, innerHTML: '', className: '', textContent: '', disabled: false, onsubmit: null });
     const doc = { getElementById: id => {
@@ -293,8 +293,8 @@ const TOK = n => ('tok' + n + 'AAAAAAAAAAAAAAAAAAAAAA').slice(0, 22);
     const ctx = vm.createContext({
       document: doc, console,
       localStorage: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: k => { delete store[k]; } },
-      SB: { auth: { getSession: async () => ({ data: { session } }) } },
-      window: { calcar: { aid: () => '0f8fad5b-d9cb-469f-a165-70867728950e', track: (n, p) => tracked.push({ n, p }) }, calcarLang: () => 'ru' },
+      SB: { auth: { getSession: () => (sessionP || Promise.resolve(session)).then(x => ({ data: { session: x } })) } },
+      window: { calcar: { aid: () => '0f8fad5b-d9cb-469f-a165-70867728950e', track: (n, p) => tracked.push({ n, p }) }, calcarLang: () => 'ru', CALCAR_SIGNED_IN: hint },
       t: s => s, esc: s => String(s),
       safeJson: async r => r.json(),
       fetch: async (url, init) => { calls.push({ url, init, body: JSON.parse(init.body) }); return { ok: true, status: 200, json: async () => ({ ok: true, masked: 'm***@example.com', sent: false }) }; },
@@ -358,6 +358,42 @@ const TOK = n => ('tok' + n + 'AAAAAAAAAAAAAAAAAAAAAA').slice(0, 22);
   ok(p3.calls.length === 1 && p3.calls[0].init.headers.authorization === 'Bearer AT' && p3.calls[0].body.email === undefined, '2: запит того, хто увійшов');
   ok(p3.store.calcar_guest_email === 'g@example.com', '2: адреса акаунта переписала адресу гостя');
   ok(JSON.parse(p3.store.calcar_pending_check).mailedAuth === true, '2: сторінка не знає, що звіт збереже сервер');
+
+  /* getSession у живому браузері буває повільним (блокування авторизації між
+     вкладками, оновлення токена): блок не чекає на нього і є одразу */
+  {
+    let relS = null;
+    const slow = () => new Promise(r => { relS = r; });
+    /* увійшов (стан шапки): вид акаунта одразу, хоча сесія ще не дочитана */
+    let q = page({ stored: {}, hint: true, sessionP: slow() });
+    const shown = q.ctx.emailBoxShow(T1);
+    ok(q.els.emailBox.className === 'em on' && />Send to my email</.test(q.els.emailBox.innerHTML) && !/id="emIn"/.test(q.els.emailBox.innerHTML), 'блок того, хто увійшов, чекає на getSession');
+    /* натискання до сесії: запит іде лише після неї і з її токеном */
+    const subQ = q.submit();
+    await new Promise(r => setImmediate(r));
+    ok(q.calls.length === 0, 'opt-in пішов до того, як дочитана сесія');
+    const sess = { access_token: 'AT2', user: { email: 'owner@example.com' } };
+    q.ctx.SB.auth.getSession = async () => ({ data: { session: sess } });
+    relS(sess); await shown; await subQ;
+    ok(q.calls.length === 1 && q.calls[0].init.headers.authorization === 'Bearer AT2' && q.calls[0].body.email === undefined, 'opt-in після сесії не того, хто увійшов');
+    /* гість (стан шапки): поле одразу, без очікування */
+    q = page({ stored: { calcar_guest_email: 'g@example.com' }, hint: false, sessionP: slow() });
+    q.ctx.emailBoxShow(T1);
+    ok(q.els.emailBox.className === 'em on' && /id="emIn"/.test(q.els.emailBox.innerHTML) && q.doc.getElementById('emIn').value === 'g@example.com', 'блок гостя чекає на getSession або без збереженої адреси');
+    relS(null);
+    /* стан шапки розійшовся з сесією: той самий блок у правильному виді */
+    q = page({ stored: {}, hint: false, sessionP: slow() });
+    const sh2 = q.ctx.emailBoxShow(T1);
+    ok(/id="emIn"/.test(q.els.emailBox.innerHTML), 'без сесії не вид гостя');
+    relS({ access_token: 'AT3', user: { email: 'o@example.com' } }); await sh2;
+    ok(q.els.emailBox.className === 'em on' && !/id="emIn"/.test(q.els.emailBox.innerHTML) && />Send to my email</.test(q.els.emailBox.innerHTML), 'після дочитаної сесії вид не виправлено');
+    /* сесія без адреси: блоку немає, як і раніше */
+    q = page({ stored: {}, hint: true, sessionP: slow() });
+    const sh3 = q.ctx.emailBoxShow(T1);
+    relS({ access_token: 'AT4', user: {} }); await sh3;
+    ok(q.els.emailBox.className === 'em' && q.els.emailBox.innerHTML === '', 'сесія без адреси лишила блок');
+    ok(/render\(hint\);\n  const session = await sessionP;/.test(ch), 'check.html: блок знову малюється після getSession');
+  }
 
   /* приватність у джерелі: адреса не йде в URL, консоль чи аналітику */
   ok(!/console\.\w+\([^)]*(email|emIn|acct)/i.test(block), '15: адреса в console');

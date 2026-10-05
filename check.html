@@ -1268,57 +1268,72 @@ async function emailBoxShow(tokenIn){
   const my = ++emSeq;
   const pj = pendingGet();
   if (known && pj && pj.token === known && pj.mailed) { emailBoxDone(); return; }
-  let session = null;
-  try { if (SB) session = (await SB.auth.getSession()).data?.session || null; } catch (e) {}
-  /* поки читалась сесія, перевірка могла вже впасти чи завершитись */
-  if (my !== emSeq) return;
-  const acct = session ? (session.user?.email || '') : '';
-  if (session && !acct) return;
-  let saved = '';
-  if (!session) { try { saved = localStorage.getItem(GUEST_EMAIL_KEY) || ''; } catch (e) {} }
-  const btn = label => '<button class="em-btn" id="emBtn" type="submit">' + esc(t(label)) + '</button>';
-  box.innerHTML = EM_ICON + '<div class="em-main"><div class="em-t">' + esc(t('Get the report by email')) + '</div>' + (session
-    ? '<div class="em-s">' + esc(t('You can wait here or close the page: we will send a link when the analysis is ready.')) + '</div>'
-      + '<form class="em-row" id="emForm" novalidate>' + btn('Send to my email') + '</form>'
-    : '<div class="em-s">' + esc(t('Leave your email: you can wait here or come back via the link in the email.')) + '</div>'
-      + '<form class="em-row" id="emForm" novalidate><input class="em-in" id="emIn" type="email" inputmode="email" autocomplete="email" spellcheck="false" placeholder="Email" aria-label="Email" value="' + esc(saved) + '">' + btn('Email me') + '</form>')
-    + '<div class="em-err" id="emErr"></div></div>';
-  box.className = 'em on';
-  const form = document.getElementById('emForm'), emBtn = document.getElementById('emBtn'), errEl = document.getElementById('emErr');
-  const fail = msg => { errEl.textContent = msg; errEl.className = 'em-err on'; };
+  /* Блок малюється ОДРАЗУ, без очікування сесії. getSession у supabase-js
+     чекає спільне на всі вкладки CalCar блокування авторизації і, якщо
+     токен прострочений, його оновлення мережею: у живому браузері це бувало
+     кілька секунд, і блок вставлявся вже після індикатора. Вид (гість чи
+     акаунт) береться з уже відомого стану входу шапки, а без нього з
+     наявності збереженої сесії; сесія дочитується після показу і лише
+     уточнює вид. Натискання завжди чекає на справжню сесію */
+  const sessionP = (async () => { try { return SB ? ((await SB.auth.getSession()).data?.session || null) : null; } catch (e) { return null; } })();
+  let hint = window.CALCAR_SIGNED_IN;
+  if (typeof hint !== 'boolean') { hint = false; try { hint = Object.keys(localStorage).some(k => /^sb-.*-auth-token$/.test(k)); } catch (e) {} }
   let busy = false;
-  form.onsubmit = async ev => {
-    ev.preventDefault();
-    if (busy) return;
-    const email = session ? null : document.getElementById('emIn').value.trim();
-    if (!session && !/^[^\s@]+@[^\s@]+\.[^\s@.]{2,}$/.test(email)) { fail(t('Check the email address')); return; }
-    busy = true; emBtn.disabled = true; errEl.className = 'em-err';
-    try {
-      const token = await tokenIn;
-      if (!token) throw new Error(t('Could not set up the email, try again'));
-      const headers = { 'content-type': 'application/json' };
-      if (session) {
-        const fresh = (await SB.auth.getSession()).data?.session;
-        if (!fresh) throw new Error(t('Could not set up the email, try again'));
-        headers.authorization = 'Bearer ' + fresh.access_token;
+  const render = signed => {
+    let saved = '';
+    if (!signed) { try { saved = localStorage.getItem(GUEST_EMAIL_KEY) || ''; } catch (e) {} }
+    const btn = label => '<button class="em-btn" id="emBtn" type="submit">' + esc(t(label)) + '</button>';
+    box.innerHTML = EM_ICON + '<div class="em-main"><div class="em-t">' + esc(t('Get the report by email')) + '</div>' + (signed
+      ? '<div class="em-s">' + esc(t('You can wait here or close the page: we will send a link when the analysis is ready.')) + '</div>'
+        + '<form class="em-row" id="emForm" novalidate>' + btn('Send to my email') + '</form>'
+      : '<div class="em-s">' + esc(t('Leave your email: you can wait here or come back via the link in the email.')) + '</div>'
+        + '<form class="em-row" id="emForm" novalidate><input class="em-in" id="emIn" type="email" inputmode="email" autocomplete="email" spellcheck="false" placeholder="Email" aria-label="Email" value="' + esc(saved) + '">' + btn('Email me') + '</form>')
+      + '<div class="em-err" id="emErr"></div></div>';
+    box.className = 'em on';
+    const form = document.getElementById('emForm'), emBtn = document.getElementById('emBtn'), errEl = document.getElementById('emErr');
+    const fail = msg => { errEl.textContent = msg; errEl.className = 'em-err on'; };
+    form.onsubmit = async ev => {
+      ev.preventDefault();
+      if (busy) return;
+      busy = true; emBtn.disabled = true; errEl.className = 'em-err';
+      const session = await sessionP;
+      const acct = session ? (session.user?.email || '') : '';
+      const email = session ? null : (document.getElementById('emIn') || {}).value?.trim() || '';
+      if (!session && !/^[^\s@]+@[^\s@]+\.[^\s@.]{2,}$/.test(email)) { busy = false; emBtn.disabled = false; fail(t('Check the email address')); return; }
+      try {
+        const token = await tokenIn;
+        if (!token) throw new Error(t('Could not set up the email, try again'));
+        const headers = { 'content-type': 'application/json' };
+        if (session) {
+          const fresh = (await SB.auth.getSession()).data?.session;
+          if (!fresh) throw new Error(t('Could not set up the email, try again'));
+          headers.authorization = 'Bearer ' + fresh.access_token;
+        }
+        const r = await fetch('/api/check-email', {
+          method: 'POST', headers,
+          body: JSON.stringify({ token, email: email || undefined, aid: (window.calcar && window.calcar.aid) ? window.calcar.aid() : undefined, lang: window.calcarLang() }),
+        });
+        const j = await safeJson(r);
+        if (!r.ok || !j.ok) throw new Error(j.error || t('Could not set up the email, try again'));
+        if (!session) { try { localStorage.setItem(GUEST_EMAIL_KEY, email); } catch (e) {} }
+        const masked = j.masked || maskEmail(email || acct);
+        const cur = pendingGet();
+        if (cur && cur.token === token) pendingSet({ ...cur, mailed: masked, mailedAuth: !!session });
+        try { if (window.calcar) window.calcar.track('report_email_opted_in', { product: 'check' }); } catch (e) {}
+        emailBoxDone();
+      } catch (e) {
+        busy = false; emBtn.disabled = false;
+        fail(e.message || t('Could not set up the email, try again'));
       }
-      const r = await fetch('/api/check-email', {
-        method: 'POST', headers,
-        body: JSON.stringify({ token, email: email || undefined, aid: (window.calcar && window.calcar.aid) ? window.calcar.aid() : undefined, lang: window.calcarLang() }),
-      });
-      const j = await safeJson(r);
-      if (!r.ok || !j.ok) throw new Error(j.error || t('Could not set up the email, try again'));
-      if (!session) { try { localStorage.setItem(GUEST_EMAIL_KEY, email); } catch (e) {} }
-      const masked = j.masked || maskEmail(email || acct);
-      const cur = pendingGet();
-      if (cur && cur.token === token) pendingSet({ ...cur, mailed: masked, mailedAuth: !!session });
-      try { if (window.calcar) window.calcar.track('report_email_opted_in', { product: 'check' }); } catch (e) {}
-      emailBoxDone();
-    } catch (e) {
-      busy = false; emBtn.disabled = false;
-      fail(e.message || t('Could not set up the email, try again'));
-    }
+    };
   };
+  render(hint);
+  const session = await sessionP;
+  /* поки читалась сесія, перевірка могла вже впасти чи завершитись */
+  if (my !== emSeq || busy) return;
+  if (session && !(session.user?.email)) { emailBoxHide(); return; }
+  /* стан шапки розійшовся із сесією (рідко): той самий блок у правильному виді */
+  if (!!session !== hint) render(!!session);
 }
 /* звіт цього job уже в кабінеті? Після opt-in того, хто увійшов, його
    зберігає сервер; сторінка тоді бере готовий рядок і дубля не створює */
