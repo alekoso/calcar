@@ -36,7 +36,13 @@ if (/class="go"/.test(s) || /\.report \.go/.test(s)) errs.push('стрілка �
 if (/rc-vin|vin-sub/.test(s)) errs.push('VIN показується в картці');
 if (!/PLACEHOLDER = '<svg/.test(s) || !/isHttp\(r\.photo\) \? '<img/.test(s)) errs.push('нема заглушки фото або фото без перевірки URL');
 if (!/img\.addEventListener\('error'/.test(s)) errs.push('битий кадр не замінюється заглушкою');
-if (!/if \(ev\.target\.closest\('\.kebab, \.menu'\)\) return; open\(\);/.test(s)) errs.push('клік по трьох крапках відкриває звіт');
+/* картка відкривається справжнім посиланням, не JS: правий клік, середня
+   кнопка, Cmd/Ctrl+клік і копіювання адреси працюють як у браузері */
+if (!/<a class="rt" href="' \+ esc\(hrefOf\(r\)\) \+ '"><\/a>/.test(s)) errs.push('заголовок картки не справжнє посилання на канонічну адресу звіту');
+if (/data-href=|role="link"|location\.href = el\.dataset/.test(s)) errs.push('картка знову відкривається через JS замість посилання');
+if (!/\.rcard \.rt::after\{content:'';position:absolute;inset:0/.test(s) || !/\.rcard \.kebab\{position:relative;z-index:2\}/.test(s)) errs.push('посилання не розтягнуте на картку або три крапки під ним');
+if (!/\.rcard:focus-within\{outline:2px solid var\(--ink\)/.test(s)) errs.push('фокус на посиланні картки не видно');
+if (!/\.kebab:hover/.test(s) || !/kebab\.addEventListener\('click', ev => \{\s*ev\.stopPropagation\(\);/.test(s)) errs.push('три крапки не зупиняють спливання');
 if (!/kebab\.addEventListener\('click', ev => \{\s*ev\.stopPropagation\(\);/.test(s)) errs.push('три крапки не зупиняють спливання');
 if (!/menu\.querySelector\('\.del'\)[\s\S]{0,300}from\('reports'\)\.delete\(\)\.eq\('id', el\.dataset\.id\)/.test(s)) errs.push('видалення зі старого меню зникло');
 if (!/\.kebab\{[^}]*width:36px;height:36px/.test(s)) errs.push('у трьох крапок нема touch-target 36px');
@@ -79,6 +85,54 @@ else {
   const old = new Date(now.getFullYear() - 1, 0, 15, 12, 0);
   if (/:\d\d/.test(when(old.toISOString())) || !new RegExp(String(now.getFullYear() - 1)).test(when(old.toISOString()))) errs.push('минулий рік має бути з роком і без часу: ' + when(old.toISOString()));
   if (isHttp('data:image/png;base64,x') || !isHttp('https://a/b.jpg')) errs.push('перевірка URL фото неправильна');
+}
+
+/* 7б. прокрутка списку при поверненні по історії: стан запису історії,
+   відновлення лише по history-навігації і лише коли картки вже є */
+{
+  const i = s.indexOf(' function reportsScrollSave(ev) {'), j = s.indexOf(' async function showList() {');
+  if (i < 0 || j < i) errs.push('нема функцій збереження/відновлення прокрутки');
+  else {
+    if (!/history\.scrollRestoration = 'manual'/.test(s)) errs.push('браузерне відновлення прокрутки не вимкнене: воно спрацьовує до появи карток');
+    if (!/ render\(\);\n \/\*[^\n]*\n reportsScrollRestore\(box\);\n box\.addEventListener\('click', reportsScrollSave\);/.test(s)) errs.push('відновлення не після першого рендера списку або збереження не на кліку по картці');
+    const mk = (over = {}) => {
+      const st = { state: null, replaced: 0, scrolled: null, navType: over.navType || 'back_forward', cards: over.cards !== false };
+      const ctx = {
+        history: { get state() { return st.state; }, replaceState(v) { st.state = v; st.replaced++; } },
+        window: { scrollY: over.scrollY || 0 }, performance: { getEntriesByType: () => [{ type: st.navType }] },
+        scrollTo: (x, y) => { st.scrolled = y; },
+      };
+      ctx.window.scrollTo = ctx.scrollTo;
+      vm.createContext(ctx);
+      vm.runInContext(s.slice(i, j) + '\n this.save = reportsScrollSave; this.restore = reportsScrollRestore;', ctx);
+      return { st, ctx, box: { querySelector: sel => (st.cards ? {} : null) } };
+    };
+    const a = { closest: sel => (sel === 'a.rt' ? {} : null) };
+    const click = over => Object.assign({ target: a, button: 0, defaultPrevented: false, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false }, over);
+    /* звичайний клік по картці: позиція у стан запису історії */
+    let r = mk({ scrollY: 840 });
+    r.ctx.save(click());
+    if (r.st.replaced !== 1 || !r.st.state || r.st.state.reportsScroll !== 840) errs.push('звичайний клік не записує прокрутку в history.state');
+    /* клік зі змінювачами, середня кнопка, не по картці: нічого не пишеться і не перехоплюється */
+    for (const [name, ev] of [['Cmd+клік', click({ metaKey: true })], ['Ctrl+клік', click({ ctrlKey: true })], ['Shift+клік', click({ shiftKey: true })], ['середня кнопка', click({ button: 1 })], ['не по картці', click({ target: { closest: () => null } })]]) {
+      r = mk({ scrollY: 500 }); r.ctx.save(ev);
+      if (r.st.replaced !== 0) errs.push(name + ' записує прокрутку (новий таб зсунув би цю вкладку)');
+    }
+    if (/preventDefault\(\)/.test(s.slice(i, j))) errs.push('збереження прокрутки перехоплює перехід по посиланню');
+    /* повернення по історії з картками: прокрутка відновлюється */
+    r = mk(); r.st.state = { reportsScroll: 840 }; r.ctx.restore(r.box);
+    if (r.st.scrolled !== 840) errs.push('повернення назад не відновлює прокрутку');
+    /* картки ще не відрендерені: не прокручуємо в порожнечу */
+    r = mk({ cards: false }); r.st.state = { reportsScroll: 840 }; r.ctx.restore(r.box);
+    if (r.st.scrolled !== null) errs.push('прокрутка відновлюється до появи карток');
+    /* свіжий візит: стану немає, починаємо звичайно */
+    r = mk({ navType: 'navigate' }); r.ctx.restore(r.box);
+    if (r.st.scrolled !== null) errs.push('свіжий візит прокручує список');
+    /* звичайний перехід на Звіти з чужим станом не відновлює */
+    r = mk({ navType: 'navigate' }); r.st.state = { reportsScroll: 840 }; r.ctx.restore(r.box);
+    if (r.st.scrolled !== null) errs.push('не history-навігація відновлює прокрутку');
+    if (/localStorage[^\n]*[Ss]croll/.test(s)) errs.push('прокрутка списку зберігається у localStorage');
+  }
 }
 
 /* 8. словники: нові рядки в UA і RU */

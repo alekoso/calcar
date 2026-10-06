@@ -449,7 +449,13 @@
  .rcard-sk .rval-sk .sk{width:36px;height:22px;border-radius:6px}
  .rcard{display:flex;align-items:center;gap:16px;min-width:0;padding:12px;position:relative;background:var(--card);border:1px solid var(--line);border-radius:16px;cursor:pointer;transition:background .12s,border-color .12s}
  .rcard:hover{background:#FBFCF9;border-color:var(--line-strong)}
- .rcard:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+ /* заголовок це справжнє посилання, розтягнуте на всю картку: правий клік,
+    середня кнопка, Cmd/Ctrl+клік і копіювання адреси працюють як у браузері.
+    Три крапки і меню лежать вище за цю область */
+ .rcard .rt{color:inherit;text-decoration:none;outline:none}
+ .rcard .rt::after{content:'';position:absolute;inset:0;border-radius:16px}
+ .rcard:focus-within{outline:2px solid var(--ink);outline-offset:2px}
+ .rcard .kebab{position:relative;z-index:2}
  .rph{flex:0 0 132px;width:132px;height:96px;border-radius:12px;overflow:hidden;background:var(--surface-2);color:var(--faint);display:flex;align-items:center;justify-content:center}
  .rph img{display:block;width:100%;height:100%;object-fit:cover}
  .rbody{flex:1;min-width:0;align-self:stretch;display:flex;flex-direction:column;justify-content:center;gap:6px}
@@ -935,6 +941,28 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  }
  window.addEventListener('hashchange', () => switchTab((location.hash || '').replace('#', '') || 'reports'));
 
+ /* ---- прокрутка списку звітів при поверненні по історії ----
+    Список вантажиться асинхронно, тому браузерне відновлення прокрутки
+    спрацьовує раніше, ніж є картки, і людина повертається на початок.
+    Позиція пишеться у стан САМОГО запису історії перед звичайним переходом
+    по картці (без змінювачів, лівою кнопкою) і відновлюється лише коли
+    на цей запис повернулись по історії і картки вже відрендерені. Свіжий
+    візит має порожній стан, тож починається звичайно; новий таб відкритий
+    Cmd/Ctrl+кліком чи середньою кнопкою цю вкладку не чіпає */
+ try { history.scrollRestoration = 'manual'; } catch (e) {}
+ function reportsScrollSave(ev) {
+ if (!ev.target.closest || !ev.target.closest('a.rt')) return;
+ if (ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+ try { history.replaceState(Object.assign({}, history.state || {}, { reportsScroll: window.scrollY }), ''); } catch (e) {}
+ }
+ function reportsScrollRestore(box) {
+ const y = history.state && history.state.reportsScroll;
+ if (typeof y !== 'number' || !(y > 0)) return;
+ const nav = (performance.getEntriesByType && performance.getEntriesByType('navigation')[0]) || null;
+ if (!nav || (nav.type !== 'back_forward' && nav.type !== 'reload')) return;
+ if (!box.querySelector('.rcard')) return;
+ window.scrollTo(0, y);
+ }
  async function showList() {
  document.getElementById('authBox').style.display = 'none';
  document.getElementById('listBox').style.display = '';
@@ -1023,9 +1051,9 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  const grand = r.kind === 'check' ? null : (Number(r.grand) || null);
  const val = sc !== null ? '<span class="rscore ' + scoreCls(sc) + '">' + sc.toFixed(1) + '</span>'
    : grand ? '<span class="rsum">$' + esc(grand.toLocaleString(calcarLocale())) + '</span>' : '<span></span>';
- return '<div class="rcard" role="link" tabindex="0" data-id="' + esc(r.id) + '" data-href="' + esc(hrefOf(r)) + '" data-search="' + esc((nameOf(r) + ' ' + (r.title || '') + ' ' + (r.vin || '') + ' ' + (r.lot || '')).toLowerCase()) + '">'
+ return '<div class="rcard" data-id="' + esc(r.id) + '" data-search="' + esc((nameOf(r) + ' ' + (r.title || '') + ' ' + (r.vin || '') + ' ' + (r.lot || '')).toLowerCase()) + '">'
    + '<span class="rph">' + (isHttp(r.photo) ? '<img loading="lazy" alt="" src="' + esc(r.photo) + '">' : PLACEHOLDER) + '</span>'
-   + '<span class="rbody"><span class="rt"></span><span class="rd">' + esc(when(r.created_at)) + '</span></span>'
+   + '<span class="rbody"><a class="rt" href="' + esc(hrefOf(r)) + '"></a><span class="rd">' + esc(when(r.created_at)) + '</span></span>'
    + '<span class="rval">' + val + '<button class="kebab" type="button" title="' + esc(t('Actions')) + '" aria-label="' + esc(t('Actions')) + '">⋯</button></span>'
    + '<div class="menu"><button class="del" type="button">' + esc(t('Delete estimate')) + '</button></div>'
    + '</div>';
@@ -1035,10 +1063,8 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  /* картка без робочого кадру показує нейтральну заглушку, а не биту іконку */
  const img = el.querySelector('img');
  if (img) img.addEventListener('error', () => { el.querySelector('.rph').innerHTML = PLACEHOLDER; }, { once: true });
- /* відкриття: клік або Enter будь-де по картці, крім трьох крапок і меню */
- const open = () => { location.href = el.dataset.href; };
- el.addEventListener('click', ev => { if (ev.target.closest('.kebab, .menu')) return; open(); });
- el.addEventListener('keydown', ev => { if (ev.key === 'Enter' && ev.target === el) open(); });
+ /* відкриття: сам якір .rt, розтягнутий на картку; JS посилання не підміняє,
+    тому клік зі змінювачами, середня кнопка і правий клік лишаються браузеру */
  const kebab = el.querySelector('.kebab'), menu = el.querySelector('.menu');
  kebab.addEventListener('click', ev => {
  ev.stopPropagation();
@@ -1089,6 +1115,9 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  }));
  window.calcarRenderReports = list => { rows = list; render(); };   /* smoke-перевірки рендерять список без входу */
  render();
+ /* повернення по історії: прокрутка списку на те саме місце, коли картки вже є */
+ reportsScrollRestore(box);
+ box.addEventListener('click', reportsScrollSave);
  document.addEventListener('click', () => document.querySelectorAll('.menu.open').forEach(m => m.classList.remove('open')));
  }
 
