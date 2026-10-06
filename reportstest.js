@@ -41,7 +41,12 @@ if (!/img\.addEventListener\('error'/.test(s)) errs.push('битий кадр н
 if (!/<a class="rt" href="' \+ esc\(hrefOf\(r\)\) \+ '"><\/a>/.test(s)) errs.push('заголовок картки не справжнє посилання на канонічну адресу звіту');
 if (/data-href=|role="link"|location\.href = el\.dataset/.test(s)) errs.push('картка знову відкривається через JS замість посилання');
 if (!/\.rcard \.rt::after\{content:'';position:absolute;inset:0/.test(s) || !/\.rcard \.kebab\{position:relative;z-index:2\}/.test(s)) errs.push('посилання не розтягнуте на картку або три крапки під ним');
-if (!/\.rcard:focus-within\{outline:2px solid var\(--ink\)/.test(s)) errs.push('фокус на посиланні картки не видно');
+/* рамка лише для клавіатури (:focus-visible): клік мишею, правий клік і
+   середня кнопка картку не обводять; загального outline:none немає */
+if (!/\.rcard:has\(\.rt:focus-visible\)\{outline:2px solid var\(--ink\);outline-offset:2px\}/.test(s)) errs.push('клавіатурний фокус на картці не видно');
+if (/\.rcard:focus-within\{outline/.test(s) || /\.rcard \.rt\{[^}]*outline:none/.test(s)) errs.push('рамка картки на будь-який фокус або сліпе outline:none на посиланні');
+if (!/\.rcard \.rt:focus\{outline:none\}/.test(s)) errs.push('рамка браузера на посиланні при кліку мишею не прибрана');
+if (/outline:\s*none\s*!important|\*:focus\{outline:none/.test(s)) errs.push('outline вимкнено глобально');
 if (!/\.kebab:hover/.test(s) || !/kebab\.addEventListener\('click', ev => \{\s*ev\.stopPropagation\(\);/.test(s)) errs.push('три крапки не зупиняють спливання');
 if (!/kebab\.addEventListener\('click', ev => \{\s*ev\.stopPropagation\(\);/.test(s)) errs.push('три крапки не зупиняють спливання');
 if (!/menu\.querySelector\('\.del'\)[\s\S]{0,300}from\('reports'\)\.delete\(\)\.eq\('id', el\.dataset\.id\)/.test(s)) errs.push('видалення зі старого меню зникло');

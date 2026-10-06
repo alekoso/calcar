@@ -452,9 +452,12 @@
  /* заголовок це справжнє посилання, розтягнуте на всю картку: правий клік,
     середня кнопка, Cmd/Ctrl+клік і копіювання адреси працюють як у браузері.
     Три крапки і меню лежать вище за цю область */
- .rcard .rt{color:inherit;text-decoration:none;outline:none}
+ .rcard .rt{color:inherit;text-decoration:none}
+ /* рамка лише для клавіатури: :focus-visible не спрацьовує на клік мишею,
+    правий клік чи середню кнопку, тому картка не чорніє при відкритті меню */
+ .rcard .rt:focus{outline:none}
  .rcard .rt::after{content:'';position:absolute;inset:0;border-radius:16px}
- .rcard:focus-within{outline:2px solid var(--ink);outline-offset:2px}
+ .rcard:has(.rt:focus-visible){outline:2px solid var(--ink);outline-offset:2px}
  .rcard .kebab{position:relative;z-index:2}
  .rph{flex:0 0 132px;width:132px;height:96px;border-radius:12px;overflow:hidden;background:var(--surface-2);color:var(--faint);display:flex;align-items:center;justify-content:center}
  .rph img{display:block;width:100%;height:100%;object-fit:cover}
