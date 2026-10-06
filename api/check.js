@@ -51,6 +51,7 @@ import { fetchMiEquipmentCandidates, candidatePromptBlock, visionHintBlock, supp
    у контекст поточного звіту, придатні знахідки у конвеєр MI */
 import { startCheckResearch, researchBlock, researchMeta, guardModelNotes } from './mi-research.js';
 import { startValueResearch, buildValueCurve, composeMarketValue } from './value.js';
+import { buildVehicleSpec, reconcileVehicleSpec, trustedDecoderView, vehicleSpecPromptBlock, conflictNotes, identityConflictItem, powertrainClassFromSpec, publicSpec } from './vehicle-spec.js';
 
 /* ============================================================
    CalCar Check, рушій v1: посилання на оголошення -> звіт.
@@ -2163,7 +2164,7 @@ const MAIN_RULES = (auction, auctionMeta, { proseSchema = false, cvProvided = fa
 - НІКОЛИ не пиши статус "ok", якщо це не підтверджено даними чи чітко видимим доказом на фото. Не видно або нечітко: статус "unknown" з конкретною дією для перевірки.
 - Кожна розбіжність МУСИТЬ спиратися на конкретні рядки джерел, не вигадуй фактів. Якщо чогось у даних немає, прямо кажи, що цього немає.
 - ТЛУМАЧ СЛОВА ПРОДАВЦЯ ДОБРОЗИЧЛИВО, як їх розуміє звичайний читач оголошення. Приклад: "оригінальний рестайлінг" у тексті про переобладнання зазвичай означає "переодягнули в рестайлінг оригінальними деталями", а НЕ "авто з заводу рестайлінгове". Verdict "contradicted" стався ЛИШЕ коли твердження у природному прочитанні прямо суперечить знайденому факту. Якщо формулювання двозначне, поясни обидва прочитання в evidence замість "спростовано".
-- Дані довідника площадки можуть містити сміття (неправильна потужність, обʼєм). Технічні характеристики бери з VIN-декодування, розбіжність довідника НЕ вважай проблемою авто, але згадай у data_notes.
+- Дані довідника площадки можуть містити сміття (неправильна потужність, обʼєм). Технічні характеристики бери з VEHICLE_SPEC: поля з силою strong мають пріоритет, VIN-декодування авторитетне ЛИШЕ коли VEHICLE_SPEC не каже про його неповний розбір. Розбіжність довідника НЕ вважай проблемою авто, але згадай у data_notes. Декодер це доказ, а не істина: його слабке значення НІКОЛИ не стає розбіжністю з продавцем і не йде в risks.
 - НІКОЛИ не використовуй символ довгого тире у жодному тексті. Пиши кому, двокрапку або крапку.
 - Не заповнюй блоки заради кількості. Краще 2 влучні розбіжності, ніж 6 порожніх. Порожній масив завжди кращий за наповнювач.
 - Пробіг "1 тис. км" у записі аукціону США може означати милі або фіксацію на момент продажу: не роби з одиниць виміру катастрофу, але звір хронологію на логічність.
@@ -2320,9 +2321,12 @@ export function hvReferencedFrames(hv) {
    Факти сторінки один раз (JSON), повний текст сторінки один раз (у ньому
    живе опис продавця, окремо він не повторюється), price_context один раз,
    metadata лота один раз, історичний візуал один раз у компактному вигляді */
-const MAIN_DATA = (l, nhtsa, auction, langDirective, auctionMeta, cvEvidence = null) => {
+const MAIN_DATA = (l, nhtsa, auction, langDirective, auctionMeta, cvEvidence = null, spec = null) => {
   const blocks = [langDirective];
-  blocks.push('VEHICLE (декодування VIN від NHTSA): ' + (nhtsa ? JSON.stringify(nhtsaForPrompt(nhtsa)) : 'недоступне'));
+  /* декодер: при неповному розборі в аналіз іде лише марка і модель, технічні
+     поля живуть у провенансі (vehicle-spec.js) */
+  blocks.push('VEHICLE (декодування VIN від NHTSA): ' + (nhtsa ? JSON.stringify(nhtsaForPrompt(trustedDecoderView(nhtsa))) : 'недоступне'));
+  if (spec) blocks.push(vehicleSpecPromptBlock(spec));
   blocks.push('LISTING, ФАКТИ ЗІ СТОРІНКИ ОГОЛОШЕННЯ (детермінований парс): ' + JSON.stringify({ title: l.title, vin: l.vin, plate: l.plate, price: l.price, currency: l.currency, odometer_km: l.odometer_km, year: l.year, history_facts: l.history_facts, price_context: l.price_context || null }));
   if (Array.isArray(l.listing_equipment) && l.listing_equipment.length) blocks.push('LISTING, СТРУКТУРОВАНІ ОПЦІЇ З ДАНИХ ОГОЛОШЕННЯ (source listing_data: структуровані поля площадки; це НЕ заводські дані і НЕ слова продавця): ' + JSON.stringify(l.listing_equipment));
   blocks.push('LISTING, ТЕКСТ СТОРІНКИ ОГОЛОШЕННЯ (опис продавця + офіційні блоки перевірки площадки, якщо є):\n' + (l.text || ''));
@@ -2341,9 +2345,9 @@ const MAIN_DATA = (l, nhtsa, auction, langDirective, auctionMeta, cvEvidence = n
   if (auction && auction.hv_provided && auction.hv) blocks.push('HISTORICAL_VISUAL_EVIDENCE (канонічний розбір архівних кадрів auction_photo_1..' + (auction.photos_sent || 0) + ', кадри незмінні; у відповіді historical_visual: null): ' + JSON.stringify(compactHistoricalVisual(auction.hv)));
   return blocks.join('\n\n');
 };
-const PROMPT = (l, nhtsa, auction, langDirective, auctionMeta, cvEvidence = null) => ({
+const PROMPT = (l, nhtsa, auction, langDirective, auctionMeta, cvEvidence = null, spec = null) => ({
   system: MAIN_RULES(auction, auctionMeta, { cvProvided: !!cvEvidence }),
-  user: MAIN_DATA(l, nhtsa, auction, langDirective, auctionMeta, cvEvidence),
+  user: MAIN_DATA(l, nhtsa, auction, langDirective, auctionMeta, cvEvidence, spec),
 });
 
 /* розкладка payload основного виклику: що і скільки реально йде моделі.
@@ -2782,7 +2786,7 @@ async function runCheck(req, res, job) {
         const row = (await r.json())?.Results?.[0];
         if (row) {
           nhtsa = {};
-          for (const k of ['Make','Model','ModelYear','Trim','Series','FuelTypePrimary','ElectrificationLevel','DisplacementL','EngineHP','TransmissionStyle','DriveType','BodyClass','PlantCountry']) {
+          for (const k of ['Make','Model','ModelYear','Trim','Series','FuelTypePrimary','ElectrificationLevel','DisplacementL','EngineHP','TransmissionStyle','DriveType','BodyClass','PlantCountry','EngineModel','Turbo','OtherEngineInfo']) {
             if (row[k]) nhtsa[k] = row[k];
           }
           /* статус декоду: без нього не видно, що рік узято з неповного розбору */
@@ -2794,6 +2798,11 @@ async function runCheck(req, res, job) {
     /* рік із неповного чи невдалого декоду доказом не є: модельний рік
        лишається лише в провенансі і далі нікуди не йде */
     nhtsa = gateDecoderYear(nhtsa);
+    /* канонічний паспорт авто (vehicle-spec.js): декодер і площадка до
+       аналізу, після аналізу доповнюється його полями. Усі секції читають
+       його, а не власні ланцюжки listing || nhtsa */
+    const spec0 = buildVehicleSpec({ nhtsa, listing });
+    let vehicleSpec = spec0;
     mark('decoder', Date.now() - tDec, reuse.identity === 'vehicles_cache' ? 'cached' : listing.vin ? 'executed' : 'skipped', { reason: listing.vin ? null : 'no_vin' });
 
     /* --- Vehicle Memory: кожен Check це ще й спостереження авто ---
@@ -2846,8 +2855,9 @@ async function runCheck(req, res, job) {
            моделі у формі коду покоління не є */
         /* версія комплектації декодера у полі покоління ("HST") поколінням не є */
         generation: resolveGeneration([{ value: listing.generation, source: 'listing', notTrim: [nhtsa && nhtsa.Trim, nhtsa && nhtsa.Series], notModel: (nhtsa && nhtsa.Model) || listing.model }]).generation,
-        version_text: (nhtsa && (nhtsa.Trim || nhtsa.Series)) || null,
-        engine_text: nhtsa ? [nhtsa.DisplacementL ? nhtsa.DisplacementL + ' L' : null, nhtsa.FuelTypePrimary || null, nhtsa.EngineHP ? nhtsa.EngineHP + ' hp' : null].filter(Boolean).join(' ') || null : null,
+        /* версія і мотор лише від декодера з чистим розбором (vehicle-spec) */
+        version_text: (spec0.decoder.strong && nhtsa && (nhtsa.Trim || nhtsa.Series)) || null,
+        engine_text: spec0.decoder.engine_text || null,
         model_year: (nhtsa && nhtsa.ModelYear) || listing.year || null,
         mileage_km: listing.odometer_km || null,
       },
@@ -2862,8 +2872,8 @@ async function runCheck(req, res, job) {
         make: listing.make || (nhtsa && nhtsa.Make) || null,
         model: listing.model || (nhtsa && nhtsa.Model) || null,
         generation: listing.generation || null,
-        /* версія: декодер, інакше структурована модифікація площадки */
-        trim: (nhtsa && (nhtsa.Trim || nhtsa.Series)) || listing.modification || null,
+        /* версія: декодер з чистим розбором, інакше структурована модифікація площадки */
+        trim: (spec0.decoder.strong && nhtsa && (nhtsa.Trim || nhtsa.Series)) || listing.modification || null,
         year: listing.year || (nhtsa && parseInt(nhtsa.ModelYear, 10)) || null,
         /* MSRP публікують за модельним роком: довірений рік декодера, інакше рік оголошення */
         model_year: (nhtsa && parseInt(nhtsa.ModelYear, 10)) || listing.year || null,
@@ -3231,7 +3241,7 @@ async function runCheck(req, res, job) {
     try { snaps = await readSnapshots(listing.vin, url); if (snaps && snaps.lookup_failed) snapsLookup = 'failed'; } catch (e) { snapsLookup = 'failed'; console.log('[check] snapshots read failed:', e.message); }
     let decisionContext = null;
     try {
-      const ptClass = resolvePowertrainClass({ nhtsa, fuel: null });
+      const ptClass = powertrainClassFromSpec(spec0);
       /* історичні точки пробігу: наш рів даних плюс одометр знайденого лота */
       const points = snaps.filter(r => typeof r.odometer_km === 'number' && r.odometer_km > 0)
         .map(r => ({ km: r.odometer_km, date: r.created_at, source: 'past_listing' }));
@@ -3287,7 +3297,7 @@ async function runCheck(req, res, job) {
 
     if (auction) { auction.hv_provided = !!cachedHv; auction.hv = cachedHv || null; }
     const hvFrames = cachedHv ? hvReferencedFrames(cachedHv) : null;
-    let mainMsg = PROMPT(listing, nhtsa, auction, langDirective, auctionSearch, cvEvidence);
+    let mainMsg = PROMPT(listing, nhtsa, auction, langDirective, auctionSearch, cvEvidence, spec0);
     let mainFormat = mainResponseFormat({ hvProvided: !!(auction && auction.hv_provided) });
     let mainStructured = 'json_schema';
     /* кадри для основного виклику: при канонічному розборі лише контекстні
@@ -3345,9 +3355,10 @@ async function runCheck(req, res, job) {
       vehicle: {
         make: listing.make || (nhtsa && nhtsa.Make) || null, model: listing.model || (nhtsa && nhtsa.Model) || null,
         year: listing.year || (nhtsa && parseInt(nhtsa.ModelYear, 10)) || null, generation: listing.generation || null,
-        trim: (nhtsa && (nhtsa.Trim || nhtsa.Series)) || listing.modification || null, body: (nhtsa && nhtsa.BodyClass) || null,
-        fuel: (nhtsa && nhtsa.FuelTypePrimary) || null, engine_l: (nhtsa && nhtsa.DisplacementL) || null,
-        drive: (nhtsa && nhtsa.DriveType) || null,
+        /* канонічний паспорт: слабкий декодер сюди не потрапляє */
+        trim: spec0.version.value || null, body: spec0.body.value || null,
+        fuel: spec0.fuel.value || null, engine_l: spec0.displacement_l.value || null,
+        drive: spec0.drivetrain.value || null,
         age_years: listing.year ? Math.max(0, new Date().getUTCFullYear() - parseInt(listing.year, 10)) : null,
       },
       /* ліквідність і сохранність вартості описують МОДЕЛЬ і версію: ціна
@@ -3427,6 +3438,32 @@ async function runCheck(req, res, job) {
         return true;
       });
     }
+    /* канонічний паспорт після аналізу: конфлікт сильних джерел знімає поле
+       з шапки і йде у data_notes як конфлікт ідентичності; розбіжності,
+       ризики і пункти чеклиста, що тримаються на слабкому декодері або на
+       конфліктному полі, прибираються: це не проблема авто і не обман
+       продавця. Невідоме лишається невідомим */
+    try {
+      vehicleSpec = reconcileVehicleSpec(spec0, parsed.vehicle, { nhtsa, listing });
+      const HEADER_FIELD = { fuel: 'fuel', drivetrain: 'drive', transmission: 'transmission', version: 'trim', model_year: 'model_year', displacement_l: 'engine', forced_induction: 'engine' };
+      if (parsed.vehicle && typeof parsed.vehicle === 'object') {
+        for (const f of vehicleSpec.conflicts) if (HEADER_FIELD[f]) parsed.vehicle[HEADER_FIELD[f]] = null;
+      }
+      const notes = conflictNotes(vehicleSpec, lang);
+      if (notes.length) parsed.data_notes = [String(parsed.data_notes || '').trim(), ...notes].filter(Boolean).join(' ');
+      const dropped = [];
+      for (const k of ['discrepancies', 'risks', 'checklist']) {
+        if (!Array.isArray(parsed[k])) continue;
+        parsed[k] = parsed[k].filter(it => {
+          const hit = identityConflictItem(it, vehicleSpec);
+          if (!hit) return true;
+          dropped.push({ section: k, field: hit.field, reason: hit.reason, title: String((it && (it.title || it.text)) || '').slice(0, 90) });
+          return false;
+        });
+      }
+      vehicleSpec.dropped = dropped;
+      if (dropped.length || vehicleSpec.conflicts.length) console.log('[vehicle-spec]', JSON.stringify({ conflicts: vehicleSpec.conflicts, decoder_strong: vehicleSpec.decoder.strong, dropped }));
+    } catch (e) { console.log('[vehicle-spec]', JSON.stringify({ op: 'reconcile', error: String((e && e.message) || e).slice(0, 160) })); }
 
     /* історичний візуал: валідація ДО скорингу, бо v3 читає його
        structured-поля (structural_visual_status, srs, зони, severity).
@@ -3592,7 +3629,7 @@ async function runCheck(req, res, job) {
         age_source: vehAge.age_source,
         /* той самий клас силової установки, що в Score v4: шкала шапки
            (вісь Пробіг v3) і штраф інтенсивності v4 показують одну норму */
-        powertrain: resolvePowertrainClass({ nhtsa, fuel: parsed?.vehicle?.fuel || null }),
+        powertrain: powertrainClassFromSpec(vehicleSpec),
       };
       const breakdownV3 = computeScoreV3({
         findings,
@@ -3643,7 +3680,7 @@ async function runCheck(req, res, job) {
           /* зі дрібними знахідками: Score накопичує кілька незалежних дрібних дефектів */
           currentVisual: cvOk ? compactCurrentVisual(cvFinal.current_visual, { includeMinor: true }) : null,
           vehicle: { odometer_km: vehicleV3.odometer_km, age_months: vehicleV3.age_months, age_source: vehicleV3.age_source,
-            powertrain_class: resolvePowertrainClass({ nhtsa, fuel: parsed?.vehicle?.fuel || null }) },
+            powertrain_class: powertrainClassFromSpec(vehicleSpec) },
           mileagePoints,
           platformMileageFlag: hf.mileage_mismatch_flag === true,
           /* власники: лише структуровані події реєстру площадки (ті самі, що дають бейджі) */
@@ -3673,7 +3710,7 @@ async function runCheck(req, res, job) {
         parsed.confidence = computeConfidenceV1(buildConfidenceInput({
           now: new Date().toISOString(),
           listing: { vin: listing.vin, country: listing.country, make: listing.make, odometer_km: listing.odometer_km, listing_equipment: listing.listing_equipment },
-          hf, nhtsa, auctionSearch,
+          hf, nhtsa: trustedDecoderView(nhtsa), auctionSearch,
           auctionRecordExists: coverageInputs.auction_record_exists === true,
           hvPresent: !!parsed.historical_visual,
           snaps, snapsLookup,
@@ -3955,15 +3992,16 @@ async function runCheck(req, res, job) {
         price: listing.price, currency: listing.currency, price_context: listing.price_context, country: listing.country,
         year: listing.year || (parsed.vehicle && parsed.vehicle.year) || (nhtsa && parseInt(nhtsa.ModelYear, 10)) || null,
         candidates: (valueResult && valueResult.candidates) || [],
-        vehicle: { fuel: (parsed.vehicle && parsed.vehicle.fuel) || null, displacement_l: (nhtsa && parseFloat(nhtsa.DisplacementL)) || null, battery_kwh: (nhtsa && parseFloat(nhtsa.BatteryKWh)) || null,
+        /* канонічний паспорт: поле у конфлікті або лише зі слабкого декодера тут null */
+        vehicle: { fuel: vehicleSpec.fuel.value || null, displacement_l: vehicleSpec.displacement_l.value || null, battery_kwh: (spec0.decoder.strong && nhtsa && parseFloat(nhtsa.BatteryKWh)) || null,
           /* версія і модельний рік для зіставлення з MSRP джерела */
           make: listing.make || (nhtsa && nhtsa.Make) || null, model: listing.model || (nhtsa && nhtsa.Model) || null,
-          trim: (nhtsa && (nhtsa.Trim || nhtsa.Series)) || listing.modification || (parsed.vehicle && parsed.vehicle.trim) || null,
+          trim: vehicleSpec.version.value || null,
           /* силовий агрегат лише для вибору релевантних цін версій; обладнання з нього не виводиться */
-          engine: (parsed.vehicle && parsed.vehicle.engine) || null, drive: (parsed.vehicle && parsed.vehicle.drive) || (nhtsa && nhtsa.DriveType) || null,
+          engine: (parsed.vehicle && parsed.vehicle.engine) || null, drive: vehicleSpec.drivetrain.value || null,
           title: [(parsed.vehicle && parsed.vehicle.title) || '', listing.modification || '', (parsed.vehicle && parsed.vehicle.trim) || ''].join(' ').trim() || null,
-          model_year: (nhtsa && parseInt(nhtsa.ModelYear, 10)) || (parsed.vehicle && parsed.vehicle.model_year) || null },
-        identity: { make: listing.make || (nhtsa && nhtsa.Make) || null, model: listing.model || (nhtsa && nhtsa.Model) || null, generation: genResolved.generation, trim: (nhtsa && (nhtsa.Trim || nhtsa.Series)) || (parsed.vehicle && parsed.vehicle.trim) || null },
+          model_year: vehicleSpec.model_year.value || null },
+        identity: { make: listing.make || (nhtsa && nhtsa.Make) || null, model: listing.model || (nhtsa && nhtsa.Model) || null, generation: genResolved.generation, trim: vehicleSpec.version.value || null },
       });
     } catch (e) { console.log('[value]', JSON.stringify({ op: 'build_curve', error: String((e && e.message) || e).slice(0, 160) })); }
     /* тексти карток: історію "Чому це авто коштує стільки" обирає детермінований
@@ -4036,6 +4074,12 @@ async function runCheck(req, res, job) {
         generation_source: genResolved.source,
         engine_code: validEngineCode(nhtsa && nhtsa.EngineModel),
       },
+      /* канонічний паспорт авто з провенансом, силою і конфліктами (vehicle-spec.js) */
+      vehicle_spec: publicSpec((() => {
+        vehicleSpec.generation = { value: genResolved.generation, source: genResolved.source, strength: genResolved.generation ? (genResolved.source === 'analysis' ? 'medium' : 'strong') : null, conflict: false };
+        vehicleSpec.engine_code = { value: validEngineCode(nhtsa && nhtsa.EngineModel), source: 'decoder', strength: spec0.decoder.strong ? 'strong' : 'weak', conflict: false };
+        return vehicleSpec;
+      })()),
       /* паспорт джерела для інтерфейсу: без посилань назовні */
       auction_meta: auctionSearch && auctionSearch.status === 'found'
         ? { house: auctionSearch.house || null, date: auctionSearch.sale_date || null }
@@ -4127,9 +4171,9 @@ async function runCheck(req, res, job) {
       generation: genResolved.generation, generation_source: genResolved.source,
       listing_generation: resolveGeneration([{ value: listing.generation, source: 'listing', notTrim: [parsed.vehicle && parsed.vehicle.trim, nhtsa && nhtsa.Trim, nhtsa && nhtsa.Series], notModel: (nhtsa && nhtsa.Model) || listing.model }]).generation,
       analysis_generation: resolveGeneration([{ value: parsed.vehicle && parsed.vehicle.generation, source: 'analysis', notTrim: parsed.vehicle && parsed.vehicle.trim }]).generation,
-      powertrain: resolvePowertrainClass({ nhtsa, fuel: (parsed.vehicle && parsed.vehicle.fuel) || null }),
+      powertrain: powertrainClassFromSpec(vehicleSpec),
       /* версія для каталогу MI: декодер з чистим розбором плюс друге джерело */
-      version_trusted: decoderYearTrusted(nhtsa) && !!(nhtsa && (nhtsa.Trim || nhtsa.Series)),
+      version_trusted: spec0.decoder.strong && !!(nhtsa && (nhtsa.Trim || nhtsa.Series)),
       listing_version: listing.modification || null, analysis_version: (parsed.vehicle && parsed.vehicle.trim) || null,
     });
     parsed._meta.mi_research = researchMeta(miResearch.state);

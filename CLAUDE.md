@@ -39,6 +39,7 @@ api/check-email.js    лист «звіт готовий» за явним opt-i
 api/feedback.js       відгук 👍/👎 про звіт Check -> report_feedback (supabase-feedback.sql)
 api/value.js          секція «Ринкова вартість» Check: крива знецінення, якорі цін, ліквідність (не Vercel-функція)
 api/conclusion.js     Final Conclusion («Висновок CalCar»): окремий synthesis-виклик по готовому звіту (не Vercel-функція)
+api/vehicle-spec.js   канонічний паспорт авто Check: поля ідентичності з джерелом, силою і станом конфлікту; слабкий декодер VIN не перебиває інші джерела (не Vercel-функція)
 api/conclusion-bench.js  benchmark Final Conclusion на збережених звітах (лише з BENCH_KEY, нічого не пише)
 value-chart.js        SVG-графік вартості зі збережених точок _meta.value_curve (формули немає)
 vehicle-year-cleanup.js  разова чистка vehicles.model_year зі старого декодера (сухий прогін; запис лише з --apply)

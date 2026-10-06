@@ -74,7 +74,7 @@ const ok = (name, cond, detail) => { checks++; if (!cond) errs.push(name + (deta
     const src = fs.readFileSync('api/check.js', 'utf8');
     ok('14. GL: у Check рік декодера проходить гейт до будь-якого використання', /nhtsa = gateDecoderYear\(nhtsa\);/.test(src)
       && src.indexOf('nhtsa = gateDecoderYear(nhtsa);') < src.indexOf('const up = await upsertVehicle(listing.vin')
-      && /JSON\.stringify\(nhtsaForPrompt\(nhtsa\)\)/.test(src) && /if \(row\.ErrorCode != null && row\.ErrorCode !== ''\) nhtsa\.ErrorCode/.test(src));
+      && /JSON\.stringify\(nhtsaForPrompt\(trustedDecoderView\(nhtsa\)\)\)/.test(src) && /if \(row\.ErrorCode != null && row\.ErrorCode !== ''\) nhtsa\.ErrorCode/.test(src));
     ok('14a. провенанс декодера у звіті', /decoder: nhtsa \? \{ error_code: nhtsa\.ErrorCode \|\| null, model_year_trusted: decoderYearTrusted\(nhtsa\), model_year_untrusted: nhtsa\.ModelYearUntrusted \|\| null \}/.test(src));
     ok('14b. кешовані декоди без статусу перерахуються', /NHTSA_DECODER_VERSION = 'vpic-v2'/.test(fs.readFileSync('api/vehicle-memory.js', 'utf8')));
     ok('14c. без марки-винятків і без власного розбору 10-го символу', !/WDC|WDD|W1K|tenth|10-го символу|charAt\(9\)|\[9\]/.test(src.slice(src.indexOf('export function decoderYearTrusted'), src.indexOf('export function nhtsaForPrompt'))));
@@ -211,7 +211,7 @@ const ok = (name, cond, detail) => { checks++; if (!cond) errs.push(name + (deta
     const html = '{"id":"basicInfoGenerationBase","items":[{"content":"X166 •"},{"content":"Brand-AMG X 63 AT (557 к.с.)"}]}';
     ok('R7. модифікація читається зі структурованого рядка площадки', run(html, 'X166') === 'Brand-AMG X 63 AT (557 к.с.)', String(run(html, 'X166')));
     ok('R8. рядка немає або в ньому лише покоління: версії немає, нічого не вигадано', run('{"id":"other"}', 'X166') === null && run('{"id":"basicInfoGenerationBase","items":[{"content":"X166"}]}', 'X166') === null);
-    ok('R9. версія площадки йде у вибір ціни нового лише коли декодер версії не дав', (src.match(/\(nhtsa && \(nhtsa\.Trim \|\| nhtsa\.Series\)\) \|\| listing\.modification/g) || []).length >= 3);
+    ok('R9. версія площадки йде у вибір ціни нового лише коли декодер версії не дав (і лише декодер з чистим розбором)', /trim: \(spec0\.decoder\.strong && nhtsa && \(nhtsa\.Trim \|\| nhtsa\.Series\)\) \|\| listing\.modification \|\| null/.test(src) && (src.match(/trim: (?:spec0|vehicleSpec)\.version\.value \|\| null/g) || []).length >= 3 && !/\(nhtsa && \(nhtsa\.Trim \|\| nhtsa\.Series\)\) \|\| listing\.modification \|\| null, body/.test(src));
   }
 
   fs.rmSync(dir, { recursive: true, force: true });

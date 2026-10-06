@@ -10,7 +10,7 @@ const errs = [];
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'calcar_dec_'));
 fs.mkdirSync(path.join(dir, 'api'));
 fs.writeFileSync(path.join(dir, 'package.json'), '{"type":"module"}');
-for (const x of ['check.js', 'check-schema.js', 'current-visual.js', 'canonical-merge.js', 'score.js', 'score-v3.js', 'score-v4.js', 'confidence.js', 'vision-reliability.js', 'auction.js', 'locale.js', 'visual-signals.js', 'share.js', 'vehicle-memory.js', 'mi-shadow.js', 'mi-equipment.js', 'mi-research.js', 'value.js', 'conclusion.js', 'historical-claims.js', 'history-owners.js', 'youtube.js', 'check-email.js', 'check-job.js']) {
+for (const x of ['check.js', 'check-schema.js', 'current-visual.js', 'canonical-merge.js', 'score.js', 'score-v3.js', 'score-v4.js', 'confidence.js', 'vision-reliability.js', 'auction.js', 'locale.js', 'visual-signals.js', 'share.js', 'vehicle-memory.js', 'mi-shadow.js', 'mi-equipment.js', 'mi-research.js', 'value.js', 'conclusion.js', 'historical-claims.js', 'history-owners.js', 'youtube.js', 'check-email.js', 'check-job.js', 'vehicle-spec.js']) {
   fs.writeFileSync(path.join(dir, 'api', x), fs.readFileSync('api/' + x, 'utf8'));
 }
 
@@ -149,7 +149,7 @@ for (const x of ['check.js', 'check-schema.js', 'current-visual.js', 'canonical-
     if (!/ОБʼЄКТИВНІСТЬ ВИСНОВКУ: висновок оцінює ЛИШЕ сам автомобіль/.test(src)) errs.push('нема правила обʼєктивності висновку');
 
     /* ---- проводка: контекст збирається ДО виклику і їде в промпт ---- */
-    if (!/PROMPT\(listing, nhtsa, auction, langDirective, auctionSearch, cvEvidence\)/.test(src) || /DECISION_CONTEXT|renderDecisionContext/.test(src)) errs.push('контекст старого висновку досі йде в головний виклик');
+    if (!/PROMPT\(listing, nhtsa, auction, langDirective, auctionSearch, cvEvidence, spec0\)/.test(src) || /DECISION_CONTEXT|renderDecisionContext/.test(src)) errs.push('контекст старого висновку досі йде в головний виклик');
     if (!/const decisionContext = buildDecision|let decisionContext = null/.test(src)) errs.push('decisionContext не збирається в хендлері');
     if (!/decision_inputs: decisionContext/.test(src)) errs.push('_meta не зберігає входи рішення');
     /* resolved severity живе у breakdown v3; при активному v4 він у тіні */

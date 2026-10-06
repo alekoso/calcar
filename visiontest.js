@@ -231,7 +231,7 @@ const errs = [];
     if (!(iFeedWait > 0 && iFeedWait < iPrompt)) errs.push('очікування Feed має стояти ДО збирання промпту (інакше cvEvidence у TDZ)');
     const iEvid = chk.indexOf('let cvEvidence = null');
     if (!(iEvid > 0 && iEvid < iPrompt)) errs.push('cvEvidence оголошується після використання');
-    if (!/mainMsg = PROMPT\(listing, nhtsa, auction, langDirective, auctionSearch, cvEvidence\)/.test(chk)) errs.push('канонічний доказ не їде в основний виклик');
+    if (!/mainMsg = PROMPT\(listing, nhtsa, auction, langDirective, auctionSearch, cvEvidence, spec0\)/.test(chk)) errs.push('канонічний доказ не їде в основний виклик');
     if (!/const content = cvFeed \? \[/.test(chk)) errs.push('контент основного виклику не залежить від Feed');
     if (!/eqVerifier = \{ status: 'skipped', reason: 'current_visual_canonical' \}/.test(chk)) errs.push('верифікатор комплектації дублює канонічний розбір');
     if (!/applyCurrentVisualEquipmentGate\(parsed\.equipment_v2, cvConcepts\)/.test(chk)) errs.push('нема канонічного гейта візуальних опцій');
