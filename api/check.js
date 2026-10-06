@@ -34,6 +34,8 @@ import { CURRENT_VISUAL_RULES, currentVisualResponseFormat, frameContent, normal
   currentVisualEvidenceBlock, currentVisualConcepts, applyCurrentVisualEquipmentGate, compactCurrentVisual, contextualPhotoPositions, CONTEXT_PHOTOS_DEFAULT, currentVisualLanguageNote } from './current-visual.js';
 import { decisionEvidenceBlock, mergeCanonicalEquipment, mergeCanonicalConditions, canonicalGaps, correctCoverageClaims } from './canonical-merge.js';
 import { buildEvidenceCoverage } from './evidence-coverage.js';
+/* final semantic consistency gate: finished prose cannot contradict canonical facts */
+import { enforceReportConsistency } from './report-consistency.js';
 import { gateDashboardFacts } from './current-visual.js';
 /* спільні ідентичності і версії: тести і сусідні модулі беруть їх звідси */
 export { HISTORICAL_VISUAL_VERSION, photoIdentity, photoSetFingerprint, listingFingerprint, snapshotRow, listingKey, NHTSA_DECODER_VERSION, LISTING_FINGERPRINT_VERSION };
@@ -4248,6 +4250,24 @@ async function runCheck(req, res, job) {
       parsed._meta.final_conclusion = { status: 'error', reason: 'attach_failed', model: null };
       console.log('[final-conclusion]', JSON.stringify({ op: 'attach', error: String((e && e.message) || e).slice(0, 160), vin: listing.vin || null }));
       mark('final_conclusion', Date.now() - tFc, 'error', { at: tFc - tRun, reason: 'attach_failed' });
+    }
+    /* ---- consistency gate (report-consistency.js) ----
+       Runs last, over the finished report: every buyer-facing text is
+       checked against the canonical facts (vehicle spec, accident events,
+       airbags, mileage records, dashboard assessment). Contradicting list
+       items are dropped, contradicting sentences removed, a Final
+       Conclusion that cannot be repaired safely is hidden with the usual
+       failure semantics. Nothing is rewritten or regenerated. A failure
+       of the gate itself leaves the report as it was */
+    const tRc = Date.now();
+    try {
+      const rc = enforceReportConsistency(parsed, { lang });
+      parsed._meta.consistency = rc;
+      if (rc.violations.length) console.log('[consistency]', JSON.stringify({ op: 'enforce', vin: listing.vin || null, dropped: rc.dropped, sentences_removed: rc.sentences_removed, hidden: rc.hidden, violations: rc.violations.slice(0, 12).map(v => ({ section: v.section, domain: v.domain, found: v.found, canonical: v.canonical, action: v.action })) }));
+      mark('consistency', Date.now() - tRc, 'executed', { violations: rc.violations.length, dropped: rc.dropped, sentences_removed: rc.sentences_removed, hidden: rc.hidden });
+    } catch (e) {
+      console.log('[consistency]', JSON.stringify({ op: 'enforce', error: String((e && e.message) || e).slice(0, 160), vin: listing.vin || null }));
+      mark('consistency', Date.now() - tRc, 'error', { reason: String((e && e.message) || e).slice(0, 80) });
     }
     timings.total_ms = Date.now() - tRun;
 
