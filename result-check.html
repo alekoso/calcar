@@ -717,6 +717,14 @@
   /* у блоці про США стрічка вирівняна по краю картки, як підписи і текст */
   #usCard .photo-strip{padding:10px 20px 4px}
   .photo-strip img{height:86px;border-radius:8px;flex:0 0 auto;cursor:zoom-in;display:block}
+  /* слот кадру має розмір ще до завантаження: стрічка одразу своєї довжини,
+     кадри лише проявляються в готових місцях, нічого не росте по одному.
+     Збій кадру лишає слот на місці */
+  .ph-slot{flex:0 0 auto;width:115px;height:86px;border-radius:8px;overflow:hidden;background:var(--surface-2)}
+  .photo-strip .ph-slot img{width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .22s ease}
+  .photo-strip .ph-slot img.on{opacity:1}
+  .ph-slot.err img{display:none}
+  @media (prefers-reduced-motion:reduce){.photo-strip .ph-slot img{transition:none}}
   .lot-title{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 20px 4px}
   .lot-title h1{font-size:22px;font-weight:800}
   /* характеристики: label і value в ОДНОМУ рядку, дві колонки на desktop.
@@ -2422,7 +2430,8 @@ function boot2(D){
   const ph = httpsOnly(M.photos);
   if (ph.length) {
     $('photoStrip').style.display = '';
-    $('photoStrip').innerHTML = ph.map(u => '<img loading="lazy" src="' + esc(u) + '" alt="">').join('');
+    $('photoStrip').innerHTML = stripHtml(ph);
+    stripReveal($('photoStrip'));
     stripNav($('photoStrip'));
   }
   /* характеристики: label і value в одному рядку. Дані і порядок ті самі,
@@ -2650,9 +2659,10 @@ function boot2(D){
          зникає; якщо не завантажився жоден, лишається рядок стану */
       const proxied = u => /^https:\/\//.test(u) ? '/api/img?u=' + encodeURIComponent(u) : u;
       const stripEl = $('auctionStrip');
-      stripEl.innerHTML = auPh.map(u => '<img loading="lazy" src="' + esc(proxied(u)) + '" data-src="' + esc(u) + '" alt="">').join('');
+      stripEl.innerHTML = stripHtml(auPh, u => 'src="' + esc(proxied(u)) + '" data-src="' + esc(u) + '"');
+      stripReveal(stripEl);
       stripEl.querySelectorAll('img').forEach(img => img.addEventListener('error', () => {
-        img.remove();
+        (img.closest('.ph-slot') || img).remove();
         if (stripEl.querySelector('img')) return;
         stripEl.style.display = 'none';
         $('baBefore').style.display = 'none';
@@ -3481,6 +3491,41 @@ document.getElementById('pdChatBtn').addEventListener('click', () => {
     if (e.detail && e.detail.open && unread) { unread = 0; render(false); }
   });
 })();
+
+/* ---------- слоти стрічки кадрів ----------
+   Усі кадри зі списку звіту отримують слоти одразу, тож стрічка має
+   кінцеву довжину до того, як браузер довантажив хоч один кадр. Перша
+   група (PH_FIRST) вантажиться відразу і проявляється разом, щойно всі її
+   кадри дійшли або спрацював короткий запобіжник: один повільний чи битий
+   кадр групу не тримає. Решта лишається lazy і проявляється кожен сам у
+   своєму слоті. Порядок кадрів і photo_map не змінюються */
+const PH_FIRST = 6;
+const PH_REVEAL_FALLBACK_MS = 1200;
+function stripHtml(urls, attrs) {
+  return urls.map((u, i) => '<span class="ph-slot"><img ' + (i < PH_FIRST ? 'loading="eager" fetchpriority="high"' : 'loading="lazy"') + ' '
+    + (attrs ? attrs(u) : 'src="' + esc(u) + '"') + ' alt=""></span>').join('');
+}
+function stripReveal(strip) {
+  const imgs = Array.from(strip.querySelectorAll('.ph-slot img'));
+  const first = imgs.slice(0, PH_FIRST);
+  let shown = false, left = first.length;
+  /* проявляються лише ті, що справді дійшли: кадр, що ще вантажиться,
+     не показує напівзавантажену картинку, а проявиться сам, коли дійде */
+  const show = img => { if (img.complete && img.naturalWidth) img.classList.add('on'); else img.addEventListener('load', () => img.classList.add('on'), { once: true }); };
+  const reveal = () => { if (shown) return; shown = true; first.forEach(show); };
+  const settle = () => { if (--left <= 0) reveal(); };
+  first.forEach(img => {
+    if (img.complete) settle();
+    else { img.addEventListener('load', settle, { once: true }); img.addEventListener('error', settle, { once: true }); }
+  });
+  if (!first.length) shown = true; else setTimeout(reveal, PH_REVEAL_FALLBACK_MS);
+  imgs.slice(PH_FIRST).forEach(img => {
+    const on = () => img.classList.add('on');
+    if (img.complete && img.naturalWidth) on(); else img.addEventListener('load', on, { once: true });
+  });
+  /* битий кадр: слот лишається, картинки в ньому немає */
+  imgs.forEach(img => img.addEventListener('error', () => { const sl = img.closest('.ph-slot'); if (sl) sl.classList.add('err'); }, { once: true }));
+}
 
 /* ---------- стрілки стрічки кадрів ----------
    Прокрутка лишилась звичайною (колесо, трекпад, свайп): стрілки лише

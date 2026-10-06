@@ -775,6 +775,58 @@ const page = fs.readFileSync('result-check.html', 'utf8');
     if (!page.includes('@media(max-width:620px){.fbx-row .fbx-q{flex:1 0 100%}.fbx-row .fbx-btn{flex:1 1 0;min-width:112px;height:38px;white-space:nowrap}}')) errs.push('кнопки відгуку на телефоні не в один ряд');
   }
 
+  /* ---------- 11. стрічка кадрів: слоти відомого розміру, перша група разом ---------- */
+  {
+    if (!/\.ph-slot\{flex:0 0 auto;width:115px;height:86px;border-radius:8px;overflow:hidden;background:var\(--surface-2\)\}/.test(page)) errs.push('слот кадру без фіксованого розміру');
+    if (!/\.photo-strip \.ph-slot img\{width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity \.22s ease\}/.test(page) || !/\.photo-strip \.ph-slot img\.on\{opacity:1\}/.test(page)) errs.push('кадр не проявляється у слоті');
+    if (!/\.ph-slot\.err img\{display:none\}/.test(page)) errs.push('битий кадр не лишає слот');
+    if (!/\$\('photoStrip'\)\.innerHTML = stripHtml\(ph\);\n\s*stripReveal\(\$\('photoStrip'\)\);\n\s*stripNav\(\$\('photoStrip'\)\);/.test(page)) errs.push('стрічка авто рендериться не слотами');
+    if (!/stripEl\.innerHTML = stripHtml\(auPh, u => 'src="' \+ esc\(proxied\(u\)\) \+ '" data-src="' \+ esc\(u\) \+ '"'\);\n\s*stripReveal\(stripEl\);/.test(page)) errs.push('архівна стрічка рендериться не слотами');
+    if (/'<img loading="lazy" src="' \+ esc\(u\) \+ '" alt="">'/.test(page)) errs.push('кадри знову додаються без слотів');
+    const src = page.slice(page.indexOf('const PH_FIRST = 6;'), page.indexOf('/* ---------- стрілки стрічки кадрів'));
+    const esc = x => String(x).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const timers = [];
+    const F = new Function('esc', 'setTimeout', src + 'return { stripHtml, stripReveal, PH_FIRST };')(esc, (fn, ms) => timers.push({ fn, ms }));
+    /* усі слоти одразу, перші шість eager, решта lazy, порядок той самий */
+    const urls = Array.from({ length: 20 }, (_, i) => 'https://cdn.test/p' + i + '.jpg');
+    const html = F.stripHtml(urls);
+    const slots = html.match(/<span class="ph-slot">/g) || [];
+    if (slots.length !== 20) errs.push('слотів ' + slots.length + ' замість 20');
+    if ((html.match(/loading="eager" fetchpriority="high"/g) || []).length !== 6 || (html.match(/loading="lazy"/g) || []).length !== 14) errs.push('перша група не eager або решта не lazy');
+    if (!/p0\.jpg[\s\S]*p1\.jpg[\s\S]*p19\.jpg/.test(html) || html.indexOf('p19.jpg') < html.indexOf('p18.jpg')) errs.push('порядок кадрів змінився');
+    if (F.stripHtml(['https://a/x.jpg?a=1&b="2"']).indexOf('&quot;') < 0) errs.push('адреса кадру без екранування');
+    /* проявлення: перша група разом, коли всі дійшли; решта кожен сам; битий кадр лишає слот */
+    const mkImg = () => { const ls = {}, cls = new Set(), slot = { classList: { add: c => slot.cls.add(c) }, cls: new Set() }; const l = { load: () => { img.complete = true; img.naturalWidth = 10; (ls.load || []).forEach(f => f()); }, error: () => { img.complete = true; (ls.error || []).forEach(f => f()); } }; const img = { complete: false, naturalWidth: 0, l, classList: { add: c => cls.add(c) }, cls, addEventListener: (n, f) => { (ls[n] = ls[n] || []).push(f); }, closest: () => slot, slot }; return img; };
+    const imgs = Array.from({ length: 9 }, mkImg);
+    const strip = { querySelectorAll: () => imgs };
+    timers.length = 0;
+    F.stripReveal(strip);
+    const onCount = () => imgs.filter(i => i.cls.has('on')).length;
+    imgs[0].l.load(); imgs[1].l.load(); imgs[2].l.load(); imgs[3].l.load(); imgs[4].l.load();
+    if (onCount() !== 0) errs.push('перша група проявляється по одному кадру');
+    imgs[5].l.error();
+    if (!(imgs.slice(0, 5).every(i => i.cls.has('on')) && onCount() === 5 && !imgs[5].cls.has('on'))) errs.push('перша група не проявилась разом після останнього кадру, або битий кадр "проявлено" (' + onCount() + ')');
+    if (!imgs[5].slot.cls.has('err')) errs.push('битий кадр не позначає слот');
+    imgs[7].l.load();
+    if (!imgs[7].cls.has('on') || imgs[6].cls.has('on') || imgs[8].cls.has('on')) errs.push('кадр поза першою групою не проявляється сам у своєму слоті');
+    if (timers.length !== 1 || timers[0].ms !== 1200) errs.push('нема короткого запобіжника для першої групи');
+    /* запобіжник: повільний кадр не тримає групу */
+    const imgs2 = Array.from({ length: 6 }, mkImg);
+    timers.length = 0;
+    F.stripReveal({ querySelectorAll: () => imgs2 });
+    imgs2[0].l.load();
+    timers[0].fn();
+    if (imgs2.filter(i => i.cls.has('on')).length !== 1) errs.push('запобіжник проявив ще не завантажені кадри (напівзавантажена картинка)');
+    imgs2[3].l.load();
+    if (!imgs2[3].cls.has('on')) errs.push('після запобіжника кадр не проявляється, коли дійшов');
+    /* кешований кадр (complete) рахується як готовий */
+    const imgs3 = Array.from({ length: 3 }, mkImg); imgs3.forEach(i => { i.complete = true; i.naturalWidth = 10; });
+    timers.length = 0;
+    F.stripReveal({ querySelectorAll: () => imgs3 });
+    if (imgs3.filter(i => i.cls.has('on')).length !== 3) errs.push('кешовані кадри не проявились одразу');
+    if (!/\(img\.closest\('\.ph-slot'\) \|\| img\)\.remove\(\);/.test(page)) errs.push('архівний збій прибирає кадр, а не слот');
+  }
+
   /* словники */
   for (const d of ['i18n/ru.js', 'i18n/ua.js']) {
     const s = fs.readFileSync(d, 'utf8');
