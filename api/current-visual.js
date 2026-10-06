@@ -517,10 +517,10 @@ export function gateDashboardFacts(findings, assessment) {
    селектора (ті самі 15 категорій, що в production photo selector); у
    benchmark типи для галерей без селектора дає та сама класифікація.
    ====================================================================== */
-export const SELECTOR_TYPES = ['front', 'rear', 'side', 'dashboard', 'steering', 'center_console', 'doors', 'front_seats', 'rear_seats', 'roof', 'trunk', 'engine_bay', 'wheels', 'detail', 'other'];
+export const SELECTOR_TYPES = ['front', 'rear', 'side', 'dashboard', 'steering', 'center_console', 'doors', 'front_seats', 'rear_seats', 'roof', 'trunk', 'engine_bay', 'wheels', 'document', 'detail', 'other'];
 /* той самий текст, що в production селекторі (api/check.js), лише підпис
    кадру i=<gallery_index> замість порядкового номера */
-export const SELECTOR_PROMPT = 'Класифікуй кадри оголошення авто за типом. Відповідай ЛИШЕ валідним JSON {"frames":[{"i":1,"type":"front"}]} з записом для КОЖНОГО кадру. type СТРОГО з переліку: front | rear | side | dashboard | steering | center_console | doors | front_seats | rear_seats | roof | trunk | engine_bay | wheels | detail | other. i це число з підпису i=N перед кадром.';
+export const SELECTOR_PROMPT = 'Класифікуй кадри оголошення авто за типом. Відповідай ЛИШЕ валідним JSON {"frames":[{"i":1,"type":"front"}]} з записом для КОЖНОГО кадру. type СТРОГО з переліку: front | rear | side | dashboard | steering | center_console | doors | front_seats | rear_seats | roof | trunk | engine_bay | wheels | document | detail | other. document це фото документа: техпаспорт, сервісна книжка, діагностична карта, рахунок, роздруківка. i це число з підпису i=N перед кадром.';
 export const ROUTE = {
   exterior: new Set(['front', 'rear', 'side', 'wheels', 'roof', 'engine_bay', 'detail', 'other']),
   interior: new Set(['dashboard', 'steering', 'center_console', 'doors', 'front_seats', 'rear_seats', 'trunk', 'roof', 'detail']),
@@ -720,7 +720,7 @@ export function modificationConfirmed(m) {
    high-слотів production-селектора; решта low. Без типів кадрів (галерея
    <=24, селектор не запускався) всі кадри high: дешевше, ніж ризикувати
    нечитабельним одометром */
-export const HIGH_DETAIL_TYPES = new Set(['dashboard', 'steering', 'center_console', 'detail', 'wheels', 'engine_bay']);
+export const HIGH_DETAIL_TYPES = new Set(['dashboard', 'steering', 'center_console', 'detail', 'wheels', 'engine_bay', 'document']);
 export function frameDetailPlan(frames, types = null, highSet = null) {
   const hasTypes = types && typeof types === 'object' && Object.keys(types).length > 0;
   const out = frames.map(f => {

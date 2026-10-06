@@ -150,15 +150,22 @@ function currentConditionBlock(report, meta) {
   const cv = isObj(cvs.current_visual) ? cvs.current_visual : {};
   const zones = isObj(cv.zones) ? cv.zones : {};
   const dash = isObj(cv.dashboard) ? cv.dashboard : {};
+  /* облік доказів: «не показано» лише для областей зі статусом absent;
+     кадри, які є, але не перевірені чи не прочитані, це інша категорія */
+  const ec = isObj(meta.evidence_coverage) && isObj(meta.evidence_coverage.summary) ? meta.evidence_coverage : null;
   /* лампи і повідомлення панелі: у контекст лише сам текст, без кадрів */
   const label = x => (typeof x === 'string' ? str(x, 120) : (isObj(x) ? str(x.text || x.name || x.label || x.sign, 160) : null));
   return {
     photo_findings: arr(report.photo_findings).filter(isObj).map(f => ({ status: f.status || null, text: str(f.text, 320) })),
     /* службові посилання на кадри в тексті Vision людині нічого не кажуть */
     visual_summary: str(typeof cv.summary === 'string' ? cv.summary.replace(/\s*\[gallery_index=\d+\]/g, '') : null, 700),
-    photo_coverage_note: str(cv.coverage && cv.coverage.note, 300),
+    /* нотатка Vision про покриття пише «не показано» по своїй вибірці; без
+       повної класифікації галереї вона може помилятися, тому не йде */
+    photo_coverage_note: (!ec || ec.classification !== 'none') ? str(cv.coverage && cv.coverage.note, 300) : null,
     photos_usable: num(cv.coverage && cv.coverage.frames_usable),
-    zones_not_shown: Object.entries(zones).filter(([, z]) => isObj(z) && z.visibility === 'not_visible').map(([k]) => k),
+    zones_not_shown: ec ? arr(ec.summary.absent).filter(a => a !== 'historical') : Object.entries(zones).filter(([, z]) => isObj(z) && z.visibility === 'not_visible').map(([k]) => k),
+    areas_not_reviewed: ec ? [...arr(ec.summary.present_not_selected), ...arr(ec.summary.not_reviewed)].filter(a => a !== 'historical') : [],
+    areas_unreadable: ec ? arr(ec.summary.selected_unreadable).filter(a => a !== 'historical') : [],
     /* лампи йдуть з інтерпретацією за станом кадру (active, self_test,
        unconfirmed), контекстні індикатори (двері, ремінь) не йдуть узагалі */
     dashboard_state: isObj(dash.assessment) ? (dash.assessment.state || null) : (dash.engine_state || null),
@@ -376,7 +383,7 @@ Price. Reason about it; do not just state a percentage. If the marketplace avera
 Price has no fixed place. It may appear early, in the middle, combined with the accident or the history it explains, combined with resale, or without a paragraph of its own when it is not central to this car. It does not have to be the last paragraph.
 Resale. Mention future resale only when something specific about THIS vehicle materially changes future demand: severe accident history, extreme mileage, many owners, a rare performance version, tuning, unusually expensive ownership, or another concrete reason. When you mention it, name that reason. Do not add a "narrow circle of buyers" remark as a routine ending, and do not mention resale at all for an ordinary car with nothing unusual. Never use the bare word "liquidity".
 Fuel consumption. Mention it only when it materially matters for this exact car or version (for example a large supercharged V8). Do not mention it as generic ownership filler. The same applies to the generic remark that a low purchase price does not make upkeep cheap: say it only when it is a real point about this car, and at most once.
-What we know and what we do not. Name uncertainty concretely: what part of the car's life is not visible and why that matters (for example, almost no history before import, so the current condition is visible but past maintenance is not). A rich history is a positive and is worth naming too. Do not repeat the check-completeness label and do not write filler such as "the conclusion is based on available data". Do not mention small gaps (no odometer photo, one side not shown) unless they change the picture.
+What we know and what we do not. Photo coverage is accounted for by code: current_condition.zones_not_shown are the only areas you may call "not shown in the photos"; areas_not_reviewed were present or unclassified but not reviewed, so say "not reviewed" rather than "not shown"; areas_unreadable had a photo that could not be assessed, so say that it could not be assessed. Name uncertainty concretely: what part of the car's life is not visible and why that matters (for example, almost no history before import, so the current condition is visible but past maintenance is not). A rich history is a positive and is worth naming too. Do not repeat the check-completeness label and do not write filler such as "the conclusion is based on available data". Do not mention small gaps (no odometer photo, one side not shown) unless they change the picture.
 
 SCORE AND COMPLETENESS
 calcar_score is the quality and risk of this specimen based on confirmed data (0-10, higher is better). confidence is how completely it could be studied. A high score with a partial check means "what we saw looks good, but we did not see everything": the tone must not be more certain than the completeness allows. The conclusion must be compatible with the score; if the score is high and you see a serious problem, explain in one sentence why these are different things. Do not quote the score or the completeness percentage and do not explain how they are computed.

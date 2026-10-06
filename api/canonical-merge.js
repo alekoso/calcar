@@ -235,7 +235,7 @@ export function canonicalGaps(items, cv) {
    кадри і ознаки підтверджених опцій: цей блок збирає код. Модель бачить
    лише перелік назв, щоб враховувати оснащення в міркуванні, і повні
    деталі там, де вона справді автор тексту: стан, модифікації, панель */
-export function decisionEvidenceBlock(cv, framesTotal, lang) {
+export function decisionEvidenceBlock(cv, framesTotal, lang, coverage = null) {
   if (!cv) return null;
   const zones = Object.entries(cv.zones || {});
   const pick = v => zones.filter(([, z]) => z.visibility === v).map(([k]) => k);
@@ -252,6 +252,14 @@ export function decisionEvidenceBlock(cv, framesTotal, lang) {
   const view = {
     coverage: { frames: cv.coverage ? cv.coverage.frames_received : null, quality_flags: cv.coverage ? cv.coverage.quality_flags : [] },
     zones: { sufficient: pick('sufficient'), partial: pick('partial'), not_visible: pick('not_visible') },
+    /* облік доказів: чи має звіт право сказати «не показано». absent це
+       кадрів нема; present_not_selected і not_reviewed це кадри є або
+       класифікації нема, тобто «не перевірено»; selected_unreadable це
+       кадр був, але прочитати не вдалося */
+    evidence_coverage: coverage && coverage.areas ? {
+      classification: coverage.classification,
+      areas: Object.fromEntries(Object.entries(coverage.areas).map(([k, a]) => [k, a.reason ? a.status + ' (' + a.reason + ')' : a.status])),
+    } : null,
     condition_findings: findings,
     equipment_confirmed: equipment,
     confirmed_modifications: mods,
@@ -272,4 +280,66 @@ export function decisionEvidenceBlock(cv, framesTotal, lang) {
   return 'CURRENT_VISUAL_EVIDENCE (канонічний розбір НИНІШНІХ кадрів оголошення окремим спеціалізованим читанням; photo це номер кадру галереї): '
     + JSON.stringify(view)
     + (framesTotal ? '\nРОЗБІР БАЧИВ КАДРІВ: ' + framesTotal : '');
+}
+
+
+/* ======================================================================
+   Облік доказів у тексті звіту. Модель може написати «моторний відсік не
+   показаний», коли кадр у галереї є, але не потрапив у вибірку. Код звіряє
+   такі твердження з evidence_coverage і замінює їх чесним формулюванням
+   мовою звіту. Речення зі статусом absent не чіпаються.
+   ====================================================================== */
+export const AREA_LABELS = {
+  exterior_body: L(null, 'Кузов', 'Кузов', 'Body'),
+  interior: L(null, 'Салон', 'Салон', 'Interior'),
+  dashboard_cluster: L(null, 'Приладова панель', 'Приборная панель', 'Instrument cluster'),
+  odometer: L(null, 'Одометр', 'Одометр', 'Odometer'),
+  engine_bay: L(null, 'Моторний відсік', 'Моторный отсек', 'Engine bay'),
+  underbody: L(null, 'Днище', 'Днище', 'Underbody'),
+  trunk_cargo: L(null, 'Багажник', 'Багажник', 'Trunk'),
+  wheels_tires: L(null, 'Колеса і шини', 'Колёса и шины', 'Wheels and tyres'),
+  document: L(null, 'Документи', 'Документы', 'Documents'),
+};
+const NOT_SHOWN_CLAIM_RE = /не показан|не показані|не показано|не показаны|нема(є)? (фото|кадр|знімк)|немає на фото|нет (фото|кадр|снимк)|не (представлен|представлено|представлены)|відсутн\S* (на|серед) (фото|кадр)|отсутству\S* (на|среди) (фото|кадр)|на фото (не показ|відсутн|отсутств)|not shown|no photo|not pictured|not included in the photos|absent from the photos/i;
+const AREA_HINT = [
+  ['engine_bay', /моторн|підкапот|подкапот|engine bay|under the hood|моторного/i],
+  ['underbody', /днищ|underbody|underside|под днищем/i],
+  ['trunk_cargo', /багажн|trunk|cargo|boot\b/i],
+  ['odometer', /одометр|odometer|показ\S* пробіг|показан\S* пробег/i],
+  ['dashboard_cluster', /приладов|приборн|панел|dashboard|cluster/i],
+  ['wheels_tires', /колес|колёс|диск|шин|wheel|tyre|tire/i],
+  ['interior', /салон|interior|сидін|сиден|seat/i],
+  ['exterior_body', /кузов|body|exterior/i],
+];
+const COVERAGE_SENTENCE = {
+  present_not_selected: L(null, ': кадри є в оголошенні, але до перевірки не потрапили, стан не оцінено.', ': кадры есть в объявлении, но в проверку не попали, состояние не оценено.', ': photos exist in the listing but were not reviewed, condition not assessed.'),
+  not_reviewed: L(null, ': за кадрами не перевірено, тому про відсутність фото сказати не можна.', ': по кадрам не проверено, поэтому об отсутствии фото сказать нельзя.', ': not reviewed from the photos, so absence of photos cannot be claimed.'),
+  selected_unreadable: L(null, ': кадр є, але оцінити за ним стан не вдалося.', ': кадр есть, но оценить по нему состояние не удалось.', ': a photo exists, but the condition could not be assessed from it.'),
+  present_not_interpreted: L(null, ': кадри є, але ця перевірка їх не читає.', ': кадры есть, но эта проверка их не читает.', ': photos exist, but this check does not read them.'),
+};
+export function coverageSentence(area, status, lang) {
+  const label = say(AREA_LABELS, area, lang);
+  const tail = COVERAGE_SENTENCE[status] ? COVERAGE_SENTENCE[status][lang3(lang)] : null;
+  return label && tail ? label + tail : null;
+}
+export function correctCoverageClaims(findings, coverage, lang) {
+  const list = Array.isArray(findings) ? findings.slice() : [];
+  const stats = { checked: 0, corrected: 0, kept_absent: 0, unmatched: 0, corrections: [] };
+  if (!coverage || !coverage.areas) return { items: list, stats };
+  for (let i = 0; i < list.length; i++) {
+    const f = list[i];
+    if (!f || typeof f.text !== 'string' || !NOT_SHOWN_CLAIM_RE.test(f.text)) continue;
+    stats.checked++;
+    const hit = AREA_HINT.find(([, re]) => re.test(f.text));
+    if (!hit) { stats.unmatched++; continue; }
+    const area = hit[0];
+    const a = coverage.areas[area];
+    if (!a || a.status === 'absent') { stats.kept_absent++; continue; }
+    const text = coverageSentence(area, a.status === 'interpreted' ? 'selected_unreadable' : a.status, lang);
+    if (!text) { stats.unmatched++; continue; }
+    list[i] = { ...f, status: 'unknown', text };
+    stats.corrected++;
+    stats.corrections.push({ area, from: a.status });
+  }
+  return { items: list, stats };
 }

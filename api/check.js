@@ -32,7 +32,8 @@ import {
 import { CURRENT_VISUAL_RULES, currentVisualResponseFormat, frameContent, normalizeFrames, frameDetailPlan, gateCurrentVisual, frameSetFingerprint, summarizeCurrentVisual, odometerDiscrepancy, CURRENT_VISUAL_VERSION,
   ODOMETER_VERIFIER_RULES, odometerVerifierResponseFormat, odometerVerifyFrames, gateOdometerVerifier, reconcileOdometer,
   currentVisualEvidenceBlock, currentVisualConcepts, applyCurrentVisualEquipmentGate, compactCurrentVisual, contextualPhotoPositions, CONTEXT_PHOTOS_DEFAULT, currentVisualLanguageNote } from './current-visual.js';
-import { decisionEvidenceBlock, mergeCanonicalEquipment, mergeCanonicalConditions, canonicalGaps } from './canonical-merge.js';
+import { decisionEvidenceBlock, mergeCanonicalEquipment, mergeCanonicalConditions, canonicalGaps, correctCoverageClaims } from './canonical-merge.js';
+import { buildEvidenceCoverage } from './evidence-coverage.js';
 import { gateDashboardFacts } from './current-visual.js';
 /* спільні ідентичності і версії: тести і сусідні модулі беруть їх звідси */
 export { HISTORICAL_VISUAL_VERSION, photoIdentity, photoSetFingerprint, listingFingerprint, snapshotRow, listingKey, NHTSA_DECODER_VERSION, LISTING_FINGERPRINT_VERSION };
@@ -1370,7 +1371,7 @@ export function pickEvenIndexes(n, k) {
    потрапляють обовʼязково, однакові екстерʼєри не зʼїдають бюджет.
    high-слоти (максимум maxHigh) дістаються найінформативнішим типам */
 export function pickDiverseFrames(types, k = 24, maxHigh = 12) {
-  const PRI = ['dashboard', 'center_console', 'steering', 'front_seats', 'rear_seats', 'trunk', 'doors', 'roof', 'engine_bay', 'front', 'rear', 'side', 'wheels', 'detail', 'other'];
+  const PRI = ['dashboard', 'center_console', 'steering', 'front_seats', 'rear_seats', 'trunk', 'doors', 'roof', 'engine_bay', 'document', 'front', 'rear', 'side', 'wheels', 'detail', 'other'];
   const norm = t => PRI.includes(t) ? t : 'other';
   const byType = new Map(PRI.map(t => [t, []]));
   (Array.isArray(types) ? types : []).forEach((t, i) => byType.get(norm(t)).push(i));
@@ -1389,7 +1390,7 @@ export function pickDiverseFrames(types, k = 24, maxHigh = 12) {
     if (!added) break;
   }
   picked.sort((a, b) => a - b);
-  const HIGH_PRI = ['dashboard', 'steering', 'center_console', 'doors', 'front_seats', 'rear_seats', 'trunk', 'front', 'rear', 'side', 'detail', 'engine_bay', 'roof', 'wheels', 'other'];
+  const HIGH_PRI = ['dashboard', 'steering', 'center_console', 'document', 'doors', 'front_seats', 'rear_seats', 'trunk', 'front', 'rear', 'side', 'detail', 'engine_bay', 'roof', 'wheels', 'other'];
   const rank = i => HIGH_PRI.indexOf(norm(types[i]));
   const high = picked.slice().sort((a, b) => rank(a) - rank(b) || a - b).slice(0, maxHigh);
   return { picked, high: new Set(high) };
@@ -2178,7 +2179,7 @@ const MAIN_RULES = (auction, auctionMeta, { proseSchema = false, cvProvided = fa
 - "mileage_note": ЛИШЕ заявлене число одним коротким рядком: "129 000 км". Уся аналітика пробігу (хронологія, розбіжності) живе в discrepancies та history, НЕ в шапці.
 - "generation": КОД ПОКОЛІННЯ або платформи і більше нічого: "G30", "W205", "XV80", "958.1", "TL", "F10". Ставиш його ЛИШЕ коли марка, модель і рік однозначно дають покоління. НЕ пиши сюди версію комплектації ("XSE", "Limited", "Premium"), тип кузова, привід, паливо чи роки випуску. Сумніваєшся між двома поколіннями (рік на межі рестайлінгу) або код не знаєш: null. Хибне покоління гірше за відсутнє.
 
-${cvProvided ? `"photo_findings": бери ГОТОВИМИ з CURRENT_VISUAL_EVIDENCE. condition_findings звідти це канонічні спостереження про нинішній стан: дай РІВНО ПО ОДНОМУ пункту на кожен елемент, У ТОМУ САМОМУ ПОРЯДКУ (status warn, а для severe bad), переказавши ознаку людською мовою і назвавши кадр. Не додавай нових дефектів від себе, не обʼєднуй кілька знахідок в один пункт і не спростовуй канонічні. Якщо condition_findings порожній, а покриття достатнє: ОДИН пункт "ok" ("на доступних фото явних слідів ремонту не видно") плюс МАКСИМУМ один "unknown" про найважливішу невидиму зону з zones.not_visible. Самостійно переглядати кадри у пошуках дефектів НЕ треба: контекстні кадри дані лише для загального розуміння авто.` : `"photo_findings": ЛИШЕ про НИНІШНІ фото з оголошення (не аукціонні: для них є auction.findings). СПОЧАТКУ те, що РЕАЛЬНО ПОМІЧЕНО: різниця відтінку фарби, шагрень, нерівні зазори, свіжий герметик, нештатні деталі, знос салону проти пробігу. Кожна знахідка = окремий пункт зі status warn або bad. Якщо підозрілого нічого немає: ОДИН пункт "ok" ("на доступних фото явних слідів ремонту не видно") плюс МАКСИМУМ один пункт "unknown" із найважливішим обмеженням (наприклад, немає фото салону). ЗАБОРОНЕНО три пункти поспіль про те, чого не видно.`}
+${cvProvided ? `"photo_findings": бери ГОТОВИМИ з CURRENT_VISUAL_EVIDENCE. condition_findings звідти це канонічні спостереження про нинішній стан: дай РІВНО ПО ОДНОМУ пункту на кожен елемент, У ТОМУ САМОМУ ПОРЯДКУ (status warn, а для severe bad), переказавши ознаку людською мовою і назвавши кадр. Не додавай нових дефектів від себе, не обʼєднуй кілька знахідок в один пункт і не спростовуй канонічні. Якщо condition_findings порожній, а покриття достатнє: ОДИН пункт "ok" ("на доступних фото явних слідів ремонту не видно") плюс МАКСИМУМ один "unknown" про найважливішу область, і його формулювання береться зі статусу в evidence_coverage: absent означає «на фото не показано»; present_not_selected і not_reviewed означають «за кадрами не перевірено» (казати «не показано» ЗАБОРОНЕНО: кадри можуть бути в оголошенні); selected_unreadable означає «кадр є, але оцінити не вдалося». Самостійно переглядати кадри у пошуках дефектів НЕ треба: контекстні кадри дані лише для загального розуміння авто.` : `"photo_findings": ЛИШЕ про НИНІШНІ фото з оголошення (не аукціонні: для них є auction.findings). СПОЧАТКУ те, що РЕАЛЬНО ПОМІЧЕНО: різниця відтінку фарби, шагрень, нерівні зазори, свіжий герметик, нештатні деталі, знос салону проти пробігу. Кожна знахідка = окремий пункт зі status warn або bad. Якщо підозрілого нічого немає: ОДИН пункт "ok" ("на доступних фото явних слідів ремонту не видно") плюс МАКСИМУМ один пункт "unknown" із найважливішим обмеженням (наприклад, немає фото салону). ЗАБОРОНЕНО три пункти поспіль про те, чого не видно.`}
 
 ЛАМПИ НА БУДЬ-ЯКОМУ КАДРІ ПРИЛАДОВОЇ ПАНЕЛІ, ЯКИЙ ТИ БАЧИШ САМ (нинішньому без канонічного розбору чи архівному auction_photo_N): спочатку стан, потім висновок. Лампа, що горить, це спостереження. Несправністю (CRITICAL_WARNING_LIGHTS, SRS_FAULT, SERIOUS_POWERTRAIN_FAULT, ризик) вона стає ЛИШЕ коли на ТОМУ Ж кадрі видно, що двигун працює (тахометр вище нуля, READY), або є незалежний доказ поза фото. Увімкнене запалювання при заглушеному двигуні засвічує увесь набір ламп самоперевірки (олива, акумулятор, check engine, ABS, SRS): це не дефект. Стан не видно: лише спостереження і пункт перевірки, без діагнозу і без score_fact. Двері, ремінь, ручне гальмо, пальне, фари не є попередженнями. Явний читабельний текст («Oil level low») фіксуй як спостереження з датою кадру; факт для Score лише разом зі станом чи незалежним доказом. Кілька кадрів однієї панелі спершу звір між собою: один кадр із працюючим двигуном важить більше за три з увімкненим запалюванням.
 
@@ -2286,6 +2287,7 @@ ${cvProvided ? `===== КАНОНІЧНИЙ РОЗБІР НИНІШНІХ КАД�
 - ПОДІЛ ПРАЦІ: підтверджені кадрами опції вносить код, тобі їх переписувати не треба. Твоє: формулювання знахідок стану, модифікації, вердикт, ризики, чеклист і те, як візуальні факти сходяться з оголошенням та історією.
 - МОДИФІКАЦІЇ: aftermarket-переробкою вважай ЛИШЕ те, що є в confirmed_modifications. КОЖНУ таку позицію внось в equipment_v2 з retrofit true і retrofit_basis з її ознаки: цього код за тебе не зробить, бо формулювання твоє. Заводське спортивне оснащення (M, AMG, S line, GTS, R-Line тощо) модифікацією НЕ називай.
 - ПРИЛАДОВА ПАНЕЛЬ: dashboard.warning_lights уже інтерпретовані кодом за станом КОНКРЕТНОГО кадру (dashboard.state і frame_state: running, ev_ready, ignition_on_engine_off, ignition_off, unknown). Поле interpretation вирішує, що з лампою робити: active (лампа горіла при працюючому двигуні чи READY) це реальне попередження, яке може стати CRITICAL_WARNING_LIGHTS, SRS_FAULT чи SERIOUS_POWERTRAIN_FAULT; self_test (увімкнене запалювання, двигун заглушений) це штатна самоперевірка, вона НЕ є дефектом, НЕ ризиком і НЕ score_fact, згадай її хіба одним реченням як пояснення; unconfirmed (стан кадру невідомий або панель вимкнена) це лише спостереження «на кадрі горить лампа», без діагнозу: один пункт у checklist «завести двигун і перевірити, чи гасне», без ризику і без score_fact; contextual (двері, ремінь, ручне гальмо, пальне, фари) не згадуй узагалі. readable_messages з kind explicit_fault_text (наприклад «Oil level low», «Check engine») це справжній читабельний текст про несправність: його фіксуй як спостереження завжди і трактуй як підтверджений факт лише разом зі станом кадру чи незалежним доказом (слова продавця, діагностика, історія); maintenance_reminder це нагадування про ТО, а не несправність. Незалежно від усього: НЕВІДОМИЙ стан не означає поганий.
+- ОБЛІК ДОКАЗІВ (evidence_coverage): для кожної області (кузов, салон, панель, одометр, моторний відсік, днище, багажник, колеса, документи, архів) статус рахує код. Фраза «не показано», «немає фото» дозволена ЛИШЕ для статусу absent. present_not_selected і not_reviewed це «за кадрами не перевірено», selected_unreadable це «кадр є, але прочитати не вдалося», present_not_interpreted це «документ є, але ця перевірка його не читає». Це стосується photo_findings, risks, checklist, data_notes і summary однаково. Невідоме не дорівнює відсутньому.
 - ПРОБІГ: показань одометра в CURRENT_VISUAL_EVIDENCE немає навмисно. Мілеаж і його суперечності визнач як раніше: за даними оголошення, історії і словами продавця.
 - КОНТЕКСТНІ КАДРИ: до тебе доданий невеликий набір кадрів лише для загального розуміння авто. Нових дефектів, опцій чи модифікацій із них НЕ виводь.
 
@@ -2632,7 +2634,7 @@ async function runCheck(req, res, job) {
     } else {
       try {
         const tSel = Date.now();
-        const selContent = [{ type: 'text', text: 'Класифікуй кадри оголошення авто за типом. Відповідай ЛИШЕ валідним JSON {"frames":[{"i":1,"type":"front"}]} з записом для КОЖНОГО кадру. type СТРОГО з переліку: front | rear | side | dashboard | steering | center_console | doors | front_seats | rear_seats | roof | trunk | engine_bay | wheels | detail | other. i це число з підпису i=N перед кадром.' }];
+        const selContent = [{ type: 'text', text: 'Класифікуй кадри оголошення авто за типом. Відповідай ЛИШЕ валідним JSON {"frames":[{"i":1,"type":"front"}]} з записом для КОЖНОГО кадру. type СТРОГО з переліку: front | rear | side | dashboard | steering | center_console | doors | front_seats | rear_seats | roof | trunk | engine_bay | wheels | document | detail | other. document це фото документа: техпаспорт, сервісна книжка, діагностична карта, рахунок, роздруківка. i це число з підпису i=N перед кадром.' }];
         listing.photos.forEach((u, i) => { selContent.push({ type: 'text', text: 'i=' + (i + 1) + ':' }); selContent.push(img(u, 'low')); });
         const selBody = modelBody(selContent, false);
         const sr = await callModel(selBody, 45000);
@@ -2648,7 +2650,7 @@ async function runCheck(req, res, job) {
         photoIdx = dv.picked;
         highSet = new Set(photoIdx.map((gi, pos) => dv.high.has(gi) ? pos : -1).filter(p => p >= 0));
         galleryCoverageComplete = true;
-        photoSelectorMeta = { mode: 'selector', ms: Date.now() - tSel, tokens: sr.usage || null, types: photoIdx.map(i => types[i]) };
+        photoSelectorMeta = { mode: 'selector', ms: Date.now() - tSel, tokens: sr.usage || null, types: photoIdx.map(i => types[i]), types_all: types };
         console.log('[photos] селектор:', listing.photos.length, '->', photoIdx.length, 'за', Date.now() - tSel, 'мс');
       } catch (e) {
         photoIdx = pickEvenIndexes(listing.photos.length, 24);
@@ -3291,8 +3293,21 @@ async function runCheck(req, res, job) {
     }
     let cvEvidence = null, cvContextPositions = null, cvConcepts = null, cvFeedCompact = null;
     let dashGate = { applied: false };
+    /* облік фотодоказів: що є в галереї, що вибрано, що дійшло до розбору
+       і що прочитано. Рахується кодом з наявних метаданих; «не показано»
+       дозволене лише за статусом absent */
+    const coverageFor = cvRes => buildEvidenceCoverage({
+      gallery: { total: listing.photos.length, photos: listing.photos, variants_removed: listing.photo_variants_removed },
+      selection: { mode: photoSelectorMeta ? photoSelectorMeta.mode : null, picked: photoIdx, types_all: photoSelectorMeta ? photoSelectorMeta.types_all : null },
+      cv: cvRes && cvRes.status === 'ok' && cvRes.current_visual
+        ? { status: 'ok', frames: cvRes.frames || [], dropped: ((cvRes.transport && cvRes.transport.dropped) || []).map(x => (x && typeof x === 'object') ? x.gallery_index : x), zones: cvRes.current_visual.zones, dashboard: cvRes.current_visual.dashboard }
+        : (cvRes ? { status: cvRes.status || 'failed' } : null),
+      historical: { photos: auctionPhotos.length, hv_status: timings.historical_vision_total ? timings.historical_vision_total.status : null },
+    });
+    let cvCoverage = coverageFor(cvFeed);
+    let coverageClaims = { applied: false };
     if (cvFeed) {
-      cvEvidence = decisionEvidenceBlock(cvFeed.current_visual, cvFeed.photos ? cvFeed.photos.total : null, lang);
+      cvEvidence = decisionEvidenceBlock(cvFeed.current_visual, cvFeed.photos ? cvFeed.photos.total : null, lang, cvCoverage);
       cvConcepts = currentVisualConcepts(cvFeed.current_visual);
       cvFeedCompact = compactCurrentVisual(cvFeed.current_visual);
       const typesForContext = (photoSelectorMeta && Array.isArray(photoSelectorMeta.types)) ? photoSelectorMeta.types : null;
@@ -3546,6 +3561,7 @@ async function runCheck(req, res, job) {
       try {
         cvTerminal = await Promise.race([cvShadow, new Promise(r => setTimeout(() => r({ status: 'timeout', error: 'vision_wait_budget' }), Math.max(1000, 268000 - (Date.now() - tRun))))]);
       } catch (e) { cvTerminal = { status: 'failed', error: String((e && e.message) || e).slice(0, 120) }; }
+      cvCoverage = coverageFor(cvTerminal);
     }
     const vGate = visionGate({ usablePhotos: photoUrls.length, expected: !!cvShadow, status: cvTerminal ? cvTerminal.status : null });
     if (!vGate.finalize) {
@@ -3887,6 +3903,14 @@ async function runCheck(req, res, job) {
       parsed.photo_findings = merged.items;
       condCanonical = { applied: true, ...merged.stats };
     }
+    /* «не показано» лише там, де покриття підтверджує відсутність кадрів;
+       інакше чесне «не перевірено» або «прочитати не вдалося» */
+    {
+      const cc = correctCoverageClaims(parsed.photo_findings, cvCoverage, lang);
+      parsed.photo_findings = cc.items;
+      coverageClaims = { applied: true, ...cc.stats };
+      if (cc.stats.corrected) console.log('[evidence-coverage]', JSON.stringify({ op: 'correctCoverageClaims', corrections: cc.stats.corrections, classification: cvCoverage.classification }));
+    }
     localizePhotoRefs(parsed, cvFeed ? listing.photos.map((_, i) => i) : photoIdx, auctionOrigIdx, PHOTO_LABELS[lang] || PHOTO_LABELS.en);
 
     /* ---- комплектація: детермінована валідація + скептична перевірка ----
@@ -4113,6 +4137,10 @@ async function runCheck(req, res, job) {
       equipment_canonical: eqCanonical,
       condition_canonical: condCanonical,
       dashboard_fact_gate: dashGate,
+      /* облік фотодоказів по областях: absent / present_not_selected /
+         selected_unreadable / interpreted / not_reviewed */
+      evidence_coverage: cvCoverage,
+      coverage_claims: coverageClaims,
       canonical_gaps: cvFeed ? canonicalGaps(parsed.equipment_v2, cvFeed.current_visual) : null,
       /* що переиспользовано з Vehicle Memory, а що виконано заново */
       reuse: {
