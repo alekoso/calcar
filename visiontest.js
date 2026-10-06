@@ -407,6 +407,72 @@ const errs = [];
   if (CV.gateCurrentVisual({ dashboard: { engine_state: 'bogus' } }, sent).current_visual.dashboard.engine_state !== 'unknown') errs.push('engine_state без валідації');
   /* правила: одиниця з кадру, engine_state, лампа це спостереження */
   for (const need of ['ОДИНИЦЯ (km чи mi) зараховується ЛИШЕ коли вона написана на самому кадрі', 'СТАН ДВИГУНА (engine_state)', 'несправністю ти його не називаєш']) if (!CV.CURRENT_VISUAL_RULES.includes(need)) errs.push('правила без блоку: ' + need.slice(0, 30));
+
+  /* ---------- приладова панель: спочатку стан, потім висновок ----------
+     Регресія бета-аудиту (CR-V, Touareg, Qashqai, Q7): лампа на фото без
+     доведеного робочого стану не стає підтвердженою несправністю */
+  {
+    const fr = CV.normalizeFrames([{ gallery_index: 5, url: a }, { gallery_index: 9, url: d }, { gallery_index: 12, url: 'https://cdn1.riastatic.com/x/12.webp' }]);
+    const light = (name, gi) => ({ light: name, gallery_index: gi, sign: 'піктограма ' + name + ' світиться на панелі', confidence: 'high' });
+    const dash = (cluster, lights, messages = [], engine_state = 'unknown') => CV.gateCurrentVisual({ dashboard: { visible: true, ignition_on: true, engine_state, cluster_frames: cluster, odometer_reading: null, warning_lights: lights, readable_messages: messages } }, fr).current_visual.dashboard;
+    const fact = (type, evidence, id = 'e1') => ({ type, event_id: id, severity: 'high', repair_status: 'unknown', serious_intervention: false, maintenance_evidence: false, evidence });
+    const photoEv = (ref, description) => ({ source: 'current_photos', ref, description });
+    /* 1. самоперевірка при увімкненому запалюванні */
+    const selfTest = dash([{ gallery_index: 5, state: 'ignition_on_engine_off', cues: ['tachometer_zero', 'self_test_pattern'] }],
+      [light('check engine', 5), light('індикатор тиску оливи', 5), light('індикатор акумулятора', 5), light('індикатор непристебнутого ременя', 5)]);
+    if (selfTest.engine_state !== 'ignition_on_engine_off' || selfTest.assessment.self_test.length !== 3 || selfTest.assessment.active.length || selfTest.assessment.contextual.length !== 1) errs.push('самоперевірка: ' + JSON.stringify(selfTest.assessment));
+    let g = CV.gateDashboardFacts([fact('CRITICAL_WARNING_LIGHTS', [photoEv('photo_6', 'горять лампи check engine, оливи і акумулятора')]), fact('SERIOUS_POWERTRAIN_FAULT', [photoEv('photo_6', 'лампа check engine'), { source: 'seller_claim', ref: null, description: 'продавець пише, що двигун троїть' }], 'e2')], selfTest.assessment);
+    if (g.findings.length !== 1 || g.findings[0].event_id !== 'e2' || g.dropped.length !== 1 || g.dropped[0].reason !== 'self_test_lamp_only') errs.push('гейт самоперевірки: ' + JSON.stringify(g));
+    /* 2. працюючий двигун: лампа активна, факт лишається */
+    const running = dash([{ gallery_index: 9, state: 'running', cues: ['tachometer_above_zero'] }], [light('check engine', 9)]);
+    if (running.engine_state !== 'running' || running.assessment.active.join() !== 'check engine') errs.push('робочий стан: ' + JSON.stringify(running.assessment));
+    g = CV.gateDashboardFacts([fact('CRITICAL_WARNING_LIGHTS', [photoEv('photo_10', 'лампа check engine при працюючому двигуні')])], running.assessment);
+    if (g.findings.length !== 1 || g.dropped.length) errs.push('активна лампа знята гейтом');
+    /* EV READY теж робочий стан */
+    if (dash([{ gallery_index: 9, state: 'ev_ready', cues: ['ready_indicator'] }], [light('check engine', 9)]).assessment.active.length !== 1) errs.push('READY не вважається робочим станом');
+    /* 3. стан невідомий: лише спостереження, UNKNOWN != BAD */
+    const unknown = dash([], [light('check engine', 5)]);
+    if (unknown.engine_state !== 'unknown' || unknown.assessment.unconfirmed.join() !== 'check engine') errs.push('невідомий стан: ' + JSON.stringify(unknown.assessment));
+    g = CV.gateDashboardFacts([fact('CRITICAL_WARNING_LIGHTS', [photoEv('photo_6', 'горить check engine')]), fact('SRS_FAULT', [{ source: 'document', ref: 'діагностична карта', description: 'помилка подушки водія' }], 'e3')], unknown.assessment);
+    if (g.findings.length !== 1 || g.findings[0].type !== 'SRS_FAULT' || g.dropped[0].reason !== 'lamp_without_operating_state') errs.push('гейт невідомого стану: ' + JSON.stringify(g));
+    /* 4. явний текст про несправність лишається доказом, нагадування про ТО ні */
+    const textual = dash([], [], [{ text: 'Oil level low', sign: 'напис «Oil level low» у центрі дисплея', gallery_index: 5, confidence: 'high' }, { text: 'Service due in 1200 km', sign: 'напис «Service due in 1200 km» внизу', gallery_index: 5, confidence: 'high' }]);
+    if (textual.assessment.explicit_fault_messages.join() !== 'Oil level low' || textual.assessment.messages.find(m => /Service/.test(m.text)).kind !== 'maintenance_reminder') errs.push('текстові повідомлення: ' + JSON.stringify(textual.assessment.messages));
+    g = CV.gateDashboardFacts([fact('SERIOUS_POWERTRAIN_FAULT', [photoEv('photo_6', 'напис Oil level low на дисплеї')])], textual.assessment);
+    if (g.findings.length !== 1) errs.push('явний текст про рівень оливи знятий гейтом');
+    /* 5. кілька кадрів панелі з різним станом: сильніший перемагає, та сама лампа зводиться в одну */
+    const multi = dash([{ gallery_index: 5, state: 'ignition_on_engine_off', cues: ['tachometer_zero'] }, { gallery_index: 9, state: 'running', cues: ['tachometer_above_zero'] }, { gallery_index: 5, state: 'unknown', cues: [] }],
+      [light('check engine', 5), light('Check Engine', 9), light('abs', 5)]);
+    const ce = multi.assessment.lights.find(l => /check engine/i.test(l.light));
+    if (multi.engine_state !== 'running' || multi.cluster_frames.length !== 2 || !ce || ce.interpretation !== 'active' || ce.frames.length !== 2 || multi.assessment.self_test.join() !== 'abs') errs.push('кілька кадрів панелі: ' + JSON.stringify(multi.assessment));
+    /* 6. контекстні індикатори: двері, ручник, ремінь не є попередженням навіть при працюючому двигуні */
+    const ctx = dash([{ gallery_index: 9, state: 'running', cues: ['tachometer_above_zero', 'door_open', 'parking_brake'] }],
+      [light('індикатор відчинених дверей', 9), light('parking brake', 9), light('індикатор непристебнутого ременя', 9), light('low fuel', 9)]);
+    if (ctx.assessment.contextual.length !== 4 || ctx.assessment.active.length) errs.push('контекстні індикатори: ' + JSON.stringify(ctx.assessment));
+    g = CV.gateDashboardFacts([fact('CRITICAL_WARNING_LIGHTS', [photoEv('photo_10', 'горить лампа ручного гальма і дверей')])], ctx.assessment);
+    if (g.findings.length) errs.push('контекстна лампа стала фактом для Score');
+    /* 7. архівні кадри аукціону стану не мають: лампа лише з них ніколи не факт; без розбору нинішні фото-факти не чіпаємо */
+    g = CV.gateDashboardFacts([fact('CRITICAL_WARNING_LIGHTS', [{ source: 'us_auction', ref: 'auction_photo_3', description: 'на архівному кадрі горить check engine' }]), fact('CRITICAL_WARNING_LIGHTS', [photoEv('photo_2', 'лампа на нинішньому кадрі')], 'e4'), fact('STRUCTURAL_DAMAGE', [photoEv('photo_2', 'деформація лонжерона')], 'e5')], null);
+    if (g.findings.length !== 2 || g.dropped.length !== 1 || g.dropped[0].reason !== 'archive_lamp_without_operating_state') errs.push('архівна лампа: ' + JSON.stringify(g));
+    /* 8. посилання кадру панелі лише на переданий кадр */
+    const badRef = CV.gateCurrentVisual({ dashboard: { visible: true, engine_state: 'running', cluster_frames: [{ gallery_index: 77, state: 'running', cues: [] }], odometer_reading: null, warning_lights: [], readable_messages: [] } }, fr);
+    if (badRef.current_visual.dashboard.cluster_frames.length || badRef.stats.dropped_bad_ref !== 1 || badRef.current_visual.dashboard.engine_state !== 'running') errs.push('чужий кадр панелі прийнятий або підсумковий стан загублений');
+    /* контракт і правила */
+    const schemaStr = JSON.stringify(CV.currentVisualResponseFormat());
+    if (!/cluster_frames/.test(schemaStr) || !/ev_ready/.test(schemaStr) || !/tachometer_above_zero/.test(schemaStr)) errs.push('схема панелі без станів по кадрах');
+    for (const need of ['cluster_frames', 'ev_ready', 'ignition_off', 'код сам відрізнить']) if (!CV.CURRENT_VISUAL_RULES.includes(need)) errs.push('правила панелі без: ' + need);
+    const blk = MERGE.decisionEvidenceBlock({ zones: {}, equipment_visual: [], modification_candidates: [], coverage: { frames_received: 3, quality_flags: [] }, dashboard: selfTest }, 3, 'ru');
+    if (!/"interpretation":"self_test"/.test(blk) || !/"state":"ignition_on_engine_off"/.test(blk)) errs.push('main не бачить інтерпретації ламп');
+    const compact = CV.compactCurrentVisual({ zones: {}, equipment_visual: [], modification_candidates: [], coverage: {}, dashboard: multi });
+    if (!compact.dashboard.warning_lights.some(w => w.interpretation === 'active')) errs.push('компакт для Score без інтерпретації');
+    const chk2 = fs.readFileSync('api/check.js', 'utf8');
+    const iGate = chk2.indexOf('gateDashboardFacts(parsed.score_facts.findings'), iGuard = chk2.indexOf('stripUnbackedPhotoClaims(parsed.auction)'), iScore = chk2.indexOf('breakdownV4 = computeScoreV4(');
+    if (!(iGate > 0 && iGate < iGuard && iGate < iScore)) errs.push('гейт ламп не стоїть до розрахунку Score');
+    if (!/dashboard_fact_gate: dashGate/.test(chk2)) errs.push('нема телеметрії гейта ламп');
+    for (const need of ['interpretation вирішує', 'self_test', 'ЛАМПИ НА БУДЬ-ЯКОМУ КАДРІ ПРИЛАДОВОЇ ПАНЕЛІ', 'НЕВІДОМИЙ стан не означає поганий']) if (!chk2.includes(need)) errs.push('правила main без: ' + need);
+    const fc = fs.readFileSync('api/conclusion.js', 'utf8');
+    if (!/DASHBOARD LAMPS: OBSERVATION FIRST/.test(fc) || !/dashboard_state:/.test(fc) || !/interpretation !== 'contextual'/.test(fc)) errs.push('Final Conclusion без семантики стану ламп');
+  }
   /* умовний верифікатор одометра */
   const vSchema = CV.buildOdometerVerifierSchema(); walk(vSchema, 'verifier');
   if (vSchema.properties.zones || vSchema.properties.equipment_visual) errs.push('верифікатор одометра розрісся до dashboard-спеціаліста');

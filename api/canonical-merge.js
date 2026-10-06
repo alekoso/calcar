@@ -18,7 +18,7 @@
    переклад код не має права, а другий AI-виклик тут заборонений.
    Нерозміщені канонічні факти чесно рахуються в телеметрії. */
 
-import { equipmentConcept } from './current-visual.js';
+import { equipmentConcept, interpretDashboard } from './current-visual.js';
 
 const L = (category, ua, ru, en) => ({ category, ua, ru, en });
 /* категорії тут це категорії ЗВІТУ (equipment_v2), а не Vision */
@@ -255,11 +255,19 @@ export function decisionEvidenceBlock(cv, framesTotal, lang) {
     condition_findings: findings,
     equipment_confirmed: equipment,
     confirmed_modifications: mods,
-    dashboard: {
-      engine_state: d.engine_state || 'unknown',
-      warning_lights: (d.warning_lights || []).map(w => ({ light: w.light, photo: Number(w.gallery_index) + 1 })),
-      readable_messages: (d.readable_messages || []).map(m => ({ text: m.text, photo: Number(m.gallery_index) + 1 })),
-    },
+    /* панель: спостереження вже інтерпретовані кодом за станом кадру.
+       main отримує не голі лампи, а interpretation: active (двигун
+       працював), self_test (самоперевірка при запалюванні), unconfirmed
+       (стан невідомий), contextual (двері, ремінь, ручник) */
+    dashboard: (() => {
+      const a = d.assessment || interpretDashboard(d);
+      return {
+        state: a.state,
+        frames_with_state: a.frames_with_state,
+        warning_lights: a.lights.map(l => ({ light: l.light, photo: Number(l.gallery_index) + 1, frame_state: l.frame_state, interpretation: l.interpretation })),
+        readable_messages: a.messages.map(m => ({ text: m.text, photo: Number(m.gallery_index) + 1, kind: m.kind, frame_state: m.frame_state })),
+      };
+    })(),
   };
   return 'CURRENT_VISUAL_EVIDENCE (канонічний розбір НИНІШНІХ кадрів оголошення окремим спеціалізованим читанням; photo це номер кадру галереї): '
     + JSON.stringify(view)

@@ -159,7 +159,12 @@ function currentConditionBlock(report, meta) {
     photo_coverage_note: str(cv.coverage && cv.coverage.note, 300),
     photos_usable: num(cv.coverage && cv.coverage.frames_usable),
     zones_not_shown: Object.entries(zones).filter(([, z]) => isObj(z) && z.visibility === 'not_visible').map(([k]) => k),
-    dashboard_warning_lights: arr(dash.warning_lights).map(label).filter(Boolean).slice(0, 6),
+    /* лампи йдуть з інтерпретацією за станом кадру (active, self_test,
+       unconfirmed), контекстні індикатори (двері, ремінь) не йдуть узагалі */
+    dashboard_state: isObj(dash.assessment) ? (dash.assessment.state || null) : (dash.engine_state || null),
+    dashboard_warning_lights: (isObj(dash.assessment) && Array.isArray(dash.assessment.lights)
+      ? dash.assessment.lights.filter(l => l && l.interpretation !== 'contextual').map(l => ({ light: str(l.light, 80), interpretation: l.interpretation, frame_state: l.frame_state }))
+      : arr(dash.warning_lights).map(label).filter(Boolean).map(light => ({ light, interpretation: 'unconfirmed', frame_state: 'unknown' }))).slice(0, 6),
     dashboard_messages: arr(dash.readable_messages).map(label).filter(Boolean).slice(0, 4),
     body_wrap_present: report.body_wrap && report.body_wrap.present === true ? true : null,
     odometer_photo_vs_listing: cvs.odometer_vs_listing && cvs.odometer_vs_listing.status ? cvs.odometer_vs_listing.status : null,
@@ -341,6 +346,9 @@ Hard editorial rule: once an idea has been explained, do not return to it later 
 - "the seller's words need documents behind them": at most once per text;
 - price: in one place.
 Before answering, reread your draft: if two paragraphs say essentially the same thing about different components ("it is expensive, it should be checked"), merge them into one thought.
+
+DASHBOARD LAMPS: OBSERVATION FIRST, INTERPRETATION SECOND
+current_condition.dashboard_warning_lights carries each lamp with an interpretation computed from the operating state of the frame it was seen on. "active" means the lamp was lit with the engine running (or READY): treat it as a real warning. "self_test" means the ignition was on with the engine off: this is the normal bulb check, not a defect; do not present it as a problem. "unconfirmed" means the state of the frame is unknown: it is only an observation that a lamp was lit; say at most that it should be checked on a running engine, never that the car has that fault. An explicit readable message such as "Oil level low" is a real observation and may be mentioned as such, but it is a confirmed fault only together with a running-engine frame or independent evidence. Unknown is not bad.
 
 CONNECT FACTS AND EXPLAIN CONSEQUENCES
 The reader sees separate facts in the report. Your value is in the connections and the consequences for the owner.

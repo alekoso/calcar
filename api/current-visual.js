@@ -42,7 +42,21 @@ export const WHEEL_POSITIONS = ['front_left', 'front_right', 'rear_left', 'rear_
 export const CONFIDENCE = ['high', 'medium', 'low'];
 export const EQUIPMENT_CATEGORIES = ['audio', 'roof', 'display', 'seats', 'climate', 'driver_assist', 'camera_parking', 'interior_trim', 'lighting', 'wheels', 'other'];
 export const MOD_BASIS = ['brand_readable', 'aftermarket_look', 'non_standard_fitment', 'visible_alteration', 'unclear'];
-export const ENGINE_STATES = ['running', 'ignition_on_engine_off', 'unknown'];
+/* Стан роботи авто на кадрі приладової панелі. Порядок = сила доказу:
+   running і ev_ready доводять, що лампа горить у РОБОЧОМУ стані;
+   ignition_on_engine_off це самоперевірка; ignition_off і unknown нічого
+   не доводять. Старі значення збережено */
+export const ENGINE_STATES = ['running', 'ev_ready', 'ignition_on_engine_off', 'ignition_off', 'unknown'];
+export const ENGINE_STATE_RANK = { running: 4, ev_ready: 4, ignition_on_engine_off: 2, ignition_off: 1, unknown: 0 };
+/* видимі підказки стану на кадрі панелі: лише те, що справді видно */
+export const CLUSTER_CUES = ['tachometer_above_zero', 'tachometer_zero', 'ready_indicator', 'self_test_pattern', 'screen_off',
+  'door_open', 'seatbelt_unfastened', 'parking_brake', 'low_fuel', 'key_or_start_prompt'];
+/* контекстні індикатори: ніколи не є несправністю самі по собі */
+export const CONTEXTUAL_LIGHT_RE = /ремен|belt|двер|door|багажник|trunk|капот|hood|ручн|стоянк|parking|\bbrake\b|пальн|fuel|палив|фар|дальн|ближн|beam|габарит|lights?\b|круїз|cruise|\beco\b|підігрів|heated|start.?stop|старт.?стоп/i;
+/* явний текст про несправність (не піктограма і не нагадування про ТО) */
+export const EXPLICIT_FAULT_MESSAGE_RE = /check engine|engine|двигун|мотор|oil|олив|масл|malfunction|fault|error|несправ|помилк|battery|акумул|charging|заряд|abs|srs|airbag|подушк|transmission|коробк|трансміс|gearbox|overheat|перегрів|coolant|охолодж|tpms|tire pressure|тиск у шин|brake system|гальмівн/i;
+export const MAINTENANCE_REMINDER_RE = /service (due|in|interval|required)|inspection|до сервісу|сервіс через|то через|oil change due|заміна оливи/i;
+export const LIGHT_INTERPRETATIONS = ['active', 'self_test', 'unconfirmed', 'contextual'];
 /* одиниця пробігу зараховується лише коли вона написана поруч із числом на
    кадрі (модель мусить процитувати її в sign). Ніякого вибору одиниці за
    збігом із пробігом оголошення: Vision оголошення не бачить */
@@ -150,7 +164,8 @@ export function buildCurrentVisualSchema() {
     dashboard: OBJ({
       visible: S('boolean'),
       ignition_on: S(['boolean', 'null']),
-      engine_state: E(ENGINE_STATES, 'running | ignition_on_engine_off | unknown'),
+      engine_state: E(ENGINE_STATES, 'running | ev_ready | ignition_on_engine_off | ignition_off | unknown; підсумок по всіх кадрах панелі'),
+      cluster_frames: ARR(OBJ({ gallery_index: GI, state: E(ENGINE_STATES), cues: ARR(E(CLUSTER_CUES)) }), 'кожен кадр із приладовою панеллю чи екраном приладів окремо: стан і видимі підказки стану'),
       odometer_reading: { anyOf: [OBJ({
         value: S('integer'), unit: E(['km', 'mi', 'unknown'], 'лише коли одиниця написана на кадрі; інакше unknown'), gallery_index: GI, sign: S('string', 'цифри і одиниця так, як вони написані на кадрі'), confidence: E(CONFIDENCE),
       }), S('null')] },
@@ -197,7 +212,7 @@ frames: gallery_index кадрів, де зона видна. Зона sufficien
 
 ОДОМЕТР НЕЗАЛЕЖНИЙ: читай цифри з кадру як є; жодних даних оголошення про пробіг у тебе немає і підганяти показання ні під що не треба. Сумнівні цифри: confidence low, а не вигадане число. ОДИНИЦЯ (km чи mi) зараховується ЛИШЕ коли вона написана на самому кадрі поруч із числом, і ти цитуєш її в sign («TOTAL 151975 km»). Якщо одиниці не видно, став unit: "unknown": вгадувати за ринком, країною чи виглядом шкали ЗАБОРОНЕНО.
 
-СТАН ДВИГУНА (engine_state): running лише за прямою ознакою роботи (стрілка тахометра вище нуля, обертів > 0, напис READY/ON у гібрида чи електромобіля); ignition_on_engine_off, коли панель світиться, а тахометр на нулі і горить типовий набір ламп самоперевірки; інакше unknown. Індикатор на панелі це ЛИШЕ спостереження «лампа горить»: несправністю ти його не називаєш і причину не пояснюєш.
+СТАН ДВИГУНА (engine_state) І КАДРИ ПАНЕЛІ (cluster_frames): спершу спостереження, потім стан, і лише потім будь-хто інший робить висновки. Для КОЖНОГО кадру, де видно приладову панель або екран приладів, дай окремий запис у cluster_frames: gallery_index, state і cues (лише те, що реально видно: tachometer_above_zero, tachometer_zero, ready_indicator, self_test_pattern, screen_off, door_open, seatbelt_unfastened, parking_brake, low_fuel, key_or_start_prompt). state на кадрі: running лише за прямою ознакою роботи (стрілка тахометра вище нуля, обертів > 0); ev_ready лише за написом READY/ON у гібрида чи електромобіля; ignition_on_engine_off, коли панель світиться, а тахометр на нулі або горить типовий набір ламп самоперевірки; ignition_off, коли панель і екрани вимкнені; інакше unknown. Підсумковий engine_state це найсильніший стан серед кадрів панелі (running чи ev_ready > ignition_on_engine_off > ignition_off > unknown). Кожну лампу записуй з кадром, на якому вона горить. Індикатор на панелі це ЛИШЕ спостереження «лампа горить»: несправністю ти його не називаєш і причину не пояснюєш; дверь, ремінь, ручне гальмо, пальне, фари теж записуй як лампи, код сам відрізнить їх від попереджень.
 
 УЗГОДЖЕНІСТЬ SUMMARY І ЗНАХІДОК: кожен конкретний видимий фізичний дефект, який ти називаєш у summary, мусить бути окремою знахідкою у findings відповідної зони з кадром і ознакою. Summary не містить дефектів, яких немає у findings.
 СКЛО: скол чи тріщина лобового скла (навіть якщо кадр знятий із салону) записуй у зону front з component windshield: kind chip для маленького локального сколу, kind crack для тріщини; severity minor для маленького сколу поза зоною огляду, moderate або severe для тріщини чи великого пошкодження. Бічне і заднє скло: component glass_other у зоні відповідної сторони.
@@ -268,7 +283,7 @@ export function gateCurrentVisual(raw, frames) {
     zones: {},
     equipment_visual: [],
     modification_candidates: [],
-    dashboard: { visible: false, ignition_on: null, engine_state: 'unknown', odometer_reading: null, warning_lights: [], readable_messages: [] },
+    dashboard: { visible: false, ignition_on: null, engine_state: 'unknown', cluster_frames: [], odometer_reading: null, warning_lights: [], readable_messages: [], assessment: null },
     summary: str(r.summary).slice(0, 600),
   };
   const zonesIn = r.zones && typeof r.zones === 'object' ? r.zones : {};
@@ -336,7 +351,20 @@ export function gateCurrentVisual(raw, frames) {
   const d = r.dashboard && typeof r.dashboard === 'object' ? r.dashboard : {};
   out.dashboard.visible = d.visible === true;
   out.dashboard.ignition_on = typeof d.ignition_on === 'boolean' ? d.ignition_on : null;
-  out.dashboard.engine_state = ENGINE_STATES.includes(d.engine_state) ? d.engine_state : 'unknown';
+  /* стан по кожному кадру панелі: лише посилання на переданий кадр; один
+     запис на кадр, сильніший стан перемагає. Підсумковий engine_state
+     рахує код, а не бере слово моделі, коли кадри панелі описані */
+  const seenCluster = new Map();
+  for (const c of Array.isArray(d.cluster_frames) ? d.cluster_frames : []) {
+    const rf = c && ref(c.gallery_index); if (!rf) { stats.dropped_bad_ref++; continue; }
+    const state = ENGINE_STATES.includes(c.state) ? c.state : 'unknown';
+    const cues = [...new Set((Array.isArray(c.cues) ? c.cues : []).filter(x => CLUSTER_CUES.includes(x)))];
+    const prev = seenCluster.get(rf.gallery_index);
+    if (!prev || ENGINE_STATE_RANK[state] > ENGINE_STATE_RANK[prev.state]) seenCluster.set(rf.gallery_index, { ...rf, state, cues: prev ? [...new Set([...prev.cues, ...cues])] : cues });
+    else prev.cues = [...new Set([...prev.cues, ...cues])];
+  }
+  out.dashboard.cluster_frames = [...seenCluster.values()].sort((a, b) => a.gallery_index - b.gallery_index);
+  out.dashboard.engine_state = reconcileEngineState(out.dashboard.cluster_frames, ENGINE_STATES.includes(d.engine_state) ? d.engine_state : 'unknown');
   if (d.odometer_reading && typeof d.odometer_reading === 'object') {
     const o = d.odometer_reading;
     const rf = withRef(o);
@@ -368,7 +396,118 @@ export function gateCurrentVisual(raw, frames) {
     out.dashboard.readable_messages.push({ text, sign: str(m.sign).slice(0, 240), ...rf, confidence: conf(m.confidence) });
     stats.messages++;
   }
+  out.dashboard.assessment = interpretDashboard(out.dashboard);
+  stats.lights_active = out.dashboard.assessment.active.length;
+  stats.lights_self_test = out.dashboard.assessment.self_test.length;
+  stats.lights_unconfirmed = out.dashboard.assessment.unconfirmed.length;
   return { current_visual: out, stats };
+}
+
+/* ---------- приладова панель: спостереження, потім стан, потім висновок ----------
+   Модель лише фіксує «лампа горить на кадрі N» і стан кадру. Висновок про
+   те, чи це взагалі може бути несправністю, робить код:
+   - contextual: двері, ремінь, ручне гальмо, пальне, фари: ніколи не привід;
+   - self_test: лампа на кадрі з увімкненим запалюванням і заглушеним
+     двигуном: штатна самоперевірка, не дефект;
+   - active: лампа на кадрі з працюючим двигуном (або READY): реальне
+     попередження, може стати фактом для Score;
+   - unconfirmed: стан кадру невідомий або панель вимкнена: лише
+     спостереження і пункт перевірки. UNKNOWN не дорівнює BAD.
+   Та сама лампа на кількох кадрах зводиться до найсильнішого стану.
+   Текстові повідомлення лишаються спостереженнями з власною міткою:
+   явний текст про несправність, нагадування про ТО чи інше. */
+export function reconcileEngineState(clusterFrames, fallback = 'unknown') {
+  let best = null;
+  for (const f of Array.isArray(clusterFrames) ? clusterFrames : []) {
+    const st = f && ENGINE_STATES.includes(f.state) ? f.state : 'unknown';
+    if (best === null || ENGINE_STATE_RANK[st] > ENGINE_STATE_RANK[best]) best = st;
+  }
+  return best === null ? (ENGINE_STATES.includes(fallback) ? fallback : 'unknown') : best;
+}
+export function lightCategory(light) {
+  return CONTEXTUAL_LIGHT_RE.test(String(light || '')) ? 'contextual' : 'indicator';
+}
+export function interpretLight(light, frameState) {
+  if (lightCategory(light) === 'contextual') return 'contextual';
+  const r = ENGINE_STATE_RANK[frameState] || 0;
+  if (r >= ENGINE_STATE_RANK.running) return 'active';
+  if (frameState === 'ignition_on_engine_off') return 'self_test';
+  return 'unconfirmed';
+}
+export function messageKind(text) {
+  const t = String(text || '');
+  if (MAINTENANCE_REMINDER_RE.test(t)) return 'maintenance_reminder';
+  if (EXPLICIT_FAULT_MESSAGE_RE.test(t)) return 'explicit_fault_text';
+  return 'info';
+}
+const INTERP_RANK = { active: 3, self_test: 2, unconfirmed: 1, contextual: 0 };
+export function interpretDashboard(dashboard) {
+  const d = dashboard && typeof dashboard === 'object' ? dashboard : {};
+  const frames = Array.isArray(d.cluster_frames) ? d.cluster_frames : [];
+  const stateOf = gi => { const f = frames.find(x => x.gallery_index === gi); return f ? f.state : (ENGINE_STATES.includes(d.engine_state) ? d.engine_state : 'unknown'); };
+  const byLight = new Map();
+  for (const w of Array.isArray(d.warning_lights) ? d.warning_lights : []) {
+    if (!w || !w.light) continue;
+    const key = String(w.light).toLowerCase().replace(/\s+/g, ' ').trim();
+    const frameState = stateOf(w.gallery_index);
+    const interpretation = interpretLight(w.light, frameState);
+    const cur = byLight.get(key);
+    const entry = { light: w.light, gallery_index: w.gallery_index, frame_state: frameState, interpretation, frames: [w.gallery_index], category: lightCategory(w.light) };
+    if (!cur) byLight.set(key, entry);
+    else {
+      cur.frames.push(w.gallery_index);
+      if (INTERP_RANK[interpretation] > INTERP_RANK[cur.interpretation]) { cur.interpretation = interpretation; cur.frame_state = frameState; cur.gallery_index = w.gallery_index; }
+    }
+  }
+  const lights = [...byLight.values()];
+  const messages = (Array.isArray(d.readable_messages) ? d.readable_messages : []).filter(m => m && m.text)
+    .map(m => ({ text: m.text, gallery_index: m.gallery_index, kind: messageKind(m.text), frame_state: stateOf(m.gallery_index) }));
+  const state = reconcileEngineState(frames, d.engine_state);
+  return {
+    state,
+    frames_with_state: frames.filter(f => f.state !== 'unknown').length,
+    lights,
+    active: lights.filter(l => l.interpretation === 'active').map(l => l.light),
+    self_test: lights.filter(l => l.interpretation === 'self_test').map(l => l.light),
+    unconfirmed: lights.filter(l => l.interpretation === 'unconfirmed').map(l => l.light),
+    contextual: lights.filter(l => l.interpretation === 'contextual').map(l => l.light),
+    messages,
+    explicit_fault_messages: messages.filter(m => m.kind === 'explicit_fault_text').map(m => m.text),
+  };
+}
+
+/* Гейт фактів для Score: лампа на фото стає CRITICAL_WARNING_LIGHTS,
+   SRS_FAULT чи SERIOUS_POWERTRAIN_FAULT лише коли (а) є незалежний
+   доказ поза фото (слова продавця, документ, реєстр, аукціонний запис),
+   або (б) канонічний розбір бачив цю лампу в робочому стані, або (в) на
+   панелі читається явний текст про несправність. Інакше факт з
+   score_facts знімається, а текст звіту (ризик, чеклист) лишається як
+   спостереження. Архівні кадри аукціону стану не мають, тому лампа лише
+   з них ніколи не є підтвердженим фактом. Без розбору (assessment null)
+   фото-факти нинішніх кадрів не чіпаємо: судити нема по чому */
+export const LAMP_FACT_TYPES = new Set(['CRITICAL_WARNING_LIGHTS', 'SRS_FAULT', 'SERIOUS_POWERTRAIN_FAULT']);
+const PHOTO_SOURCES = new Set(['current_photos']);
+const ARCHIVE_PHOTO_REF_RE = /auction_photo_\d+/i;
+const LAMP_EVIDENCE_RE = /ламп|індикатор|индикатор|lamp|light|warning|піктограм|пиктограм|горить|горит|check engine|панел|dashboard|cluster/i;
+export function gateDashboardFacts(findings, assessment) {
+  const list = Array.isArray(findings) ? findings : [];
+  const kept = [], dropped = [];
+  for (const f of list) {
+    if (!f || !LAMP_FACT_TYPES.has(f.type)) { kept.push(f); continue; }
+    const ev = Array.isArray(f.evidence) ? f.evidence.filter(e => e && typeof e === 'object') : [];
+    const isArchivePhoto = e => ARCHIVE_PHOTO_REF_RE.test(String(e.ref || '')) || ARCHIVE_PHOTO_REF_RE.test(String(e.description || ''));
+    const photoOnly = ev.length > 0 && ev.every(e => PHOTO_SOURCES.has(e.source) || isArchivePhoto(e));
+    const text = ev.map(e => (e.description || '') + ' ' + (e.ref || '')).join(' ');
+    const lampBased = f.type === 'CRITICAL_WARNING_LIGHTS' || LAMP_EVIDENCE_RE.test(text);
+    if (!photoOnly || !lampBased) { kept.push(f); continue; }
+    const currentPhotoOnly = ev.every(e => PHOTO_SOURCES.has(e.source) && !isArchivePhoto(e));
+    if (currentPhotoOnly && !assessment) { kept.push(f); continue; }
+    const a = assessment || { active: [], explicit_fault_messages: [], state: 'unknown' };
+    if (!currentPhotoOnly) { dropped.push({ type: f.type, event_id: f.event_id || null, reason: 'archive_lamp_without_operating_state' }); continue; }
+    if (a.active.length || a.explicit_fault_messages.length) { kept.push(f); continue; }
+    dropped.push({ type: f.type, event_id: f.event_id || null, reason: a.self_test.length ? 'self_test_lamp_only' : 'lamp_without_operating_state', state: a.state });
+  }
+  return { findings: kept, dropped };
 }
 
 
@@ -638,6 +777,9 @@ export function summarizeCurrentVisual(cv, stats) {
     odometer: o ? { value: o.value, unit: o.unit, gallery_index: o.gallery_index, confidence: o.confidence } : null,
     engine_state: cv.dashboard ? cv.dashboard.engine_state : 'unknown',
     warning_lights: cv.dashboard ? cv.dashboard.warning_lights.map(w => w.light) : [],
+    dashboard_assessment: cv.dashboard && cv.dashboard.assessment
+      ? { state: cv.dashboard.assessment.state, active: cv.dashboard.assessment.active, self_test: cv.dashboard.assessment.self_test, unconfirmed: cv.dashboard.assessment.unconfirmed, contextual: cv.dashboard.assessment.contextual, explicit_fault_messages: cv.dashboard.assessment.explicit_fault_messages }
+      : null,
     messages: cv.dashboard ? cv.dashboard.readable_messages.length : 0,
     modifications: { total: cv.modification_candidates.length, confirmed: cv.modification_candidates.filter(m => m.confirmed).length },
     gate: stats || null,
@@ -759,11 +901,15 @@ export function compactCurrentVisual(cv, { includeMinor = false } = {}) {
     condition_findings: findings,
     equipment_visual: equipment,
     confirmed_modifications: mods,
-    dashboard: {
-      engine_state: d.engine_state || 'unknown',
-      warning_lights: (d.warning_lights || []).map(w => ({ light: w.light, photo: w.gallery_index + 1, sign: w.sign, confidence: w.confidence })),
-      readable_messages: (d.readable_messages || []).map(m => ({ text: m.text, photo: m.gallery_index + 1 })),
-    },
+    dashboard: (() => {
+      const a = d.assessment || interpretDashboard(d);
+      return {
+        engine_state: a.state || d.engine_state || 'unknown',
+        warning_lights: (d.warning_lights || []).map(w => ({ light: w.light, photo: w.gallery_index + 1, sign: w.sign, confidence: w.confidence,
+          interpretation: (a.lights.find(l => l.frames.includes(w.gallery_index) && l.light === w.light) || {}).interpretation || interpretLight(w.light, a.state) })),
+        readable_messages: (d.readable_messages || []).map(m => ({ text: m.text, photo: m.gallery_index + 1, kind: messageKind(m.text) })),
+      };
+    })(),
   };
   return out;
 }
