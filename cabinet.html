@@ -958,12 +958,24 @@ if (typeof supabase === 'undefined' || !cfg.url || !cfg.anon) {
  if (ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
  try { history.replaceState(Object.assign({}, history.state || {}, { reportsScroll: window.scrollY }), ''); } catch (e) {}
  }
+ /* відновлення одноразове: showList() перезапускається на кожну подію
+    входу з сесією (supabase-js шле SIGNED_IN, коли інша вкладка, напр.
+    звіт, відкритий у новій вкладці, створює клієнт, і коли вкладка знову
+    видима), і без цього стара позиція поверталась би посеред прокрутки.
+    Перший рендер списку споживає намір (навіть порожній, щоб пізніший
+    повторний рендер не стрибнув із запізненням): прапорець на життя
+    сторінки і позиція стирається зі стану запису історії */
+ let reportsScrollDone = false;
  function reportsScrollRestore(box) {
+ if (reportsScrollDone) return;
+ reportsScrollDone = true;
  const y = history.state && history.state.reportsScroll;
- if (typeof y !== 'number' || !(y > 0)) return;
+ if (history.state && 'reportsScroll' in history.state) {
+   try { const st = Object.assign({}, history.state); delete st.reportsScroll; history.replaceState(st, ''); } catch (e) {}
+ }
+ if (typeof y !== 'number' || !(y > 0) || !box.querySelector('.rcard')) return;
  const nav = (performance.getEntriesByType && performance.getEntriesByType('navigation')[0]) || null;
  if (!nav || (nav.type !== 'back_forward' && nav.type !== 'reload')) return;
- if (!box.querySelector('.rcard')) return;
  window.scrollTo(0, y);
  }
  async function showList() {

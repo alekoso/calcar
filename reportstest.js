@@ -136,6 +136,29 @@ else {
     /* звичайний перехід на Звіти з чужим станом не відновлює */
     r = mk({ navType: 'navigate' }); r.st.state = { reportsScroll: 840 }; r.ctx.restore(r.box);
     if (r.st.scrolled !== null) errs.push('не history-навігація відновлює прокрутку');
+    /* відновлення одноразове на життя сторінки: showList() перезапускається на
+       кожну подію входу (supabase-js шле SIGNED_IN, коли звіт відкривають у
+       новій вкладці або вкладка знову видима), і повторний рендер не має
+       повертати стару позицію посеред прокрутки людини */
+    r = mk(); r.st.state = { reportsScroll: 1500, other: 1 }; r.ctx.restore(r.box);
+    if (r.st.scrolled !== 1500) errs.push('повернення назад не відновлює прокрутку');
+    if (!r.st.state || 'reportsScroll' in r.st.state || r.st.state.other !== 1) errs.push('відновлена позиція лишилась у стані запису історії (reload чи наступний рендер повернуть її знову) або зачеплено чужий стан');
+    r.st.scrolled = null; r.ctx.restore(r.box); r.ctx.restore(r.box);
+    if (r.st.scrolled !== null) errs.push('повторний рендер списку знову відновлює прокрутку');
+    /* навіть якщо стан запису ще раз отримав позицію, на цьому житті сторінки вона не застосовується */
+    r.st.state = { reportsScroll: 1500 }; r.ctx.restore(r.box);
+    if (r.st.scrolled !== null) errs.push('відновлення спрацювало вдруге на тому самому житті сторінки');
+    /* перший рендер без карток теж споживає намір: картки, що зʼявились пізніше
+       (повторний showList), не дають запізнілого стрибка */
+    r = mk({ cards: false }); r.st.state = { reportsScroll: 900 }; r.ctx.restore(r.box);
+    r.st.cards = true; r.ctx.restore(r.box);
+    if (r.st.scrolled !== null) errs.push('пізніший рендер із картками відновив прокрутку із запізненням');
+    /* звичайний перехід з чужою позицією: не прокручує і стирає її */
+    r = mk({ navType: 'navigate' }); r.st.state = { reportsScroll: 840 }; r.ctx.restore(r.box);
+    if (r.st.scrolled !== null || 'reportsScroll' in r.st.state) errs.push('не history-навігація лишає чужу позицію в стані');
+    /* у межах сторінки відновлення викликається лише з showList і лише одноразовою функцією */
+    if ((s.match(/reportsScrollRestore\(/g) || []).length !== 2) errs.push('відновлення прокрутки викликається ще з якогось місця');
+    if (/addEventListener\('(pageshow|focus|visibilitychange|popstate)'/.test(s)) errs.push('зʼявився обробник pageshow/focus/visibility/popstate: перевір, чи не відновлює він прокрутку');
     if (/localStorage[^\n]*[Ss]croll/.test(s)) errs.push('прокрутка списку зберігається у localStorage');
   }
 }
