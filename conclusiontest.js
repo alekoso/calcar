@@ -105,7 +105,7 @@ const REPORT = {
     ok(CONCLUSION_RULES.includes(k), 'у правилах висновку нема: ' + k);
   }
   ok(!/МАКСИМУМ \d+ символів|рівно \d+ речен|один плюс|один мінус/i.test(CONCLUSION_RULES), 'у правилах лишилась жорстка стара структура');
-  ok(!/[А-Яа-яІіЇїЄєҐґ]/.test(CONCLUSION_RULES) && fcMod.CONCLUSION_VERSION === 'fc-v2.3', 'production rules are not the English fc-v2.3');
+  ok(!/[А-Яа-яІіЇїЄєҐґ]/.test(CONCLUSION_RULES) && fcMod.CONCLUSION_VERSION === 'fc-v2.4', 'production rules are not the English fc-v2.4');
   /* fc-v2.3: powertrain step weighs a genuine strength like a weakness (bench A/B 2026-10-03) */
   ok(CONCLUSION_RULES.includes('4. Powertrain step (always do this before drafting, silently): look at the relevant powertrain of this exact vehicle.')
     && CONCLUSION_RULES.includes('consider both sides: whether one has a well-established strength that genuinely matters for ownership, and whether one has a well-established weakness that materially affects this purchase.')

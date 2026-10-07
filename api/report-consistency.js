@@ -33,10 +33,12 @@
 
    Not a Vercel function: imported by api/check.js. */
 
-export const CONSISTENCY_VERSION = 'rc-v1';
-export const CONSISTENCY_DOMAINS = ['fuel', 'forced_induction', 'drivetrain', 'transmission', 'identity_conflict', 'airbags', 'accident', 'mileage', 'dashboard'];
+export const CONSISTENCY_VERSION = 'rc-v2';
+export const CONSISTENCY_DOMAINS = ['fuel', 'forced_induction', 'drivetrain', 'transmission', 'version', 'power_hp', 'identity_conflict', 'identity_unknown', 'airbags', 'accident', 'mileage', 'dashboard'];
 /* share of Final Conclusion sentences that may be removed before the block is hidden */
 export const FC_MAX_REMOVED_SHARE = 0.25;
+
+import { powerValues, powerEquivalent } from './vehicle-spec.js';
 
 const isObj = v => !!v && typeof v === 'object' && !Array.isArray(v);
 const arr = v => (Array.isArray(v) ? v : []);
@@ -76,9 +78,14 @@ export function canonicalFacts(report) {
   const dashA = isObj(cvs.current_visual) && isObj(cvs.current_visual.dashboard) && isObj(cvs.current_visual.dashboard.assessment)
     ? cvs.current_visual.dashboard.assessment
     : (isObj(cvs.summary) && isObj(cvs.summary.dashboard_assessment) ? cvs.summary.dashboard_assessment : null);
+  const cands = f => (vs && isObj(vs.fields[f]) && Array.isArray(vs.fields[f].candidates) ? vs.fields[f].candidates.map(c => c.raw || c.value).filter(Boolean) : []);
   return {
     fuel: field('fuel'), forced_induction: field('forced_induction'), drivetrain: field('drivetrain'), transmission: field('transmission'),
+    version: { ...field('version'), candidates: cands('version') },
+    power_hp: { ...field('power_hp'), candidates: cands('power_hp') },
     identity_conflicts: vs ? arr(vs.conflicts) : [],
+    /* genuinely unknown: no trusted source, no conflict; downstream may not infer these */
+    identity_unknown: vs ? arr(vs.unknown) : [],
     accident, airbags,
     mileage: {
       /* applied = odometer decreased between dated records (Score fact); clean = checked, no decrease */
@@ -175,6 +182,8 @@ const MILEAGE_CONFIRMED = rx("(?:пробіг|пробег|mileage|odometer)[^.]
 const LAMP_ON = rx("горить|горит|світиться|светится|увімкнен\\w*|включ[её]н\\w*|активн\\w*|\\bon\\b|\\blit\\b|illuminated|warning light|індикатор несправност\\w*|индикатор неисправност\\w*|помилк\\w+ (?:двигуна|подушок|abs)|ошибк\\w+ (?:двигателя|подушек|abs)|check engine|\\babs\\b|\\bsrs\\b|airbag (?:light|lamp|warning)");
 const LAMP_WORD = rx("лампа|лампочк\\w*|індикатор\\w*|индикатор\\w*|warning light|check engine|\\bsrs\\b|\\babs\\b|контрольн\\w+ (?:лампа|индикатор)|сигнал\\w+ лампа");
 const MAINT_REMINDER = rx("maint|<BТОB>|service (?:reminder|due)|обслуговуванн\\w*|обслуживани\\w*|нагадуванн\\w*|напоминани\\w*");
+const VERSION_UNKNOWN = rx("(?:точн\\w+ |exact )?(?:верс\\w+|комплектац\\w+|version|trim)[^.]{0,40}(?:не встановлен\\w*|не установлен\\w*|невідом\\w*|неизвест\\w*|не підтверджен\\w*|не подтвержд\\w*|не визначен\\w*|не определен\\w*|не з[’'ʼ]ясован\\w*|не выяснен\\w*|not established|unknown|not confirmed|unclear|uncertain|not determined)|(?:не встановлен\\w*|не установлен\\w*|невідом\\w*|неизвест\\w*)[^.]{0,20}(?:верс\\w+|комплектац\\w+|version|trim)");
+const VERSION_ASSERT = rx("(?:це|это|this is|is a|is the|саме|именно|версі\\w+|верси\\w+|version|комплектац\\w+|trim|у |в |for the |на )");
 /* an instruction to check something is not a statement about the car's state */
 const INSTRUCTION = rx("^(?:перевір\\w*|провер\\w*|check|verify|inspect|оглян\\w*|осмотр\\w*|з[’'ʼ]ясу\\w*|выясн\\w*|переконат\\w*|убедит\\w*|запит\\w*|запрос\\w*|попрос\\w*)|(?:перевірити|перевірте|проверить|проверьте|to check|to verify|to inspect|варто перевірити|стоит проверить|слід перевірити|необхідно перевірити|нужно проверить|потрібно перевірити)");
 const LAMP_EXEMPT = rx("самоперевір\\w*|самопроверк\\w*|self-?test|тест ламп|до запуску|до пуска|before start|контекстн\\w*");
@@ -202,6 +211,36 @@ export function sentenceViolations(sentence, facts, { section = '' } = {}) {
     }
   }
   const instruction = INSTRUCTION.test(s);
+  /* version: an established version may not be called unknown; while the
+     sources conflict, no candidate may be asserted */
+  /* "not established" is itself the claim here, so the reported-speech exemption does not apply */
+  if (facts.version && facts.version.trusted && VERSION_UNKNOWN.test(s)) out.push({ domain: 'version', field: 'version', found: 'unknown', canonical: String(facts.version.value) });
+  if (facts.version && facts.version.conflict && !reported && !hedged) {
+    for (const cand of facts.version.candidates) {
+      const r = new RegExp('(?<![a-z0-9а-яіїєґё])' + String(cand).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![a-z0-9а-яіїєґё])', 'i');
+      if (String(cand).length >= 2 && r.test(s) && VERSION_ASSERT.test(s)) { out.push({ domain: 'identity_conflict', field: 'version', found: String(cand), canonical: 'conflict' }); break; }
+    }
+  }
+  /* power: figures are normalised (kW, hp, PS) before comparing; a figure
+     that differs from the established power, or any figure while the sources
+     conflict, is a violation */
+  if (facts.power_hp && (facts.power_hp.trusted || facts.power_hp.conflict) && !reported) {
+    const figs = powerValues(s);
+    if (figs.length) {
+      if (facts.power_hp.conflict) out.push({ domain: 'identity_conflict', field: 'power_hp', found: figs.join('|'), canonical: 'conflict' });
+      else for (const f of figs) if (!powerEquivalent(f, facts.power_hp.value)) { out.push({ domain: 'power_hp', field: 'power_hp', found: String(f), canonical: String(facts.power_hp.value) }); break; }
+    }
+  }
+  /* unknown identity: no source gives fuel, drivetrain or gearbox type, so a
+     confident claim can only come from generic model knowledge */
+  if (!reported && !hedged && facts.identity_unknown.length) {
+    const claims = sentenceClaims(s);
+    for (const domain of ['fuel', 'drivetrain', 'transmission']) {
+      if (facts.identity_unknown.includes(domain) && claims[domain] && !(domain === 'transmission' && [...claims[domain]].every(v => AUTO_FAMILY.has(v)) && facts.transmission.value)) {
+        out.push({ domain: 'identity_unknown', field: domain, found: [...claims[domain]].join('|'), canonical: 'unknown' });
+      }
+    }
+  }
   /* airbags: only against an established state; an instruction to check them is not a claim */
   if (facts.airbags === true && !instruction && AIRBAG_NOT.test(s)) out.push({ domain: 'airbags', field: 'airbags', found: 'not_deployed', canonical: 'deployed' });
   if (facts.airbags === false && !hedged && !reported && !instruction && AIRBAG_DEPLOYED.test(s) && !AIRBAG_NOT.test(s)) out.push({ domain: 'airbags', field: 'airbags', found: 'deployed', canonical: 'not_deployed' });

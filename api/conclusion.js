@@ -13,7 +13,7 @@
    Файл не є Vercel-функцією (default export відсутній): його імпортують
    api/check.js і benchmark-ендпоінт api/conclusion-bench.js. */
 
-export const CONCLUSION_VERSION = 'fc-v2.3';
+export const CONCLUSION_VERSION = 'fc-v2.4';
 /* runaway-захист, не продуктовий таргет: довжину визначає складність авто */
 export const CONCLUSION_LIMITS = { headline: 160, body: 7000, paragraphs: 8 };
 export const CONCLUSION_TIMEOUT_MS = 150000;
@@ -221,14 +221,24 @@ export function buildConclusionContext(report) {
      висновок не називав компресорний мотор турбо і не робив з конфлікту
      ідентичності обман продавця */
   const vs = isObj(meta.vehicle_spec) && isObj(meta.vehicle_spec.fields) ? meta.vehicle_spec : null;
-  const vsv = f => (vs && isObj(vs.fields[f]) && !vs.fields[f].conflict ? vs.fields[f].value : null);
+  const vsv = f => (vs && isObj(vs.fields[f]) && !vs.fields[f].conflict && vs.fields[f].strength !== 'weak' ? vs.fields[f].value : null);
+  const tt = vs && isObj(vs.fields.transmission_type) ? vs.fields.transmission_type : null;
   const ctx = {
     vehicle: {
       title: str(v.title, 120), trim: str(v.trim, 80), year: v.year || null, generation: str(v.generation, 40),
       engine: str(v.engine, 120), transmission: str(v.transmission, 60), drive: str(v.drive, 40), fuel: v.fuel || null,
+      /* canonical identity status (vehicle-spec): the conclusion consumes it
+         and never re-derives version, power, fuel, gearbox or drivetrain */
+      version: str(vsv('version'), 80),
+      power_hp: num(vsv('power_hp')),
+      electrification: vsv('electrification'),
+      production_year: num(vsv('production_year')),
+      transmission_exact: tt && tt.exact ? tt.value : null,
+      transmission_exact_candidates: tt && !tt.exact && Array.isArray(tt.candidates) && tt.candidates.length > 1 ? tt.candidates.map(c => c.value) : null,
       forced_induction: vsv('forced_induction'), displacement_l: num(vsv('displacement_l')),
       model_year: num(vsv('model_year')),
       identity_conflicts: vs && Array.isArray(vs.conflicts) && vs.conflicts.length ? vs.conflicts : null,
+      identity_unknown: vs && Array.isArray(vs.unknown) && vs.unknown.length ? vs.unknown : null,
       vin_decoder_incomplete: vs && vs.decoder && vs.decoder.present && !vs.decoder.strong ? true : null,
       age_years: num(sb.vehicle_age && sb.vehicle_age.age_years) !== null ? sb.vehicle_age.age_years : num(mc.age_years),
       listing_country: meta.country || null, marketplace: meta.domain || null,
@@ -377,7 +387,7 @@ Do not invent a weakness just because this step exists. If no sufficiently certa
 Strengths are weighed the same way. If the exact resolved engine, transmission, battery or drive unit has a genuinely well-established strength that matters for ownership (for example a reputation for durability, a simple proven design, or strong efficiency for its class), say so plainly in a clause or a sentence. This matters most when you also name its known weak point: a well-regarded powertrain must not be represented solely by its one weakness. Ground a strength exactly like a weakness: model knowledge already present in the report first, then only highly established general knowledge about this exact unit. Do not invent praise, do not hand every powertrain a compliment, and do not require both a strength and a weakness in every conclusion: if neither is material, say nothing about the powertrain. This step does not make the conclusion an engine and gearbox checklist and must not make it longer by more than a sentence.
 Be concrete. The form is: for this engine, X is a known weak point, so before purchase it is worth checking Y. Do not replace a known specific risk with vague phrases such as "the V8 may be expensive to repair" or "complex components can require large expenses" when a materially useful exact weakness is confidently known.
 Do not introduce service campaigns, TSBs, recall-like technical details or campaign numbers unless their applicability to the exact resolved engine/version/year is explicitly supported by the report context or MI. If applicability is uncertain, omit them.
-Vehicle identity: vehicle.forced_induction is canonical (a supercharged engine is never called turbo and vice versa; when it is absent, do not name the induction type). Fields listed in vehicle.identity_conflicts are not established: do not state them as facts and never present them as a seller discrepancy or a defect; an incomplete VIN decoder (vehicle.vin_decoder_incomplete) is a data limitation, not evidence about the car. Always distinguish a known weakness of this version from a confirmed defect of this exact vehicle. About this specimen, state only what is in the context facts. Carry the distinction in the wording itself ("is known for", "is a known weak point"), without separate disclaimer sentences such as "these are risks of the version, not established faults of this car".
+Vehicle identity: the vehicle block carries the canonical identity status computed by code, and the conclusion consumes it rather than re-deriving identity. vehicle.forced_induction is canonical (a supercharged engine is never called turbo and vice versa; when it is absent, do not name the induction type). vehicle.version, vehicle.power_hp, vehicle.electrification, vehicle.transmission_exact and vehicle.model_year / vehicle.production_year, when present, are established: do not call an established version unknown, and do not quote a different power figure. Fields listed in vehicle.identity_conflicts are not established: do not state any candidate as a fact (no "163 hp" when power is in conflict), and never present the conflict as a seller discrepancy or a defect. Fields listed in vehicle.identity_unknown are unknown: do not infer them from generic model knowledge (no drivetrain, gearbox type or fuel "typical for this model"). vehicle.transmission_exact_candidates means the gearbox family is known but the exact type is not: say so if it matters, never call the candidates incompatible. A model year that differs from the production or registration year is normal and is never a discrepancy. An incomplete VIN decoder (vehicle.vin_decoder_incomplete) is a data limitation, not evidence about the car. Always distinguish a known weakness of this version from a confirmed defect of this exact vehicle. About this specimen, state only what is in the context facts. Carry the distinction in the wording itself ("is known for", "is a known weak point"), without separate disclaimer sentences such as "these are risks of the version, not established faults of this car".
 Checks. Practical inspection advice is welcome when it is tied to the biggest risk of this car. Say what the check will show for this car; add why it pays for itself only when that is specific to this car, not as a generic remark that inspections are cheaper than repairs. This means one or two checks in the whole text, not a checklist: the full list of checks lives in another section of the report. Do not end every paragraph with advice to check something.
 Price. Reason about it; do not just state a percentage. If the marketplace average is a useful enough comparison for this car, simply use it. Explain limitations of the marketplace average only when they materially change the interpretation of this vehicle's price, for example a top, rare or high-performance version compared against an average dominated by ordinary versions. Do not automatically mention that the average mixes versions, trims or conditions. Do not ignore a large difference: condition, version and history have to explain it. A clearly lower price also has an explanation in the history or condition. A small difference deserves one sentence or none. Do not invent market numbers.
 Price has no fixed place. It may appear early, in the middle, combined with the accident or the history it explains, combined with resale, or without a paragraph of its own when it is not central to this car. It does not have to be the last paragraph.

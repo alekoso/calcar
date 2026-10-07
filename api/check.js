@@ -56,7 +56,7 @@ import { fetchMiEquipmentCandidates, candidatePromptBlock, visionHintBlock, supp
    у контекст поточного звіту, придатні знахідки у конвеєр MI */
 import { startCheckResearch, researchBlock, researchMeta, guardModelNotes } from './mi-research.js';
 import { startValueResearch, buildValueCurve, composeMarketValue } from './value.js';
-import { buildVehicleSpec, reconcileVehicleSpec, trustedDecoderView, vehicleSpecPromptBlock, conflictNotes, identityConflictItem, powertrainClassFromSpec, publicSpec } from './vehicle-spec.js';
+import { buildVehicleSpec, reconcileVehicleSpec, trustedDecoderView, vehicleSpecPromptBlock, conflictNotes, identityConflictItem, identityFieldOf, syncHeaderWithSpec, powertrainClassFromSpec, publicSpec } from './vehicle-spec.js';
 
 /* ============================================================
    CalCar Check, рушій v1: посилання на оголошення -> звіт.
@@ -3467,10 +3467,11 @@ async function runCheck(req, res, job) {
        продавця. Невідоме лишається невідомим */
     try {
       vehicleSpec = reconcileVehicleSpec(spec0, parsed.vehicle, { nhtsa, listing });
-      const HEADER_FIELD = { fuel: 'fuel', drivetrain: 'drive', transmission: 'transmission', version: 'trim', model_year: 'model_year', displacement_l: 'engine', forced_induction: 'engine' };
-      if (parsed.vehicle && typeof parsed.vehicle === 'object') {
-        for (const f of vehicleSpec.conflicts) if (HEADER_FIELD[f]) parsed.vehicle[HEADER_FIELD[f]] = null;
-      }
+      /* the header follows the passport in every status: a resolved field is
+         written into it (fuel of a mild hybrid, the version the sources agree
+         on), a field in conflict leaves it, a power conflict leaves the engine
+         line without a figure */
+      vehicleSpec.header_sync = syncHeaderWithSpec(parsed.vehicle, vehicleSpec, { driveLabel: v => localizeDrive(v, lang) });
       const notes = conflictNotes(vehicleSpec, lang);
       if (notes.length) parsed.data_notes = [String(parsed.data_notes || '').trim(), ...notes].filter(Boolean).join(' ');
       const dropped = [];
@@ -3478,13 +3479,19 @@ async function runCheck(req, res, job) {
         if (!Array.isArray(parsed[k])) continue;
         parsed[k] = parsed[k].filter(it => {
           const hit = identityConflictItem(it, vehicleSpec);
-          if (!hit) return true;
-          dropped.push({ section: k, field: hit.field, reason: hit.reason, title: String((it && (it.title || it.text)) || '').slice(0, 90) });
-          return false;
+          if (hit) { dropped.push({ section: k, field: hit.field, reason: hit.reason, title: String((it && (it.title || it.text)) || '').slice(0, 90) }); return false; }
+          /* a "discrepancy" about a technical identity field is the passport's
+             decision in every status (resolved, conflict or unknown); it is
+             never a claim against the seller */
+          if (k === 'discrepancies') {
+            const f = identityFieldOf(it);
+            if (f) { dropped.push({ section: k, field: f, reason: 'identity_field', title: String((it && it.title) || '').slice(0, 90) }); return false; }
+          }
+          return true;
         });
       }
       vehicleSpec.dropped = dropped;
-      if (dropped.length || vehicleSpec.conflicts.length) console.log('[vehicle-spec]', JSON.stringify({ conflicts: vehicleSpec.conflicts, decoder_strong: vehicleSpec.decoder.strong, dropped }));
+      if (dropped.length || vehicleSpec.conflicts.length || vehicleSpec.header_sync.length) console.log('[vehicle-spec]', JSON.stringify({ conflicts: vehicleSpec.conflicts, decoder_strong: vehicleSpec.decoder.strong, dropped, header_sync: vehicleSpec.header_sync, transmission_exact: vehicleSpec.transmission_type ? vehicleSpec.transmission_type.exact : null }));
     } catch (e) { console.log('[vehicle-spec]', JSON.stringify({ op: 'reconcile', error: String((e && e.message) || e).slice(0, 160) })); }
 
     /* історичний візуал: валідація ДО скорингу, бо v3 читає його
