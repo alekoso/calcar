@@ -51,7 +51,7 @@ const PERSONAL_MARKERS = ['30 000', '50 000', '30000', '50000', 'Бюджет д
   ok(!/buyer_context|recent_reports|sanitizeBuyerContext|selectRecentReports/.test(src.replace(/buyer_context_used/g, '')), 'check.js досі знає про особистий контекст');
   ok(/decisionContext = objectiveDecisionContext\(\{ mileage \}\);/.test(src), 'контекст рішення будується не через обʼєктивну межу');
   /* сторінка Check навіть не надсилає особистого: лише адреса і мова */
-  ok(/body: JSON\.stringify\(\{ url, lang: window\.calcarLang\(\) \}\)/.test(home), 'check.html шле в /api/check не лише адресу і мову');
+  ok(/body: JSON\.stringify\(\{ url, lang: reqLang \}\)/.test(home) && /const reqLang = window\.calcarLang\(\);/.test(home), 'check.html шле в /api/check не лише адресу і мову');
   ok(!/user_memory|buyer_context|recent_reports|collectDecisionContext/.test(home), 'check.html досі збирає особистий контекст для звіту');
   /* межа ігнорує все, крім обʼєктивних фактів, навіть якщо особисте хтось підсуне */
   const mileage = C.buildMileageContext({ odometer_km: 120000, age_months: 96, powertrain: 'petrol', historical_points: [{ km: 90000, date: '2023-05-01', source: 'auction_record' }] });

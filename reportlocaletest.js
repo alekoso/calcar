@@ -85,10 +85,94 @@ const NAME = { ru: 'російською', ua: 'українською', en: 'а
 
   /* ---- 3. сторінка: локаль фіксується на старті ---- */
   const ch = fs.readFileSync('check.html', 'utf8');
-  ok(/body: JSON\.stringify\(\{ url, lang: window\.calcarLang\(\) \}\)/.test(ch), 'check.html: старт Check не передає мову інтерфейсу');
+  ok(/const reqLang = window\.calcarLang\(\);/.test(ch) && /body: JSON\.stringify\(\{ url, lang: reqLang \}\)/.test(ch), 'check.html: старт Check не передає мову інтерфейсу');
+  ok(/pendingSet\(\{ token, url, at: Date\.now\(\), lang: reqLang \}\);/.test(ch), 'check.html: задача, що триває, не памʼятає мову, якою її запущено');
   ok((ch.match(/fetch\('\/api\/check',/g) || []).length === 1, 'check.html: Check стартує не з одного місця');
   const resume = ch.slice(ch.indexOf('async function resumePending('), ch.indexOf('async function safeJson('));
   ok(!/\/api\/check'/.test(resume), 'check.html: відновлення аналізу перезапускає Check з новою мовою');
+
+  /* ---- 3b. поведінка сторінки: мова звіту = мова інтерфейсу в момент старту ----
+     Регресія: Check запущено мовою з браузера (UA), людина явно перемкнула
+     мову (меню перезавантажує сторінку), а resumePending() підхопив стару
+     UA-задачу, і RU-користувач отримав UA-звіт з плашкою перекладу.
+     Мову оголошення і країну майданчика сторінка не дивиться взагалі. */
+  {
+    const fnSrc = name => { const i = ch.indexOf('async function ' + name + '('); return ch.slice(i, ch.indexOf('\n}\n', i) + 3); };
+    const helpers = ch.slice(ch.indexOf("const PENDING_KEY = 'calcar_pending_check';"), ch.indexOf('function pendingSet(')) + ch.slice(ch.indexOf('function pendingSet('), ch.indexOf('\n', ch.indexOf('function pendingSet(')));
+    const LISTINGS = {
+      ua: 'https://auto.ria.com/uk/auto_volkswagen_touareg_38000001.html',
+      ru: 'https://www.avito.ru/moskva/avtomobili/bmw_x5_2020_1234567890',
+      de: 'https://suchen.mobile.de/fahrzeuge/details.html?id=412345678',
+      pl: 'https://www.otomoto.pl/osobowe/oferta/audi-a6-ID6Gabc1.html',
+    };
+    function sandbox(uiLang, pending) {
+      const store = {}, calls = { bodies: [], timers: 0, polled: [], href: null };
+      if (pending) store.calcar_pending_check = JSON.stringify(pending);
+      const ctx = vm.createContext({
+        window: { calcarLang: () => uiLang, __forceReanalyze: false },
+        localStorage: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: k => { delete store[k]; } },
+        input: { value: '', blur() {} }, btn: { disabled: false }, statusEl: { className: '' }, location: {},
+        document: { getElementById: () => null },
+        t: s => s, setStatus() {}, esc: s => s, marketplaceOf: () => 'x', checkIndex: () => [],
+        loadingStart: () => 1, loadingFinish: async () => {}, loadingError() {}, emailBoxShow() {}, emailBoxHide() {},
+        trackCompleted() {}, findExistingCheck: async () => { calls.existing = true; return null; },
+        fetch: async (u, o) => { calls.bodies.push(JSON.parse(o.body)); return { ok: true, status: 202, json: async () => ({ job: 'tok-new-' + calls.bodies.length }) }; },
+        safeJson: r => r.json(),
+        pollJob: async tok => { calls.polled.push(tok); return { _meta: { lang: JSON.parse(store.calcar_pending_check || '{}').lang } }; },
+        finalizeReport: async (d, tok) => '/check/r/x/' + tok,
+        setTimeout: f => { calls.timers++; f(); },
+      });
+      vm.runInContext(helpers + '\n' + fnSrc('run') + '\n' + fnSrc('resumePending'), ctx);
+      return { ctx, store, calls };
+    }
+    const settle = () => new Promise(r => setImmediate(r));
+
+    /* старт: мова запиту = мова інтерфейсу, незалежно від мови/країни оголошення */
+    for (const [ui, listing] of [['ru', 'ua'], ['ua', 'ru'], ['en', 'de'], ['en', 'ua'], ['en', 'pl'], ['ru', 'de']]) {
+      const sb = sandbox(ui, null);
+      sb.ctx.input.value = LISTINGS[listing];
+      await sb.ctx.run();
+      const pj = JSON.parse(sb.store.calcar_pending_check || '{}');
+      ok(sb.calls.bodies.length === 1 && sb.calls.bodies[0].lang === ui, 'UI ' + ui + ' + оголошення ' + listing + ': Check стартував мовою ' + (sb.calls.bodies[0] || {}).lang);
+      ok(pj.lang === ui, 'UI ' + ui + ' + оголошення ' + listing + ': задача збережена без мови інтерфейсу');
+      ok(L.resolveLocale(sb.calls.bodies[0] && sb.calls.bodies[0].lang) === ui, 'UI ' + ui + ': сервер привів мову запиту до іншої');
+      ok(sb.ctx.location.href === '/check/r/x/tok-new-1', 'UI ' + ui + ': після старту не відкрито новий звіт');
+    }
+
+    /* відновлення тією самою мовою: стара задача, без нового Check */
+    for (const l of LANGS) {
+      const sb = sandbox(l, { token: 'tok-old', url: LISTINGS.ua, at: Date.now(), lang: l });
+      ok(await sb.ctx.resumePending() === true, l + ': задача тією самою мовою не відновилась');
+      ok(sb.calls.bodies.length === 0 && sb.calls.polled[0] === 'tok-old' && sb.ctx.location.href === '/check/r/x/tok-old', l + ': задача тією самою мовою перезапущена замість відновлення');
+    }
+
+    /* явна зміна мови між стартом і відновленням: нова задача мовою інтерфейсу */
+    for (const [was, now] of [['ua', 'ru'], ['ru', 'ua'], ['ua', 'en'], ['en', 'ru']]) {
+      const sb = sandbox(now, { token: 'tok-old', url: LISTINGS.ua, at: Date.now(), lang: was });
+      ok(await sb.ctx.resumePending() === true, was + '->' + now + ': сторінка не взяла задачу на себе');
+      await settle(); await settle();
+      ok(!sb.calls.polled.includes('tok-old'), was + '->' + now + ': підхоплено стару задачу мовою ' + was);
+      ok(sb.calls.timers === 1 && sb.calls.bodies.length === 1 && sb.calls.bodies[0].lang === now && sb.calls.bodies[0].url === LISTINGS.ua, was + '->' + now + ': новий Check не стартував мовою інтерфейсу');
+      ok(!sb.calls.existing, was + '->' + now + ': перезапуск зупинився на "вже перевіряв"');
+      ok(JSON.parse(sb.store.calcar_pending_check || '{}').lang === now && JSON.parse(sb.store.calcar_pending_check || '{}').token === 'tok-new-1', was + '->' + now + ': у сховищі лишилась стара задача');
+      ok(sb.ctx.location.href === '/check/r/x/tok-new-1', was + '->' + now + ': відкрито не новий звіт');
+    }
+
+    /* старі записи без мови (до виправлення): відновлюються як раніше */
+    {
+      const sb = sandbox('ru', { token: 'tok-legacy', url: LISTINGS.ua, at: Date.now() });
+      await sb.ctx.resumePending();
+      ok(sb.calls.bodies.length === 0 && sb.calls.polled[0] === 'tok-legacy', 'запис без мови перезапущено замість відновлення');
+    }
+    /* прострочена задача: нічого не відновлюється і не стартує */
+    {
+      const sb = sandbox('ru', { token: 'tok-stale', url: LISTINGS.ua, at: Date.now() - 21 * 60 * 1000, lang: 'ua' });
+      ok(await sb.ctx.resumePending() === false && sb.calls.bodies.length === 0 && sb.calls.polled.length === 0 && !sb.store.calcar_pending_check, 'прострочена задача відновилась або перезапустилась');
+    }
+    /* сервер: мова лише з запиту; ні визначення мови тексту, ні країни майданчика */
+    ok(!/franc|langdetect|detectLang|guessLang|detectLanguage/i.test(src), 'check.js: зʼявилось визначення мови з тексту оголошення');
+    ok(!/lang\s*[:=][^\n;]*\b(marketplace|country|host)\b/i.test(run), 'runCheck: мова звіту залежить від майданчика чи країни');
+  }
 
   /* ---- 4. звіт: зміна мови інтерфейсу після збереження ---- */
   const rc = fs.readFileSync('result-check.html', 'utf8');

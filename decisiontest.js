@@ -157,7 +157,7 @@ for (const x of ['check.js', 'check-schema.js', 'current-visual.js', 'canonical-
 
     /* ---- сторінка Check: у звіт ідуть лише адреса і мова ---- */
     if (/collectDecisionContext|user_memory|buyer_context|recent_reports|calcar_memory_reports/.test(home)) errs.push('check.html досі збирає особистий контекст для звіту');
-    if (!/body: JSON\.stringify\(\{ url, lang: window\.calcarLang\(\) \}\)/.test(home)) errs.push('check.html шле в /api/check щось крім адреси і мови');
+    if (!/body: JSON\.stringify\(\{ url, lang: reqLang \}\)/.test(home) || !/const reqLang = window\.calcarLang\(\);/.test(home)) errs.push('check.html шле в /api/check щось крім адреси і мови');
     /* перемикач "памʼять у висновках звітів" прибраний: памʼять у висновки не йде взагалі */
     if (/id="memUse"|calcar_memory_reports/.test(cab)) errs.push('кабінет досі обіцяє памʼять у висновках звітів');
 

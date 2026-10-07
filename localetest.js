@@ -186,7 +186,9 @@ const read = f => fs.readFileSync(f, 'utf8');
     ['assistant chat', as, '/api/chat'], ['assistant memory', as, '/api/memory'], ['result-check translate', rc, '/api/check-translate'],
     ['import analyze', im, '/api/analyze'], ['import lot', im, '/api/lot'], ['check', ch, '/api/check'],
   ]) {
-    if (!/lang: (window\.calcarLang\(\)|ui|\(window\.calcarLang \? calcarLang\(\) : 'en'\)|window\.calcarLang \? window\.calcarLang\(\) : 'en')/.test(bodyOf(src, api))) errs.push(name + ': запит без обраної локалі');
+    const body = bodyOf(src, api);
+    const viaReqLang = /lang: reqLang\b/.test(body) && /const reqLang = window\.calcarLang\(\);/.test(body);
+    if (!viaReqLang && !/lang: (window\.calcarLang\(\)|ui|\(window\.calcarLang \? calcarLang\(\) : 'en'\)|window\.calcarLang \? window\.calcarLang\(\) : 'en')/.test(body)) errs.push(name + ': запит без обраної локалі');
   }
   /* чат у звітах живе лише в спільному помічнику: власних запитів у /api/chat там нема */
   for (const [name, src] of [['result-check', rc], ['result', rs]]) if (src.includes("fetch('/api/chat'")) errs.push(name + ': власний запит у /api/chat повз спільний помічник');

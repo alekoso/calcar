@@ -1354,6 +1354,17 @@ async function resumePending(){
   const pj = pendingGet();
   if (!pj) return false;
   if (Date.now() - (pj.at || 0) > 20 * 60 * 1000) { pendingSet(null); return false; }
+  /* мова звіту фіксується в момент старту; якщо людина потім явно змінила
+     мову інтерфейсу (меню перезавантажує сторінку), стару задачу не
+     підхоплюємо: новий Check тим самим посиланням мовою, яку вона обрала.
+     Старі записи без lang підхоплюються як раніше */
+  if (pj.lang && pj.lang !== window.calcarLang() && pj.url) {
+    pendingSet(null);
+    input.value = pj.url;
+    window.__forceReanalyze = true;
+    setTimeout(() => run(), 0);
+    return true;
+  }
   if (pj.url) input.value = pj.url;
   btn.disabled = true;
   statusEl.className = 'hf-status';
@@ -1597,6 +1608,7 @@ async function run() {
   const runStart = Date.now();
   const marketplace = marketplaceOf(url);
   try { if (window.calcar) { const n = window.calcar.nextCheckNumber(checkIndex()); window.calcar.track('check_started', { product: 'check', marketplace, check_number: n }); window.calcar.setPerson({ checks_started: n }); } } catch (e) {}
+  const reqLang = window.calcarLang();
   const rid = loadingStart();
   /* блок листа одразу з індикатором; токен він отримає, щойно відповість сервер */
   let tokenReady = () => {};
@@ -1606,7 +1618,7 @@ async function run() {
     const r = await fetch('/api/check', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ url, lang: window.calcarLang() }),
+      body: JSON.stringify({ url, lang: reqLang }),
     });
     let data = await safeJson(r);
     if (!r.ok || data.error) throw new Error(data.error || t('Server error'));
@@ -1615,7 +1627,7 @@ async function run() {
       /* durable job: токен у localStorage, далі опитування; телефон може
          заблокувати екран, аналіз на сервері від цього не зупиниться */
       token = data.job;
-      pendingSet({ token, url, at: Date.now() });
+      pendingSet({ token, url, at: Date.now(), lang: reqLang });
       tokenReady(token);
       data = await pollJob(token);
     } else {
