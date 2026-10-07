@@ -191,6 +191,8 @@ export const zoneClasses = text => {
 const zonesDisjoint = (a, b) => a.size > 0 && b.size > 0 && [...a].every(k => !b.has(k));
 
 const CONF_RANK = { high: 2, medium: 1 };
+/* суміжні роки одного життєвого циклу удару (ДТП -> лот -> продаж -> вивіз) */
+const DUPLICATE_YEAR_WINDOW = 1;
 const yearsCompatible = (a, b) => a === null || b === null || a === b;
 
 function newEvent(id, year, anchored, basis, confidence) {
@@ -201,6 +203,11 @@ function newEvent(id, year, anchored, basis, confidence) {
     merge_basis: basis ? [...basis] : [],
     merge_confidence: confidence || 'high',
     year,
+    /* звідки рік: auction_sale_date | platform_record | finding_text | null; дати
+       кадрів і фіксацій одометра сюди не потрапляють */
+    year_source: null,
+    /* ідентичність записів площадки, що дали подію: single | exact_duplicate | possibly_same | null */
+    record_identity: null,
     signals: { structural: false, load_bearing: false, cabin_intrusion: false, damage_depth: 'indeterminate', inner_extent: 'none', airbags: false, zones: 0, wheel_displacement: false, cosmetic_only: false, possible_structural: false },
     repair_statuses: [],
     evidence: [],
@@ -248,6 +255,7 @@ export function resolveAccidentEvents(findings, ctx) {
       lotId ? 'auction:' + (auctionMeta.house || 'lot') + ':' + lotId : 'auction:event',
       auctionMeta && auctionMeta.sale_date ? yearOf(auctionMeta.sale_date) : null,
       true, [], 'high');
+    if (auctionEvent.year !== null) auctionEvent.year_source = 'auction_sale_date';
     if (auctionMeta) {
       auctionEvent.merge_basis.push('auction_record');
       if (auctionMeta.airbags && auctionMeta.airbags.deployed === true) {
@@ -345,44 +353,83 @@ export function resolveAccidentEvents(findings, ctx) {
     }
   }
 
-  /* фаза 3: решта груп = власні події */
-  for (const g of pending) {
-    if (isSupportingOnly(g)) continue; /* ремонтні: фаза 4 */
+  /* фаза 3: решта груп = власні події. Дві групи без власної лот-ідентичності,
+     без суперечності зон і з СУМІЖНИМИ роками (різниця рівно 1, розмах
+     кластера <= 1: типовий цикл ДТП -> лот -> продаж) це записи однієї
+     події на різних стадіях, які не розрізнити: одна подія з позначкою
+     possibly_same, а не друге підтверджене ДТП. Різні зони, різні лоти чи
+     розрив у 2+ роки лишають події окремими; дві групи ОДНОГО року з
+     різними event_id моделі лишаються окремими (модель розрізнила їх сама);
+     сама схожість тексту не зливає */
+  const own = [];
+  const placeOwn = g => {
+    const gZones = zoneClasses(g.findings.map(f => f.evidence.map(e => e.description).join(' ')).join(' '));
+    const twin = own.find(o => o.year !== null && g.year !== null && o.year !== g.year && Math.abs(o.year - g.year) <= DUPLICATE_YEAR_WINDOW
+      && Math.abs(o.yearMax - g.year) <= DUPLICATE_YEAR_WINDOW && Math.abs(o.yearMin - g.year) <= DUPLICATE_YEAR_WINDOW
+      && !zonesDisjoint(o.zones, gZones) && !(lotRefOf(g) && o.lotRef && lotRefOf(g) !== o.lotRef));
+    if (twin) {
+      attach(twin.ev, 'duplicate_records_possible_same_event', 'medium');
+      twin.ev.record_identity = 'possibly_same';
+      absorbGroup(twin.ev, g);
+      twin.yearMin = Math.min(twin.yearMin, g.year); twin.yearMax = Math.max(twin.yearMax, g.year);
+      for (const z of gZones) twin.zones.add(z);
+      return;
+    }
     const ev = newEvent('accident:' + (g.year ? g.year + ':' : '') + g.id, g.year, false, ['llm_finding_group'], 'high');
+    if (g.year !== null) ev.year_source = 'finding_text';
     if (auctionEvent && g.hasAuctionEvidence && !yearsCompatible(g.year, auctionEvent.year)) ev.merge_basis.push('year_mismatch_with_anchor');
     if (auctionEvent && g.hasAuctionEvidence && lotConflicts(g)) ev.merge_basis.push('lot_mismatch_with_anchor');
     absorbGroup(ev, g);
     events.push(ev);
-  }
+    own.push({ ev, year: g.year, yearMin: g.year, yearMax: g.year, zones: new Set(gZones), lotRef: lotRefOf(g) });
+  };
+  for (const g of pending.filter(x => !isSupportingOnly(x)).sort((a, b) => (b.year || 0) - (a.year || 0))) placeOwn(g);
 
   /* фаза 4: ремонтний supporting-запис приєднується до ЄДИНОЇ події
-     сумісного періоду; кандидатів кілька або нуль = власна подія */
-  for (const g of pending.filter(isSupportingOnly)) {
+     сумісного періоду; кандидатів кілька або нуль = власна подія за тими
+     самими правилами ідентичності, що й у фазі 3 (суміжні роки без
+     розрізнення = possibly_same, а не друге ДТП) */
+  for (const g of pending.filter(isSupportingOnly).sort((a, b) => (b.year || 0) - (a.year || 0))) {
     const candidates = events.filter(ev => yearsCompatible(g.year, ev.year));
     if (candidates.length === 1) {
       attach(candidates[0], 'supporting_repair_same_period', 'medium');
       absorbGroup(candidates[0], g);
-    } else {
-      const ev = newEvent('accident:' + (g.year ? g.year + ':' : '') + g.id, g.year, false, ['llm_finding_group'], 'high');
-      absorbGroup(ev, g);
-      events.push(ev);
-    }
+    } else placeOwn(g);
   }
 
-  /* фаза 5: generic запис площадки БЕЗ власної ідентичності приєднується
-     до ЄДИНОЇ якірної події сумісного періоду, якщо зони не суперечать */
-  if (c.accidentRecord && c.accidentRecord.recorded === true) {
-    const recYear = yearOf(c.accidentRecord.note);
-    const recZones = zoneClasses(c.accidentRecord.note);
-    const recEvidence = { source: 'historical_listing', ref: 'platform_history', description: (c.accidentRecord.note || 'зафіксовано ДТП').slice(0, 200) };
+  /* фаза 5: записи площадки про ДТП. Кожна канонічна група записів
+     (history-records.js: ті самі зони і суміжні роки = записи однієї події;
+     записи сусідніх років без розрізнення = possibly_same) без власної
+     ідентичності приєднується до ЄДИНОЇ якірної події сумісного періоду,
+     якщо зони не суперечать і якір ще без запису; інакше стає власною
+     подією. Рік події береться із запису лише коли іншого року нема, і
+     позначається year_source = platform_record. Legacy вхід accidentRecord
+     (один прапор із нотаткою) читається як одна група */
+  const recGroups = Array.isArray(c.accidentRecords) ? c.accidentRecords
+    : (c.accidentRecord && c.accidentRecord.recorded === true
+      ? [{ year: yearOf(c.accidentRecord.note), years: [], zones: [...zoneClasses(c.accidentRecord.note)], texts: c.accidentRecord.note ? [c.accidentRecord.note] : [], identity: 'single' }]
+      : []);
+  for (const g of recGroups) {
+    if (!g) continue;
+    const recYear = g.year === undefined ? null : g.year;
+    const recZones = new Set(Array.isArray(g.zones) ? g.zones : []);
+    const recEvidence = { source: 'historical_listing', ref: 'platform_history', description: ((Array.isArray(g.texts) && g.texts.length ? g.texts.join(' | ') : 'зафіксовано ДТП')).slice(0, 300) };
+    const years = Array.isArray(g.years) && g.years.length ? g.years : [recYear];
+    const yearsOk = !!auctionEvent && years.some(y => yearsCompatible(y, auctionEvent.year));
     const veto = zonesDisjoint(recZones, anchorZones);
-    if (auctionEvent && yearsCompatible(recYear, auctionEvent.year) && !veto) {
+    if (auctionEvent && yearsOk && !veto && !auctionEvent.merge_basis.includes('platform_record_attached')) {
       attach(auctionEvent, 'platform_record_attached', recYear !== null && auctionEvent.year !== null ? 'high' : 'medium');
       if (recZones.size && anchorZones.size) auctionEvent.merge_basis.push('damage_zones_match');
+      if (g.identity === 'possibly_same') auctionEvent.merge_basis.push('duplicate_records_possible_same_event');
       auctionEvent.evidence.push(recEvidence);
+      if (auctionEvent.year === null && recYear !== null) { auctionEvent.year = recYear; auctionEvent.year_source = 'platform_record'; }
+      auctionEvent.record_identity = g.identity || 'single';
     } else {
       const ev = newEvent('platform:accident' + (recYear ? ':' + recYear : ''), recYear, false,
         veto && auctionEvent ? ['platform_record', 'damage_zones_veto'] : ['platform_record'], 'high');
+      if (recYear !== null) ev.year_source = 'platform_record';
+      if (g.identity === 'possibly_same') ev.merge_basis.push('duplicate_records_possible_same_event');
+      ev.record_identity = g.identity || 'single';
       ev.evidence.push(recEvidence);
       events.push(ev);
     }

@@ -360,7 +360,7 @@ const page = fs.readFileSync('result-check.html', 'utf8');
     if (!/history: CalCarTimeline\.normalize\(d\.history/.test(page)) errs.push('помічник отримує несортовану хронологію');
     if (!/<script src="\/vehicle-timeline\.js"><\/script>/.test(page)) errs.push('vehicle-timeline.js не підключений');
     const chk2 = fs.readFileSync('api/check.js', 'utf8');
-    if (!/owner_events: parseOwnerEvents\(t\)/.test(chk2)) errs.push('extractHistoryFacts не збирає owner_events');
+    if (!/(?:owner_events:|const owner_events =)\s*parseOwnerEvents\(t\)/.test(chk2)) errs.push('extractHistoryFacts не збирає owner_events');
     if (!/parsed\.history = annotateOwnerOrdinals\(parsed\.history, listing\.history_facts\)/.test(chk2)) errs.push('check.js не привʼязує номери власників з реєстру');
   }
 

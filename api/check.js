@@ -3,7 +3,9 @@ export const config = { maxDuration: 300 };
 import crypto from 'crypto';
 import { mainResponseFormat, schemaProse } from './check-schema.js';
 import { resolveLocale, languageDirective, errText } from './locale.js';
-import { computeScoreV3, resolveVehicleAge } from './score-v3.js';
+import { computeScoreV3, resolveVehicleAge, zoneClasses } from './score-v3.js';
+/* записи блоку історії площадки: вид, рік, зони, походження; групи записів однієї події */
+import { parseHistoryRecords, groupAccidentRecords } from './history-records.js';
 /* Score v4: тінь за замовчуванням, активна лише через CALCAR_SCORE_VERSION=v4 */
 import { computeScoreV4, resolvePowertrainClass, mileageNormKmYear, SCORE_CONFIG_V4, validateDisclosures } from './score-v4.js';
 import { applyScoreCeiling } from './score-ceiling.js';
@@ -1023,28 +1025,43 @@ export function extractHistoryFacts(text) {
   /* датовані точки пробігу площадки для входу 5 Score v4: dd.mm.yy ->
      ISO, "144 тис. км" -> 144000. Кількість (past_mileage_points) лишається
      для coverage v3 */
-  const mileage_points = [];
-  const toIso = d => { const m = /^(\d{2})\.(\d{2})\.(\d{2})$/.exec(d); return m ? '20' + m[3] + '-' + m[2] + '-' + m[1] : null; };
-  const toKm = (n, thousands) => { const v = parseInt(n, 10); return isFinite(v) ? (thousands ? v * 1000 : v) : null; };
-  for (const m of t.matchAll(/(\d{2}\.\d{2}\.\d{2})\s+Продавалось на AUTO\.RIA\s+Продавець вказав пробіг\s*(\d+)(\s*тис)?/g)) {
-    const date = toIso(m[1]), km = toKm(m[2], !!m[3]);
-    if (date && km !== null) mileage_points.push({ date, km, source: 'past_listing', family: 'platform_history' });
-  }
-  for (const m of t.matchAll(/(\d{2}\.\d{2}\.\d{2})\s+Зафіксовано пробіг\s*(\d+)(\s*тис)?/g)) {
-    const date = toIso(m[1]), km = toKm(m[2], !!m[3]);
-    if (date && km !== null) mileage_points.push({ date, km, source: 'registry', family: 'platform_history' });
-  }
+  /* записи блоку історії як записи джерела: точки пробігу з чесним
+     походженням (архів аукціону, дилерське СТО, реєстр, минуле
+     оголошення), записи ДТП з роком і зонами, страхові записи. Одиниця
+     лишається "як надруковано площадкою": перерахунків нема */
+  const records = parseHistoryRecords(t, { zoneClasses: typeof zoneClasses === 'function' ? zoneClasses : null });
+  const mileage_points = records.odometer.map(o => ({ date: o.date, km: o.km, source: o.source, family: 'platform_history' }));
+  const accidentGroups = groupAccidentRecords(records.accidents);
+  const owner_events = parseOwnerEvents(t);
   const past_mileage_points = new Set([
     ...[...t.matchAll(/(\d{2}\.\d{2}\.\d{2})\s+Продавалось на AUTO\.RIA\s+Продавець вказав пробіг\s*(\d+)/g)].map(m => m[1] + '|' + m[2]),
     ...[...t.matchAll(/(\d{2}\.\d{2}\.\d{2})\s+Зафіксовано пробіг\s*(\d+)/g)].map(m => m[1] + '|' + m[2]),
   ]).size;
   const accident_recorded = /Зафіксовано ДТП/i.test(t) || /Був(?:ла)?\s+у\s+ДТП/i.test(t);
-  const accident_note = ((t.match(/Зафіксовано ДТП\s*[•]?\s*(.{10,180}?)(?:Історія авто|Вподобали|Пробіг від|$)/i) || [])[1] || '').trim() || null;
+  /* нотатка про ДТП: текст найновішої канонічної групи записів; старий
+     regex лишається лише для сторінок без структурованих записів (при
+     кількох записах він брав довільний) */
+  const firstGroup = accidentGroups.groups[0] || null;
+  const accident_note = (firstGroup && firstGroup.texts[0])
+    || (records.accidents[0] && records.accidents[0].text)
+    || ((t.match(/Зафіксовано ДТП\s*[•]?\s*(.{10,180}?)(?:Історія авто|Вподобали|Пробіг від|$)/i) || [])[1] || '').trim() || null;
   return {
-    registry_present,
+    /* структуровані рядки власників ("N-ий власник DD.MM.YY ...") є лише у
+       реєстровому блоці: їх наявність це теж відповідь реєстру, навіть коли
+       сторінка не повторює підпис про офіційні дані */
+    registry_present: registry_present || owner_events.length > 0,
     owners_count,
     /* явні підписи "N-ий власник DD.MM.YY Перереєстрація": єдине джерело номера власника в історії */
-    owner_events: parseOwnerEvents(t),
+    owner_events,
+    /* записи джерела і канонічні групи записів про ДТП (history-records.js):
+       accident_groups йдуть у Score v4 як події, hazards (повінь/пожежа з
+       записів ДТП і страхових записів) у свої джерела, не в "ДТП невідомої тяжкості" */
+    history_records: {
+      accidents: records.accidents,
+      accident_groups: accidentGroups.groups,
+      hazards: [...accidentGroups.hazards, ...records.insurance.filter(i => i.cause)],
+      insurance: records.insurance,
+    },
     past_listings,
     past_mileage_points,
     mileage_points,
@@ -2228,6 +2245,7 @@ ${cvProvided ? `3) ВІЗУАЛЬНЕ ПІДТВЕРДЖЕННЯ ти НЕ ви�
 - ВІДСУТНІСТЬ ДАНИХ НІКОЛИ НЕ Є ЗНАХІДКОЮ. Unknown не добре і не погано.
 - ПОЗИТИВНИЙ ДОКАЗ ГОЛОВНІШИЙ ЗА ВІДСУТНІСТЬ У ДЖЕРЕЛІ: позначка будь-якої площадки "ДТП не зареєстровано" означає лише відсутність запису В ЦЬОМУ джерелі. Якщо незалежне історичне джерело (аукціонний запис, архівні фото, реєстр іншої країни) підтверджує ДТП, позитивний доказ ПЕРЕМАГАЄ: подія існує. Це загальне правило для всіх площадок і джерел.
 ${cvProvided ? `- signals.current_visual_flawless: рахуй ЛИШЕ за CURRENT_VISUAL_EVIDENCE: true допустимий, коли condition_findings порожній, більшість зон у zones.sufficient і немає quality_flags, що ховають дефекти; будь-яка material-знахідка чи слабке покриття = false.` : `- signals.current_visual_flawless: true СТАВ ЛИШЕ коли на ДОСТАТНІХ і якісних поточних кадрах кузов і салон виглядають практично бездоганно, showroom-like: без видимих дефектів, слідів ремонту, різнотону, потертостей чи помітного зносу на видимих ділянках. "Нічого поганого не видно" на кількох звичайних кадрах це НЕ flawless: тоді false. Вік авто сам по собі значення не має.`}
+- ЗАПИСИ ПЛОЩАДКИ ПРО ДТП вже згруповано кодом (history_facts.history_records.accident_groups). Група з identity possibly_same (той самий опис, суміжні роки) це ОДНА подія з кількома записами: один event_id, а текст хронології і висновку не стверджує два окремі ДТП («записи 2020 і 2021, ймовірно одна подія»). Окреме ДТП потрібно доводити різними зонами, іншим лотом чи іншим періодом, не кількістю рядків. Дата, надрукована на архівному фото, це дата кадру: не підставляй її як дату ДТП чи продажу.
 - event_id ОБОВʼЯЗКОВИЙ для КОЖНОЇ знахідки, без нього код її відкине. Для подій це імʼя події (accident_2020, flood_2021), для поточних станів і несправностей стабільний ідентифікатор (current_srs_fault, mileage_conflict_1, modification_suspension). Знахідки ОДНОЇ події (одного ДТП) несуть СПІЛЬНИЙ event_id: подія з кількома підтвердженнями це ОДНА знахідка з кількома evidence, не кілька знахідок.
 - repair_status де застосовно, МЕЖІ ЖОРСТКІ:
   * visually_consistent: пошкоджені на аукціоні зони на НИНІШНІХ фото без видимих слідів неякісного відновлення, І лише коли нинішні фото достатньо показують САМЕ ті зони і ракурси, що були пошкоджені. Потрібна зона не видна або порівняння ненадійне: лишається unknown, НЕ visually_consistent.
@@ -3722,6 +3740,10 @@ async function runCheck(req, res, job) {
           auctionMeta: auctionMetaV3,
           historicalVisual: parsed.historical_visual || null,
           accidentRecord: hf.accident_recorded === true ? { recorded: true, note: hf.accident_note || null } : null,
+          /* канонічні групи записів площадки і небезпеки: за наявності записів
+             вони замінюють один прапор accidentRecord (той лишається для v3) */
+          accidentRecords: hf.history_records ? hf.history_records.accident_groups : null,
+          hazardRecords: hf.history_records ? hf.history_records.hazards : null,
           auctionChecked: !!(auctionSearch && auctionSearch.status),
           /* зі дрібними знахідками: Score накопичує кілька незалежних дрібних дефектів */
           currentVisual: cvOk ? compactCurrentVisual(cvFinal.current_visual, { includeMinor: true }) : null,

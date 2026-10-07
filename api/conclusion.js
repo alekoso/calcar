@@ -93,6 +93,9 @@ function accidentEvents(report) {
     airbags_parts: arr(e.airbags_visible_parts).join(', ') || null,
     fire: e.fire === true ? true : null,
     year: e.trusted_year || e.resolver_year || null,
+    year_source: e.year_source || null,
+    /* possibly_same: кілька записів площадки, які можуть бути однією подією; другого ДТП це не доводить */
+    record_identity: e.record_identity || null,
     repair_status: e.repair_status || null,
     unrepaired_signs_now: e.unrepaired_signs === true ? true : null,
   }));
@@ -256,13 +259,18 @@ export function buildConclusionContext(report) {
     },
     ownership: {
       owners_count: owners !== null && owners !== undefined ? owners : null,
-      owner_change_dates: arr(hf.owner_events).filter(isObj).map(e => (e.ordinal ? '#' + e.ordinal + ' ' : '') + String(e.date || '').slice(0, 10)),
+      /* число власників походить лише зі структурованого реєстру площадки
+         (history_facts.owners_count / owner_events), ніколи зі слів продавця */
+      owners_count_source: owners !== null && owners !== undefined ? 'registry' : null,
+      owner_change_dates: arr(hf.owner_events).filter(isObj).map(e => (e.ordinal ? '#' + e.ordinal + ' ' : '') + String(e.date || '').slice(0, 10) + (e.operation ? ' ' + e.operation : '')),
       imported_used: hf.imported_used === true ? true : null,
       registry_data_present: hf.registry_present === true ? true : (hf.registry_present === false ? false : null),
       past_listings_found: num(hf.past_listings),
     },
     history: {
-      timeline: arr(report.history).filter(isObj).slice(0, 16).map(h => ({ date: h.date || null, event: str(h.event, 260), gap_before: h.gap || null })),
+      timeline: arr(report.history).filter(isObj).slice(0, 16).map(h => ({ date: h.date || null, event: str(h.event, 260), gap_before: h.gap || null,
+        /* registry: рядок підтверджений структурованим реєстром; report: рядок написала модель звіту */
+        source: h.owner_ordinal_source === 'registry' || h.event_source === 'registry_operation' ? 'registry' : 'report' })),
       note: str(report.history_note, 400),
       accident_recorded_officially: hf.accident_recorded === true ? true : null,
       accident_note: str(hf.accident_note, 300),

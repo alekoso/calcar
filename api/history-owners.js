@@ -29,6 +29,9 @@ const NOT_OWNERSHIP_ROW_RE = /номерн\w{0,3}\s+знак|номерного 
 export function classifyOwnerOperation(text) {
   const t = String(text || '').toLowerCase();
   if (/спадщ|наслед|успадк/.test(t)) return 'inheritance';
+  /* лізинг: викуп предмета лізингу чи перехід за лізинговим договором це
+     окремий тип реєстраційної події, не звичайна зміна власника */
+  if (/лізинг|лизинг|\blease|leasing/.test(t)) return 'lease_registration';
   if (/ввезен|привезен|з-за кордон|из-за границ|из-за рубеж/.test(t)) return 'import_registration';
   if (/торговельн|торгівельн|торгов\S*\s+организ/.test(t)) return 'trade_purchase';
   if (/первинн|первичн/.test(t)) return 'first_registration';
@@ -115,6 +118,7 @@ const OWNER_OPERATION_TEXT = {
   trade_purchase: { ua: 'Реєстрація після купівлі в торговельній організації.', ru: 'Регистрация после покупки в торговой организации.', en: 'Registration after purchase from a trading company.' },
   import_registration: { ua: 'Реєстрація після ввезення з-за кордону.', ru: 'Регистрация после ввоза из-за границы.', en: 'Registration after import from abroad.' },
   inheritance: { ua: 'Реєстрація за правом спадщини.', ru: 'Регистрация по праву наследования.', en: 'Registration by inheritance.' },
+  lease_registration: { ua: 'Перереєстрація за договором фінансового лізингу.', ru: 'Перерегистрация по договору финансового лизинга.', en: 'Re-registration under a finance lease agreement.' },
 };
 const ORD_WORD = /(?:\d{1,2}\s*[-‑]?\s*(?:й|ий|ій|ый|ой|я|го|st|nd|rd|th)?|перш\S*|перв\S*|друг\S*|втор\S*|трет\S*|четв\S*|п.?ят\S*|шост\S*|шест\S*|сьом\S*|седьм\S*|восьм\S*|дев.?ят\S*|десят\S*|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)/giu;
 const OWNER_WORD = /(?:власник\S*|владел\S*|owner\S*|новий|новый|новая|нова|new|the|an?)(?![\p{L}])/giu;

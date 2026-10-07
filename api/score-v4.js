@@ -189,7 +189,12 @@ function accidentInput(inp, cfg) {
   const am = inp.auctionMeta || null;
   const rec = inp.accidentRecord || null;
   const disclosures = inp.disclosures || [];
-  const rawEvents = resolveAccidentEvents(findings, { auctionMeta: am, historicalVisual: hv, accidentRecord: rec });
+  /* записи площадки: канонічні групи (history-records.js) замість одного
+     прапора; небезпеки (повінь/пожежа) це не ДТП і йдуть у свої джерела */
+  const recGroups = Array.isArray(inp.accidentRecords) ? inp.accidentRecords.filter(Boolean) : null;
+  const hazards = Array.isArray(inp.hazardRecords) ? inp.hazardRecords.filter(Boolean) : [];
+  const hasRecord = recGroups ? recGroups.length > 0 : !!(rec && rec.recorded === true);
+  const rawEvents = resolveAccidentEvents(findings, { auctionMeta: am, historicalVisual: hv, accidentRecord: rec, accidentRecords: recGroups });
   /* страховий випадок, зафіксований в історії площадки по цьому VIN без
      типу і тяжкості (history_facts.insurance_case_recorded). Рішення
      власника 2026-10-06: це підтверджена негативна подія історії з тією
@@ -229,6 +234,10 @@ function accidentInput(inp, cfg) {
   }
   if (FLOOD_RE.test(lotDamage)) floodSources.push('lot');
   if (FIRE_RE.test(lotDamage)) fireSources.push('lot');
+  for (const h of hazards) {
+    if (h.cause === 'flood') floodSources.push('platform_record');
+    if (h.cause === 'fire') fireSources.push('platform_record');
+  }
   if (hv && hv.fire_traces_visible === true) fireSources.push('historical_photos');
   for (const d of disclosures) {
     if (d.category !== 'flood_or_fire') continue;
@@ -239,7 +248,9 @@ function accidentInput(inp, cfg) {
   for (const ev of rawEvents) {
     const anchored = ev.anchored === true;
     const h = anchored ? hv : null;
-    const attachedRecord = rec && rec.recorded === true && (ev.merge_basis || []).includes('platform_record_attached');
+    const attachedRecord = (ev.merge_basis || []).includes('platform_record_attached');
+    /* текст записів площадки, що увійшли в подію (зони беруться з нього, не з прапора) */
+    const recordText = (ev.evidence || []).filter(x => x && x.ref === 'platform_history').map(x => x.description || '').join(' ');
     const platformEvent = String(ev.normalized_event_id).startsWith('platform:');
     /* D2: якірний лот, кадри прочитані, пошкоджень не видно, відмітки нема:
        подія не створюється, лише unresolved */
@@ -250,13 +261,15 @@ function accidentInput(inp, cfg) {
     const zoneText = [
       ...(h && Array.isArray(h.visible_damage_zones) ? h.visible_damage_zones : []),
       lotDamage,
-      attachedRecord || platformEvent ? (rec.note || '') : '',
+      attachedRecord || platformEvent ? recordText : '',
     ].join(' ');
     const zc = zoneClasses(zoneText);
     const substantive = anchored && (!!h || !!lotDamage || !!(am && am.airbags));
     const { category, basis } = classifyEventV4(ev, h, zc, zoneClasses(lotDamage));
+    /* рік події: дата продажу лота, інакше рік запису площадки; рік із
+       тексту знахідки лишається resolver_year, дати кадрів сюди не йдуть */
     const trustedYear = (am && anchored && am.sale_date ? yearOf(am.sale_date) : null)
-      || ((attachedRecord || platformEvent) && rec ? yearOf(rec.note) : null);
+      || (ev.year_source === 'platform_record' && typeof ev.year === 'number' ? ev.year : null);
     let repair = null;
     for (const r of ev.repair_statuses || []) if (repair === null || ({ confirmed_bad: 3, unknown: 2, visually_consistent: 1, confirmed_ok: 0 })[r] > ({ confirmed_bad: 3, unknown: 2, visually_consistent: 1, confirmed_ok: 0 })[repair]) repair = r;
     events.push({
@@ -265,6 +278,9 @@ function accidentInput(inp, cfg) {
       v4_category: category, category_basis: basis, trusted_year: trustedYear,
       /* рік резолвера (з event_id чи описів): лише для сумісності при злитті, не хронологія */
       resolver_year: ev.year === undefined ? null : ev.year,
+      year_source: ev.year_source || null,
+      /* single | exact_duplicate | possibly_same: кілька записів площадки однієї події */
+      record_identity: ev.record_identity || null,
       repair_status: repair, airbags: !!(ev.signals && ev.signals.airbags) || !!(h && h.srs_visual_status === 'deployed_visible'),
       airbags_visible_parts: h && Array.isArray(h.airbags_visible_parts) ? h.airbags_visible_parts : [],
       zone_classes: [...zc], latest: false, unrepaired_signs: false, fire: false,
@@ -289,7 +305,7 @@ function accidentInput(inp, cfg) {
 
   /* D2 поза резолвером: лот є, кадри прочитані, пошкоджень не видно,
      відмітки нема, подій резолвер не створив */
-  if (am && hv && !hvShowsDamage(hv) && !(rec && rec.recorded === true) && !lotDamage && !events.some(e => e.anchored)
+  if (am && hv && !hvShowsDamage(hv) && !hasRecord && !lotDamage && !events.some(e => e.anchored)
       && !unresolved.some(u => u.key === 'auction_reason_unknown')) {
     unresolved.push({ key: 'auction_reason_unknown', input: 'accident_history', note_key: 'Auction record found, no damage visible on archive photos, reason for sale unknown' });
   }
