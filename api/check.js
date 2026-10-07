@@ -3957,7 +3957,7 @@ async function runCheck(req, res, job) {
            з кандидатом каталогу, вносяться під офіційною назвою */
         const miSup = supplementVisionEquipment(merged.items, cvFeed.current_visual, miEq.ok ? miEq.candidates : []);
         parsed.equipment_v2 = miSup.items;
-        eqCanonical = { applied: true, concepts: cvConcepts.length, dropped_visual_evidence: gated.dropped, merge: merged.stats, mi_inserted: miSup.stats.inserted };
+        eqCanonical = { applied: true, concepts: cvConcepts.length, dropped_visual_evidence: gated.dropped, dropped_relations: gated.relations || [], merge: merged.stats, mi_inserted: miSup.stats.inserted };
       }
       parsed.equipment_v2 = sanitizeEquipment(parsed.equipment_v2, /(^|\.)auto\.ria\.com$/.test(listing.domain || '') ? 'autoria' : (listing.domain || null));
       const claims = selectEquipmentClaims(parsed.equipment_v2);

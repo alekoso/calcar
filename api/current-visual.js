@@ -203,7 +203,7 @@ frames: gallery_index кадрів, де зона видна. Зона sufficien
 ЩО ШУКАТИ ВСЕРЕДИНІ: помітний знос керма (полірована шкіра, протертості), знос/тріщини/розриви сидінь, пошкодження пластику, дверних карт і накладок, помітні плями, пошкодження стелі, зламані чи відсутні елементи, інші очевидні візуальні проблеми. Дуже виражений знос фіксуй як факт (kind wear, severity за видимим ступенем), але НЕ роби висновків про реальний пробіг.
 ОГЛЯД СИДІНЬ ПО РЯДАХ (обовʼязково, незалежно один від одного): окремо переглянь ПЕРЕДНІЙ ряд (сидіння водія і пасажира) і ЗАДНІЙ ряд (задній диван) по ВСІХ кадрах, де цей ряд видно. Для кожного ряду окремо: якщо видно помітні плями, знебарвлення, потертості чи знос оббивки, створи знахідку kind stain або wear, component seat, у зоні front_seats для переднього ряду (driver_area чи front_passenger, якщо стосується лише одного сидіння) або rear_seats для заднього, з кадром і конкретною ознакою. Знахідка по одному ряду не замінює огляду іншого ряду. Якщо ряд чистий або не видний, знахідку для нього не створюй і нічого не вигадуй. Кілька кадрів того самого ряду це одна знахідка з найкращим кадром. Відповідь по кожному ряду ОБОВʼЯЗКОВО заповни в seat_rows.front і seat_rows.rear: visible, meaningful_deterioration, kind, найкращий кадр і ознака (для чистого чи невидимого ряду: kind none, кадр і ознака null).
 
-КОМПЛЕКТАЦІЯ (equipment_visual): опції, які можна ПІДТВЕРДИТИ фото: читабельний бренд акустики (Harman Kardon, Burmester, Bang & Olufsen, Bose, Bowers & Wilkins), панорамний дах, HUD (проектор на торпедо або проекція на склі), кнопки вентиляції/підігріву/масажу/памʼяті сидінь, електроприводи сидінь, апаратура чи кнопки адаптивного круїзу, індикатори контролю сліпих зон у дзеркалах, камери кругового огляду (обʼєктиви у дзеркалах, решітці, кришці багажника), задній клімат, цифрова приладова панель, спортивні сидіння, карбонові вставки, алькантара (лише за читабельним маркуванням чи однозначною фактурою), брендовані елементи інтерʼєру, інші явно видимі важливі опції. Для кожної: normalized_name, що саме видно, кадр, ознака, confidence. Бренд називай ЛИШЕ за читабельним логотипом; інакше клас ("преміум-акустика з окремими твітерами"). Ти НЕ вирішуєш, чи опція базова, платна, пакетна, рідкісна чи дорога: лише "видно ось це". ПОВНОТА КОМПЛЕКТАЦІЇ: перелічи ВСІ опції, які чітко видно хоча б на одному кадрі, а не лише найпомітніші. Пройди по черзі двері, центральну консоль, кермо і підрульові важелі, стелю, задній ряд, багажник і зовнішні кадри. Кожна опція це окремий запис; різні функції однієї групи кнопок теж окремо: "підігрів передніх сидінь", "вентиляція передніх сидінь", "підігрів задніх сидінь" це три записи, а не один. Так само фіксуй, якщо це видно: третій ряд сидінь, кнопку електроприводу кришки багажника, кнопку запуску двигуна, органи керування пневмопідвіскою, сонцезахисні шторки, доводчики дверей, фірмові накладки порогів, навігацію чи зображення камери на екрані, парковочні датчики в бамперах, рейлінги, фаркоп, бічні підніжки. Обмеження кількості записів немає. Чого не видно, того не пиши: дорога версія чи репутація моделі самі по собі нічого не доводять.
+КОМПЛЕКТАЦІЯ (equipment_visual): опції, які можна ПІДТВЕРДИТИ фото: читабельний бренд акустики (Harman Kardon, Burmester, Bang & Olufsen, Bose, Bowers & Wilkins), панорамний дах, HUD (проектор на торпедо або проекція на склі), кнопки вентиляції/підігріву/масажу/памʼяті сидінь, електроприводи сидінь, апаратура чи кнопки адаптивного круїзу, індикатори контролю сліпих зон у дзеркалах, камери кругового огляду (обʼєктиви у дзеркалах, решітці, кришці багажника), задній клімат, цифрова приладова панель, спортивні сидіння, карбонові вставки, алькантара (лише за читабельним маркуванням чи однозначною фактурою), брендовані елементи інтерʼєру, інші явно видимі важливі опції. Для кожної: normalized_name, що саме видно, кадр, ознака, confidence. Бренд називай ЛИШЕ за читабельним логотипом; інакше називай САМЕ ТЕ, ЩО ВИДНО, а не ширшу функцію: окремий твітер чи динамік це «динамік/твітер», а не «преміум-акустика»; кнопки аудіо на кермі це «кнопки керування аудіо на кермі»; задні дефлектори це «задні дефлектори вентиляції», а задній клімат лише за окремою панеллю керування температурою для задніх; коліщатко яскравості приладів це «регулятор яскравості підсвітки приладів», а не «атмосферне підсвічування»; кнопки регулювання на сидінні це «електропривод сидіння», а не дзеркала; шкіра на сидіннях це «шкіряна оббивка сидінь», шкіряне кермо лише коли видно саме кермо; кнопки на кермі це «багатофункціональне кермо», а не шкіряне чи спортивне. Ти НЕ вирішуєш, чи опція базова, платна, пакетна, рідкісна чи дорога: лише "видно ось це". ПОВНОТА КОМПЛЕКТАЦІЇ: перелічи ВСІ опції, які чітко видно хоча б на одному кадрі, а не лише найпомітніші. Пройди по черзі двері, центральну консоль, кермо і підрульові важелі, стелю, задній ряд, багажник і зовнішні кадри. Кожна опція це окремий запис; різні функції однієї групи кнопок теж окремо: "підігрів передніх сидінь", "вентиляція передніх сидінь", "підігрів задніх сидінь" це три записи, а не один. Так само фіксуй, якщо це видно: третій ряд сидінь, кнопку електроприводу кришки багажника, кнопку запуску двигуна, органи керування пневмопідвіскою, сонцезахисні шторки, доводчики дверей, фірмові накладки порогів, навігацію чи зображення камери на екрані, парковочні датчики в бамперах, рейлінги, фаркоп, бічні підніжки. Обмеження кількості записів немає. Чого не видно, того не пиши: дорога версія чи репутація моделі самі по собі нічого не доводять.
 
 МОДИФІКАЦІЇ (modification_candidates): спойлери, обвіси, сплітери, дифузори, нестандартний випуск, диски незаводського вигляду (бренд лише якщо читабельний: "напис BBS на диску"), плівка, помітно занижена посадка, карбонові деталі, нештатні елементи у моторному відсіку чи салоні (впуск, кермо, екран, педалі; бренд лише читабельний). Для кожної basis: brand_readable (читабельний бренд нештатної деталі), visible_alteration (видно сліди переробки, нештатне кріплення, кустарну проводку), non_standard_fitment, aftermarket_look (лише вигляд), unclear. Заводське спортивне аеро (M, AMG, S line, GTS тощо) саме по собі НЕ модифікація: якщо не можна відрізнити від заводського виконання, basis unclear і confidence low. Вартість не пиши.
 
@@ -664,14 +664,24 @@ export function mergeSpecialists({ exterior = null, interior = null, dashboard =
    синоніми одного поняття ("камера заднього виду" / "задня камера") дають
    один ключ. Це НЕ база опцій і не показується користувачу */
 export const EQUIPMENT_CONCEPTS = [
-  ['harman_kardon', /harman/i], ['bose', /\bbose\b/i], ['burmester', /burmester/i], ['bang_olufsen', /bang|olufsen|b&o/i], ['bowers_wilkins', /bowers|b&w/i], ['premium_audio', /акустик|аудіо|аудио|audio|динамік|динамик|speaker|сабвуфер|subwoofer/i],
+  ['harman_kardon', /harman/i], ['bose', /\bbose\b/i], ['burmester', /burmester/i], ['bang_olufsen', /bang|olufsen|b&o/i], ['bowers_wilkins', /bowers|b&w/i],
+  /* ВУЖЧІ СПОСТЕРЕЖЕННЯ йдуть ПЕРЕД ширшими поняттями: кнопки аудіо на кермі
+     чи видимий твітер це НЕ преміум-акустика, задні дефлектори це НЕ задній
+     клімат, коліщатко яскравості приладів це НЕ атмосферне підсвічування,
+     електрорегулювання дзеркал це НЕ електропривод сидінь, шкіряне кермо
+     це НЕ шкіряний салон. Кожне має власний ключ і власну назву, тому
+     спостереження не губиться, але й ширшу опцію не підтверджує */
+  ['audio_steering_controls', /(кнопк|клавіш|клавиш|controls?|buttons?)\S*[^,;]{0,24}(аудіо|аудио|audio|гучн|громк|медіа|медиа|media)[^,;]{0,20}(керм|рул|steering)|(керм|рул|steering)\S*[^,;]{0,24}(аудіо|аудио|audio|медіа|медиа|media)\S*[^,;]{0,12}(кнопк|клавіш|клавиш|controls?|buttons?)/i],
+  ['speaker_visible', /^(?![^,;]*(систем|system))[^,;]*(твітер|твитер|tweeter|динамік|динамик|гучномовц|громкоговорит|\bspeakers?\b|сабвуфер|subwoofer)/i],
+  ['premium_audio', /(преміум|премиум|premium|преміальн\S*|премиальн\S*|hi-?fi|surround)[\s-]*(акустик|аудіо|аудио|audio|sound|звук)|(акустик|аудіо|аудио)\S*\s*систем|аудіосистем|аудиосистем|sound\s*system|audio\s*system/i],
   /* комфорт задніх пасажирів: окремі поняття, щоб однакова річ з Vision
      (українською) і з основного розбору (мовою звіту) давала один ключ */
   ['rear_entertainment', /(екран|экран|дисплей|монітор|монитор)[^,;]{0,20}(задн\S*\s+пас+аж|для\s+пас+аж|задн\S*\s+ряд)|задн\S*\s+(екран|экран|дисплей|монітор|монитор)|розважальн|развлекательн|rear[\s-]*seat\s*(entertainment|screen|display)|rear\s*(entertainment|screens?|displays?)/i],
   ['executive_rear', /окрем\S*\s+задн\S*\s+(крісл|сидін)|раздельн\S*\s+задн\S*\s+(кресл|сиден)|індивідуальн\S*\s+задн\S*\s+(крісл|сидін)|индивидуальн\S*\s+задн\S*\s+(кресл|сиден)|individual\s*rear\s*seat|задн\S*\s+(крісл|кресл)\S*\s+(з|с)\s+(центральн\S*\s+)?консол|executive|chauffeur|шофер|бізнес[\s-]*клас|бизнес[\s-]*класс|first[\s-]*class/i],
   ['panoramic_roof', /панорам|люк|sunroof|moonroof/i], ['hud', /\bhud\b|проекц|head-?up/i], ['digital_cluster', /цифров.*(панел|прилад|приборн)|virtual cockpit|digital cluster|digital instrument/i], ['central_display', /центральн.*(дисплей|екран|экран)|мультимед.*(екран|экран)|екран мультимед|сенсорн.*(дисплей|екран|экран)|мультимедійн.*систем|мультимедийн.*систем|мультимедій\S*\s+дисплей|мультимедий\S*\s+дисплей|multimedia display|infotainment|touchscreen/i],
   ['heated_wheel', /підігрів.*керм|керм.*підігрів|подогрев.*рул|рул.*подогрев|heated steering/i],
-  ['rear_climate', /задн.*(клімат|климат|дефлектор|обдув|вентиляц)|дефлектор.*задн|(клімат|климат)\S*\s+для\s+задн|rear climate/i], ['paddles', /пелюст|лепестк|paddle/i],
+  ['rear_vents', /задн\S*[^,;]{0,16}(дефлектор|повітровод|воздуховод|обдув)|(дефлектор|повітровод|воздуховод)\S*[^,;]{0,16}задн|вентиляц\S*\s+(отвор|дефлект)\S*[^,;]{0,12}задн|rear\s*(air\s*)?vents?/i],
+  ['rear_climate', /задн\S*[^,;]{0,16}(клімат|климат)|(клімат|климат)\S*[^,;]{0,16}(для\s+)?задн|rear\s*climate|rear\s*(temperature|temp|a\/?c)\s*control/i], ['paddles', /пелюст|лепестк|paddle/i],
   ['power_tailgate', /(електропривод|электропривод|електричн\S*|электрическ\S*)[^,;]{0,24}(багажник|кришк\S*\s+багаж|крышк\S*\s+багаж|двер\S*\s+багаж|пʼят\S*\s+двер|пят\S*\s+двер)|кнопк\S*[^,;]{0,16}(закритт|закрыт)\S*[^,;]{0,12}багажник|power\s*(tailgate|liftgate|trunk)/i],
   ['third_row', /трет\S*\s+ряд|third[\s-]*row|сім\s+місц|семиміс|семимест|7\s*(місц|мест|seats?)/i],
   ['air_suspension', /пневмо|air\s*suspension|airmatic|air\s*body/i],
@@ -682,12 +692,55 @@ export const EQUIPMENT_CONCEPTS = [
   ['running_boards', /підніжк|подножк|running\s*boards?|side\s*steps?/i],
   ['sunblinds', /(сонцезахисн|солнцезащитн)\S*\s+(шторк|штор)|шторк\S*[^,;]{0,24}(вікн|окон|окна|двер|скл|стекл)|sun\s*blinds?|sun\s*shades?/i],
   ['rear_seat_heating', /(підігрів|подогрев)\S*[^,;]{0,14}задн|задн\S*\s+(сидін\S*|сиден\S*|диван\S*|ряд\S*)[^,;]{0,14}(підігрів|подогрев)|heated\s+rear\s+seats?/i],
-  ['seat_power', /електрорегул|электрорегул|електропривод|электропривод|електричн.*(сидін|крісл)|электрическ.*(сиден|кресл)|power.*seat/i], ['seat_memory', /пам.?ят|memory/i], ['seat_heating', /підігрів|подогрев|heated/i], ['seat_ventilation', /вентиляц|ventilat/i], ['seat_massage', /масаж|массаж|massage/i], ['sport_seats', /спортивн.*(сид|крісл|кресл)|бічн.*підтрим|боков.*поддержк|комфортн.*сид|sport seat/i], ['leather', /шкір|кожа|кожан|leather/i],
-  ['dual_zone_climate', /двозонн|двухзонн|роздільн.*клімат|раздельн.*климат|клімат-контрол|климат-контрол|climate control/i], ['ambient_lighting', /підсвіч|підсвіт|подсветк|ambient/i], ['wood_trim', /дерев|wood/i], ['carbon_trim', /карбон|вуглепласт|carbon/i], ['alcantara', /алькантар|замш|alcantara|suede/i], ['aluminium_trim', /алюмін|алюмин|alumini?um/i],
+  ['mirror_power', /(електро|электро|електричн|электрическ|power)\S*[^,;]{0,24}(дзеркал|зеркал|mirrors?)|(дзеркал|зеркал|mirrors?)\S*[^,;]{0,24}(електро|электро|power)/i],
+  ['seat_power', /(електрорегул|электрорегул|електропри\S*|электропри\S*|електричн\S*|электрическ\S*|power)[^,;]{0,24}(сидін|сиден|крісл|кресл|seat)|(сидін|сиден|крісл|кресл|seat)\S*[^,;]{0,24}(електрорегул|электрорегул|електропри|электропри|електро|электро|power)/i], ['seat_memory', /пам.?ят|memory/i], ['seat_heating', /підігрів|подогрев|heated/i], ['seat_ventilation', /вентиляц|ventilat/i], ['seat_massage', /масаж|массаж|massage/i], ['sport_seats', /спортивн.*(сид|крісл|кресл)|бічн.*підтрим|боков.*поддержк|комфортн.*сид|sport seat/i],
+  ['leather_steering_wheel', /(шкір|кожа|кожан|leather)[^,;]{0,28}(керм|рул|steering)|(керм|рул|steering)[^,;]{0,28}(шкір|кожа|кожан|leather)/i],
+  ['leather_seats', /^(?![^,;]*(салон|interior|cabin))[^,;]*((шкір|кожа|кожан|leather)[^,;]{0,28}(сидін|сиден|крісл|кресл|seat|оббивк|обивк|upholster)|(сидін|сиден|крісл|кресл|seat|оббивк|обивк|upholster)\S*[^,;]{0,28}(шкір|кожа|кожан|leather))/i],
+  ['leather', /шкір|кожа|кожан|leather/i],
+  ['dual_zone_climate', /двозонн|двухзонн|роздільн.*клімат|раздельн.*климат|клімат-контрол|климат-контрол|climate control/i],
+  ['cluster_brightness', /(яскрав|яркост|brightness)\S*[^,;]{0,24}(підсвіт|підсвіч|подсвет|прилад|приборн|cluster|панел)|(підсвіт|підсвіч|подсвет)\S*[^,;]{0,16}(прилад|приборн|панел\S*\s+прилад)|\bdimmer\b/i],
+  ['ambient_lighting', /ambient|mood\s*light|(атмосферн|контурн|декоративн)\S*\s+(підсвіт|підсвіч|подсвет|освітл|освещ)|(підсвіт|підсвіч|подсвет)\S*[^,;]{0,16}салон/i], ['wood_trim', /дерев|wood/i], ['carbon_trim', /карбон|вуглепласт|carbon/i], ['alcantara', /алькантар|замш|alcantara|suede/i], ['aluminium_trim', /алюмін|алюмин|alumini?um/i],
   ['automatic_parking', /автоматичн\S*\s+паркув|автоматическ\S*\s+(парковк|паркован)|асистент\S*\s+(автоматичн\S*\s+)?паркув|ассистент\S*\s+(автоматическ\S*\s+)?(парковк|паркован)|park(ing)?\s*assist|park\s*pilot|remote\s*park|self-?park/i],
-  ['parking_sensors', /паркув|паркови|парктрон|датчик|parking sensor/i], ['rear_camera', /камера заднього|задня камера|камера заднего|задняя камера|камера.*задн|rear.*camera/i], ['surround_camera', /кругов|360|камера в корпусі|камер.*дзеркал|surround|bird.?s eye/i], ['adaptive_cruise', /круїз|круиз|cruise|дистрон/i], ['lane_assist', /смуг|полос|\blane\b/i], ['blind_spot', /сліп|слеп|blind/i], ['gesture_control', /жест|gesture/i], ['navigation', /навігац|навигац|navigat/i], ['driver_assist_other', /асистент|ассистент|автопілот|автопилот|попереджен|предупрежд|гальмуван|торможен|driver assist|допомог\S*\s+водію|помощи\s+водителю|driver assist/i],
-  ['carplay', /carplay|android auto/i], ['m_steering_wheel', /кермо|кермов|руль|рулев|steering wheel/i], ['sport_chrono_clock', /chrono|годинник|часы|хронометр/i], ['colored_calipers', /супорт|суппорт|caliper/i], ['badge', /edrive|напис|надпис|шильд|badge/i], ['roof_rails', /рейлінг|рейлинг|roof rail/i], ['fog_lights', /протитуман|противотуман|\bfog\b/i], ['manual_gearbox', /механічн.*коробк|механическ.*коробк|manual (gearbox|transmission)/i], ['cargo_cover', /шторк|сітк|сетк|cargo cover|tonneau/i], ['keyless', /безключов|бесключев|keyless/i], ['led_lights', /\bled\b|світлодіод|светодиод|лазерн|адаптивн.*(фар|оптик)/i], ['wireless_charging', /бездрот.*заряд|беспровод.*заряд|wireless charg/i],
+  ['light_sensor', /датчик\S*\s+(світл|свет)|light\s*sensor|авто\S*\s+(увімк|включ)\S*\s+(світл|свет|фар)|automatic\s+(head)?lights|auto\s*(head)?lights?/i],
+  ['auto_wipers', /(авто\S*|auto)[^,;]{0,24}(склоочис|стеклоочис|двірник|дворник|wipers?)|(склоочис|стеклоочис|двірник|дворник|wipers?)\S*[^,;]{0,24}(\bauto\b|автоматичн|автоматическ)/i],
+  ['rain_sensor', /датчик\S*\s+(дощ|дожд)|rain\s*sensor/i],
+  ['parking_sensors', /парктрон|паркув\S*\s+(датчик|сенсор)|датчик\S*\s+паркув|парков\S*\s+(датчик|сенсор)|датчик\S*\s+парков|parking\s*sensors?|park\s*distance|\bpdc\b|датчик\S*\s+(спереду|ззаду|сзади|спереди)/i], ['rear_camera', /камера заднього|задня камера|камера заднего|задняя камера|камера.*задн|rear.*camera/i], ['surround_camera', /кругов|360|камера в корпусі|камер.*дзеркал|surround|bird.?s eye/i], ['adaptive_cruise', /круїз|круиз|cruise|дистрон/i], ['lane_assist', /смуг|полос|\blane\b/i], ['blind_spot', /сліп|слеп|blind/i], ['gesture_control', /жест|gesture/i], ['navigation', /навігац|навигац|navigat/i], ['driver_assist_other', /асистент|ассистент|автопілот|автопилот|попереджен|предупрежд|гальмуван|торможен|driver assist|допомог\S*\s+водію|помощи\s+водителю|driver assist/i],
+  ['carplay', /carplay|android auto/i],
+  ['multifunction_wheel', /мультируль|мультикерм|(мультифункц|багатофункц|многофункц|multi-?function)\S*\s+(керм|рул|steering)|(кнопк|клавіш|клавиш)\S*[^,;]{0,28}(керм|рул)|steering\s*wheel\s*(controls|buttons)/i],
+  ['m_steering_wheel', /\bm[\s-]?(кермо|руль|steering)|спортивн\S*\s+(кермо|руль|рулев)|sport\S*\s+steering|amg\s*(кермо|руль|steering)|(кермо|руль)\S*[^,;]{0,12}спортивн/i], ['sport_chrono_clock', /chrono|годинник|часы|хронометр/i], ['colored_calipers', /супорт|суппорт|caliper/i], ['badge', /edrive|напис|надпис|шильд|badge/i], ['roof_rails', /рейлінг|рейлинг|roof rail/i], ['fog_lights', /протитуман|противотуман|\bfog\b/i], ['manual_gearbox', /механічн.*коробк|механическ.*коробк|manual (gearbox|transmission)/i], ['cargo_cover', /шторк|сітк|сетк|cargo cover|tonneau/i], ['keyless', /безключов|бесключев|keyless/i], ['led_lights', /\bled\b|світлодіод|светодиод|лазерн|адаптивн.*(фар|оптик)/i], ['wireless_charging', /бездрот.*заряд|беспровод.*заряд|wireless charg/i],
 ];
+/* Семантика доказу. Вужче спостереження НЕ підтверджує ширшу опцію, а дві
+   різні здатності не підтверджують одна одну, хоч би як схоже вони
+   називались. Пари [вужче, ширше]: доказ вужчого не є доказом ширшого.
+   Несумісні пари: різні функції, що плутаються за словами. Це загальна
+   таксономія, не правила для моделей чи країн */
+export const CONCEPT_NARROWER = [
+  ['rear_vents', 'rear_climate'],
+  ['speaker_visible', 'premium_audio'],
+  ['audio_steering_controls', 'premium_audio'],
+  ['audio_steering_controls', 'multifunction_wheel'],
+  ['multifunction_wheel', 'm_steering_wheel'],
+  ['seat_power', 'seat_memory'],
+  ['leather_seats', 'leather'],
+  ['auto_wipers', 'rain_sensor'],
+];
+export const CONCEPT_INCOMPATIBLE = [
+  ['parking_sensors', 'light_sensor'], ['parking_sensors', 'rain_sensor'], ['light_sensor', 'rain_sensor'],
+  ['seat_power', 'mirror_power'],
+  ['leather', 'leather_steering_wheel'], ['leather_seats', 'leather_steering_wheel'], ['multifunction_wheel', 'leather'], ['multifunction_wheel', 'leather_seats'], ['multifunction_wheel', 'leather_steering_wheel'],
+  ['cluster_brightness', 'ambient_lighting'],
+  ['rear_vents', 'dual_zone_climate'],
+];
+export const CONCEPT_RELATIONS = ['exact', 'narrower', 'broader_unsupported', 'incompatible', 'unrelated'];
+/* relateConcepts(observation, claim): чи доводить спостереження саме цю опцію */
+export function relateConcepts(observation, claim) {
+  if (!observation || !claim) return 'unrelated';
+  if (observation === claim) return 'exact';
+  if (CONCEPT_NARROWER.some(([n, b]) => n === observation && b === claim)) return 'narrower';
+  if (CONCEPT_NARROWER.some(([n, b]) => b === observation && n === claim)) return 'broader_unsupported';
+  if (CONCEPT_INCOMPATIBLE.some(([a, b]) => (a === observation && b === claim) || (b === observation && a === claim))) return 'incompatible';
+  return 'unrelated';
+}
 export function equipmentConcept(name) {
   const n = String(name || '').toLowerCase();
   for (const [key, rx] of EQUIPMENT_CONCEPTS) if (rx.test(n)) return key;
@@ -953,16 +1006,21 @@ export function contextualPhotoPositions(types, k = CONTEXT_PHOTOS_DEFAULT, tota
    канонічному переліку Vision. Інші джерела (vehicle_data, listing_data,
    seller_claim, historical) не чіпаються */
 export function applyCurrentVisualEquipmentGate(items, cvConcepts) {
-  if (!Array.isArray(items) || !Array.isArray(cvConcepts)) return { items: Array.isArray(items) ? items : [], dropped: 0 };
+  if (!Array.isArray(items) || !Array.isArray(cvConcepts)) return { items: Array.isArray(items) ? items : [], dropped: 0, relations: [] };
   const allowed = new Set(cvConcepts);
   let dropped = 0;
+  const relations = [];
   const out = items.map(it => {
     if (!it || typeof it !== 'object' || !Array.isArray(it.evidence)) return it;
     const hasVisual = it.evidence.some(e => e && e.source === 'current_photos');
     if (!hasVisual) return it;
-    if (allowed.has(equipmentConcept(it.name))) return it;
+    const claim = equipmentConcept(it.name);
+    if (allowed.has(claim)) return it;
     dropped++;
+    /* чому знято: яке найближче спостереження було і як воно стосується заяви */
+    const nearest = cvConcepts.map(c => [c, relateConcepts(c, claim)]).find(([, r]) => r !== 'unrelated');
+    relations.push({ claim, observation: nearest ? nearest[0] : null, relation: nearest ? nearest[1] : 'unrelated' });
     return { ...it, evidence: it.evidence.filter(e => !(e && e.source === 'current_photos')) };
   });
-  return { items: out, dropped };
+  return { items: out, dropped, relations };
 }

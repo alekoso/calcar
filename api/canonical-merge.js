@@ -18,7 +18,7 @@
    переклад код не має права, а другий AI-виклик тут заборонений.
    Нерозміщені канонічні факти чесно рахуються в телеметрії. */
 
-import { equipmentConcept, interpretDashboard } from './current-visual.js';
+import { equipmentConcept, interpretDashboard, relateConcepts } from './current-visual.js';
 
 const L = (category, ua, ru, en) => ({ category, ua, ru, en });
 /* категорії тут це категорії ЗВІТУ (equipment_v2), а не Vision */
@@ -29,6 +29,16 @@ export const CONCEPT_LABELS = {
   bang_olufsen: L('multimedia', 'Аудіосистема Bang & Olufsen', 'Аудиосистема Bang & Olufsen', 'Bang & Olufsen audio'),
   bowers_wilkins: L('multimedia', 'Аудіосистема Bowers & Wilkins', 'Аудиосистема Bowers & Wilkins', 'Bowers & Wilkins audio'),
   premium_audio: L('multimedia', 'Преміальна аудіосистема', 'Премиальная аудиосистема', 'Premium audio system'),
+  speaker_visible: L('multimedia', 'Окремий динамік або твітер', 'Отдельный динамик или твитер', 'Visible speaker or tweeter'),
+  audio_steering_controls: L('multimedia', 'Кнопки керування аудіо на кермі', 'Кнопки управления аудио на руле', 'Steering wheel audio controls'),
+  multifunction_wheel: L('interior', 'Багатофункціональне кермо', 'Многофункциональный руль', 'Multifunction steering wheel'),
+  leather_steering_wheel: L('interior', 'Шкіряне кермо', 'Кожаный руль', 'Leather steering wheel'),
+  mirror_power: L('comfort', 'Електрорегулювання дзеркал', 'Электрорегулировка зеркал', 'Power-adjustable mirrors'),
+  light_sensor: L('assist', 'Датчик світла', 'Датчик света', 'Light sensor'),
+  rain_sensor: L('assist', 'Датчик дощу', 'Датчик дождя', 'Rain sensor'),
+  rear_vents: L('comfort', 'Задні дефлектори вентиляції', 'Задние дефлекторы вентиляции', 'Rear air vents'),
+  leather_seats: L('interior', 'Шкіряна оббивка сидінь', 'Кожаная обивка сидений', 'Leather seat upholstery'),
+  auto_wipers: L('comfort', 'Автоматичний режим склоочисників', 'Автоматический режим стеклоочистителей', 'Automatic wiper mode'),
   panoramic_roof: L('comfort', 'Панорамний дах або люк', 'Панорамная крыша или люк', 'Panoramic roof or sunroof'),
   rear_entertainment: L('multimedia', 'Екрани для задніх пасажирів', 'Экраны для задних пассажиров', 'Rear seat entertainment screens'),
   executive_rear: L('comfort', 'Окремі задні крісла', 'Раздельные задние кресла', 'Individual rear seats'),
@@ -160,13 +170,24 @@ const photoRef = gi => 'photo_' + (Number(gi) + 1);
 export function mergeCanonicalEquipment(items, cv, lang) {
   const list = Array.isArray(items) ? items.slice() : [];
   const canonical = canonicalEquipment(cv);
-  const stats = { canonical: canonical.length, labelled: 0, matched: 0, inserted: 0, unlabelled: 0, unlabelled_concepts: [] };
+  const stats = { canonical: canonical.length, labelled: 0, matched: 0, inserted: 0, unlabelled: 0, unlabelled_concepts: [], not_confirming: [] };
+  /* заяви продавця чи площадки, для яких Vision бачив лише вужче або інше
+     спостереження: доказ НЕ привʼязується, зв'язок лишається в телеметрії */
+  for (const it of list) {
+    if (!it || typeof it !== 'object' || !it.name) continue;
+    const claim = equipmentConcept(it.name);
+    if (canonical.some(e => e.concept === claim)) continue;
+    const rel = canonical.map(e => [e.concept, relateConcepts(e.concept, claim)]).find(([, r]) => r === 'narrower' || r === 'incompatible' || r === 'broader_unsupported');
+    if (rel && stats.not_confirming.length < 12) stats.not_confirming.push({ claim, observation: rel[0], relation: rel[1] });
+  }
   for (const e of canonical) {
     const label = CONCEPT_LABELS[e.concept];
     if (!label) { stats.unlabelled++; if (stats.unlabelled_concepts.length < 8) stats.unlabelled_concepts.push(e.concept); continue; }
     stats.labelled++;
     const ev = { source: 'current_photos', ref: photoRef(e.gallery_index), sign: e.sign || e.visible_label_or_feature || null };
-    const hit = list.find(it => it && typeof it === 'object' && equipmentConcept(it.name) === e.concept);
+    /* ТОЧНЕ поняття і нічого іншого: "Датчик світла" не отримує доказ
+       парктроніків, "дзеркала" не отримують доказ сидіння */
+    const hit = list.find(it => it && typeof it === 'object' && relateConcepts(e.concept, equipmentConcept(it.name)) === 'exact');
     if (hit) {
       const rest = Array.isArray(hit.evidence) ? hit.evidence.filter(x => x && x.source !== 'current_photos') : [];
       hit.evidence = [...rest, ev];
