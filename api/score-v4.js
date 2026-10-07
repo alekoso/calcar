@@ -21,7 +21,7 @@ import { resolveAccidentEvents, sanitizeFindingsV3, zoneClasses } from './score-
 import { ownerEventsConsistent } from './history-owners.js';
 
 export const SCORE_CONFIG_V4 = {
-  CONFIG_TAG: 'v4-prod-2026-10-01',
+  CONFIG_TAG: 'v4-prod-2026-10-07',
   STARTING_SCORE: 10,
   /* 2026-09-30: відремонтоване ДТП середньої тяжкості 1.2 -> 0.7: історія
      лишається негативом, але не домінує над нинішнім фізичним станом */
@@ -134,7 +134,6 @@ export function classifyEventV4(ev, hv, zoneClassesOfEvent, lotZoneClasses) {
   const depth = (h && h.damage_depth) || s.damage_depth || 'indeterminate';
   const outer = (h && h.outer_panel_damage_extent) || 'indeterminate';
   const fascia = (h && h.fascia_status) || 'not_visible';
-  const ab = !!s.airbags || !!(h && h.srs_visual_status === 'deployed_visible');
   const wd = !!s.wheel_displacement || !!(h && h.wheel_displacement_visible === true);
   const cosmetic = !!s.cosmetic_only || !!(h && h.cosmetic_only === true);
   const dis = !!(h && h.vehicle_disassembled_visible === true);
@@ -157,7 +156,6 @@ export function classifyEventV4(ev, hv, zoneClassesOfEvent, lotZoneClasses) {
   if (lb) return pick('heavy', 'load_bearing_deformation');
   if (inner === 'substantial') return pick('heavy', 'inner_module_substantial');
   if (wd && deep) return pick('heavy', 'wheel_displacement_deep');
-  if (ab) return pick('medium', 'airbags_deployed');
   if (outer === 'multiple_panels') return pick('medium', 'multiple_panels');
   if (inner === 'localized') return pick('medium', 'inner_module_localized');
   if (depth === 'inner_structure_or_module' && inner === 'indeterminate') return pick('medium', 'inner_module_indeterminate');
@@ -192,6 +190,35 @@ function accidentInput(inp, cfg) {
   const rec = inp.accidentRecord || null;
   const disclosures = inp.disclosures || [];
   const rawEvents = resolveAccidentEvents(findings, { auctionMeta: am, historicalVisual: hv, accidentRecord: rec });
+  /* страховий випадок, зафіксований в історії площадки по цьому VIN без
+     типу і тяжкості (history_facts.insurance_case_recorded). Рішення
+     власника 2026-10-06: це підтверджена негативна подія історії з тією
+     самою семантикою, що запис про ДТП невідомої тяжкості (unknown, 0.5),
+     а не окремий штраф і не стеля балу. Якщо та сама подія вже є з того
+     самого джерельного контексту, запис кріпиться до неї доказом: одна
+     подія, одна найсильніша класифікація, жодного другого штрафу. Інакше
+     створюється незаякорена подія insurance:record, яка без фізичних
+     доказів лишається unknown. Титул лота, страховик у metadata чи слова
+     продавця цього прапора не піднімають: лише блок історії площадки */
+  if (inp.evidence && inp.evidence.insurance_case_recorded === true) {
+    const insEvidence = { source: 'historical_listing', ref: 'platform_history', description: 'Страховий випадок зафіксовано в історії площадки, деталей немає' };
+    /* кріпиться лише до події з того самого джерельного контексту: блоку
+       історії площадки (запис ДТП площадки, у т.ч. вже злитий резолвером з
+       лотом за роком і зонами). Аукціонна подія іншого ринку чи група
+       знахідок без привʼязки до цього блоку лишаються окремими подіями:
+       без ствердного звʼязку однаковість не припускається */
+    const host = rawEvents.find(e => (e.evidence || []).some(x => x && x.ref === 'platform_history')) || null;
+    if (host) {
+      host.merge_basis.push('insurance_record_attached');
+      host.evidence.push(insEvidence);
+    } else {
+      rawEvents.push({
+        normalized_event_id: 'insurance:record', anchored: false, source_event_ids: [], merge_basis: ['insurance_record'], merge_confidence: 'high', year: null,
+        signals: { structural: false, load_bearing: false, cabin_intrusion: false, damage_depth: 'indeterminate', inner_extent: 'none', airbags: false, zones: 0, wheel_displacement: false, cosmetic_only: false, possible_structural: false },
+        repair_statuses: [], evidence: [insEvidence],
+      });
+    }
+  }
 
   /* флуд і пожежа: окремі події, по одному разу, з будь-якого джерела */
   const lotDamage = [am && am.primary_damage, am && am.secondary_damage].filter(Boolean).join(' ');
@@ -305,12 +332,14 @@ function accidentInput(inp, cfg) {
     const fireOnAnchor = latest.anchored && (fireSources.includes('historical_photos') || fireSources.includes('lot'));
     latest.fire = fireOnAnchor;
     const amount = CATEGORY_AMOUNT(cfg, latest.v4_category);
+    /* подія лише зі страхового запису: та сама категорія unknown, але чесний ярлик */
+    const insuranceOnly = latest.normalized_event_id === 'insurance:record' && latest.v4_category === 'unknown';
     items.push({
       key: 'accident_latest_' + latest.v4_category, input: 'accident_history', amount,
-      label_key: ACCIDENT_LABELS[latest.v4_category], params: { basis: latest.category_basis.join(','), year: latest.trusted_year },
+      label_key: insuranceOnly ? 'Insurance case recorded, severity not established' : ACCIDENT_LABELS[latest.v4_category], params: { basis: latest.category_basis.join(','), year: latest.trusted_year },
       evidence: latest.evidence.slice(0, 6), event_id: latest.normalized_event_id,
     });
-    if (latest.v4_category === 'unknown') unresolved.push({ key: 'accident_severity_unknown', input: 'accident_history', note_key: 'Accident recorded, severity could not be established', params: { event_id: latest.normalized_event_id } });
+    if (latest.v4_category === 'unknown') unresolved.push({ key: 'accident_severity_unknown', input: 'accident_history', note_key: insuranceOnly ? 'Insurance case recorded, severity could not be established' : 'Accident recorded, severity could not be established', params: { event_id: latest.normalized_event_id } });
     const earlier = events.filter(e => e !== latest);
     if (earlier.length) {
       items.push({
@@ -870,9 +899,8 @@ export function computeScoreV4(input, cfg = SCORE_CONFIG_V4) {
     seller_disclosures: state(!!(inp.listingText && String(inp.listingText).trim()), sellerItems),
   };
   const unresolved = [...acc.unresolved, ...cur.unresolved, ...roll.unresolved, ...sel.unresolved];
-  /* страховий випадок в Україні зафіксований площадкою без деталей: подія
-     є, але тип і тяжкість невідомі; до рішення власника без штрафу */
-  if (ev.insurance_case_recorded === true) unresolved.push({ key: 'insurance_case_recorded', input: 'accident_history', note_key: 'Insurance case recorded without details' });
+  /* страховий випадок площадки йде в accidentInput як подія (unknown 0.5
+     або доказ до наявної події), окремої позначки більше нема */
 
   return {
     score_v: 4,

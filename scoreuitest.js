@@ -256,9 +256,34 @@ for (const [final, cov] of [[9.0, 91], [5.1, 74], [3.2, 50]]) {
   ok(/@media\(max-width:620px\)\{[\s\S]*?\.sc-pop\{[^}]*bottom:12px/.test(css), 'нема мобільної шторки');
   ok(!/\.cv-[a-z]+\{[^}]*var\(--(red|amber|green)\)/.test(css) && /\.cv-fill\{[^}]*var\(--brand\)/.test(css), 'шкала повноти в кольорах ризику');
 }
+/* 10b. стеля балу (ceiling-v1): один рядок із причиною в панелі; без стелі
+   рядка нема; нерозвʼязана базова ідентичність показує свою причину
+   замість "мало даних" */
+{
+  const withCeil = Object.assign(v4(8.0), { score_ceiling: { active: true, value: 9.0, reason_code: 'moderate_historical_damage', reason_key: 'the car had moderate damage in the past' } });
+  const r = mount({ verdict: { summary: 'x' }, confidence: conf(80), score_breakdown: withCeil });
+  ok(text(r.pop).includes('Maximum score is limited to 9.0: the car had moderate damage in the past.'), 'у панелі нема рядка стелі');
+  ok(/<span class="sc-note sc-ceil">/.test(r.pop), 'рядок стелі без класу sc-ceil');
+  ok(text(r.slot).includes('8.0'), 'бал картки не збережений final');
+  ok(!/9\.0/.test(text(r.slot)), 'значення стелі потрапило в закриту картку');
+  const n = mount({ verdict: { summary: 'x' }, confidence: conf(80), score_breakdown: v4(8.0) });
+  ok(!/Maximum score|sc-ceil/.test(n.pop + n.slot), 'без стелі зʼявився рядок стелі');
+  const near10 = Object.assign(v4(9.6), { score_ceiling: { active: true, value: 9.97, reason_code: 'evidence_weak', reason_key: 'part of the data about this specific car could not be verified' } });
+  ok(!/Maximum score|sc-ceil/.test(mount({ verdict: { summary: 'x' }, confidence: conf(80), score_breakdown: near10 }).pop), 'стеля 9.97 показана як "обмежена до 10.0"');
+  const tenth = Object.assign(v4(9.0), { score_ceiling: { active: true, value: 9.46, reason_code: 'evidence_weak', reason_key: 'part of the data about this specific car could not be verified' } });
+  ok(text(mount({ verdict: { summary: 'x' }, confidence: conf(80), score_breakdown: tenth }).pop).includes('Maximum score is limited to 9.5: part of the data'), 'стеля 9.46 не показана як 9.5');
+  const off = Object.assign(v4(8.0), { score_ceiling: { active: false, value: 10, reason_code: null, reason_key: null } });
+  ok(!/Maximum score|sc-ceil/.test(mount({ verdict: { summary: 'x' }, confidence: conf(80), score_breakdown: off }).pop), 'неактивна стеля показана');
+  const idc = Object.assign(v4(null), { score_available: false, score_unavailable_reason: 'core_identity_unresolved', final: null });
+  const u = mount({ verdict: { summary: 'x' }, confidence: conf(80), score_breakdown: idc });
+  ok(text(u.slot).includes('Vehicle identity not established') && !text(u.slot).includes('Not enough data to score'), 'конфлікт ідентичності показаний як брак даних');
+  const other = Object.assign(v4(null), { score_available: false, score_unavailable_reason: 'insufficient_evidence', final: null });
+  ok(text(mount({ verdict: { summary: 'x' }, confidence: conf(80), score_breakdown: other }).slot).includes('Not enough data to score'), 'звичайна недоступність втратила свій текст');
+  ok(/\.sc-note\.sc-ceil\{color:var\(--ink-2\)\}/.test(page), 'нема стилю рядка стелі');
+}
 /* 11. словники */
 {
-  const keys = ['CalCar Score', 'Confidence in the score', 'Check coverage', 'Limited data', 'Well covered', 'Data is limited', 'Partially checked', 'Enough data', 'Studied in detail',
+  const keys = ['CalCar Score', 'Confidence in the score', 'Maximum score is limited to {v}', 'Vehicle identity not established', 'Check coverage', 'Limited data', 'Well covered', 'Data is limited', 'Partially checked', 'Enough data', 'Studied in detail',
     'Photos and current condition', 'Vehicle identification', 'Not applicable', 'About CalCar Score', 'About confidence in the score', 'Show score details',
     'An assessment of this specific car based on confirmed data about its history, condition, mileage and other available facts.',
     ...[...TIPS_SRC.matchAll(/'([^']{20,})'/g)].map(m => m[1])];

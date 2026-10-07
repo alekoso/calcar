@@ -6,6 +6,7 @@ import { resolveLocale, languageDirective, errText } from './locale.js';
 import { computeScoreV3, resolveVehicleAge } from './score-v3.js';
 /* Score v4: тінь за замовчуванням, активна лише через CALCAR_SCORE_VERSION=v4 */
 import { computeScoreV4, resolvePowertrainClass, mileageNormKmYear, SCORE_CONFIG_V4, validateDisclosures } from './score-v4.js';
+import { applyScoreCeiling } from './score-ceiling.js';
 /* повнота перевірки (Confidence v1): знімок у момент Check, Score не змінює */
 import { buildConfidenceInput, computeConfidenceV1, CONFIDENCE_CONFIG_V1 } from './confidence.js';
 /* надійність Current Vision: передзавантаження кадрів, обмежений ретрай, gate фіналізації */
@@ -3761,6 +3762,26 @@ async function runCheck(req, res, job) {
       } catch (e) {
         console.log('[confidence]', JSON.stringify({ op: 'compute', error: String((e && e.message) || e).slice(0, 160), vin: listing.vin || null }));
         parsed.confidence = { confidence_version: 'v1', config_tag: CONFIDENCE_CONFIG_V1.CONFIG_TAG, overall_internal: null, text_key: null, domains: {}, caps_applied: [], unavailable_reason: 'compute_error' };
+      }
+      /* ---- стеля балу (ceiling-v1): обмежений шар над v4. Читає вже
+         готовий знімок Confidence, паспорт авто, канонічний HV, поточні
+         кадри і вік авто; v4 не перераховує. Без стелі бал побайтово той
+         самий ---- */
+      try {
+        if (breakdownV4 && breakdownV4.score_version === 'v4') {
+          const cvCe = cvTerminal;
+          applyScoreCeiling(breakdownV4, {
+            confidence: parsed.confidence,
+            vehicleSpec,
+            historicalVisual: parsed.historical_visual || null,
+            currentVisual: cvCe && cvCe.status === 'ok' && cvCe.current_visual ? compactCurrentVisual(cvCe.current_visual, { includeMinor: true }) : null,
+            ageMonths: vehicleV3.age_months,
+          });
+          const sc = breakdownV4.score_ceiling;
+          console.log('[score-ceiling]', JSON.stringify({ value: sc.value, reason: sc.reason_code, severity: sc.physical_severity, v4: sc.v4_final, final: breakdownV4.final, identity: sc.identity_core_conflicts, vin: listing.vin || null }));
+        }
+      } catch (e) {
+        console.log('[score-ceiling]', JSON.stringify({ op: 'apply', error: String((e && e.message) || e).slice(0, 160), vin: listing.vin || null }));
       }
       const breakdown = SCORE_VERSION === 'v4' ? breakdownV4 : breakdownV3;
       const shadow = SCORE_VERSION === 'v4' ? breakdownV3 : breakdownV4;

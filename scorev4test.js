@@ -106,7 +106,11 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     eq(cat({ outer_panel_damage_extent: 'single_panel' }).latest.v4_category, 'light', 'одна панель = легке');
     eq(cat({ cosmetic_only: true, outer_panel_damage_extent: 'single_panel', damage_depth: 'indeterminate', fascia_status: 'not_visible' }).latest.v4_category, 'light', 'cosmetic = легке');
     eq(cat({}).latest.v4_category, 'medium', 'кілька панелей = середнє');
-    eq(cat({ outer_panel_damage_extent: 'single_panel', srs_visual_status: 'deployed_visible', airbags_visible_parts: ['driver'] }).latest.v4_category, 'medium', 'подушки = середнє');
+    /* подушки не є мірою удару (рішення власника 2026-10-07): легкий удар з подушками лишається light, факт подушок зберігається на події */
+    const abLight = cat({ outer_panel_damage_extent: 'single_panel', srs_visual_status: 'deployed_visible', airbags_visible_parts: ['driver'] });
+    eq(abLight.latest.v4_category, 'light', 'подушки більше не піднімають легке до середнього'); eq(abLight.latest.airbags, true, 'факт подушок на події втрачено');
+    eq(cat({ srs_visual_status: 'deployed_visible', airbags_visible_parts: ['driver'] }).latest.v4_category, 'medium', 'кілька панелей з подушками = середнє за панелями');
+    eq(cat({ outer_panel_damage_extent: 'indeterminate', damage_depth: 'indeterminate', fascia_status: 'not_visible', srs_visual_status: 'deployed_visible', airbags_visible_parts: ['driver'] }).latest.v4_category, 'unknown', 'самі подушки без фізичних ознак = unknown');
     eq(cat({ damage_depth: 'inner_structure_or_module', inner_component_deformation_visible: 'visible', inner_component_damage_extent: 'localized', fascia_status: 'detached_or_missing' }).latest.v4_category, 'medium', 'INNER localized = середнє (D1)');
     eq(cat({ damage_depth: 'inner_structure_or_module', inner_component_deformation_visible: 'visible', inner_component_damage_extent: 'substantial', fascia_status: 'detached_or_missing' }).latest.v4_category, 'heavy', 'INNER substantial = тяжке');
     eq(cat({ load_bearing_structure_deformation_visible: true, damage_depth: 'load_bearing_structure' }).latest.v4_category, 'heavy', 'несуча = тяжке');
@@ -174,7 +178,7 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
       accidentRecord: { recorded: true, note: 'ДТП на території США із пошкодженням передньої частини' },
       findings: [finding('AIRBAGS_DEPLOYED', 'accident_us'), finding('MAJOR_REPAIR_UNVERIFIED', 'accident_us')] });
     eq(r.events.length, 1, 'одна подія з пʼяти джерел'); eq(itemsOf(r, 'accident_history').length, 1, 'одна строка');
-    eq(r.events[0].v4_category, 'medium', 'подушки + панелі = середнє'); eq(sum(r), 0.7, 'сума 0.7 (середнє з 2026-09-30)');
+    eq(r.events[0].v4_category, 'medium', 'панелі = середнє'); eq(r.events[0].category_basis.includes('airbags_deployed'), false, 'подушки як підстава категорії'); eq(sum(r), 0.7, 'сума 0.7 (середнє з 2026-09-30)');
   }
 
   /* ===== 7. вхід 2: кузов ===== */
@@ -480,9 +484,69 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [minorF('front', 'chip'), minorF('rear', 'scratch_scuff')] } })), 0, 'E: два звичайні дефекти без накопичення');
     eq(sum(run({ currentVisual: { zones: cvZones, condition_findings: [cvf('front', 'panel_gap_alignment', { photo: 56, sign: 'зазор 56' }), minorF('front', 'chip'), minorF('rear', 'chip')] } })), 0.4, 'J: суттєвий зазор окремо, у накопичення не йде');
     for (const [k, v] of [['heavy', 2.5], ['total', 5.0], ['fire', 3.0], ['flood', 2.5]]) eq(C.ACCIDENT[k], v, 'N: ' + k + ' без змін');
-    /* страховий випадок без деталей: у unresolved, без штрафу */
+    /* страховий випадок площадки (рішення власника 2026-10-06): підтверджена
+       подія невідомої тяжкості = рівно один існуючий штраф unknown 0.5
+       через ту саму подієву модель; окремого штрафу і стелі нема */
+    const insOf = r => itemsOf(r, 'accident_history');
+    const rnd1 = x => Math.round((x + Number.EPSILON) * 10) / 10;
     const ins = run({ evidence: { ...baseEv, insurance_case_recorded: true } });
-    ok(ins.unresolved.some(u => u.key === 'insurance_case_recorded') && sum(ins) === sum(run({})), 'страховий випадок: позначка без штрафу');
+    eq(rnd1(sum(ins) - sum(run({}))), 0.5, 'страховий випадок: рівно 0.5');
+    eq(insOf(ins).length, 1, 'страховий випадок: один ряд');
+    eq(insOf(ins)[0].key, 'accident_latest_unknown', 'страховий випадок: існуючий ряд unknown, не новий тип');
+    eq(insOf(ins)[0].amount, C.ACCIDENT.unknown, 'страховий випадок: вага unknown');
+    eq(insOf(ins)[0].label_key, 'Insurance case recorded, severity not established', 'ярлик страхового випадку');
+    eq(ins.events.length, 1, 'страховий: одна подія'); eq(ins.events[0].normalized_event_id, 'insurance:record', 'страховий: id події'); eq(ins.events[0].anchored, false, 'страховий: подія не заякорена');
+    ok(!ins.unresolved.some(u => u.key === 'insurance_case_recorded'), 'стара позначка без штрафу лишилась');
+    ok(ins.unresolved.some(u => u.key === 'accident_severity_unknown' && u.params.event_id === 'insurance:record' && /Insurance case/.test(u.note_key)), 'нема позначки unknown для страхового');
+    /* 2. той самий випадок: запис ДТП площадки + страховий + лот з кадрами: ОДНА подія, найсильніша класифікація */
+    const both = run({ auctionMeta: lot(), historicalVisual: hv({ outer_panel_damage_extent: 'single_panel' }), accidentRecord: { recorded: true, note: 'ДТП' }, evidence: { ...baseEv, insurance_case_recorded: true, auction_record_exists: true } });
+    eq(both.events.length, 1, 'страховий + ДТП + лот: подій не одна'); eq(insOf(both).length, 1, 'страховий + лот: рядів не один');
+    ok(both.events[0].merge_basis.includes('insurance_record_attached') && both.events[0].merge_basis.includes('platform_record_attached'), 'страховий запис не прикріплений до якірної події');
+    eq(insOf(both)[0].key, 'accident_latest_light', 'найсильніша класифікація = light з кадрів');
+    eq(rnd1(sum(both) - sum(run({}))), C.ACCIDENT.light, 'страховий + легке: лише 0.4, без 0.5 зверху');
+    /* 3. страховий + запис ДТП площадки без лота: одна unknown подія, 0.5 один раз */
+    const recIns = run({ accidentRecord: { recorded: true, note: 'ДТП 2021' }, evidence: { ...baseEv, insurance_case_recorded: true } });
+    eq(insOf(recIns).length, 1, 'ДТП + страховий без лота: один ряд'); eq(rnd1(sum(recIns) - sum(run({}))), 0.5, 'ДТП + страховий: 0.5 один раз');
+    ok(recIns.events.length === 1 && recIns.events[0].merge_basis.includes('insurance_record_attached'), 'страховий не прикріплений до запису ДТП');
+    /* 4. та сама подія (запис площадки злитий з лотом, страховий з того ж блоку):
+       помірне/серйозне з кадрів перемагає, 0.5 зникає */
+    const sameRec = { recorded: true, note: 'ДТП' };
+    const medIns = run({ auctionMeta: lot(), historicalVisual: hv(), accidentRecord: sameRec, evidence: { ...baseEv, insurance_case_recorded: true } });
+    eq(medIns.events.length, 1, 'страховий + запис + лот: подій не одна');
+    eq(insOf(medIns).map(i => i.key).join(','), 'accident_latest_medium', 'страховий + помірне: лише medium');
+    eq(rnd1(sum(medIns) - sum(run({}))), C.ACCIDENT.medium, 'страховий + помірне: 0.7 без 0.5');
+    const hvy = hv({ damage_depth: 'inner_structure_or_module', inner_component_damage_extent: 'substantial', inner_component_deformation_visible: 'visible' });
+    eq(rnd1(sum(run({ auctionMeta: lot(), historicalVisual: hvy, accidentRecord: sameRec, evidence: { ...baseEv, insurance_case_recorded: true } })) - sum(run({}))), C.ACCIDENT.heavy, 'страховий + серйозне: 2.5 без 0.5');
+    /* лот без видимих пошкоджень + страховий: лот подією не стає (D2, лише
+       позначка про невідому причину продажу), страховий дає свою одну
+       подію unknown 0.5; другого штрафу нема */
+    const cleanLot = run({ auctionMeta: lot(), historicalVisual: hv({ visible_damage_zones: [], outer_panel_damage_extent: 'none', damage_depth: 'indeterminate', fascia_status: 'intact_mounted' }), evidence: { ...baseEv, insurance_case_recorded: true } });
+    eq(rnd1(sum(cleanLot) - sum(run({}))), 0.5, 'чистий лот + страховий: 0.5'); eq(insOf(cleanLot).length, 1, 'чистий лот + страховий: один ряд');
+    eq(cleanLot.events.map(e => e.normalized_event_id).join(','), 'insurance:record', 'чистий лот + страховий: подія лише страхова');
+    ok(cleanLot.unresolved.some(u => u.key === 'auction_reason_unknown'), 'чистий лот + страховий: позначка про лот без причини зникла');
+    /* 5. salvage/титул/страховик/аукціон без підтвердженої події: нічого */
+    const title = run({ auctionMeta: lot(), listingText: 'Copart SALVAGE title, rebuilt, insurer State Farm, total loss, був ремонт. Продається авто.', evidence: { ...baseEv, auction_record_exists: true } });
+    eq(rnd1(sum(title) - sum(run({}))), 0, 'титул без події дав штраф'); ok(!title.events.length, 'титул створив подію');
+    /* 6. дві незалежні події + страховий без запису площадки: існуюча multi-event логіка, страховий окремою подією, третього рядка нема */
+    const twoIns = run({ auctionMeta: lot(), historicalVisual: hv(), findings: [
+      finding('STRUCTURAL_DAMAGE', 'accident_2019', { evidence: [{ source: 'registry', ref: 'reg', description: 'структурне ДТП 2019' }] }),
+      finding('AIRBAGS_DEPLOYED', 'accident_2016', { evidence: [{ source: 'registry', ref: 'reg', description: 'подушки 2016' }] }),
+    ], evidence: { ...baseEv, insurance_case_recorded: true } });
+    const twoNo = run({ auctionMeta: lot(), historicalVisual: hv(), findings: [
+      finding('STRUCTURAL_DAMAGE', 'accident_2019', { evidence: [{ source: 'registry', ref: 'reg', description: 'структурне ДТП 2019' }] }),
+      finding('AIRBAGS_DEPLOYED', 'accident_2016', { evidence: [{ source: 'registry', ref: 'reg', description: 'подушки 2016' }] }),
+    ] });
+    /* лот іншого ринку і групи знахідок без запису площадки: ствердного звʼязку
+       зі страховим записом нема, він лишається окремою подією; ранні події
+       це одна плоска строка, тому сума та сама */
+    eq(sum(twoIns), sum(twoNo), 'дві події + страховий: сума змінилась'); eq(twoIns.events.length, twoNo.events.length + 1, 'страховий без ствердного звʼязку мав лишитися окремою подією');
+    ok(twoIns.items.some(i => i.key === 'accident_earlier_events'), 'дві події + страховий: рання подія зникла');
+    ok(!twoIns.events.some(e => e.merge_basis.includes('insurance_record_attached')), 'страховий прикріплено до події іншого контексту');
+    /* J. лот + страховий без запису площадки: дві незалежні події, існуюча логіка ранніх подій */
+    const lotIns = run({ auctionMeta: lot(), historicalVisual: hv({ outer_panel_damage_extent: 'single_panel' }), evidence: { ...baseEv, insurance_case_recorded: true } });
+    eq(lotIns.events.length, 2, 'лот + страховий без запису площадки: подій не дві');
+    eq(insOf(lotIns).map(i => i.key).sort().join(','), 'accident_earlier_events,accident_latest_light', 'лот + страховий: рядки');
+    eq(rnd1(sum(lotIns) - sum(run({}))), rnd1(C.ACCIDENT.light + C.ACCIDENT.earlier_events), 'лот + страховий: сума двох незалежних подій');
   }
 
   /* ===== 12. незмінний config_tag ===== */
@@ -495,7 +559,7 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
        того ж дня сидіння рахуються по рядах (без подвійного рахунку), тег v4-prod-2026-09-29b.
        2026-09-30: нинішній стан сильніше (сидіння рядами, поширені дефекти, скло), середнє ДТП 0.7, тег v4-prod-2026-09-30;
        того ж дня дрібний зазор панелі в накопиченні, тег v4-prod-2026-09-30b */
-    const EXPECTED = '7242787dc7c20af750da1c4ea057d299';
+    const EXPECTED = 'b9888be0f704aa04c2a57ddc8582ff14';
     if (hash !== EXPECTED) errs.push('SCORE_CONFIG_V4 змінився (md5 ' + hash + '), онови CONFIG_TAG і хеш у тесті');
   }
 
