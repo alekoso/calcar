@@ -39,6 +39,7 @@ import { decisionEvidenceBlock, mergeCanonicalEquipment, mergeCanonicalCondition
 import { buildEvidenceCoverage } from './evidence-coverage.js';
 /* final semantic consistency gate: finished prose cannot contradict canonical facts */
 import { enforceReportConsistency } from './report-consistency.js';
+import { mergeChecklist, sanitizeFcChecks } from './checklist-merge.js';
 import { gateDashboardFacts } from './current-visual.js';
 /* спільні ідентичності і версії: тести і сусідні модулі беруть їх звідси */
 export { HISTORICAL_VISUAL_VERSION, photoIdentity, photoSetFingerprint, listingFingerprint, snapshotRow, listingKey, NHTSA_DECODER_VERSION, LISTING_FINGERPRINT_VERSION };
@@ -4284,8 +4285,10 @@ async function runCheck(req, res, job) {
       findings: rs.findings.length, findings_at_cutoff: rs.cutoff_findings, cutoff_at: rs.cutoff_at, aborted_at: rs.aborted_at, waited_ms: miResearchWaited,
       persisted: rs.batches.filter(b => b.persist && b.persist.ok).map(b => ({ n: b.n, published: b.persist.published, merged: b.persist.merged, candidates: b.persist.candidates, staged_cold: b.persist.staged_cold })) }));
     /* будь-який збій на цьому кроці лишає звіт цілим, без final_conclusion */
+    let fcOut = null;
     try {
       const fc = await fcPromise;
+      fcOut = fc;
       const attached = attachFinalConclusion(parsed, fc, lang);
       if (!attached) {
         /* старий висновок не повертається: звіт нового покоління без
@@ -4300,6 +4303,25 @@ async function runCheck(req, res, job) {
       parsed._meta.final_conclusion = { status: 'error', reason: 'attach_failed', model: null };
       console.log('[final-conclusion]', JSON.stringify({ op: 'attach', error: String((e && e.message) || e).slice(0, 160), vin: listing.vin || null }));
       mark('final_conclusion', Date.now() - tFc, 'error', { at: tFc - tRun, reason: 'attach_failed' });
+    }
+    /* ---- checklist merge (checklist-merge.js) ----
+       The final checklist keeps the material steps the report already holds
+       in structured form: actions of high and finding risks, a step that
+       establishes an unresolved identity field, and the checks the Final
+       Conclusion returned next to its text. Runs before the consistency
+       gate, so merged items are checked like every other item. A failure
+       leaves the checklist as the main analysis wrote it */
+    try {
+      const fcOk = fcOut && fcOut.status === 'ok' && parsed.final_conclusion && fcOut.conclusion;
+      const snapshot = fcOk && Array.isArray(fcOut.checklist_snapshot) ? fcOut.checklist_snapshot : null;
+      const fcc = fcOk ? sanitizeFcChecks(fcOut.conclusion.checks, snapshot ? snapshot.length : 0) : { checks: [], rejected: [] };
+      const cm = mergeChecklist(parsed, { fcChecks: fcc.checks, snapshot, lang });
+      cm.fc_checks = fcOk ? (Array.isArray(fcOut.conclusion.checks) ? fcOut.conclusion.checks.length : 0) : null;
+      if (fcc.rejected.length) cm.fc_rejected = fcc.rejected;
+      parsed._meta.checklist_merge = cm;
+      if (cm.added.length || cm.refined.length || fcc.rejected.length) console.log('[checklist-merge]', JSON.stringify({ op: 'merge', vin: listing.vin || null, before: cm.before, after: cm.after, refined: cm.refined.length, added: cm.added.map(a => a.source), skipped: cm.skipped.map(x => x.reason), fc_rejected: fcc.rejected.map(x => x.reason) }));
+    } catch (e) {
+      console.log('[checklist-merge]', JSON.stringify({ op: 'merge', error: String((e && e.message) || e).slice(0, 160), vin: listing.vin || null }));
     }
     /* ---- consistency gate (report-consistency.js) ----
        Runs last, over the finished report: every buyer-facing text is

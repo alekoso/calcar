@@ -105,7 +105,7 @@ const REPORT = {
     ok(CONCLUSION_RULES.includes(k), 'у правилах висновку нема: ' + k);
   }
   ok(!/МАКСИМУМ \d+ символів|рівно \d+ речен|один плюс|один мінус/i.test(CONCLUSION_RULES), 'у правилах лишилась жорстка стара структура');
-  ok(!/[А-Яа-яІіЇїЄєҐґ]/.test(CONCLUSION_RULES) && fcMod.CONCLUSION_VERSION === 'fc-v2.4', 'production rules are not the English fc-v2.4');
+  ok(!/[А-Яа-яІіЇїЄєҐґ]/.test(CONCLUSION_RULES) && fcMod.CONCLUSION_VERSION === 'fc-v2.5', 'production rules are not the English fc-v2.5');
   /* fc-v2.3: powertrain step weighs a genuine strength like a weakness (bench A/B 2026-10-03) */
   ok(CONCLUSION_RULES.includes('4. Powertrain step (always do this before drafting, silently): look at the relevant powertrain of this exact vehicle.')
     && CONCLUSION_RULES.includes('consider both sides: whether one has a well-established strength that genuinely matters for ownership, and whether one has a well-established weakness that materially affects this purchase.')
@@ -115,7 +115,7 @@ const REPORT = {
   ok(!CONCLUSION_RULES.includes('4. Model-specific step (always do this before drafting, silently)'), 'old weakness-only step 4 still present');
   ok(!/exactly \d+ sentences|one plus|one minus|four paragraphs\./i.test(CONCLUSION_RULES.replace('Do not target four paragraphs', '')), 'rigid old structure in the rules');
   const fmt = conclusionResponseFormat();
-  ok(fmt.json_schema.strict === true && fmt.json_schema.schema.required.join() === 'headline,paragraphs', 'схема відповіді не headline + paragraphs');
+  ok(fmt.json_schema.strict === true && fmt.json_schema.schema.required.join() === 'headline,paragraphs,checks' && fmt.json_schema.schema.properties.checks.items.required.join() === 'text,area,refines', 'схема відповіді не headline + paragraphs + checks');
   const um = conclusionUserMessage({ langDirective: 'LANG_DIRECTIVE.', context: ctx });
   ok(um.startsWith('LANG_DIRECTIVE.') && um.includes('"calcar_score"'), 'повідомлення без мовної директиви або контексту');
 

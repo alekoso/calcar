@@ -13,7 +13,9 @@
    Файл не є Vercel-функцією (default export відсутній): його імпортують
    api/check.js і benchmark-ендпоінт api/conclusion-bench.js. */
 
-export const CONCLUSION_VERSION = 'fc-v2.4';
+import { FC_CHECK_AREAS } from './checklist-merge.js';
+
+export const CONCLUSION_VERSION = 'fc-v2.5';
 /* runaway-захист, не продуктовий таргет: довжину визначає складність авто */
 export const CONCLUSION_LIMITS = { headline: 160, body: 7000, paragraphs: 8 };
 export const CONCLUSION_TIMEOUT_MS = 150000;
@@ -307,6 +309,10 @@ export function buildConclusionContext(report) {
       kind: r.kind || null,
       title: str(r.title, 160), note: str(r.note, 420), check: str(r.action, 260),
     })),
+    /* the checklist shown at the end of the report, numbered: the
+       conclusion returns the checks it recommends that the checklist lacks
+       or names only generically (fc-v2.5, merged by checklist-merge.js) */
+    checklist: arr(report.checklist).filter(t => typeof t === 'string' && t.trim()).slice(0, 8).map((t, i) => ({ n: i + 1, text: str(t, 320) })),
     /* типові особливості саме цієї версії, зібрані Check з джерелами (MI і
        веб-дослідження). Порожньо = база ще не заповнена, а не "проблем нема" */
     model_knowledge_from_report: arr(report.model_notes && report.model_notes.issues).filter(isObj).slice(0, 10).map(i => ({
@@ -423,7 +429,18 @@ Do not list options: name the two or three that matter most, and only if they ex
 Use numbers rarely and rounded, only when they help understanding. Do not mention VINs, links, photo numbers or technical identifiers.
 The em dash character is forbidden in the output, and so are sentence structures that normally require it. Do not write a noun phrase followed by a pause and its explanation ("The main issue here [dash] the repaired body", "75 thousand km [dash] low mileage for its age"). Such a sentence becomes ungrammatical when the dash is replaced by a comma. Rewrite it with a normal verb, a colon, or as a separate sentence ("The repaired body matters most here", "75 thousand km is low mileage for its age"). This applies to the headline too.
 
-RESPONSE: JSON only, by the schema: {"headline": string, "paragraphs": [string, ...]}.`;
+CHECKS FIELD
+Besides the text, return checks: the inspection steps the buyer must not lose that the report checklist (context field checklist, numbered from 1, shown at the end of the report) does not yet contain specifically. A step you recommend in the text that is missing from the checklist is otherwise lost.
+- Include a check only when it is material: airbags and safety, structure and body geometry, unresolved vehicle identity, engine, transmission or drive verification, mileage integrity, an expensive system actually fitted to this exact version, a major gap in the service history, a significant modification, the quality of an accident or flood repair, or documents that would materially change confidence. Never a cosmetic item, a minor option, a generic weakness that does not concern this exact engine or version, or a low-impact uncertainty.
+- Every step you recommend in the text, and every high-level item of key_risks, must either already be in the checklist or appear here. Do not repeat what the checklist already says specifically.
+- If a checklist item covers the same inspection only generically (for example a generic cold start, while the concern of this engine is timing chain noise), set refines to that item's number and write the complete replacement item: keep everything the existing item checks and add the specific step. Otherwise refines is null.
+- One inspection is one check: a cold start, listening to the chain and engine noise for the same concern are one item.
+- A check is a step, not a diagnosis: "check whether the timing chain is noisy on a cold start" never becomes "the chain is worn". Keep conditions as conditions ("if the air suspension is fitted, ..."), seller claims as claims ("invoices for the oil change the seller reports"), unknown as unknown. When identity is in conflict or unknown, the check establishes it and never assumes a candidate.
+- Form: one line in the output language, in the same form as the checklist items: what to inspect or obtain, what to look for, and the reason specific to this car. No photo numbers, VINs or internal field names.
+- At most 3 checks. An empty array is normal when the checklist already covers everything.
+- area is the category of the check: safety, structure, identity, powertrain, mileage, expensive_system, service_history, modification, accident_repair, documents, cosmetic or other.
+
+RESPONSE: JSON only, by the schema: {"headline": string, "paragraphs": [string, ...], "checks": [{"text": string, "area": string, "refines": integer or null}, ...]}.`;
 
 export function conclusionResponseFormat() {
   return {
@@ -431,10 +448,21 @@ export function conclusionResponseFormat() {
     json_schema: {
       name: 'calcar_final_conclusion', strict: true,
       schema: {
-        type: 'object', additionalProperties: false, required: ['headline', 'paragraphs'],
+        type: 'object', additionalProperties: false, required: ['headline', 'paragraphs', 'checks'],
         properties: {
           headline: { type: 'string' },
           paragraphs: { type: 'array', items: { type: 'string' } },
+          checks: {
+            type: 'array',
+            items: {
+              type: 'object', additionalProperties: false, required: ['text', 'area', 'refines'],
+              properties: {
+                text: { type: 'string' },
+                area: { type: 'string', enum: FC_CHECK_AREAS },
+                refines: { type: ['integer', 'null'] },
+              },
+            },
+          },
         },
       },
     },
@@ -478,14 +506,17 @@ export function sanitizeConclusion(raw) {
       if (paras.length >= CONCLUSION_LIMITS.paragraphs || total + t.length > CONCLUSION_LIMITS.body) {
         /* ліміт: цілий абзац відкидається, речення посередині не ріжеться */
         if (!paras.length) paras.push(cutAtBoundary(t, CONCLUSION_LIMITS.body));
-        return headline && paras.length ? { headline, body: paras.join('\n\n'), truncated: true } : null;
+        return headline && paras.length ? { headline, body: paras.join('\n\n'), truncated: true, ...(Array.isArray(raw.checks) ? { checks: raw.checks.slice(0, 6) } : {}) } : null;
       }
       paras.push(t);
       total += t.length;
     }
   }
   if (!headline || !paras.length) return null;
-  return { headline, body: paras.join('\n\n') };
+  const out = { headline, body: paras.join('\n\n') };
+  /* checks are sanitized by checklist-merge.js against the checklist snapshot */
+  if (Array.isArray(raw.checks)) out.checks = raw.checks.slice(0, 6);
+  return out;
 }
 
 /* ---------- виклик ---------- */
@@ -519,6 +550,8 @@ export async function runFinalConclusion({ report, langDirective = '', callModel
   if (!context || !context.vehicle) { out.reason = 'no_context'; return out; }
   const user = conclusionUserMessage({ langDirective, context });
   out.context_chars = user.length;
+  /* refines indexes point into this snapshot */
+  out.checklist_snapshot = (Array.isArray(report.checklist) ? report.checklist : []).filter(t => typeof t === 'string' && t.trim()).slice(0, 8).map(t => t.trim());
   const bodyFor = (m, withEffort) => {
     const b = {
       model: m, max_completion_tokens: 12000,
