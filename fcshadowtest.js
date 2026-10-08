@@ -259,6 +259,8 @@ const ENV = { ANTHROPIC_API_KEY: 'sk-ant-TEST-SECRET', OPENAI_API_KEY: 'sk-TEST-
   ok(kinds(chk('Следов затопления не видно.')).length === 0, 'a postpositive negation is flagged');
   /* fc-checks-v1.1: tenure with one owner is not the total count (real Santa Fe output, registry 3) */
   ok(kinds(chk('С 2019 года она уже семь с половиной лет у одного хозяина.')).length === 0 && kinds(chk('It has been with one owner since 2019.')).length === 0, 'tenure with one owner is flagged as an owners count');
+  /* fc-checks-v1.2: a year is not an owners figure (real Prado output: "с 2007 года один владелец") */
+  ok(!kinds(chk('По реестру у машины с 2007 года три владельца.')).some(k => k.startsWith('owners:owners:7')) && kinds(chk('По реестру у машины с 2007 года один владелец.')).includes('owners:owners:1>3'), 'a year is read as an owners count');
   ok(kinds(chk('У машины был один владелец.')).includes('owners:owners:1>3') && kinds(chk('Машина сменила двух владельцев.')).includes('owners:owners:2>3') && kinds(chk('Зарегистрированы три владельца.')).length === 0, 'Russian owner counts are not read');
   ok(C.conclusionInvariantChecks({ text: null }).total === 0 && C.conclusionInvariantChecks({ text: { headline: 'H', body: '' } }).total === 0, 'empty text is not a clean result');
 

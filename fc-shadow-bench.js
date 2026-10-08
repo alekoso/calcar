@@ -234,7 +234,7 @@ function loadPairs() {
 }
 
 /* the blind review page: data inline, ratings kept in this browser only and downloadable */
-function blindHtml(blind) {
+function blindHtml(blind, runId = 'run') {
   const data = JSON.stringify(blind).replace(/</g, '\\u003c');
   const css = ':root{--brand:#B8F23D;--ink:#141619;--bg:#F7F8F6;--line:#e3e5e1;--muted:#5d6360;--card:#fff;--warn-bg:#fff4e5;--warn:#7a3b00;--ok-bg:#eef9e2;--ok:#2a6b00;--chip:#eef0ec}'
     + '@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--ink:#e8eae6;--bg:#141619;--line:#2c302c;--muted:#a3a9a5;--card:#1c1f1d;--warn-bg:#3a2a12;--warn:#ffcf8a;--ok-bg:#1f3315;--ok:#b8f23d;--chip:#2a2e2b}}'
@@ -247,7 +247,7 @@ function blindHtml(blind) {
     + '.meta{color:var(--muted);font-size:13px}textarea{width:100%;min-height:50px;box-sizing:border-box;margin-top:8px;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px}'
     + 'button{background:var(--brand);color:#141619;border:0;border-radius:8px;padding:8px 14px;font-weight:600;cursor:pointer}.top{position:sticky;top:0;background:var(--bg);padding:8px 0 10px;border-bottom:1px solid var(--line);z-index:2}'
     + '.badge{display:inline-block;padding:1px 8px;border-radius:999px;background:var(--chip);font-size:12px}.mis{color:#c0392b;font-weight:700}';
-  const js = 'var D=JSON.parse(document.getElementById("data").textContent);'
+  const js = 'var D=JSON.parse(document.getElementById("data").textContent);var RUN=' + JSON.stringify(runId) + ';'
     + 'var CRIT=[["factual","Factual correctness"],["status","Canonical fact status kept"],["useful","Useful for the purchase decision"],["risks","Risk prioritization"],["checks","Checks quality"],["clarity","Clarity"],["overall","Overall"]];'
     + 'function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}'
     + 'function ls(k,v){try{if(v===undefined)return JSON.parse(localStorage.getItem(k)||"null");localStorage.setItem(k,JSON.stringify(v))}catch(e){return null}}'
@@ -257,14 +257,14 @@ function blindHtml(blind) {
     + 'var dropped=c.rejected.concat(c.skipped);if(dropped.length){h+="<div class=\\"meta\\" style=\\"margin-top:6px\\">Dropped by the merge rules:</div><ul>";dropped.forEach(function(r){h+="<li>"+esc(r.reason)+": "+esc(r.text)+"</li>"});h+="</ul>"}return h+"</div>"}'
     + 'function flagsHtml(f){if(!f)return "";if(!f.total)return "<div class=\\"box okf\\">Automatic flags: none</div>";var h="<div class=\\"box flags\\"><b>Automatic flags: "+f.total+"</b><ul>";f.violations.forEach(function(v){h+="<li>"+esc(v.check+" / "+v.domain+" ("+(v.where||"text")+"): found "+v.found+", canonical "+v.canonical)+(v.text?"<br><span class=\\"meta\\">"+esc(v.text)+"</span>":"")+"</li>"});(f.directive||[]).forEach(function(d){h+="<li>directive wording: "+esc(d.phrase)+"</li>"});return h+"</ul></div>"}'
     + 'function side(name,s){var h="<div class=\\"side\\"><h3>"+name+" <span class=\\"badge\\">"+esc(s.status)+"</span></h3>";if(!s.output){return h+"<p class=\\"meta\\">no output</p>"+flagsHtml(s.flags)+"</div>"}h+="<p class=\\"hl\\">"+esc(s.output.headline)+"</p>";s.output.body.split(/\\n\\s*\\n/).forEach(function(p){h+="<p>"+esc(p)+"</p>"});return h+checksHtml(s.checks)+flagsHtml(s.flags)+"</div>"}'
-    + 'var root=document.getElementById("root");D.forEach(function(p,i){var saved=ls("fcab:"+p.report_id)||{};var el=document.createElement("div");el.className="pair";'
+    + 'var root=document.getElementById("root");D.forEach(function(p,i){var saved=ls("fcab:"+RUN+":"+p.report_id)||{};var el=document.createElement("div");el.className="pair";'
     + 'el.innerHTML="<div class=\\"meta\\">"+(i+1)+"/"+D.length+" · "+esc(p.vehicle?p.vehicle.title:"")+" · "+esc(p.lang)+" · input "+esc((p.input_hash||"").slice(0,12))+(p.identical_input===true?" · identical input":" · <span class=\\"mis\\">INPUT NOT PROVEN IDENTICAL</span>")+"</div><div class=\\"cols\\">"+side("A",p.A)+side("B",p.B)+"</div>"'
     + '+"<div class=\\"rate\\">"+CRIT.map(function(c){return "<div><b>"+c[1]+"</b><br>"+["A","B","tie"].map(function(v){return "<label><input type=\\"radio\\" name=\\""+p.report_id+":"+c[0]+"\\" value=\\""+v+"\\""+(saved[c[0]]===v?" checked":"")+"> "+v+"</label>"}).join("")+"</div>"}).join("")+"</div>"'
     + '+"<textarea placeholder=\\"Notes\\" data-id=\\""+p.report_id+"\\">"+esc(saved.notes||"")+"</textarea>";root.appendChild(el)});'
     + 'function collect(){var out={};D.forEach(function(p){var r={};CRIT.forEach(function(c){var x=document.querySelector("input[name=\\""+p.report_id+":"+c[0]+"\\"]:checked");r[c[0]]=x?x.value:null});var t=document.querySelector("textarea[data-id=\\""+p.report_id+"\\"]");r.notes=t?t.value:"";out[p.report_id]=r});return out}'
-    + 'function save(){var all=collect();var done=0;Object.keys(all).forEach(function(k){ls("fcab:"+k,all[k]);if(all[k].overall)done++});document.getElementById("progress").textContent="rated "+done+"/"+D.length}'
+    + 'function save(){var all=collect();var done=0;Object.keys(all).forEach(function(k){ls("fcab:"+RUN+":"+k,all[k]);if(all[k].overall)done++});document.getElementById("progress").textContent="rated "+done+"/"+D.length}'
     + 'document.addEventListener("change",save);document.addEventListener("input",save);save();'
-    + 'document.getElementById("dl").onclick=function(){var blob=new Blob([JSON.stringify({rated_at:new Date().toISOString(),ratings:collect()},null,1)],{type:"application/json"});var a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="fc-shadow-ratings.json";a.click()};';
+    + 'document.getElementById("dl").onclick=function(){var blob=new Blob([JSON.stringify({rated_at:new Date().toISOString(),run:RUN,ratings:collect()},null,1)],{type:"application/json"});var a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="fc-shadow-ratings-"+RUN+".json";a.click()};';
   return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Conclusion blind review</title><style>' + css + '</style></head><body><div class="wrap">'
     + '<div class="top"><h1>Final Conclusion A/B, blind review</h1><div class="meta">A and B are two providers in random order per car; the assignment is in key.json. Rate each criterion, then download the ratings. <span id="progress"></span> <button id="dl">Download ratings JSON</button></div></div>'
     + '<div id="root"></div></div><script type="application/json" id="data">' + data + '</script><script>' + js + '</script></body></html>';
@@ -348,12 +348,19 @@ async function summarize() {
     flags_endpoint_total: { control: pairs.reduce((a, p) => a + (p.checks_endpoint && p.checks_endpoint.control ? p.checks_endpoint.control.total : 0), 0), shadow: pairs.reduce((a, p) => a + (p.checks_endpoint && p.checks_endpoint.shadow ? p.checks_endpoint.shadow.total : 0), 0) },
   };
   fs.writeFileSync(path.join(OUT, 'summary.json'), JSON.stringify(summary, null, 1));
-  const { blind, key } = shadow.blindPairs(pairs.filter(p => p.control && p.shadow), () => crypto.randomInt(2) === 1);
+  /* the A/B assignment is stable: an existing key.json is reused for the
+     reports it covers, so regenerating the page never flips a side under
+     ratings already given */
+  const keyPath = path.join(OUT, 'key.json');
+  const prevKey = fs.existsSync(keyPath) ? Object.fromEntries((JSON.parse(fs.readFileSync(keyPath, 'utf8')).key || []).map(k => [k.report_id, k.A === 'control'])) : {};
+  const blindable = pairs.filter(p => p.control && p.shadow);
+  const coins = blindable.map(p => (p.report_id in prevKey ? prevKey[p.report_id] : crypto.randomInt(2) === 1));
+  const { blind, key } = shadow.blindPairs(blindable, () => coins.shift());
   const blindJson = JSON.stringify(blind);
   if (shadow.PROVIDER_WORDS.test(blindJson)) { console.log('blind payload leaks a provider word; aborting'); process.exit(1); }
   fs.writeFileSync(path.join(OUT, 'blind.json'), JSON.stringify(blind, null, 1));
   fs.writeFileSync(path.join(OUT, 'key.json'), JSON.stringify({ generated_at: summary.generated_at, key }, null, 1));
-  fs.writeFileSync(path.join(OUT, 'blind.html'), blindHtml(blind));
+  fs.writeFileSync(path.join(OUT, 'blind.html'), blindHtml(blind, crypto.createHash('sha256').update(JSON.stringify(key)).digest('hex').slice(0, 10)));
   const C = summary.control, S = summary.shadow;
   const L = s => s.latency_ms;
   const md = [

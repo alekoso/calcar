@@ -20,7 +20,7 @@
 
 import { canonicalFacts, gateFinalConclusion, splitSentences, sentenceViolations } from './report-consistency.js';
 
-export const CHECKS_VERSION = 'fc-checks-v1.1';
+export const CHECKS_VERSION = 'fc-checks-v1.2';
 
 const isObj = v => !!v && typeof v === 'object' && !Array.isArray(v);
 const arr = v => (Array.isArray(v) ? v : []);
@@ -55,7 +55,7 @@ const NUM_WORDS = {
   'шість': 6, 'шести': 6, 'шесть': 6, 'сім': 7, 'семи': 7, 'семь': 7,
   'вісім': 8, 'восьми': 8, 'восемь': 8, "дев'ять": 9, 'девять': 9, 'девяти': 9, 'десять': 10, 'десяти': 10,
 };
-const OWNERS_RE = rx("<B(\\d{1,2}|" + Object.keys(NUM_WORDS).map(k => k.replace(/[.*+?^${}()|[\]\\]/g, m => "\\" + m)).join("|") + ")B>\\s+(?:\\w+\\s+){0,2}?(?:owners?B>|власник\\w*|владел\\w*|хазя\\w*|хозя\\w*)", "gi");
+const OWNERS_RE = rx("<B(?<![0-9.,])(\\d{1,2}|" + Object.keys(NUM_WORDS).map(k => k.replace(/[.*+?^${}()|[\]\\]/g, m => "\\" + m)).join("|") + ")B>\\s+(?:\\w+\\s+){0,2}?(?:owners?B>|власник\\w*|владел\\w*|хазя\\w*|хозя\\w*)", "gi");
 /* a preposition right before the number makes it a tenure, not the total:
    "seven years with one owner", "у одного хозяина", "при одному власнику" */
 const OWNERS_TENURE = rx("(?:^|[\\s(«\"'])(?:у|при|с|со|з|із|від|от|під|под|за|в|во|with|under|from|by|since|for)\\s+$");
