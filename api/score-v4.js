@@ -21,7 +21,7 @@ import { resolveAccidentEvents, sanitizeFindingsV3, zoneClasses } from './score-
 import { ownerEventsConsistent } from './history-owners.js';
 
 export const SCORE_CONFIG_V4 = {
-  CONFIG_TAG: 'v4-prod-2026-10-07',
+  CONFIG_TAG: 'v4-prod-2026-10-08',
   STARTING_SCORE: 10,
   /* 2026-09-30: відремонтоване ДТП середньої тяжкості 1.2 -> 0.7: історія
      лишається негативом, але не домінує над нинішнім фізичним станом */
@@ -57,9 +57,14 @@ export const SCORE_CONFIG_V4 = {
   MIN_AGE_MONTHS: 12,
   /* вік: до року 0, далі 0.1 + (роки - 1) * 0.05 від точного age_months,
      без капа (лінійні 0.1 за рік у тіні домінували над реальними знахідками) */
+  /* вік це свідома частина абсолютного балу (підтверджено власником
+     2026-10-08): ідеально збережене старше авто має нижчий бал, ніж таке
+     саме нове. Очікування доказів за віком живе окремо у Confidence */
   AGE: { first_year: 0.1, per_extra_year: 0.05 },
-  /* власники: перший 0, кожен наступний надійно підтверджений 0.1, без капа */
-  OWNERS: { per_extra_owner: 0.1 },
+  /* власники: перший 0, кожен наступний 0.1, без капа. 2026-10-08: кількість
+     власників сама по собі не є дефектом і не штрафується (enabled false);
+     лічильник лишається видимим, вага збережена для реплею старих звітів */
+  OWNERS: { enabled: false, per_extra_owner: 0.1 },
   ROLLBACK: { threshold_km: 30000, tiers: [[60000, 1.0], [120000, 2.0], [Infinity, 3.0]], platform_flag: 0.8, same_day_ms: 36 * 3600 * 1000, dedupe_km: 1000 },
   SELLER: {
     vehicle_not_running_or_unit_replacement: 5.0, major_powertrain_symptom: 3.0, generic_powertrain_warning: 1.0,
@@ -649,6 +654,8 @@ export function resolveOwnersCount(ownerEvents, registryCount) {
 function ownersInput(inp, cfg) {
   const count = resolveOwnersCount(inp.ownerEvents, inp.ownersCountRegistry);
   if (count === null) return { items: [], available: false, status: 'unavailable', owners_count: null };
+  /* кількість власників відома і показується, але сама по собі не штрафується */
+  if (cfg.OWNERS.enabled === false) return { items: [], available: true, status: 'not_scored', owners_count: count };
   const amount = round2(Math.max(0, count - 1) * cfg.OWNERS.per_extra_owner);
   const items = amount > 0 ? [{ key: 'input8:owners', input: 'vehicle_owners', amount, label_key: 'Number of owners', params: { owners_count: count }, evidence: [{ source: 'registry', ref: 'platform_registry', description: 'owners ' + count }] }] : [];
   return { items, available: true, status: amount > 0 ? 'applied' : 'clean', owners_count: count };

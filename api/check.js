@@ -1041,6 +1041,13 @@ export function extractHistoryFacts(text) {
     ...[...t.matchAll(/(\d{2}\.\d{2}\.\d{2})\s+Зафіксовано пробіг\s*(\d+)/g)].map(m => m[1] + '|' + m[2]),
   ]).size;
   const accident_recorded = /Зафіксовано ДТП/i.test(t) || /Був(?:ла)?\s+у\s+ДТП/i.test(t);
+  const IMPORT_USED_RE = /реєстрац[іi]\S*\s+(?:Б\/В|б\/в)\s+ТЗ[^•]{0,120}?(?:ввезен|з-за кордону|ВМД)|реєстрац[іi]\S*\s+ТЗ[,\s]+привезен\S*\s+з-за\s+кордону|привезен\S*\s+з-за\s+кордону\s+по\s+(?:ВМД|посвідченню митниці)|(?:Б\/В|б\/в)\s+ТЗ[^•]{0,40}?ввезен\S*\s+по\s+ВМД|Перша реєстрація в Україні.{0,60}(?:ввезен|імпорт)/i;
+  const IMPORT_NEW_RE = /нового\s+ТЗ[^•]{0,120}?(?:ввезен|з-за кордону)/i;
+  const import_kind = IMPORT_USED_RE.test(t) ? 'used' : IMPORT_NEW_RE.test(t) ? 'new' : null;
+  const usImport = /Пригнано з США|Ввезено з США|Пригнано зі США/i.test(t);
+  const riaAuction = /архівні дані з офіційного аукціону/i.test(t);
+  const foreignBasis = [usImport ? 'marketplace_us_import_mark' : null, riaAuction ? 'marketplace_auction_archive' : null, import_kind === 'used' ? 'registry_used_import' : null].filter(Boolean);
+  const foreignKnown = foreignBasis.length > 0;
   /* нотатка про ДТП: текст найновішої канонічної групи записів; старий
      regex лишається лише для сторінок без структурованих записів (при
      кількох записах він брав довільний) */
@@ -1079,9 +1086,16 @@ export function extractHistoryFacts(text) {
     /* "Страхові випадки в Україні: Виявлено" без деталей: окремий факт, не ДТП */
     insurance_case_recorded: /Страхові випадки в Україні\s+Виявлено/i.test(t) || /Страховые случаи в Украине\s+Обнаружен/i.test(t),
     us_import_record: /Пригнано з США|Ввезено з США|Пригнано зі США/i.test(t),
-    /* ввезення з-за кордону БЕЗ конкретної країни: imported_used, НЕ США.
-       Архітектура глобальна: US-сигнал лишається окремим */
-    imported_used: /ввезен[а-яіїєґ]*\s+(по|за)?\s*ВМД|по ВМД|з-за кордону|ввезено з-за/i.test(t) || /Перша реєстрація в Україні.{0,60}(ввезен|імпорт)/i.test(t),
+    /* ввезення як вживаного: ЛИШЕ рядок реєстраційної операції (Б/В ТЗ ...
+       ввезено з-за кордону; ТЗ, привезеного з-за кордону; по ВМД; по
+       посвідченню митниці). Згадки "з-за кордону" у меню чи рекламі площадки
+       це не факт про авто. Новий ТЗ, ввезений дилером (import_kind new), не
+       мав іноземного періоду експлуатації. Архітектура глобальна: US-сигнал
+       лишається окремим, регіон VIN іноземного періоду не створює */
+    import_kind,
+    imported_used: import_kind === 'used',
+    /* відомий попередній ринок експлуатації: лише зі структурованих доказів */
+    foreign_lifecycle: { known: foreignKnown, basis: foreignBasis },
     /* \w не матчить кирилицю: явний літерал фрази площадки */
     ria_auction_record: /архівні дані з офіційного аукціону/i.test(t),
   };
@@ -3806,12 +3820,12 @@ async function runCheck(req, res, job) {
         console.log('[confidence]', JSON.stringify({ v: 'v1', overall: parsed.confidence.overall_internal, caps: parsed.confidence.caps_applied.filter(c => c.binding).map(c => c.name), vin: listing.vin || null }));
       } catch (e) {
         console.log('[confidence]', JSON.stringify({ op: 'compute', error: String((e && e.message) || e).slice(0, 160), vin: listing.vin || null }));
-        parsed.confidence = { confidence_version: 'v1', config_tag: CONFIDENCE_CONFIG_V1.CONFIG_TAG, overall_internal: null, text_key: null, domains: {}, caps_applied: [], unavailable_reason: 'compute_error' };
+        parsed.confidence = { confidence_version: CONFIDENCE_CONFIG_V1.VERSION, config_tag: CONFIDENCE_CONFIG_V1.CONFIG_TAG, overall_internal: null, text_key: null, domains: {}, caps_applied: [], unavailable_reason: 'compute_error' };
       }
-      /* ---- стеля балу (ceiling-v1): обмежений шар над v4. Читає вже
-         готовий знімок Confidence, паспорт авто, канонічний HV, поточні
-         кадри і вік авто; v4 не перераховує. Без стелі бал побайтово той
-         самий ---- */
+      /* ---- стеля балу (ceiling-v2): обмежений шар над v4. Читає вже
+         готовий знімок Confidence (lifecycle-aware), паспорт авто,
+         канонічний HV і поточні кадри; v4 не перераховує. Без стелі бал
+         побайтово той самий ---- */
       try {
         if (breakdownV4 && breakdownV4.score_version === 'v4') {
           const cvCe = cvTerminal;
@@ -3820,10 +3834,9 @@ async function runCheck(req, res, job) {
             vehicleSpec,
             historicalVisual: parsed.historical_visual || null,
             currentVisual: cvCe && cvCe.status === 'ok' && cvCe.current_visual ? compactCurrentVisual(cvCe.current_visual, { includeMinor: true }) : null,
-            ageMonths: vehicleV3.age_months,
           });
           const sc = breakdownV4.score_ceiling;
-          console.log('[score-ceiling]', JSON.stringify({ value: sc.value, reason: sc.reason_code, severity: sc.physical_severity, v4: sc.v4_final, final: breakdownV4.final, identity: sc.identity_core_conflicts, vin: listing.vin || null }));
+          console.log('[score-ceiling]', JSON.stringify({ value: sc.value, reason: sc.reason_code, severity: sc.physical_severity, v4: sc.v4_final, final: breakdownV4.final, evidence_max: sc.composition ? sc.composition.evidence_max : null, risk: sc.composition && sc.composition.risk ? sc.composition.risk.value : null, identity: sc.identity_core_conflicts, vin: listing.vin || null }));
         }
       } catch (e) {
         console.log('[score-ceiling]', JSON.stringify({ op: 'apply', error: String((e && e.message) || e).slice(0, 160), vin: listing.vin || null }));

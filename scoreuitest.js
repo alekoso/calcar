@@ -272,6 +272,20 @@ for (const [final, cov] of [[9.0, 91], [5.1, 74], [3.2, 50]]) {
   ok(!/Maximum score|sc-ceil/.test(mount({ verdict: { summary: 'x' }, confidence: conf(80), score_breakdown: near10 }).pop), 'стеля 9.97 показана як "обмежена до 10.0"');
   const tenth = Object.assign(v4(9.0), { score_ceiling: { active: true, value: 9.46, reason_code: 'evidence_weak', reason_key: 'part of the data about this specific car could not be verified' } });
   ok(text(mount({ verdict: { summary: 'x' }, confidence: conf(80), score_breakdown: tenth }).pop).includes('Maximum score is limited to 9.5: part of the data'), 'стеля 9.46 не показана як 9.5');
+  /* ceiling-v2: межа за даними з прогалинами, підтверджені недоліки одним числом, стеля ризику з причиною; старий єдиний рядок не дублюється */
+  const comp = Object.assign(v4(7.4), { score_ceiling: { active: true, value: 8.8, reason_code: 'evidence_insufficient', reason_key: 'the score is limited by incomplete data about this car', gap_keys: ['few historical mileage records'],
+    composition: { evidence_max: 8.8, evidence_gap: 1.2, risk: { kind: 'damage', value: 9.0, reason_code: 'moderate_historical_damage', reason_key: 'the car had moderate damage in the past', penalty_owned: 0.7, reduction: 0.3 }, independent_penalties: 1.1, confirmed_total: 1.4, final: 7.4 } } });
+  const cp = text(mount({ verdict: { summary: 'x' }, confidence: conf(60), score_breakdown: comp }).pop);
+  ok(cp.includes('Maximum supported by available data: 8.8 (few historical mileage records).'), 'нема межі за доступними даними з прогалинами');
+  ok(cp.includes('Confirmed problems: \u22121.4.'), 'нема підтверджених недоліків одним числом');
+  ok(cp.includes('Maximum score is limited to 9.0: the car had moderate damage in the past.'), 'нема стелі ризику з причиною');
+  ok(!cp.includes('limited to 8.8') && !cp.includes('incomplete data about this car'), 'старий рядок стелі доказів дублюється поряд із межею за даними');
+  ok(!/0\.7|0\.3|1\.1|1\.2/.test(cp.replace('8.8', '').replace('7.4', '').replace('9.0', '').replace('1.4', '')), 'у панелі видно складові композиції: ' + cp.slice(0, 300));
+  const compNoRisk = Object.assign(v4(8.1), { score_ceiling: { active: true, value: 9.3, reason_code: 'evidence_insufficient', reason_key: 'the score is limited by incomplete data about this car', gap_keys: [], composition: { evidence_max: 9.3, evidence_gap: 0.7, risk: null, independent_penalties: 1.2, confirmed_total: 1.2, final: 8.1 } } });
+  const cpn = text(mount({ verdict: { summary: 'x' }, confidence: conf(75), score_breakdown: compNoRisk }).pop);
+  ok(cpn.includes('Maximum supported by available data: 9.3.') && cpn.includes('Confirmed problems: \u22121.2.') && !cpn.includes('Maximum score is limited'), 'без стелі ризику рядок стелі має зникати');
+  const compClean = Object.assign(v4(10), { score_ceiling: { active: false, value: 10, reason_code: null, reason_key: null, gap_keys: [], composition: { evidence_max: 10, evidence_gap: 0, risk: null, independent_penalties: 0, confirmed_total: 0, final: 10 } } });
+  ok(!/sc-ceil/.test(mount({ verdict: { summary: 'x' }, confidence: conf(96), score_breakdown: compClean }).pop), 'чисте авто з повними доказами отримало рядки композиції');
   const off = Object.assign(v4(8.0), { score_ceiling: { active: false, value: 10, reason_code: null, reason_key: null } });
   ok(!/Maximum score|sc-ceil/.test(mount({ verdict: { summary: 'x' }, confidence: conf(80), score_breakdown: off }).pop), 'неактивна стеля показана');
   const idc = Object.assign(v4(null), { score_available: false, score_unavailable_reason: 'core_identity_unresolved', final: null });

@@ -3189,9 +3189,16 @@ function renderScoreBlock(D) {
   /* базова ідентичність авто не встановлена: числа нема саме тому, а не через брак даних */
   const naText = bd && bd.score_unavailable_reason === 'core_identity_unresolved' ? t('Vehicle identity not established') : t('Not enough data to score');
   const scoreHtml = final !== null ? esc(final.toFixed(1)) + '<small>/ 10</small>' : esc(naText);
-  /* активна стеля балу (ceiling-v1): один рядок з причиною, без формули; без стелі нічого не додається.
-     Стеля доказів неперервна (напр. 9.97): що округлюється до 10.0, не показується */
-  const ceil = bd && bd.score_ceiling && bd.score_ceiling.active === true && typeof bd.score_ceiling.value === 'number' && bd.score_ceiling.value < 9.95 && bd.score_ceiling.reason_key ? bd.score_ceiling : null;
+  /* композиція балу (ceiling-v2): межа за доступними даними, підтверджені
+     недоліки одним числом, стеля ризику з причиною. Брак даних це не
+     дефект: він показується окремим рядком "максимум за даними", а не
+     штрафом. Межа, що округлюється до 10.0, не показується */
+  const sc = bd && bd.score_ceiling && bd.score_ceiling.composition ? bd.score_ceiling : null;
+  const comp = sc ? sc.composition : null;
+  const evidenceLine = comp && typeof comp.evidence_max === 'number' && comp.evidence_max < 9.95 ? comp.evidence_max : null;
+  const riskLine = comp && comp.risk && typeof comp.risk.value === 'number' && comp.risk.value < 9.95 && comp.risk.reason_key ? comp.risk : null;
+  /* старі звіти (ceiling-v1) без композиції: один рядок стелі як раніше */
+  const ceil = !comp && bd && bd.score_ceiling && bd.score_ceiling.active === true && typeof bd.score_ceiling.value === 'number' && bd.score_ceiling.value < 9.95 && bd.score_ceiling.reason_key ? bd.score_ceiling : null;
   const info = (kind, label) => '<button type="button" class="sc-info" data-tip="' + kind + '" aria-label="' + esc(t(label)) + '" aria-expanded="false" aria-controls="scTip">'
     + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.6" r=".6" fill="currentColor"/></svg></button>';
   const tog = '<button type="button" class="sc-tog" id="scoreToggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="scorePop" aria-label="' + esc(t('Show score details')) + '">'
@@ -3215,7 +3222,13 @@ function renderScoreBlock(D) {
     + '<span class="sc-big">' + scoreHtml + '</span></div>'
     + '<button type="button" class="sc-x" id="scoreClose" aria-label="' + esc(t('Close')) + '"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>';
   h += '<span class="sc-note">' + esc(t('An assessment of this specific car based on confirmed data about its history, condition, mileage and other available facts.')) + '</span>';
-  if (ceil) h += '<span class="sc-note sc-ceil">' + esc(t('Maximum score is limited to {v}').replace('{v}', ceil.value.toFixed(1))) + ': ' + esc(t(ceil.reason_key)) + '.</span>';
+  /* межа за доступними даними з прогалинами (детерміновані ключі з Confidence), підтверджені недоліки одним числом, стеля ризику з причиною */
+  const gapSrc = sc || ceil;
+  const gapsTxt = gapSrc && Array.isArray(gapSrc.gap_keys) && gapSrc.gap_keys.length ? ' (' + gapSrc.gap_keys.map(k => esc(t(k))).join(', ') + ')' : '';
+  if (evidenceLine !== null) h += '<span class="sc-note sc-ceil">' + esc(t('Maximum supported by available data: {v}').replace('{v}', evidenceLine.toFixed(1))) + gapsTxt + '.</span>';
+  if (comp && typeof comp.confirmed_total === 'number' && comp.confirmed_total > 0) h += '<span class="sc-note sc-ceil">' + esc(t('Confirmed problems: {v}').replace('{v}', '\u2212' + comp.confirmed_total.toFixed(1))) + '.</span>';
+  if (riskLine) h += '<span class="sc-note sc-ceil">' + esc(t('Maximum score is limited to {v}').replace('{v}', riskLine.value.toFixed(1))) + ': ' + esc(t(riskLine.reason_key)) + '.</span>';
+  if (ceil) h += '<span class="sc-note sc-ceil">' + esc(t('Maximum score is limited to {v}').replace('{v}', ceil.value.toFixed(1))) + ': ' + esc(t(ceil.reason_key)) + gapsTxt + '.</span>';
   if (conf) {
     h += '<div class="sc-sec"><span class="sc-t">' + esc(t('Confidence in the score')) + '</span>'
       + '<span class="sc-cov-text">' + esc(covText) + '</span>' + coverageRail(conf.overall_internal, true) + '</div>';

@@ -30,7 +30,8 @@ const eq = (a, b, m) => { if (a !== b) errs.push(m + ': ' + JSON.stringify(a) + 
     auctionRecordExists: true, hvPresent: true,
     snaps: [{ created_at: '2024-01-10T00:00:00Z', odometer_km: 120000 }], snapsLookup: 'ok',
     cv: { zones: zones(8, 3, true), dashboard: { visible: true, odometer_reading: { value: 150200, unit: 'km' } } }, cvStatus: 'ok',
-    v4: { mileage_points: [{ date: '2020-03-01', families: ['platform_history'] }, { date: '2022-04-01', families: ['platform_history'] }, { date: '2024-01-10', families: ['vehicle_memory'] },
+    /* зріле авто (110 міс, 150 тис. км): чотири датовані точки з минулого покривають очікування v2 */
+    v4: { mileage_points: [{ date: '2018-06-01', families: ['platform_history'] }, { date: '2020-03-01', families: ['platform_history'] }, { date: '2022-04-01', families: ['platform_history'] }, { date: '2024-01-10', families: ['vehicle_memory'] },
       { date: '2026-09-25', families: ['current', 'dashboard'] }], vin_check: { mismatch: false } },
     ageMonths: 110, photosCount: 25, disclosuresCount: 0,
     ...o,
@@ -56,11 +57,12 @@ const eq = (a, b, m) => { if (a !== b) errs.push(m + ': ' + JSON.stringify(a) + 
   ok(r3.caps_applied.some(c => c.name === 'few_usable_photos' && c.binding), 'few photos cap recorded');
 
   /* 4. історію фактично не вдалося перевірити -> кап 69 */
-  const r4 = run({ auctionSearch: { status: 'unknown', reason: 'source_unreachable' }, auctionRecordExists: false, hvPresent: false, listing: { vin: VIN, country: null, make: 'BMW', odometer_km: 150000, listing_equipment: ['x'] }, hf: {} });
+  /* аукціон застосовний лише при відомому іноземному періоді (тут: позначка площадки про імпорт) */
+  const r4 = run({ auctionSearch: { status: 'unknown', reason: 'source_unreachable' }, auctionRecordExists: false, hvPresent: false, listing: { vin: VIN, country: null, make: 'BMW', odometer_km: 150000, listing_equipment: ['x'] }, hf: { us_import_record: true } });
   ok(r4.overall_internal <= 69, 'blocked history capped at 69: ' + r4.overall_internal);
   ok(r4.caps_applied.some(c => c.name === 'history_checks_blocked'), 'history blocked cap recorded');
   /* порожня web-видача при успішному пошуку кап НЕ вмикає */
-  const r4b = run({ auctionSearch: { status: 'absent' }, auctionRecordExists: false, hvPresent: false, listing: { vin: VIN, country: null, make: 'BMW', odometer_km: 150000, listing_equipment: ['x'] }, hf: {} });
+  const r4b = run({ auctionSearch: { status: 'absent' }, auctionRecordExists: false, hvPresent: false, listing: { vin: VIN, country: null, make: 'BMW', odometer_km: 150000, listing_equipment: ['x'] }, hf: { us_import_record: true } });
   ok(!r4b.caps_applied.some(c => c.name === 'history_checks_blocked'), 'searched_no_result must not trigger history cap');
 
   /* 5. VIN відсутній -> <= 39 */
@@ -99,7 +101,7 @@ const eq = (a, b, m) => { if (a !== b) errs.push(m + ': ' + JSON.stringify(a) + 
   eq(input(r8b, 'history', 'previous_listings').earned, 0, 'lookup failed = 0');
 
   /* 9. Serper/web searched_no_result -> лише частковий кредит */
-  const r9 = run({ auctionSearch: { status: 'absent' }, auctionRecordExists: false, hvPresent: false });
+  const r9 = run({ auctionSearch: { status: 'absent' }, auctionRecordExists: false, hvPresent: false, hf: { ...rich().hf, foreign_lifecycle: { known: true, basis: ['registry_used_import'] } } });
   eq(input(r9, 'history', 'auction_history').state, 'searched_no_result', 'web no result state');
   eq(input(r9, 'history', 'auction_history').earned, CFG.HISTORY.auction / 2, 'web no result = 50%');
 
@@ -152,7 +154,9 @@ const eq = (a, b, m) => { if (a !== b) errs.push(m + ': ' + JSON.stringify(a) + 
     /* кількість полів без охоплення в часі не робить історію вивченою */
     const fields = run({ ...noHist, hf: { registry_present: true, past_listings: 3, owner_events: [{ ordinal: 1, date: '2026-08-01' }, { ordinal: 2, date: '2026-08-10' }, { ordinal: 3, date: '2026-08-20' }] } });
     eq(input(fields, 'history', 'history_span').earned, 0, 'recent records only: zero history span');
-    ok(fields.overall_internal < CFG.SUFFICIENT_TICK, 'many recent fields without coverage stay below sufficient: ' + fields.overall_internal);
+    /* 2026-10-08: для локального авто аукціон не застосовний, тож історія без охоплення в часі
+       дає ~60, кап weak_history тримає підсумок нижче "вивчено детально" і є звʼязувальним */
+    ok(fields.overall_internal < 85 && fields.caps_applied.some(c => c.name === 'weak_history' && c.binding), 'many recent fields without coverage reach "Studied in detail": ' + fields.overall_internal);
     /* щільність: один давній запис на одинадцять років гірший за записи в різні роки */
     const one = input(run({ ...noHist, hf: { registry_present: true, owner_events: [{ ordinal: 1, date: '2016-08-01' }] } }), 'history', 'history_span').earned;
     const many = input(run({ ...noHist, hf: { registry_present: true, owner_events: [{ ordinal: 1, date: '2016-08-01' }, { ordinal: 2, date: '2018-05-01' }, { ordinal: 3, date: '2020-03-01' }, { ordinal: 4, date: '2022-06-01' }, { ordinal: 5, date: '2024-02-01' }] } }), 'history', 'history_span').earned;
@@ -160,7 +164,31 @@ const eq = (a, b, m) => { if (a !== b) errs.push(m + ': ' + JSON.stringify(a) + 
     /* середня історія: "достатньо" досяжне, "вивчено детально" ні */
     const mid = run({ auctionSearch: { status: 'absent' }, auctionRecordExists: false, hvPresent: false, snaps: [] });
     const hMid = dom(mid, 'history').score_internal;
-    ok(hMid >= 59 && hMid < 83 ? (mid.overall_internal >= 70 && mid.overall_internal < 85) : true, 'mid history lands in "Enough data": history ' + hMid + ', overall ' + mid.overall_internal);
+    /* кап weak_history лише трохи послаблений для зрілого авто (110 міс.): підсумок не вище формули */
+    const capMid = Math.round(100 - (100 - (CFG.CAPS.weak_history.base + CFG.CAPS.weak_history.slope * hMid)) * (1 - Math.pow(1 - mid.lifecycle.e_age, 2)));
+    ok(hMid >= 59 && hMid < 85 ? (mid.overall_internal >= 70 && mid.overall_internal <= capMid && mid.overall_internal < 90) : true, 'mid history lands near "Enough data": history ' + hMid + ', overall ' + mid.overall_internal + ', cap ' + capMid);
+    /* застосовність аукціону: локальне авто без іноземного періоду не має аукціонного джерела у знаменнику;
+       заблокований пошук для нього нічого не знижує; для авто з іноземним періодом той самий блок знижує */
+    const localBlocked = run({ ...noHist, auctionSearch: { status: 'unknown' }, hf: { registry_present: true, owner_events: [{ ordinal: 1, date: '2016-08-01' }] } });
+    const localAbsent = run({ ...noHist, auctionSearch: { status: 'absent' }, hf: { registry_present: true, owner_events: [{ ordinal: 1, date: '2016-08-01' }] } });
+    eq(input(localBlocked, 'history', 'auction_history').state, 'not_applicable', 'local car: auction not applicable'); eq(input(localBlocked, 'history', 'auction_history').max, 0, 'local car: auction out of denominator');
+    eq(localBlocked.overall_internal, localAbsent.overall_internal, 'local car: blocked vs empty web search must be identical');
+    ok(!localBlocked.caps_applied.some(c => c.name === 'history_checks_blocked'), 'local car: blocked cap applied without applicability');
+    eq(localBlocked.lifecycle.auction_applicable, false, 'local car: applicability flag'); eq(localBlocked.lifecycle.foreign_lifecycle_known, false, 'local car: foreign flag');
+    const importBlocked = run({ ...noHist, auctionSearch: { status: 'unknown' }, hf: { registry_present: true, owner_events: [{ ordinal: 1, date: '2016-08-01' }], foreign_lifecycle: { known: true, basis: ['registry_used_import'] } } });
+    const importAbsent = run({ ...noHist, auctionSearch: { status: 'absent' }, hf: { registry_present: true, owner_events: [{ ordinal: 1, date: '2016-08-01' }], foreign_lifecycle: { known: true, basis: ['registry_used_import'] } } });
+    eq(input(importBlocked, 'history', 'auction_history').state, 'blocked', 'import: blocked state'); eq(input(importAbsent, 'history', 'auction_history').state, 'searched_no_result', 'import: searched state');
+    ok(importBlocked.overall_internal < importAbsent.overall_internal && importAbsent.overall_internal < localAbsent.overall_internal, 'import: blocked < searched < local n/a: ' + importBlocked.overall_internal + ' ' + importAbsent.overall_internal + ' ' + localAbsent.overall_internal);
+    eq(importBlocked.lifecycle.auction_applicable, true, 'import: applicability flag');
+    /* регіон VIN не створює застосовності: північноамериканський VIN без доказів іноземного періоду = n/a */
+    const naVin = run({ ...noHist, auctionSearch: { status: 'unknown' }, listing: { vin: '1FA6P8TH5H5300000', country: 'UA', make: 'Ford', odometer_km: 50000, listing_equipment: [] }, hf: { registry_present: true, owner_events: [{ ordinal: 1, date: '2020-08-01' }] } });
+    eq(input(naVin, 'history', 'auction_history').state, 'not_applicable', 'VIN region alone must not create auction applicability');
+    /* кап weak_history залежить від віку: та сама слабка історія, молоде авто капиться мʼякше за зріле */
+    const capOf = r => { const c = r.caps_applied.find(x => x.name === 'weak_history'); return c ? c.max : null; };
+    const weakYoung = run({ ...noHist, ageMonths: 8, hf: { registry_present: true, owner_events: [] } }), weakOld = run({ ...noHist, ageMonths: 150, hf: { registry_present: true, owner_events: [] } });
+    ok(capOf(weakYoung) !== null && capOf(weakOld) !== null && capOf(weakYoung) > capOf(weakOld) + 10, 'weak history cap must relax for a young car: ' + capOf(weakYoung) + ' vs ' + capOf(weakOld));
+    const full = CFG.CAPS.weak_history.base + CFG.CAPS.weak_history.slope * dom(weakOld, 'history').score_internal;
+    ok(capOf(weakOld) <= Math.round(full) + 3, 'mature car cap must stay close to the strict formula: ' + capOf(weakOld) + ' vs ' + full);
     /* обидва крайні стани досяжні */
     eq(r1.text_key, 'Studied in detail', 'top state reachable');
     const low = run({ ...noHist, hf: {}, photosCount: 4, cv: { zones: zones(2, 0, false), dashboard: { visible: false } }, v4: { mileage_points: [{ date: '2026-09-25', families: ['current'] }], vin_check: {} }, nhtsa: null,
@@ -169,6 +197,46 @@ const eq = (a, b, m) => { if (a !== b) errs.push(m + ': ' + JSON.stringify(a) + 
     eq(CFG.CAPS.weak_history.base + CFG.CAPS.weak_history.slope * 50 < CFG.SUFFICIENT_TICK, true, 'history below 50 always under the sufficient tick');
     const page = fs.readFileSync('result-check.html', 'utf8');
     ok(/'Vehicle identification'/.test(page) && !/'Car data'/.test(page), 'domain label renamed to Vehicle identification');
+  }
+
+  /* 12b. lifecycle-aware (coverage-v2): очікування доказів росте з віком і пробігом плавно */
+  {
+    const { lifecycleExposure } = C;
+    const L = CFG.LIFECYCLE;
+    eq(CFG.VERSION, 'v2', 'confidence version v2'); ok(/coverage-v2-/.test(CFG.CONFIG_TAG), 'config tag v2');
+    const young = lifecycleExposure({ age_months: 6, odometer_km: 4000 }), mature = lifecycleExposure({ age_months: 150, odometer_km: 160000 });
+    ok(young.exposure < 0.2 && mature.exposure > 0.9, 'exposure: young ' + young.exposure + ', mature ' + mature.exposure);
+    ok(young.expected_points < 0.2 && mature.expected_points > 3, 'expected points: young ' + young.expected_points + ', mature ' + mature.expected_points);
+    eq(lifecycleExposure({}).exposure, 0.5, 'unknown age and mileage: middle exposure, not zero');
+    /* монотонно і без сходинок: по місяцях і по кілометрах */
+    let prev = lifecycleExposure({ age_months: 0, odometer_km: 50000 }).exposure;
+    for (let m = 1; m <= 240; m++) { const e = lifecycleExposure({ age_months: m, odometer_km: 50000 }).exposure; ok(e >= prev - 1e-9 && e - prev < 0.02, 'exposure jumps at month ' + m); prev = e; }
+    prev = lifecycleExposure({ age_months: 60, odometer_km: 0 }).exposure;
+    for (let km = 5000; km <= 400000; km += 5000) { const e = lifecycleExposure({ age_months: 60, odometer_km: km }).exposure; ok(e >= prev - 1e-9 && e - prev < 0.05, 'exposure jumps at km ' + km); prev = e; }
+    /* молоде авто без історичних точок: майже повний кредит точок; зріле з тими самими входами: нуль */
+    const noPts = { v4: { mileage_points: [{ date: '2026-09-25', families: ['current'] }], vin_check: { mismatch: false } }, hf: { registry_present: true, past_listings: 0, owner_events: [{ ordinal: 1, date: '2026-02-01' }], mileage_points: [] }, snaps: [] };
+    const y = run({ ...noPts, ageMonths: 8, listing: { vin: VIN, country: 'UA', make: 'BMW', odometer_km: 6000, listing_equipment: ['HUD'] } });
+    const o = run({ ...noPts, ageMonths: 150, listing: { vin: VIN, country: 'UA', make: 'BMW', odometer_km: 160000, listing_equipment: ['HUD'] } });
+    ok(input(y, 'mileage', 'historical_points').earned >= 0.7 * CFG.MILEAGE.points, 'young car without past points keeps most of the points credit: ' + input(y, 'mileage', 'historical_points').earned);
+    /* кредит = 1 - нестача / 4: зріле авто без точок має майже нуль (очікування ~3.4..4 з 4) */
+    ok(input(o, 'mileage', 'historical_points').earned <= 0.1 * CFG.MILEAGE.points, 'mature car without past points keeps points credit: ' + input(o, 'mileage', 'historical_points').earned);
+    ok(dom(y, 'mileage').score_internal > dom(o, 'mileage').score_internal + 15, 'same absence, different lifecycle: ' + dom(y, 'mileage').score_internal + ' vs ' + dom(o, 'mileage').score_internal);
+    ok(y.lifecycle && y.lifecycle.exposure < o.lifecycle.exposure, 'lifecycle block stored in the snapshot');
+    /* охоплення історії: один запис пів року тому покриває очікування молодого авто, не старого */
+    ok(input(y, 'history', 'history_span').earned > input(o, 'history', 'history_span').earned + 4, 'span expectation scales with age: ' + input(y, 'history', 'history_span').earned + ' vs ' + input(o, 'history', 'history_span').earned);
+    /* старе авто з багатою історією відновлює повний кредит */
+    const rich = run({ ageMonths: 150, listing: { vin: VIN, country: 'UA', make: 'BMW', odometer_km: 160000, listing_equipment: ['HUD'] },
+      hf: { registry_present: true, past_listings: 3, owner_events: [{ ordinal: 1, date: '2014-06-01' }, { ordinal: 2, date: '2018-05-01' }, { ordinal: 3, date: '2022-03-01' }], mileage_points: [{ date: '2016-03-01', km: 30000, source: 'registry' }, { date: '2020-03-01', km: 90000, source: 'registry' }, { date: '2024-01-10', km: 140000, source: 'dealer_service' }] },
+      v4: { mileage_points: [{ date: '2016-03-01', families: ['platform_history'] }, { date: '2018-05-01', families: ['platform_history'] }, { date: '2020-03-01', families: ['platform_history'] }, { date: '2022-03-01', families: ['platform_history'] }, { date: '2024-01-10', families: ['platform_history'] }, { date: '2026-09-25', families: ['current', 'dashboard'] }], vin_check: { mismatch: false } } });
+    eq(dom(rich, 'mileage').score_internal, 100, 'old car with full mileage chronology: complete mileage domain');
+    ok(dom(rich, 'history').score_internal >= 90, 'old car with records through its life: history ' + dom(rich, 'history').score_internal);
+    /* одна додаткова точка зсуває домен плавно, не стрибком */
+    const one = run({ ...noPts, ageMonths: 150, listing: { vin: VIN, country: 'UA', make: 'BMW', odometer_km: 160000, listing_equipment: ['HUD'] }, v4: { mileage_points: [{ date: '2021-01-01', families: ['platform_history'] }, { date: '2026-09-25', families: ['current'] }], vin_check: { mismatch: false } } });
+    const delta = dom(one, 'mileage').score_internal - dom(o, 'mileage').score_internal;
+    /* точка з іншої родини джерел несе і кредит families (2 з 20): крок обмежений 20 */
+    ok(delta > 0 && delta <= 20, 'one extra dated point moves the mileage domain by a bounded step: ' + delta);
+    /* вік і пробіг ніколи не вхід Score v4: конфіг Confidence не читається v4 */
+    ok(!/CONFIDENCE_CONFIG|lifecycleExposure/.test(fs.readFileSync('api/score-v4.js', 'utf8')), 'score-v4 reads Confidence lifecycle');
   }
 
   /* 13. Confidence не змінює Score v4: модуль v4 не залежить від confidence, і навпаки лише читає */

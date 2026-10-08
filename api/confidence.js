@@ -12,12 +12,39 @@
    нижче 50) -> стеля 35 + 0.6 * бал історії, VIN відсутній або надійно
    інший -> не вище 39.
 
+   v2 (coverage-v2): очікування доказів залежить від життєвого циклу авто,
+   а не лише від того, що вдалося знайти. Експозиція E рахується плавно з
+   віку і абсолютного пробігу (без сходинок, без кількості знайдених
+   подій чи власників, щоб не було кола "знайшли більше, вимагаємо
+   більше"). Молоде авто з одним показом одометра має повне покриття
+   пробігу; 12-річне авто лише з сьогоднішнім одометром ні. Охоплення
+   історії (span) теж звіряється з очікуванням за віком. Ідентичність і
+   поточні фото від віку не залежать. Сам вік і пробіг ніколи не
+   віднімають: вони лише задають, скільки доказів треба.
+
    Рахується ОДИН раз у момент Check і зберігається знімком у звіті; UI
    читає знімок і нічого не перераховує. Старі звіти зберігають своє
    історичне значення. Модуль чистий: без мережі і без моделі. */
 
 export const CONFIDENCE_CONFIG_V1 = {
-  CONFIG_TAG: 'coverage-v1-2026-10-01',
+  CONFIG_TAG: 'coverage-v2-2026-10-08',
+  VERSION: 'v2',
+  /* експозиція життєвого циклу: e_age = 1 - exp(-роки / age_tau_years),
+     e_km = 1 - exp(-км / km_tau), E = 1 - (1 - e_age)(1 - e_km).
+     expected_points = points_expected_max * E^points_curve_exp: скільки
+     датованих точок пробігу з минулого потрібно для повного кредиту
+     (степінь > 1 тримає очікування малим у перші місяці і роки);
+     span_floor: нижня межа очікуваного охоплення історії, щоб дуже
+     молоде авто не отримувало повний кредит за один випадковий запис */
+  LIFECYCLE: { age_tau_years: 6, km_tau: 120000, points_expected_max: 4, points_curve_exp: 1.5, span_floor: 0.1 },
+  /* score_basis: проєкція тієї самої Confidence для композиції Score (не
+     друга модель): ті самі домени і капи, але входи, чию невизначеність
+     уже володіє інший шар Score, з рахунку прибрано незалежно від стану.
+     historical_photos це доказ про тяжкість ДТП, а нею володіють категорія
+     v4 і стеля ущерба: ні брак кадрів, ні їх наявність не мають вдруге
+     рухати межу доказів. У показаному користувачу overall_internal цей
+     вхід лишається */
+  SCORE_BASIS_EXCLUDE: ['historical_photos'],
   DOMAIN_WEIGHTS: { history: 35, photos: 30, mileage: 20, identity: 15 },
   HISTORY: { auction: 8, historical_photos: 7, registry: 7, previous_listings: 5, span: 8, search_no_result_share: 0.5,
     /* охоплення: записи молодші за recent_days це поточний продаж, не історія;
@@ -44,6 +71,19 @@ const DAY = 86400000;
 const round1 = x => Math.round((x + Number.EPSILON) * 10) / 10;
 const clamp01 = x => Math.max(0, Math.min(1, x));
 const num = v => (typeof v === 'number' && isFinite(v) ? v : null);
+
+/* ---------- експозиція життєвого циклу (плавна, детермінована) ---------- */
+export function lifecycleExposure({ age_months, odometer_km } = {}, cfg = CONFIDENCE_CONFIG_V1) {
+  const L = cfg.LIFECYCLE;
+  const years = num(age_months) !== null ? Math.max(0, age_months) / 12 : null;
+  const km = num(odometer_km) !== null ? Math.max(0, odometer_km) : null;
+  const eAge = years === null ? null : 1 - Math.exp(-years / L.age_tau_years);
+  const eKm = km === null ? null : 1 - Math.exp(-km / L.km_tau);
+  /* невідомий вік чи пробіг: експозиція за тим, що відомо; нічого не відомо: середня (0.5), не нуль і не максимум */
+  const exposure = eAge === null && eKm === null ? 0.5 : eAge === null ? eKm : eKm === null ? eAge : 1 - (1 - eAge) * (1 - eKm);
+  const r = x => (x === null ? null : Math.round(x * 1000) / 1000);
+  return { exposure: r(exposure), e_age: r(eAge), e_km: r(eKm), age_months: num(age_months), odometer_km: num(odometer_km), expected_points: Math.round(L.points_expected_max * Math.pow(exposure, L.points_curve_exp) * 100) / 100 };
+}
 const dayOf = v => { const t = Date.parse(v || ''); return isFinite(t) ? t : null; };
 const latin = s => /^[a-z0-9 .\-]+$/.test(s);
 const normMake = s => String(s || '').toLowerCase().replace(/[^a-z0-9а-яіїєґё ]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -66,12 +106,20 @@ export function buildConfidenceInput(ctx = {}) {
   const vin = String(listing.vin || '').toUpperCase() || null;
   const now = dayOf(c.now) || Date.now();
 
+  /* застосовність аукціонного джерела: лише коли є відомий іноземний період
+     експлуатації чи аукціонний шлях (структуровані докази: позначка площадки
+     про імпорт, реєстрація як ввезеного вживаним, архів аукціону, знайдений
+     лот). Регіон VIN, країна виробника чи новий ТЗ, ввезений дилером,
+     застосовності не створюють: для локального авто відсутність аукціонної
+     історії не прогалина */
+  const foreign = !!(hf.foreign_lifecycle && hf.foreign_lifecycle.known) || hf.us_import_record === true || hf.ria_auction_record === true || hf.imported_used === true;
+  const auctionApplicable = c.auctionRecordExists === true || (as && as.status === 'found') || foreign;
   /* аукціон / VIN-історія: web discovery (Serper, агрегатори). Порожня
      видача це searched_no_result (частково), а не доведена відсутність */
-  let auctionState = 'unavailable';
+  let auctionState = auctionApplicable ? 'unavailable' : 'not_applicable';
   if (c.auctionRecordExists === true || (as && as.status === 'found') || hf.ria_auction_record === true) auctionState = 'verified';
-  else if (as && as.status === 'absent') auctionState = 'searched_no_result';
-  else if (as && as.status === 'unknown') auctionState = 'blocked';
+  else if (auctionApplicable && as && as.status === 'absent') auctionState = 'searched_no_result';
+  else if (auctionApplicable && as && as.status === 'unknown') auctionState = 'blocked';
 
   /* реєстр: структурований держблок площадки, існує лише для AUTO.RIA (UA) */
   const registryApplicable = listing.country === 'UA';
@@ -123,6 +171,8 @@ export function buildConfidenceInput(ctx = {}) {
     now: new Date(now).toISOString(),
     history: {
       auction: auctionState,
+      auction_applicable: auctionApplicable,
+      foreign_lifecycle: foreign,
       event_found: auctionState === 'verified',
       hv_analyzed: c.hvPresent === true,
       registry: registryState,
@@ -139,7 +189,9 @@ export function buildConfidenceInput(ctx = {}) {
     },
     mileage: {
       age_known: num(c.ageMonths) !== null,
+      age_months: num(c.ageMonths),
       odometer_known: typeof listing.odometer_km === 'number' && listing.odometer_km > 0,
+      odometer_km: typeof listing.odometer_km === 'number' && listing.odometer_km > 0 ? listing.odometer_km : null,
       historical_points: historical.size,
       dashboard_read: !!(odo && num(odo.value) > 0),
       families: families.size,
@@ -160,11 +212,12 @@ export function buildConfidenceInput(ctx = {}) {
 /* ---------- формула ---------- */
 const inp = (key, state, earned, max, detail) => ({ key, state, earned: round1(earned), max, ...(detail ? { detail } : {}) });
 
-function historyDomain(h, cfg) {
+function historyDomain(h, cfg, life) {
   const H = cfg.HISTORY;
   const out = [];
   const a = h.auction;
-  out.push(inp('auction_history', a,
+  if (a === 'not_applicable') out.push(inp('auction_history', 'not_applicable', 0, 0));
+  else out.push(inp('auction_history', a,
     a === 'verified' || a === 'checked_absent' ? H.auction : a === 'searched_no_result' ? H.auction * H.search_no_result_share : 0, H.auction));
   /* архівні кадри мають сенс лише коли подія знайдена; чисту машину без
      аукціонних фото не штрафуємо */
@@ -190,7 +243,12 @@ function historyDomain(h, cfg) {
     const years = new Set(times.filter(t => now - t > H.recent_days * DAY).map(t => new Date(t).getUTCFullYear()));
     const density = clamp01(years.size / Math.max(1, (ageDays / 365.25) / H.density_years_per_record));
     const ratio = span * density;
-    out.push(inp('history_span', 'verified', H.span * ratio, H.span, { ratio: Math.round(ratio * 100) / 100, span: Math.round(span * 100) / 100, years_with_records: years.size, earliest: new Date(earliest).toISOString().slice(0, 10) }));
+    /* очікуване охоплення росте з віком (e_age): молоде авто з коротким
+       рядом записів покриває все, що від нього можна чекати; старе авто
+       мусить показати записи через усе життя */
+    const expected = Math.max(cfg.LIFECYCLE.span_floor, life && life.e_age !== null ? life.e_age : 1);
+    const credit = clamp01(ratio / expected);
+    out.push(inp('history_span', 'verified', H.span * credit, H.span, { ratio: Math.round(ratio * 100) / 100, span: Math.round(span * 100) / 100, years_with_records: years.size, earliest: new Date(earliest).toISOString().slice(0, 10), expected: Math.round(expected * 100) / 100, credit: Math.round(credit * 100) / 100 }));
   }
   return out;
 }
@@ -203,13 +261,25 @@ function photosDomain(p, cfg) {
     inp('dashboard', p.cv_ok && p.dashboard_visible ? 'verified' : 'unavailable', p.cv_ok && p.dashboard_visible ? P.dashboard : 0, P.dashboard),
   ];
 }
-function mileageDomain(m, cfg) {
+function mileageDomain(m, cfg, life) {
   const M = cfg.MILEAGE;
-  const pts = M.points_scale[Math.min(m.historical_points, M.points_scale.length - 1)];
+  /* датовані точки з минулого проти очікування за життєвим циклом:
+     кредит = 1 - нестача / max(1, очікування). Молоде авто (очікування
+     < 1 точки) без точок отримує майже повний кредит; зріле авто мусить
+     показати стільки точок, скільки задає експозиція. Неперервно і за
+     віком/пробігом, і за кількістю точки */
+  const count = Math.max(0, num(m.historical_points) || 0);
+  const expected = life ? life.expected_points : cfg.LIFECYCLE.points_expected_max;
+  /* кредит = 1 - нестача / повне очікування (points_expected_max): у молодого
+     авто нестача мала в абсолюті, тож і втрата мала; у зрілого нестача
+     майже повна. Ділення на саме очікування робило б 3-річне авто без точок
+     такою ж чорною скринькою, як 20-річне */
+  const shortfall = Math.max(0, expected - count);
+  const credit = clamp01(1 - shortfall / cfg.LIFECYCLE.points_expected_max);
   return [
     inp('vehicle_age', m.age_known ? 'verified' : 'unavailable', m.age_known ? M.age : 0, M.age),
     inp('current_odometer', m.odometer_known ? 'verified' : 'unavailable', m.odometer_known ? M.odometer : 0, M.odometer),
-    inp('historical_points', m.historical_points > 0 ? 'verified' : 'unavailable', pts, M.points, { count: m.historical_points }),
+    inp('historical_points', count > 0 ? 'verified' : (credit >= 0.999 ? 'not_expected' : 'unavailable'), M.points * credit, M.points, { count, expected, credit: Math.round(credit * 100) / 100 }),
     inp('dashboard_odometer', m.dashboard_read ? 'verified' : 'unavailable', m.dashboard_read ? M.dashboard : 0, M.dashboard),
     inp('source_families', m.families >= M.families_min ? 'verified' : 'unavailable', m.families >= M.families_min ? M.families : 0, M.families, { count: m.families }),
   ];
@@ -238,56 +308,86 @@ export function textKeyFor(v, cfg = CONFIDENCE_CONFIG_V1) {
 
 export function computeConfidenceV1(input, cfg = CONFIDENCE_CONFIG_V1) {
   const x = input && typeof input === 'object' ? input : {};
+  const mi = x.mileage || {};
+  const life = lifecycleExposure({ age_months: mi.age_months !== undefined ? mi.age_months : (x.history && x.history.age_months), odometer_km: mi.odometer_km }, cfg);
+  life.foreign_lifecycle_known = !!(x.history && x.history.foreign_lifecycle);
+  life.auction_applicable = !!(x.history && x.history.auction_applicable);
   const domainInputs = {
-    history: historyDomain({ ...(x.history || {}), now: x.now }, cfg),
+    history: historyDomain({ ...(x.history || {}), now: x.now }, cfg, life),
     photos: photosDomain(x.photos || {}, cfg),
-    mileage: mileageDomain(x.mileage || {}, cfg),
+    mileage: mileageDomain(mi, cfg, life),
     identity: identityDomain(x.identity || {}, cfg),
   };
-  const domains = {};
-  let weighted = 0, weights = 0;
-  for (const [name, list] of Object.entries(domainInputs)) {
-    const applicable = list.filter(i => i.state !== 'not_applicable');
+  /* бал домену зі списку входів; exclude: входи, які для цього погляду
+     рахуються як not_applicable */
+  const domainScore = (list, exclude) => {
+    const applicable = list.filter(i => i.state !== 'not_applicable' && !(exclude && exclude.has(i.key)));
     const max = applicable.reduce((s, i) => s + i.max, 0);
     const earned = applicable.reduce((s, i) => s + i.earned, 0);
-    if (!applicable.length || max <= 0) {
-      domains[name] = { status: 'not_applicable', score_internal: null, earned: 0, applicable_max: 0, weight: cfg.DOMAIN_WEIGHTS[name], inputs: list };
-      continue;
-    }
-    const score = round1(earned / max * 100);
-    domains[name] = { status: score >= 100 ? 'complete' : score > 0 ? 'partial' : 'empty', score_internal: score, earned: round1(earned), applicable_max: max, weight: cfg.DOMAIN_WEIGHTS[name], inputs: list };
-    weighted += score * cfg.DOMAIN_WEIGHTS[name];
-    weights += cfg.DOMAIN_WEIGHTS[name];
+    if (!applicable.length || max <= 0) return { score: null, earned: 0, max: 0 };
+    return { score: round1(earned / max * 100), earned: round1(earned), max };
+  };
+  const domains = {};
+  for (const [name, list] of Object.entries(domainInputs)) {
+    const d = domainScore(list, null);
+    if (d.score === null) { domains[name] = { status: 'not_applicable', score_internal: null, earned: 0, applicable_max: 0, weight: cfg.DOMAIN_WEIGHTS[name], inputs: list }; continue; }
+    domains[name] = { status: d.score >= 100 ? 'complete' : d.score > 0 ? 'partial' : 'empty', score_internal: d.score, earned: d.earned, applicable_max: d.max, weight: cfg.DOMAIN_WEIGHTS[name], inputs: list };
   }
   const base = {
-    confidence_version: 'v1',
+    confidence_version: cfg.VERSION,
     config_tag: cfg.CONFIG_TAG,
     computed_at: x.now || null,
     sufficient_tick: cfg.SUFFICIENT_TICK,
+    lifecycle: life,
     domains,
   };
-  if (weights <= 0) return { ...base, overall_internal: null, overall_raw: null, text_key: null, caps_applied: [], unavailable_reason: 'no_applicable_domains' };
-  const raw = round1(weighted / weights);
-  let overall = raw;
-  const caps = [];
-  const cap = (name, max) => { caps.push({ name, max, binding: overall > max }); if (overall > max) overall = max; };
-  const ph = x.photos || {}, hi = domainInputs.history, id = x.identity || {};
-  if ((ph.count || 0) < cfg.CAPS.few_photos.below) cap('few_usable_photos', cfg.CAPS.few_photos.max);
-  /* історію фактично не вдалося перевірити: пошук заблокований і жоден
-     структурований історичний запит (реєстр) не відповів. Порожня web-видача
-     при успішному пошуку цей кап НЕ вмикає */
-  const auctionIn = hi.find(i => i.key === 'auction_history');
-  const registryIn = hi.find(i => i.key === 'registry');
-  if (auctionIn && (auctionIn.state === 'blocked' || auctionIn.state === 'unavailable')
-    && !(registryIn && (registryIn.state === 'verified' || registryIn.state === 'checked_absent'))) cap('history_checks_blocked', cfg.CAPS.history_blocked.max);
-  /* неповна історія: стеля залежить від балу історії */
-  const hd = domains.history;
-  if (hd && hd.status !== 'not_applicable' && typeof hd.score_internal === 'number' && hd.score_internal < cfg.CAPS.weak_history.below) {
-    cap('weak_history', Math.round(cfg.CAPS.weak_history.base + cfg.CAPS.weak_history.slope * hd.score_internal));
-  }
-  /* VIN відсутній або надійно інший. Невдалий декод vPIC при валідному VIN
-     цей кап НЕ вмикає */
-  if (!id.vin_present || id.vin_mismatch) cap(id.vin_mismatch ? 'vin_mismatch' : 'vin_absent', cfg.CAPS.vin.max);
-  const finalV = Math.round(overall);
-  return { ...base, overall_internal: finalV, overall_raw: raw, text_key: textKeyFor(finalV, cfg), caps_applied: caps, unavailable_reason: null };
+  /* зважений підсумок і капи: один і той самий рахунок для показаного
+     overall_internal і для основи стелі доказів (з виключеними входами) */
+  const compose = scores => {
+    let weighted = 0, weights = 0;
+    for (const [name, sc] of Object.entries(scores)) {
+      if (sc === null) continue;
+      weighted += sc * cfg.DOMAIN_WEIGHTS[name];
+      weights += cfg.DOMAIN_WEIGHTS[name];
+    }
+    if (weights <= 0) return null;
+    const raw = round1(weighted / weights);
+    let overall = raw;
+    const caps = [];
+    const cap = (name, max) => { caps.push({ name, max, binding: overall > max }); if (overall > max) overall = max; };
+    const ph = x.photos || {}, hi = domainInputs.history, id = x.identity || {};
+    if ((ph.count || 0) < cfg.CAPS.few_photos.below) cap('few_usable_photos', cfg.CAPS.few_photos.max);
+    /* історію фактично не вдалося перевірити: пошук заблокований і жоден
+       структурований історичний запит (реєстр) не відповів. Порожня web-видача
+       при успішному пошуку цей кап НЕ вмикає */
+    const auctionIn = hi.find(i => i.key === 'auction_history');
+    const registryIn = hi.find(i => i.key === 'registry');
+    if (auctionIn && (auctionIn.state === 'blocked' || auctionIn.state === 'unavailable')
+      && !(registryIn && (registryIn.state === 'verified' || registryIn.state === 'checked_absent'))) cap('history_checks_blocked', cfg.CAPS.history_blocked.max);
+    /* неповна історія: стеля залежить від балу історії і від життєвого
+       циклу: у молодого авто брак глибини природний, тому кап зсувається до
+       100 на частку (1 - e_age)^2 (8 міс. ~80% послаблення, 3 роки ~37%,
+       5 років ~19%, 9 років ~5%); у зрілого авто діє майже повністю.
+       Невідомий вік = експозиція 0.5 */
+    const hs = scores.history;
+    if (typeof hs === 'number' && hs < cfg.CAPS.weak_history.below) {
+      const full = cfg.CAPS.weak_history.base + cfg.CAPS.weak_history.slope * hs;
+      const e = life.e_age !== null ? life.e_age : life.exposure;
+      const strict = 1 - (1 - e) * (1 - e);
+      cap('weak_history', Math.round(100 - (100 - full) * strict));
+    }
+    /* VIN відсутній або надійно інший. Невдалий декод vPIC при валідному VIN
+       цей кап НЕ вмикає */
+    if (!id.vin_present || id.vin_mismatch) cap(id.vin_mismatch ? 'vin_mismatch' : 'vin_absent', cfg.CAPS.vin.max);
+    return { raw, overall: Math.round(overall), caps };
+  };
+  const shown = compose(Object.fromEntries(Object.entries(domains).map(([n, d]) => [n, d.score_internal])));
+  if (!shown) return { ...base, overall_internal: null, overall_raw: null, text_key: null, caps_applied: [], score_basis: null, unavailable_reason: 'no_applicable_domains' };
+  const exclude = new Set(cfg.SCORE_BASIS_EXCLUDE || []);
+  const excluded = Object.values(domainInputs).flat().filter(i => exclude.has(i.key) && i.state !== 'not_applicable').map(i => i.key);
+  const basis = excluded.length ? compose(Object.fromEntries(Object.entries(domainInputs).map(([n, list]) => [n, domainScore(list, exclude).score]))) : shown;
+  return { ...base, overall_internal: shown.overall, overall_raw: shown.raw, text_key: textKeyFor(shown.overall, cfg), caps_applied: shown.caps,
+    /* проєкція для композиції Score: той самий рахунок, виключені входи названі явно */
+    score_basis: { role: 'score_composition', overall: basis ? basis.overall : shown.overall, excluded },
+    unavailable_reason: null };
 }

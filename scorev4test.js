@@ -274,9 +274,10 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     eq(V4.mileageNormKmYear('unknown'), 14000, 'норма unknown'); eq(V4.mileageNormKmYear('phev'), 15000, 'норма phev');
   }
 
-  /* ===== 9б. вхід 7: вік ===== */
+  /* ===== 9б. вхід 7: вік: свідома частина абсолютного балу (підтверджено власником 2026-10-08) ===== */
   {
     const ageOf = m => run({ vehicle: { odometer_km: 1000, age_months: m, powertrain_class: 'petrol' } });
+    ok(!('enabled' in C.AGE), 'штраф за вік не має перемикача: він завжди активний');
     for (const [m, pen] of [[12, 0.1], [36, 0.2], [60, 0.3], [96, 0.45], [120, 0.55], [180, 0.8], [240, 1.05]]) {
       const r = ageOf(m);
       const it = r.items.find(i => i.key === 'input7:age');
@@ -293,17 +294,21 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     eq(run({ vehicle: { odometer_km: 1000, age_months: 480, powertrain_class: 'petrol' } }).items.find(i => i.key === 'input7:age').amount, 2.05, '40 років = 2.05, без капа');
   }
 
-  /* ===== 9в. вхід 8: кількість власників ===== */
+  /* ===== 9в. вхід 8: кількість власників. 2026-10-08: кількість власників сама по
+     собі не дефект (OWNERS.enabled = false); лічильник лишається у inputs для UI ===== */
   {
     const ev = (...ords) => ords.map((o, i) => ({ ordinal: o, date: '20' + (10 + i) + '-01-01' }));
     const own = (events, reg) => run({ ownerEvents: events, ownersCountRegistry: reg });
-    for (const [n, pen] of [[1, 0], [2, 0.1], [3, 0.2], [5, 0.4], [7, 0.6], [10, 0.9]]) {
+    eq(C.OWNERS.enabled, false, 'штраф за власників має бути вимкнений');
+    for (const n of [1, 2, 3, 5, 7, 10]) {
       const r = own(ev(...Array.from({ length: n }, (_, i) => i + 1)), n);
-      const it = r.items.find(i => i.key === 'input8:owners');
-      eq(it ? it.amount : 0, pen, 'власників ' + n); eq(r.inputs.vehicle_owners.owners_count, n, 'owners_count ' + n);
-      eq(r.inputs.vehicle_owners.status, n === 1 ? 'clean' : 'applied', 'статус власників ' + n);
-      if (it) eq(it.label_key, 'Number of owners', 'label власників');
+      ok(!r.items.some(i => i.key === 'input8:owners'), 'власників ' + n + ' дали рядок штрафу'); eq(r.inputs.vehicle_owners.owners_count, n, 'owners_count ' + n);
+      eq(r.inputs.vehicle_owners.status, 'not_scored', 'статус власників ' + n); eq(sum(r), 0, 'власників ' + n + ' щось відняли');
+      eq(r.availability.ownership_history, 'known', 'availability власників ' + n);
     }
+    const legacy = { ...C, OWNERS: { ...C.OWNERS, enabled: true } };
+    const legacyOwn = n => computeScoreV4({ findings: [], evidence: { identity_confirmed: true, basics_known: true, photos_count: 15, seller_text_chars: 300, registry_present: true, historical_listings_count: 0, cv_status: 'ok', cv_zones_sufficient: 10, listing_vin: 'WBAJE7C34HG887901' }, listingText: 'x', ownerEvents: ev(...Array.from({ length: n }, (_, i) => i + 1)), ownersCountRegistry: n }, legacy);
+    for (const [n, pen] of [[1, 0], [3, 0.2], [10, 0.9]]) eq((legacyOwn(n).items.find(i => i.key === 'input8:owners') || { amount: 0 }).amount, pen, 'legacy власників ' + n);
     const unk = own([], null);
     eq(unk.inputs.vehicle_owners.status, 'unavailable', 'невідомо = unavailable'); eq(unk.inputs.vehicle_owners.owners_count, null, 'owners_count null'); eq(sum(unk), 0, 'невідомо = 0');
     eq(unk.availability.ownership_history, 'unavailable', 'availability для Confidence');
@@ -319,7 +324,7 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     eq(w5.score_eligible, false, 'пʼять власників самі по собі не роблять Score eligible'); eq(w5.eligibility.strong_negative, false, 'власники не strong negative');
     /* незалежність від віку та інтенсивності */
     const both = run({ ownerEvents: ev(1, 2, 3), ownersCountRegistry: 3, vehicle: { odometer_km: 180000, age_months: 60, powertrain_class: 'petrol' } });
-    ok(near(sum(both), 2.6, 2.6), 'власники 0.2 + інтенсивність 2.1 + вік 0.3: ' + sum(both)); eq(both.final, 7.4, 'final 7.4 сходиться з items');
+    ok(near(sum(both), 2.4, 2.4), 'інтенсивність 2.1 + вік 0.3, власники не штрафуються: ' + sum(both)); eq(both.final, 7.6, 'final 7.6 сходиться з items');
   }
 
   /* ===== 10. вхід 5: відкат ===== */
@@ -558,8 +563,10 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
        2026-09-29: накопичення дрібних дефектів (WEAR) і перекіс панелі, тег v4-prod-2026-09-29;
        того ж дня сидіння рахуються по рядах (без подвійного рахунку), тег v4-prod-2026-09-29b.
        2026-09-30: нинішній стан сильніше (сидіння рядами, поширені дефекти, скло), середнє ДТП 0.7, тег v4-prod-2026-09-30;
-       того ж дня дрібний зазор панелі в накопиченні, тег v4-prod-2026-09-30b */
-    const EXPECTED = 'b9888be0f704aa04c2a57ddc8582ff14';
+       того ж дня дрібний зазор панелі в накопиченні, тег v4-prod-2026-09-30b.
+       2026-10-07: v4-prod-2026-10-07. 2026-10-08: кількість власників не штрафується
+       (OWNERS.enabled = false), вік лишається свідомим штрафом; тег v4-prod-2026-10-08 */
+    const EXPECTED = '099055224e2ed68ce812a4cd441cdf0f';
     if (hash !== EXPECTED) errs.push('SCORE_CONFIG_V4 змінився (md5 ' + hash + '), онови CONFIG_TAG і хеш у тесті');
   }
 

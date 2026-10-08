@@ -1,13 +1,12 @@
-/* CalCar Score Ceiling v1: обмежений шар над Score v4, не Score v5.
+/* CalCar Score Ceiling v2: обмежений шар над Score v4, не Score v5.
 
    Score v4 відповідає "які підтверджені негативи є в цього авто" і
    рахує штрафи від 10. Цей шар відповідає "наскільки високий бал CalCar
-   може обґрунтовано захистити, знаючи САМЕ ЦЕ авто". Стеля C рахується
+   може обґрунтовано захистити, знаючи САМЕ ЦЕ авто". Межі рахуються
    з того самого нормалізованого evidence, що вже є у звіті (без нових
-   викликів моделі): стартуємо зі стелі, далі діють ті самі незалежні
-   штрафи v4. Без стелі C = 10 і бал побайтово дорівнює Score v4.
-   Кандидати ніколи не додаються: береться НАЙНИЖЧА застосовна стеля,
-   решта зберігається для пояснення.
+   викликів моделі). Без меж бал побайтово дорівнює Score v4. Стелі
+   ризику ніколи не додаються: береться НАЙСУВОРІША застосовна, решта
+   зберігається для пояснення.
 
    Три джерела стелі:
    1. фізична тяжкість минулого пошкодження з Historical Vision і
@@ -16,17 +15,27 @@
       rebuilt, total loss, страховик, сам факт аукціону чи титул ринку
       походження стелі не дають. Подія невідомої тяжкості це звичайний
       штраф v4 (unknown 0.5), а не стеля;
-   2. повнота доказів: домени Confidence (history, photos, mileage) у
-      вузькій смузі 45 -> 35 плавно знижують стелю (0 -> 1.0 на домен,
-      сума, підлога 8.0). Звичайний partial вище 45, молоде авто без
-      глибокої історії чи відомий одометр без датованих точок стелю не
-      знижують;
+   2. повнота доказів: ОДНА модель доказів, Confidence (coverage-v2,
+      lifecycle-aware): її проєкція score_basis плавно задає межу E
+      (EVIDENCE.curve, підлога 8.0). Вік і пробіг самі по собі нічого не
+      віднімають: вони лише піднімають очікування доказів усередині
+      Confidence. Невідоме не є дефектом і не стає рядком штрафу, але
+      невідоме робить підсумок обережнішим: композиція стартує з E, а не
+      з 10, тож дві однакові авто з однаковими дефектами, одне зрозуміле,
+      інше чорна скринька, отримують різний бал;
    3. цілісність пробігу: не "мало точок", а реальна аномалія чи відкат.
 
    Одна аварія не рахується двічі: для події, що дала переможну стелю
    ущерба, її штраф v4 і просадка стелі беруться як більше з двох, а не
    сума. Незалежні штрафи (скло, салон, інший дефект кузова, друга подія,
    страховий випадок) віднімаються як завжди.
+
+   Композиція (ceiling-v2):
+       final = E - risk - independent
+   де E = межа доказів, risk = max(10 - R, штраф v4 за подію, що дала R)
+   для найсуворішої стелі ризику R (ущерб чи цілісність пробігу; стелі не
+   додаються), independent = штрафи v4 без того, яким володіє R. Те саме
+   число: final = v4 - (10 - E) - max(0, (10 - R) - штраф_R).
 
    Окремо: нерозвʼязаний конфлікт базової ідентичності (модель, двигун,
    коробка, привід) не дає числа взагалі: score_available = false,
@@ -35,18 +44,20 @@
 import { classifyEventV4 } from './score-v4.js';
 
 export const SCORE_CEILING_CONFIG = {
-  CONFIG_TAG: 'ceiling-v1-2026-10-07',
+  CONFIG_TAG: 'ceiling-v2-2026-10-08',
+  VERSION: 'ceiling-v2',
   DEFAULT: 10,
   /* стартове калібрування власника (2026-10-07); числа підлягають
      звірці на калібрувальному корпусі перед викаткою */
   DAMAGE: { light: 10, moderate: 9.0, inner_depth: 8.0, serious: 7.5, structural: 6.5, extreme: 6.0 },
-  /* домени Confidence з доказами про САМЕ ЦЕ авто; identity вирішується
-     окремо паспортом (конфлікт = нема числа), тому в стелю не входить.
-     Зниження домену = clamp((band_hi - score) / (band_hi - band_lo), 0, 1):
-     вище band_hi нічого, нижче band_lo повний бал; сума по доменах, але
-     не нижче floor. young_history_months: до цього віку брак глибини
-     історії природний і не знижує */
-  EVIDENCE: { domains: ['history', 'photos', 'mileage'], band_hi: 45, band_lo: 35, floor: 8.0, young_history_months: 36 },
+  /* межа доказів E = кусково-лінійна крива від score_basis Confidence v2
+     (уже з капами). Між вузлами лінійно, нижче першого вузла підлога, вище
+     останнього 10.
+     Калібрування 2026-10-08 під віднімальну композицію: "дані обмежені"
+     (<40) не вище ~8.2, "перевірено частково" (40..69) 8.2..9.1, "достатньо
+     даних" (70..84) 9.1..9.5, "вивчено детально" (85+) 9.5..9.9, рівно 10
+     лише при фактично повних доказах (100); підлога 8.0 при 35 і нижче */
+  EVIDENCE: { curve: [[35, 8.0], [40, 8.2], [55, 8.7], [70, 9.1], [85, 9.5], [95, 9.9], [100, 10]], floor: 8.0 },
   MILEAGE: { anomaly: 8.0, rollback: 7.0, rollback_major: 6.5, major_drop_km: 60000 },
   /* базова ідентичність: конфлікт сильних джерел у цих полях = числа нема.
      Версія, кузов, рік і опції не блокують бал */
@@ -144,42 +155,55 @@ export function repairLooksResolved(event, hv, currentVisual, bodyItems) {
 }
 
 /* ---------- 3. повнота доказів ----------
-   Якість доказів неперервна, тому й відповідь стелі неперервна: у смузі
-   band_hi -> band_lo домен лінійно знижує стелю на 0 -> 1.0, зниження
-   доменів додаються, але повнота сама по собі ніколи не опускає стелю
-   нижче floor. Винятки читаються з наявних даних, без зміни Confidence:
-   history молодого авто (брак глибини природний), mileage з відомим
-   поточним одометром (датованих точок нема, але цілісність це інший шар),
-   not_applicable не рахується */
-export function domainReduction(score, cfg = SCORE_CEILING_CONFIG) {
+   Confidence v2 вже знає життєвий цикл (очікування точок пробігу і
+   охоплення історії ростуть з віком і пробігом), тому стеля читає лише
+   її підсумок: жодної другої моделі покриття. Крива неперервна: один
+   додатковий доказ зсуває підсумок на кілька пунктів і стелю на соті.
+   Прогалини (gaps) для пояснення беруться з входів доменів Confidence
+   детерміновано; вони не змінюють числа */
+export function evidenceCeilingValue(overall, cfg = SCORE_CEILING_CONFIG) {
   const E = cfg.EVIDENCE;
-  const v = num(score);
-  if (v === null) return 0;
-  return round2(Math.min(1, Math.max(0, (E.band_hi - v) / (E.band_hi - E.band_lo))));
+  const v = num(overall);
+  if (v === null) return null;
+  const pts = E.curve;
+  if (v <= pts[0][0]) return E.floor;
+  if (v >= pts[pts.length - 1][0]) return cfg.DEFAULT;
+  for (let i = 1; i < pts.length; i++) {
+    const [x0, y0] = pts[i - 1], [x1, y1] = pts[i];
+    if (v <= x1) return round2(Math.max(E.floor, y0 + (y1 - y0) * (v - x0) / (x1 - x0)));
+  }
+  return cfg.DEFAULT;
+}
+const GAP_KEYS = {
+  mileage_points: 'few historical mileage records',
+  history_span: 'the car\'s past is covered only partially',
+  history_sources: 'history sources did not answer',
+  photos: 'few usable photos or zones',
+  identity: 'vehicle identification is incomplete',
+};
+export function evidenceGaps(confidence) {
+  const d = confidence && confidence.domains && typeof confidence.domains === 'object' ? confidence.domains : {};
+  const inputOf = (dom, key) => { const x = d[dom]; const list = x && Array.isArray(x.inputs) ? x.inputs : []; return list.find(i => i && i.key === key) || null; };
+  const gaps = [];
+  const mp = inputOf('mileage', 'historical_points');
+  if (mp && mp.max > 0 && mp.earned / mp.max < 0.5 && mp.state !== 'not_expected') gaps.push('mileage_points');
+  const span = inputOf('history', 'history_span');
+  if (span && span.max > 0 && span.earned / span.max < 0.5) gaps.push('history_span');
+  const srcMissing = ['auction_history', 'registry', 'previous_listings'].map(k => inputOf('history', k)).filter(i => i && i.max > 0 && (i.state === 'unavailable' || i.state === 'blocked'));
+  if (srcMissing.length) gaps.push('history_sources');
+  if (d.photos && typeof d.photos.score_internal === 'number' && d.photos.score_internal < 60) gaps.push('photos');
+  if (d.identity && typeof d.identity.score_internal === 'number' && d.identity.score_internal < 60) gaps.push('identity');
+  return gaps;
 }
 export function evidenceCeiling(confidence, ctx = {}, cfg = SCORE_CEILING_CONFIG) {
-  const E = cfg.EVIDENCE;
-  const domains = confidence && confidence.domains && typeof confidence.domains === 'object' ? confidence.domains : null;
-  if (!domains) return null;
-  const ageMonths = num(ctx.ageMonths);
-  const detail = {};
-  let total = 0, considered = 0;
-  for (const k of E.domains) {
-    const d = domains[k];
-    if (!d || d.status === 'not_applicable' || num(d.score_internal) === null) continue;
-    considered++;
-    const v = d.score_internal;
-    const red = domainReduction(v, cfg);
-    if (red === 0) { detail[k] = { score: v, reduction: 0 }; continue; }
-    const inputs = Array.isArray(d.inputs) ? d.inputs : [];
-    if (k === 'history' && ageMonths !== null && ageMonths < E.young_history_months) { detail[k] = { score: v, reduction: 0, exempt: 'young_vehicle' }; continue; }
-    if (k === 'mileage' && inputs.some(i => i && i.key === 'current_odometer' && i.state === 'verified')) { detail[k] = { score: v, reduction: 0, exempt: 'odometer_known' }; continue; }
-    detail[k] = { score: v, reduction: red };
-    total = round2(total + red);
-  }
-  if (!considered) return null;
-  const value = round2(Math.max(E.floor, cfg.DEFAULT - total));
-  return { kind: 'evidence', value, reason_code: value < cfg.DEFAULT ? 'evidence_weak' : null, detail: { domains: detail, reduction: total } };
+  if (!confidence || typeof confidence !== 'object') return null;
+  /* основа: score_basis.overall (проєкція Confidence v2 без входів, якими
+     володіє інший шар Score), інакше показаний підсумок (знімки v1) */
+  const basis = confidence.score_basis && num(confidence.score_basis.overall) !== null ? confidence.score_basis.overall : num(confidence.overall_internal);
+  if (basis === null) return null;
+  const value = evidenceCeilingValue(basis, cfg);
+  const gaps = evidenceGaps(confidence);
+  return { kind: 'evidence', value, reason_code: value < cfg.DEFAULT ? 'evidence_insufficient' : null, detail: { overall: num(confidence.overall_internal), basis, excluded: confidence.score_basis ? confidence.score_basis.excluded : [], confidence_version: confidence.confidence_version || null, gaps, gap_keys: gaps.map(g => GAP_KEYS[g]) } };
 }
 
 /* ---------- 4. цілісність пробігу ---------- */
@@ -236,9 +260,14 @@ function latestAccidentPenalty(breakdown) {
   if (latest && latest.fire === true) { const f = items.find(i => i.key === 'fire_event'); if (f) sum += num(f.amount) || 0; }
   return round1(sum);
 }
+/* штраф v4, яким володіє стеля цілісності пробігу (відкат чи прапор площадки) */
+function rollbackPenalty(breakdown) {
+  const items = Array.isArray(breakdown && breakdown.items) ? breakdown.items : [];
+  return round1(items.filter(i => i.key === 'input5:rollback' || i.key === 'input5:platform_flag').reduce((s, i) => s + (num(i.amount) || 0), 0));
+}
 
 /* ---------- застосування: мутує breakdown v4 ----------
-   ctx: { confidence, vehicleSpec, historicalVisual, currentVisual, ageMonths } */
+   ctx: { confidence, vehicleSpec, historicalVisual, currentVisual } */
 export function applyScoreCeiling(breakdown, ctx = {}, cfg = SCORE_CEILING_CONFIG) {
   const b = breakdown;
   if (!b || typeof b !== 'object' || b.score_version !== 'v4') return b;
@@ -250,34 +279,55 @@ export function applyScoreCeiling(breakdown, ctx = {}, cfg = SCORE_CEILING_CONFI
   if (evd) candidates.push(evd);
   const mil = mileageCeiling(b, cfg);
   if (mil) candidates.push(mil);
+  /* стеля ризику R: найсуворіша з ущербу і цілісності пробігу (не додаються);
+     її просадка = більше з (10 - R) і штрафу v4 за ту саму подію, тобто
+     понад штраф v4 віднімається лише max(0, (10 - R) - штраф_R) */
+  let risk = null;
+  for (const c of candidates) if (c.kind !== 'evidence' && c.value < cfg.DEFAULT && (!risk || c.value < risk.value)) risk = c;
+  const riskPenalty = risk ? (risk.kind === 'damage' ? latestAccidentPenalty(b) : rollbackPenalty(b)) : 0;
+  const riskGap = risk ? round2(Math.max(0, round2(cfg.DEFAULT - risk.value) - riskPenalty)) : 0;
+  /* межа доказів E: підсумок стартує з E, а не з 10 */
+  const evidenceMax = evd ? evd.value : cfg.DEFAULT;
+  const evidenceGap = round2(cfg.DEFAULT - evidenceMax);
+  const rawSum = num(b.raw_sum) !== null ? b.raw_sum : (v4Final === null ? 0 : round2(cfg.DEFAULT - v4Final));
+  const independent = round2(Math.max(0, rawSum - riskPenalty));
+  const capped = v4Final === null ? null : round1(Math.max(0, v4Final - evidenceGap - riskGap));
+  /* пояснення: головна причина = більша з просадок; стеля ризику з нульовою
+     просадкою (офсет аварії) лишається поясненням, коли доказів досить */
   let winner = null;
-  for (const c of candidates) if (c.value < cfg.DEFAULT && (!winner || c.value < winner.value)) winner = c;
-  const value = winner ? winner.value : cfg.DEFAULT;
-  /* одна аварія один раз: якщо виграла стеля ущерба, просадка стелі і
-     штраф v4 за цю ж подію беруться як більше з двох */
-  /* просадка з двома знаками (стеля доказів неперервна, напр. 9.75);
-     до одного знака округлюється лише підсумковий бал */
-  const rawGap = round2(cfg.DEFAULT - value);
-  const accidentOffset = winner && winner.kind === 'damage' ? latestAccidentPenalty(b) : 0;
-  const gap = round2(Math.max(0, rawGap - accidentOffset));
+  if (risk && riskGap > 0 && (!evd || riskGap >= evidenceGap)) winner = risk;
+  else if (evd && evidenceGap > 0) winner = evd;
+  else if (risk) winner = risk;
+  const value = Math.min(risk ? risk.value : cfg.DEFAULT, evidenceMax);
   const core = coreIdentityConflicts(ctx.vehicleSpec, cfg);
   b.score_ceiling = {
-    version: 'ceiling-v1',
+    version: cfg.VERSION,
     config_tag: cfg.CONFIG_TAG,
     value,
-    active: value < cfg.DEFAULT,
+    active: !!winner,
+    bound: evidenceGap > 0 || riskGap > 0,
     reason_code: winner ? winner.reason_code : null,
     reason_key: winner ? ceilingReasonKey(winner) : null,
+    /* прогалини доказів для пояснення в UI */
+    gap_keys: evd && evidenceGap > 0 ? evd.detail.gap_keys : [],
     candidates,
     physical_severity: dmg.severity,
-    accident_offset: accidentOffset,
-    applied_gap: gap,
+    /* явна композиція для UI і реплею */
+    composition: {
+      evidence_max: evidenceMax, evidence_gap: evidenceGap,
+      risk: risk ? { kind: risk.kind, value: risk.value, reason_code: risk.reason_code, reason_key: ceilingReasonKey(risk), penalty_owned: riskPenalty, reduction: riskGap } : null,
+      independent_penalties: independent,
+      /* підтверджені недоліки разом: незалежні штрафи плюс просадка ризику понад її штраф */
+      confirmed_total: round1(independent + riskPenalty + riskGap),
+      final: capped,
+    },
+    accident_offset: risk && risk.kind === 'damage' ? riskPenalty : 0,
+    applied_gap: riskGap,
     v4_final: v4Final,
     identity_core_conflicts: core,
   };
   b.final_v4 = v4Final;
-  if (v4Final !== null && gap > 0) {
-    const capped = round1(Math.max(0, v4Final - gap));
+  if (v4Final !== null && capped !== null && capped !== v4Final) {
     b.final_if_eligible = capped;
     if (b.score_available !== false) b.final = capped;
   }
@@ -297,6 +347,7 @@ const REASON_KEYS = {
   structural_historical_damage: SEVERITY_LABEL.structural,
   fire_damage: SEVERITY_LABEL.extreme,
   evidence_weak: 'part of the data about this specific car could not be verified',
+  evidence_insufficient: 'the score is limited by incomplete data about this car',
   mileage_anomaly: 'the mileage history has an unresolved inconsistency',
   mileage_rollback: 'the mileage decreased between dated records',
   mileage_rollback_major: 'the mileage decreased between dated records',
