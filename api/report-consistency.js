@@ -33,7 +33,7 @@
 
    Not a Vercel function: imported by api/check.js. */
 
-export const CONSISTENCY_VERSION = 'rc-v3';
+export const CONSISTENCY_VERSION = 'rc-v3.1';
 export const CONSISTENCY_DOMAINS = ['fuel', 'forced_induction', 'drivetrain', 'transmission', 'version', 'power_hp', 'identity_conflict', 'identity_unknown', 'airbags', 'accident', 'mileage', 'dashboard'];
 /* share of Final Conclusion sentences that may be removed before the block is hidden */
 export const FC_MAX_REMOVED_SHARE = 0.25;
@@ -153,7 +153,45 @@ function compatible(domain, claim, canon) {
 /* model names that carry an induction word without claiming anything about this car */
 const TRIM_TURBO = /(?:cayenne|panamera|macan|911|carrera|taycan|boxster|cayman)\s*turbo|turbo s\b/i;
 
-function sentenceClaims(sentence) {
+/* rc-v3.1 (beta gate 2026-10-08). The Cyrillic "компресор/компрессор" is also
+   the air-suspension and A/C compressor, and the tail of "турбокомпресор".
+   Q7 and Touareg (turbo, air suspension) lost the air-suspension risk, its
+   checklist step and a Final Conclusion sentence as a "supercharger" claim.
+   Such a word is an engine claim only when the nearest system word in the
+   sentence belongs to the engine. A sentence without any system word takes
+   it from its item or paragraph ("Признаки: частая работа компрессора" in an
+   air-suspension item): suspension words there and no engine word mean the
+   suspension; otherwise it still counts. Latin supercharg-/kompressor always
+   name the engine and are not affected */
+const COMPRESSOR_CYR = /^компрес?сор/i;
+const SUSPENSION_CTX = rx("пневм\\w*|підвіск\\w*|подвеск\\w*|airmatic|air suspension|suspension|сто[йе]к\\w*|стійк\\w*|клапан\\w*|ресивер\\w*|клірен\\w*|клирен\\w*|кондиціон\\w*|кондицион\\w*|<Ba/cB>|клімат\\w*|климат\\w*", 'gi');
+const ENGINE_CTX = rx("двигун\\w*|двигат\\w*|мотор\\w*|engine|наддув\\w*|механічн\\w*|механическ\\w*|<Bv-?(?:6|8|12)B>|\\d[.,]\\d\\s*(?:л|l)?B>|supercharg\\w*", 'gi');
+const LETTER = new RegExp(L, 'i');
+function nearest(re, s, i, j) {
+  re.lastIndex = 0;
+  let best = Infinity, m;
+  while ((m = re.exec(s))) {
+    const a = m.index, b = a + m[0].length;
+    best = Math.min(best, a >= j ? a - j : (b <= i ? i - b : 0));
+    if (!m[0].length) re.lastIndex++;
+  }
+  return best;
+}
+/* true when a supercharger match is not about the engine */
+function notEngineCompressor(s, m, context) {
+  if (!COMPRESSOR_CYR.test(m[0])) return false;
+  let w = m.index;
+  while (w > 0 && LETTER.test(s[w - 1])) w--;
+  const prefix = s.slice(w, m.index).toLowerCase();
+  if (/турбо/.test(prefix)) return true;
+  if (/пневмо/.test(prefix)) return true;
+  const i = m.index, j = i + m[0].length;
+  const susp = nearest(SUSPENSION_CTX, s, i, j), eng = nearest(ENGINE_CTX, s, i, j);
+  if (susp === Infinity && eng === Infinity && context) return nearest(SUSPENSION_CTX, context, 0, 0) < Infinity && nearest(ENGINE_CTX, context, 0, 0) === Infinity;
+  return susp < eng;
+}
+
+function sentenceClaims(sentence, context) {
   const out = {};
   const s = sentence;
   for (const [domain, dict] of Object.entries(IDENTITY)) {
@@ -163,6 +201,7 @@ function sentenceClaims(sentence) {
       while ((m = r.exec(s))) {
         if (negated(s, m.index)) continue;
         if (domain === 'forced_induction' && value === 'turbo' && TRIM_TURBO.test(s)) continue;
+        if (domain === 'forced_induction' && value === 'supercharger' && notEngineCompressor(s, m, context)) continue;
         (out[domain] = out[domain] || new Set()).add(value);
         break;
       }
@@ -210,7 +249,7 @@ const VERSION_ASSERT = rx("(?:це|это|this is|is a|is the|саме|имен�
 const INSTRUCTION = rx("^(?:перевір\\w*|провер\\w*|check|verify|inspect|оглян\\w*|осмотр\\w*|з[’'ʼ]ясу\\w*|выясн\\w*|переконат\\w*|убедит\\w*|запит\\w*|запрос\\w*|попрос\\w*)|(?:перевірити|перевірте|проверить|проверьте|to check|to verify|to inspect|варто перевірити|стоит проверить|слід перевірити|необхідно перевірити|нужно проверить|потрібно перевірити)");
 const LAMP_EXEMPT = rx("самоперевір\\w*|самопроверк\\w*|self-?test|тест ламп|до запуску|до пуска|before start|контекстн\\w*");
 
-export function sentenceViolations(sentence, facts, { section = '' } = {}) {
+export function sentenceViolations(sentence, facts, { section = '', context = '' } = {}) {
   const out = [];
   const s = str(sentence);
   if (!s.trim()) return out;
@@ -219,7 +258,7 @@ export function sentenceViolations(sentence, facts, { section = '' } = {}) {
   /* identity: a confident claim against a trusted canonical value, or any
      confident claim about a field whose sources are in conflict */
   if (!reported && !hedged) {
-    const claims = sentenceClaims(s);
+    const claims = sentenceClaims(s, context);
     for (const domain of ['fuel', 'forced_induction', 'drivetrain', 'transmission']) {
       const found = claims[domain];
       if (!found) continue;
@@ -256,7 +295,7 @@ export function sentenceViolations(sentence, facts, { section = '' } = {}) {
   /* unknown identity: no source gives fuel, drivetrain or gearbox type, so a
      confident claim can only come from generic model knowledge */
   if (!reported && !hedged && facts.identity_unknown.length) {
-    const claims = sentenceClaims(s);
+    const claims = sentenceClaims(s, context);
     for (const domain of ['fuel', 'drivetrain', 'transmission']) {
       if (facts.identity_unknown.includes(domain) && claims[domain] && !(domain === 'transmission' && [...claims[domain]].every(v => AUTO_FAMILY.has(v)) && facts.transmission.value)) {
         out.push({ domain: 'identity_unknown', field: domain, found: [...claims[domain]].join('|'), canonical: 'unknown' });
@@ -308,7 +347,7 @@ function pruneText(text, facts, section, log) {
   const kept = [];
   let removed = 0;
   for (const s of sents) {
-    const v = sentenceViolations(s, facts, { section });
+    const v = sentenceViolations(s, facts, { section, context: text });
     if (v.length) { removed++; log.push(...v.map(x => ({ ...x, action: 'sentence_removed', text: s.slice(0, 160) }))); continue; }
     kept.push(s);
   }
@@ -322,7 +361,8 @@ function pruneItems(list, partsOf, facts, section, log) {
   return list.filter(item => {
     const parts = arr(partsOf(item)).filter(p => typeof p === 'string' && p.trim());
     if (!parts.length) return true;
-    const v = parts.flatMap(p => splitSentences(p).flatMap(s => sentenceViolations(s, facts, { section })));
+    const context = parts.join(' | ');
+    const v = parts.flatMap(p => splitSentences(p).flatMap(s => sentenceViolations(s, facts, { section, context })));
     if (!v.length) return true;
     log.push(...v.slice(0, 2).map(x => ({ ...x, action: 'item_dropped', text: parts.join(' | ').slice(0, 160) })));
     return false;

@@ -255,6 +255,63 @@ const deep = (o, p, v) => { const ks = p.split('.'); let c = o; for (const k of 
   ok('10. a consistent report is not modified', out.violations.length === 0 && JSON.stringify({ ...r, _meta: { ...r._meta, consistency: undefined } }) === snap, JSON.stringify(out.violations));
   ok('10a. sentence splitter keeps abbreviations like "тис. км" together', splitSentences('Пробіг 254 тис. км великий. Друге речення.').length === 2);
 
+  /* ---- 12. rc-v3.1: the air-suspension / A/C compressor is not a supercharger (beta gate 2026-10-08) ---- */
+  const turboMeta = deep(report()._meta, 'vehicle_spec.fields.forced_induction', field('turbo'));
+  const fTurbo = canonicalFacts(report({ _meta: turboMeta }));
+  const fSc = canonicalFacts(report());
+  const sc = (s, f) => sentenceViolations(s, f).filter(v => v.domain === 'forced_induction' && v.found === 'supercharger');
+  ok('12. version bumped to rc-v3.1', RC.CONSISTENCY_VERSION === 'rc-v3.1');
+  for (const s of ['Компрессор пневмоподвески на таком пробеге может потребовать замены.', 'Проверить компрессор пневмоподвески.',
+    'Стойки, компрессор и клапанный блок AIRMATIC могут потребовать ремонта.', 'Пневмокомпрессор работает слишком долго.',
+    'Компресор пневмопідвіски на такому пробігу може потребувати заміни.', 'Стійки, компресор і блок клапанів пневмопідвіски дорогі в ремонті.',
+    'The air suspension compressor may need replacement.', 'Компрессор кондиционера шумит на холостом ходу.', 'Турбокомпрессор на таком пробеге требует проверки.']) {
+    ok('12a. not an engine supercharger on a turbo car: ' + s.slice(0, 50), sc(s, fTurbo).length === 0, JSON.stringify(sentenceViolations(s, fTurbo)));
+  }
+  for (const s of ['Двигатель с механическим компрессором требует внимания.', 'Механический компрессор двигателя шумит.', 'Supercharged engine is strong.',
+    'Компрессорный V8 5.0 тянет уверенно.', 'Система охлаждения 5.0 Supercharged: осмотреть трубки под компрессором.', 'Пневмоподвеска и компрессорный V8 требуют дорогого обслуживания.',
+    'Двигун з механічним компресором потребує уваги.']) {
+    ok('12b. engine supercharger claim still checked on a turbo car: ' + s.slice(0, 50), sc(s, fTurbo).length === 1, JSON.stringify(sentenceViolations(s, fTurbo)));
+    ok('12c. and agrees with a supercharged car: ' + s.slice(0, 50), sentenceViolations(s, fSc).filter(v => v.domain === 'forced_induction').length === 0, JSON.stringify(sentenceViolations(s, fSc)));
+  }
+  /* Range Rover 2014 5.0 SuperCharged: engine compressor and air-suspension compressor in one report */
+  r = report({
+    risks: [{ title: 'Контур охлаждения под компрессором', level: 'med', kind: 'latent', note: 'Для двигателя 5.0 Supercharged отмечают течи трубок охлаждения под компрессором.', action: 'Осмотреть трубки под компрессором.' },
+      { title: 'Пневмоподвеска', level: 'med', kind: 'latent', note: 'Пневмостойки и компрессор на таком пробеге склонны к утечкам.', action: 'Пневмоподвеска: проверить работу компрессора и герметичность стоек.' }],
+    checklist: ['Пневмоподвеска: проверить просадку кузова после стоянки, работу компрессора и герметичность стоек.', 'Система охлаждения 5.0 Supercharged: осмотреть трубки под компрессором.'],
+  });
+  out = enforceReportConsistency(r, { lang: 'ru' });
+  ok('12d. Range Rover SuperCharged: engine and suspension compressor items all stay', r.risks.length === 2 && r.checklist.length === 2 && !out.violations.some(v => (v.section === 'risks' || v.section === 'checklist') && v.domain === 'forced_induction'), JSON.stringify(out.violations));
+  ok('12k. a sentence without its own system word takes it from an air-suspension item', sc('Признаки: просадка угла кузова, частая работа компрессора и сообщения на панели.', fTurbo).length === 1
+    && sentenceViolations('Признаки: просадка угла кузова, частая работа компрессора и сообщения на панели.', fTurbo, { context: 'Пневмостойки, компрессор и магистрали | Признаки: просадка угла кузова, частая работа компрессора.' }).length === 0
+    && sentenceViolations('Контур охлаждения под компрессором', fTurbo, { context: 'Контур охлаждения под компрессором | Для двигателя 5.0 Supercharged отмечают течи.' }).length === 1);
+  /* Q7 4M 3.0 TFSI (turbo, air suspension): texts of the 2026-10-08 regression run */
+  const q7 = () => report({
+    _meta: turboMeta,
+    risks: [{ title: 'Пневмоподвеска', level: 'high', kind: 'latent', note: 'В объявлении указана пневмоподвеска, а при пробеге 161 тыс. км стойки, компрессор и клапанный блок могут стать дорогостоящей статьей ремонта.', action: 'Пневмоподвеска: проверить изменение высоты кузова после стоянки, работу компрессора, герметичность стоек и ошибки системы.' }],
+    checklist: ['Пневмоподвеска: проверить изменение высоты кузова после стоянки, работу компрессора, герметичность стоек и ошибки системы.'],
+    final_conclusion: { headline: 'Семиместный Audi с аукционным прошлым', body: 'Это большой семиместный Audi с турбированным V6 и пневмоподвеской.\n\nДля пневмоподвески такой пробег уже возраст, когда стойки и компрессор могут потребовать замены, а на этом автомобиле ремонт подвески, мотора или коробки обходится дорого. Цена примерно на 7% ниже средней.' },
+  });
+  r = q7();
+  const scoreSnap = JSON.stringify([r.verdict.score, r.score_breakdown]);
+  out = enforceReportConsistency(r, { lang: 'ru' });
+  ok('12e. Q7: the air-suspension risk survives', r.risks.length === 1 && r.risks[0].title === 'Пневмоподвеска', JSON.stringify(out.violations));
+  ok('12f. Q7: the air-suspension checklist step survives', r.checklist.length === 1 && /работу компрессора/.test(r.checklist[0]));
+  ok('12g. Q7: the Final Conclusion keeps the air-suspension sentence', r.final_conclusion && /стойки и компрессор/.test(r.final_conclusion.body) && !out.violations.some(v => v.section === 'final_conclusion.body'), JSON.stringify(out.violations));
+  ok('12h. Score and Score Ceiling inputs untouched by the gate', JSON.stringify([r.verdict.score, r.score_breakdown]) === scoreSnap);
+  /* Touareg CR 3.0 TSI (turbo, air suspension) */
+  r = report({
+    _meta: turboMeta,
+    risks: [{ title: 'Пневмоподвеска', level: 'high', kind: 'latent', note: 'В объявлении указана пневмоподвеска, это технически сложный и дорогой узел.', action: 'Пневмостойки, компрессор и блок клапанов: на холодном автомобиле проверить все режимы клиренса, скорость подъема кузова и отсутствие просадки после стоянки.' }],
+    checklist: ['Пневмостойки, компрессор и блок клапанов: на холодном автомобиле проверить все режимы клиренса, скорость подъема кузова и отсутствие просадки после стоянки.'],
+  });
+  out = enforceReportConsistency(r, { lang: 'ru' });
+  ok('12i. Touareg: the air-suspension risk and checklist step survive', r.risks.length === 1 && r.checklist.length === 1 && !out.violations.some(v => (v.section === 'risks' || v.section === 'checklist') && v.domain === 'forced_induction'), JSON.stringify(out.violations));
+  /* a real supercharger claim on the same turbo car is still removed */
+  r = q7();
+  r.checklist.push('Механический компрессор двигателя: проверить шум привода и ремень.');
+  out = enforceReportConsistency(r, { lang: 'ru' });
+  ok('12j. Q7: an engine-compressor claim on the turbo car is still dropped, the suspension step stays', r.checklist.length === 1 && /Пневмоподвеска/.test(r.checklist[0]) && out.violations.some(v => v.domain === 'forced_induction' && v.found === 'supercharger'), JSON.stringify(r.checklist));
+
   /* ---- 11. wiring in api/check.js ---- */
   const src = fs.readFileSync('api/check.js', 'utf8');
   const iFc = src.indexOf('const attached = attachFinalConclusion(parsed, fc, lang);');
@@ -270,5 +327,5 @@ const deep = (o, p, v) => { const ks = p.split('.'); let c = o; for (const k of 
 
   fs.rmSync(dir, { recursive: true, force: true });
   if (errs.length) { console.log('CONSISTENCY TEST FAILED (' + errs.length + '/' + checks + '):'); for (const e of errs) console.log('  - ' + e); process.exit(1); }
-  console.log('consistency gate: ' + checks + ' checks · turbo/supercharger · petrol/diesel · AWD/RWD · gearbox family · mileage records · airbags/accident · identity conflict · hedges and reported speech · FC failure semantics · wiring');
+  console.log('consistency gate: ' + checks + ' checks · turbo/supercharger · petrol/diesel · AWD/RWD · gearbox family · mileage records · airbags/accident · identity conflict · hedges and reported speech · FC failure semantics · suspension compressor is not a supercharger · wiring');
 })().catch(e => { console.log('CONSISTENCY TEST CRASHED:', e.stack || e.message); process.exit(1); });
