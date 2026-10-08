@@ -21,7 +21,7 @@ import { resolveAccidentEvents, sanitizeFindingsV3, zoneClasses } from './score-
 import { ownerEventsConsistent } from './history-owners.js';
 
 export const SCORE_CONFIG_V4 = {
-  CONFIG_TAG: 'v4-prod-2026-10-08',
+  CONFIG_TAG: 'v4-prod-2026-10-08b',
   STARTING_SCORE: 10,
   /* 2026-09-30: відремонтоване ДТП середньої тяжкості 1.2 -> 0.7: історія
      лишається негативом, але не домінує над нинішнім фізичним станом */
@@ -55,12 +55,11 @@ export const SCORE_CONFIG_V4 = {
      до 1.2x нуль, бонусу за малий пробіг нема */
   INTENSITY_CURVE: [[1.2, 0], [1.5, 0.4], [2.0, 1.0], [2.5, 1.6], [3.0, 2.1], [3.5, 2.5], [4.0, 2.9], [5.0, 3.5], [8.0, 4.5], [12.0, 5.0]],
   MIN_AGE_MONTHS: 12,
-  /* вік: до року 0, далі 0.1 + (роки - 1) * 0.05 від точного age_months,
-     без капа (лінійні 0.1 за рік у тіні домінували над реальними знахідками) */
-  /* вік це свідома частина абсолютного балу (підтверджено власником
-     2026-10-08): ідеально збережене старше авто має нижчий бал, ніж таке
-     саме нове. Очікування доказів за віком живе окремо у Confidence */
-  AGE: { first_year: 0.1, per_extra_year: 0.05 },
+  /* вік це свідома частина абсолютного балу (правило власника 2026-10-08):
+     0.1 за кожний рік від точного age_months, плавно і без ступенів, без
+     капа; ідеально збережене 10-річне авто має максимум ~9.0 до решти
+     чинників. Очікування доказів за віком живе окремо у Confidence */
+  AGE: { per_year: 0.1 },
   /* власники: перший 0, кожен наступний 0.1, без капа. 2026-10-08: кількість
      власників сама по собі не є дефектом і не штрафується (enabled false);
      лічильник лишається видимим, вага збережена для реплею старих звітів */
@@ -624,15 +623,16 @@ function intensityInput(inp, cfg) {
 }
 
 /* ---------- 7. вік автомобіля ----------
-   age_years < 1: 0; інакше 0.1 + (age_years - 1) * 0.05, де
-   age_years = age_months / 12 без округлення до цілих років; той самий
-   канонічний age_months, що в інтенсивності; без капа, незалежно від
-   інтенсивності; вік невідомий = unavailable, 0 */
+   per_year * age_months / 12 без округлення до цілих років (молодше року
+   втрачає лише пропорційну частку за місяцями); той самий канонічний
+   age_months, що в інтенсивності; без капа, незалежно від інтенсивності;
+   вік невідомий = unavailable, 0 */
 function ageInput(inp, cfg) {
   const months = num(inp.vehicle && inp.vehicle.age_months);
   if (months === null || months < 0) return { items: [], available: false, status: 'unavailable', detail: null };
-  const years = months / 12;
-  const amount = years < 1 ? 0 : round2(cfg.AGE.first_year + (years - 1) * cfg.AGE.per_extra_year);
+  /* 0.1 за кожний рік від точного age_months, без ступенів і без капа:
+     5 років 0.5, 10 років 1.0, 15 років 1.5 (правило власника 2026-10-08) */
+  const amount = round2(cfg.AGE.per_year * months / 12);
   const detail = { age_months: months, age_years: round2(months / 12), age_source: (inp.vehicle && inp.vehicle.age_source) || null };
   const items = amount > 0 ? [{ key: 'input7:age', input: 'vehicle_age', amount, label_key: 'Vehicle age', params: detail, evidence: [] }] : [];
   return { items, available: true, status: amount > 0 ? 'applied' : 'clean', detail };

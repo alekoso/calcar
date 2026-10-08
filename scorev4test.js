@@ -256,14 +256,15 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     const OLD_CFG = { ...C, INTENSITY_CURVE: [[1.2, 0], [1.5, 0.3], [2.0, 0.8], [3.0, 1.4], [5.0, 2.2], [8.0, 3.0], [12.0, 4.0]] };
     const rav = { vehicle: { odometer_km: 124000, age_months: 39, age_source: 'model_year_midpoint', powertrain_class: 'unknown' } };
     const ravNew = run(rav), ravOld = computeScoreV4({ findings: [], evidence: baseEv, listingText: 'Продається авто. Опис продавця без дефектів.', ...rav }, OLD_CFG);
-    eq(ravOld.final_if_eligible, 8.6, 'RAV4 зі старою кривою 8.6 (як у проді)');
+    /* 8.6 у проді тих часів містило старий штраф за вік 0.21; з віком 0.1/рік (39 міс. = 0.33) та сама стара крива дає 8.4 */
+    eq(ravOld.final_if_eligible, 8.4, 'RAV4 зі старою кривою 8.4 (8.6 зі старим віком)');
     ok(ravNew.mileage_intensity.penalty_exact > 1.8 && ravNew.mileage_intensity.penalty_exact < 1.85, 'RAV4 новий штраф ~1.83: ' + ravNew.mileage_intensity.penalty_exact);
     ok(ravOld.final_if_eligible - ravNew.final_if_eligible >= 0.5, 'RAV4: нова крива відчутно знижує бал: ' + ravOld.final_if_eligible + ' -> ' + ravNew.final_if_eligible);
     /* з 2026-09-26 той самий RAV4 (fuel "hybrid") класифікується як HEV, норма 12 000 */
     const ravHev = run({ vehicle: { ...rav.vehicle, powertrain_class: resolvePowertrainClass({ fuel: 'hybrid' }) } });
     eq(ravHev.mileage_intensity.powertrain_class, 'hev', 'RAV4 hybrid -> HEV'); eq(ravHev.mileage_intensity.ratio, 3.18, 'RAV4 HEV ratio 3.18');
     ok(Math.abs(ravHev.mileage_intensity.penalty_exact - 2.2436) < 0.001, 'RAV4 HEV штраф ~2.24: ' + ravHev.mileage_intensity.penalty_exact);
-    eq(ravHev.final_if_eligible, 7.5, 'RAV4 HEV бал 7.5 (було 8.6)');
+    eq(ravHev.final_if_eligible, 7.4, 'RAV4 HEV бал 7.4 (7.5 зі старим штрафом за вік)');
     eq(run({ vehicle: { ...veh, age_months: 6 } }).inputs.mileage_intensity.status, 'unavailable', 'молодше року');
     eq(resolvePowertrainClass({ nhtsa: { ElectrificationLevel: 'PHEV (Plug-in Hybrid Electric Vehicle)', FuelTypePrimary: 'Gasoline' } }), 'phev', 'PHEV');
     eq(resolvePowertrainClass({ nhtsa: { FuelTypePrimary: 'Gasoline' }, fuel: 'hybrid' }), 'petrol', 'NHTSA пріоритетніше');
@@ -274,24 +275,28 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     eq(V4.mileageNormKmYear('unknown'), 14000, 'норма unknown'); eq(V4.mileageNormKmYear('phev'), 15000, 'норма phev');
   }
 
-  /* ===== 9б. вхід 7: вік: свідома частина абсолютного балу (підтверджено власником 2026-10-08) ===== */
+  /* ===== 9б. вхід 7: вік: свідома частина абсолютного балу, 0.1 за рік від точних місяців (правило власника 2026-10-08) ===== */
   {
     const ageOf = m => run({ vehicle: { odometer_km: 1000, age_months: m, powertrain_class: 'petrol' } });
     ok(!('enabled' in C.AGE), 'штраф за вік не має перемикача: він завжди активний');
-    for (const [m, pen] of [[12, 0.1], [36, 0.2], [60, 0.3], [96, 0.45], [120, 0.55], [180, 0.8], [240, 1.05]]) {
+    eq(JSON.stringify(C.AGE), JSON.stringify({ per_year: 0.1 }), 'конфіг віку: лише per_year 0.1, без ступенів');
+    for (const [m, pen] of [[12, 0.1], [36, 0.3], [60, 0.5], [96, 0.8], [120, 1.0], [180, 1.5], [240, 2.0]]) {
       const r = ageOf(m);
       const it = r.items.find(i => i.key === 'input7:age');
       eq(it && it.amount, pen, 'вік ' + m + ' міс.'); eq(it && it.label_key, 'Vehicle age', 'label віку');
       eq(r.inputs.vehicle_age.status, 'applied', 'статус віку ' + m);
     }
-    eq(ageOf(6).items.length, 0, 'молодше року: вік 0'); eq(ageOf(6).inputs.vehicle_age.status, 'clean', 'молодше року: вік clean');
-    eq(ageOf(11).items.length, 0, '11 місяців: 0'); eq(ageOf(18).items.find(i => i.key === 'input7:age').amount, 0.13, '18 місяців: точний вік без округлення до років (0.1 + 0.5 * 0.05)');
+    /* молодше року: лише пропорційна частка за місяцями, без ступені на 12 міс. */
+    eq(ageOf(6).items.find(i => i.key === 'input7:age').amount, 0.05, '6 місяців: 0.05'); eq(ageOf(11).items.find(i => i.key === 'input7:age').amount, 0.09, '11 місяців: 0.09');
+    eq(ageOf(18).items.find(i => i.key === 'input7:age').amount, 0.15, '18 місяців: 0.15 без округлення до років');
+    eq(ageOf(0).items.length, 0, '0 місяців: 0'); eq(ageOf(0).inputs.vehicle_age.status, 'clean', '0 місяців: clean');
+    let prevAge = 0; for (let m = 1; m <= 300; m++) { const a = ageOf(m).items.find(i => i.key === 'input7:age').amount; ok(a >= prevAge && a - prevAge <= 0.011, 'вік не плавний біля ' + m + ' міс.'); prevAge = a; }
     eq(ageOf(6).inputs.mileage_intensity.status, 'unavailable', 'інтенсивність до року unavailable');
     const noAge = run({ vehicle: { odometer_km: 1000, age_months: null, powertrain_class: 'petrol' } });
     eq(noAge.inputs.vehicle_age.status, 'unavailable', 'вік невідомий = unavailable'); eq(sum(noAge), 0, 'вік невідомий = 0');
     const both = run({ vehicle: { odometer_km: 180000, age_months: 60, powertrain_class: 'petrol' } });
-    ok(near(sum(both), 2.4, 2.4), 'інтенсивність 2.1 + вік 0.3 незалежно: ' + sum(both)); eq(both.final, 7.6, 'final 7.6');
-    eq(run({ vehicle: { odometer_km: 1000, age_months: 480, powertrain_class: 'petrol' } }).items.find(i => i.key === 'input7:age').amount, 2.05, '40 років = 2.05, без капа');
+    ok(near(sum(both), 2.6, 2.6), 'інтенсивність 2.1 + вік 0.5 незалежно: ' + sum(both)); eq(both.final, 7.4, 'final 7.4');
+    eq(run({ vehicle: { odometer_km: 1000, age_months: 480, powertrain_class: 'petrol' } }).items.find(i => i.key === 'input7:age').amount, 4.0, '40 років = 4.0, без капа');
   }
 
   /* ===== 9в. вхід 8: кількість власників. 2026-10-08: кількість власників сама по
@@ -324,7 +329,7 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     eq(w5.score_eligible, false, 'пʼять власників самі по собі не роблять Score eligible'); eq(w5.eligibility.strong_negative, false, 'власники не strong negative');
     /* незалежність від віку та інтенсивності */
     const both = run({ ownerEvents: ev(1, 2, 3), ownersCountRegistry: 3, vehicle: { odometer_km: 180000, age_months: 60, powertrain_class: 'petrol' } });
-    ok(near(sum(both), 2.4, 2.4), 'інтенсивність 2.1 + вік 0.3, власники не штрафуються: ' + sum(both)); eq(both.final, 7.6, 'final 7.6 сходиться з items');
+    ok(near(sum(both), 2.6, 2.6), 'інтенсивність 2.1 + вік 0.5, власники не штрафуються: ' + sum(both)); eq(both.final, 7.4, 'final 7.4 сходиться з items');
   }
 
   /* ===== 10. вхід 5: відкат ===== */
@@ -410,7 +415,7 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     ok(B.final_if_eligible - Cc.final_if_eligible >= 2.0, 'стан сам по собі відчутно знижує бал: ' + B.final_if_eligible + ' -> ' + Cc.final_if_eligible);
     /* H: відремонтоване середнє ДТП при доброму стані: історія знижує, але авто лишається добрим */
     eq(B.items.find(i => i.input === 'accident_history').amount, 0.7, 'H: середнє ДТП 0.7'); eq(B.inputs.body_condition.status, 'clean', 'H: стан добрий');
-    ok(B.final_if_eligible >= 8.0, 'H: ДТП не домінує над добрим станом: ' + B.final_if_eligible);
+    ok(A.final_if_eligible - B.final_if_eligible <= 0.8, 'H: ДТП не домінує над добрим станом (не більше 0.8 відносно чистої): ' + A.final_if_eligible + ' -> ' + B.final_if_eligible);
     /* I: поганий стан без ДТП все одно матеріально знижує бал */
     const I0 = run({ vehicle: camryVeh, currentVisual: { zones: cvZones, condition_findings: tired } });
     ok(A.final_if_eligible - I0.final_if_eligible >= 2.0, 'I: поганий стан без ДТП: ' + A.final_if_eligible + ' -> ' + I0.final_if_eligible);
@@ -428,7 +433,8 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     /* D: старе авто з віковим пробігом у відмінному стані: лише вік, без штрафу за пробіг */
     const D = run({ vehicle: { odometer_km: 300000, age_months: 288, powertrain_class: 'petrol' }, currentVisual: { zones: cvZones, condition_findings: [] } });
     eq(D.inputs.mileage_intensity.status, 'clean', 'D: віковий пробіг без штрафу'); eq(D.inputs.body_condition.status, 'clean', 'D: кузов чистий'); eq(D.inputs.interior_condition.status, 'clean', 'D: салон чистий');
-    ok(D.final_if_eligible >= 8.5, 'D: старе авто у відмінному стані не топиться: ' + D.final_if_eligible);
+    /* 2026-10-08: вік 0.1 за рік (24 роки = 2.4) є єдиним штрафом такого авто: 7.6, не нижче */
+    ok(D.items.every(i => i.key === 'input7:age'), 'D: окрім віку щось відняли: ' + D.items.map(i => i.key).join(',')); ok(near(D.final_if_eligible, 7.6, 7.6), 'D: старе авто у відмінному стані = 10 мінус лише вік 2.4: ' + D.final_if_eligible);
     /* E: один ізольований дрібний скол, два дрібні дефекти, одна пляма: без штрафу */
     for (const few of [[minorF('front', 'chip')], [minorF('front', 'chip'), minorF('rear', 'scratch_scuff')], [minorF('front_seats', 'stain', { component: 'seat' })],
       [minorF('front', 'chip', { photo: 1 }), minorF('front', 'chip', { photo: 2 }), minorF('front', 'chip', { photo: 3 }), minorF('front', 'chip', { photo: 4 })]]) {
@@ -565,8 +571,9 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
        2026-09-30: нинішній стан сильніше (сидіння рядами, поширені дефекти, скло), середнє ДТП 0.7, тег v4-prod-2026-09-30;
        того ж дня дрібний зазор панелі в накопиченні, тег v4-prod-2026-09-30b.
        2026-10-07: v4-prod-2026-10-07. 2026-10-08: кількість власників не штрафується
-       (OWNERS.enabled = false), вік лишається свідомим штрафом; тег v4-prod-2026-10-08 */
-    const EXPECTED = '099055224e2ed68ce812a4cd441cdf0f';
+       (OWNERS.enabled = false), тег v4-prod-2026-10-08; того ж дня вік 0.1 за рік від точних
+       місяців (AGE.per_year), тег v4-prod-2026-10-08b */
+    const EXPECTED = 'b661c61ffcdb26fea1b9c7724702a77f';
     if (hash !== EXPECTED) errs.push('SCORE_CONFIG_V4 змінився (md5 ' + hash + '), онови CONFIG_TAG і хеш у тесті');
   }
 

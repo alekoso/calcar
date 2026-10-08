@@ -61,8 +61,8 @@ const r1 = x => Math.round((x + Number.EPSILON) * 10) / 10;
   const EV = { identity_confirmed: true, basics_known: true, photos_count: 15, seller_text_chars: 300, registry_present: true, historical_listings_count: 0, cv_status: 'ok', cv_zones_sufficient: 10, listing_vin: VIN };
   const v4Old = computeScoreV4({ findings: [], evidence: EV, listingText: 'x', vehicle: { odometer_km: 1000, age_months: 300, powertrain_class: 'petrol' }, ownerEvents: [1, 2, 3, 4, 5].map((o, i) => ({ ordinal: o, date: '20' + (10 + i) + '-01-01' })), ownersCountRegistry: 5 });
   const ageItem = v4Old.items.find(i => i.key === 'input7:age');
-  ok(ageItem && Math.abs(ageItem.amount - (C4.AGE.first_year + 24 * C4.AGE.per_extra_year)) < 1e-9, '4: штраф за вік 25 років не 1.3: ' + JSON.stringify(ageItem));
-  ok(!v4Old.items.some(i => i.key === 'input8:owners'), '4: 5 власників самі по собі відняли'); eq(v4Old.final, 8.7, '4: 25 років = 10 - 1.3');
+  ok(ageItem && Math.abs(ageItem.amount - 25 * C4.AGE.per_year) < 1e-9, '4: штраф за вік 25 років не 2.5: ' + JSON.stringify(ageItem));
+  ok(!v4Old.items.some(i => i.key === 'input8:owners'), '4: 5 власників самі по собі відняли'); eq(v4Old.final, 7.5, '4: 25 років = 10 - 2.5');
   eq(v4Old.inputs.vehicle_age.status, 'applied', '4: статус віку'); eq(v4Old.inputs.vehicle_owners.owners_count, 5, '4: лічильник власників лишається видимим'); eq(v4Old.inputs.vehicle_owners.status, 'not_scored', '4: власники не штрафуються');
   /* 4б. вік і докази діють разом на старе авто з бідною історією: це не подвійний рахунок */
   const v4Age150 = computeScoreV4({ findings: [], evidence: EV, listingText: 'x', vehicle: { odometer_km: 150000, age_months: 150, powertrain_class: 'petrol' } });
@@ -174,7 +174,7 @@ const r1 = x => Math.round((x + Number.EPSILON) * 10) / 10;
   /* 13. решта стель без змін */
   eq(JSON.stringify(CC.DAMAGE), JSON.stringify({ light: 10, moderate: 9.0, inner_depth: 8.0, serious: 7.5, structural: 6.5, extreme: 6.0 }), '13: константи ущерба змінені');
   eq(JSON.stringify(CC.MILEAGE), JSON.stringify({ anomaly: 8.0, rollback: 7.0, rollback_major: 6.5, major_drop_km: 60000 }), '13: константи пробігу змінені');
-  eq(C4.CONFIG_TAG, 'v4-prod-2026-10-08', '13: конфіг v4 змінено'); ok(!('enabled' in C4.AGE), '13: вік має бути свідомим штрафом'); eq(JSON.stringify(C4.AGE), JSON.stringify({ first_year: 0.1, per_extra_year: 0.05 }), '13: крива віку змінена'); eq(C4.OWNERS.enabled, false, '13: власники знову штрафуються');
+  eq(C4.CONFIG_TAG, 'v4-prod-2026-10-08b', '13: конфіг v4 змінено'); ok(!('enabled' in C4.AGE), '13: вік має бути свідомим штрафом'); eq(JSON.stringify(C4.AGE), JSON.stringify({ per_year: 0.1 }), '13: крива віку змінена'); eq(C4.OWNERS.enabled, false, '13: власники знову штрафуються');
   /* 14. крива неперервна навколо меж текстів Confidence */
   for (const b of [35, 40, 55, 70, 85, 95]) ok(Math.abs(evidenceCeilingValue(b + 1) - evidenceCeilingValue(b - 1)) <= 0.13, '14: злам кривої біля ' + b);
   ok(evidenceCeilingValue(39) <= 8.2 && evidenceCeilingValue(94) < 9.9, '14: "дані обмежені" вище 8.2 або 9.5+ без дуже сильних доказів');
