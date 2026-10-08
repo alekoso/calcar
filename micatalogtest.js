@@ -279,8 +279,8 @@ t(12, 'канонічні перевірки картки доходять до 
   end;`);
 
 t(13, 'матчер версій розрізняє 530i xDrive, 530i і M550i на реальних написах', `
-  ${A(`(mi.match_version('BMW', array['xDrive', '530i', '530i xDrive'], 2017)->>'version_id')::bigint = mi_test.sid_of('version', '530I_XDRIVE')`, 'decoder labels of a 530i xDrive do not resolve')}
-  ${A(`mi.match_version('BMW', array['530i'], 2018)->>'version_id' is null`, 'a bare 530i label resolved to a catalogue version although the rear drive car is not catalogued')}
+  ${A(`(mi.match_version('BMW', array['xDrive', '530i', '530i xDrive'], 2017, '530i')->>'version_id')::bigint = mi_test.sid_of('version', '530I_XDRIVE')`, 'decoder labels of a 530i xDrive do not resolve')}
+  ${A(`mi.match_version('BMW', array['530i'], 2018, '530i')->>'version_id' is null`, 'a bare 530i label resolved to a catalogue version although the rear drive car is not catalogued')}
   ${A(`(mi.match_version_text('BMW', '5 series', '530i xDrive')->>'version_id')::bigint = mi_test.sid_of('version', '530I_XDRIVE')`, 'the Check text 530i xDrive does not resolve')}
   ${A(`mi.match_version_text('BMW', '5 series', '530i Steptronic')->>'version_id' is null and (mi.match_version_text('BMW', '5 series', '530i Steptronic')->>'ambiguous')::boolean is false`, 'the rear drive text resolved to a version it is not, or became ambiguous')}
   ${A(`(mi.match_version_text('BMW', '5 series', 'M550i xDrive')->>'version_id')::bigint = mi_test.sid_of('version', 'M550I_XDRIVE')`, 'adding the 530i broke the M550i match')}
@@ -1264,6 +1264,70 @@ t(75, 'знання версії не тече: GL63 бачить клейм в�
   -- версійна знахідка GL450 на субʼєкт GL63 не лягає
   r := ${persist(GL_C, 'y3', ID_GL450, rfind('version', 'specialist_practice', ROLL, rev('https://spec.example/other', 'specialist', 'primary', 'pump')))};
   ${A(`r->'results'->0->>'status' = 'staged_cold' and r->'results'->0->>'subject_id' is null and (r->>'published')::int = 0`, 'a GL450 finding was attached to the GL63 version')}
+  end;`);
+
+/* ---- Міграція 032: версія лише в межах свого модельного ряду ---- */
+
+t(76, 'Macan S не стає Cayenne S: збіг версії не перетинає модельний ряд, без ряду збігу немає, рік не заміняє сумісність', `
+  declare m jsonb; c jsonb; ing jsonb; vid bigint; macan_line bigint; macan_gen bigint; macan_s bigint;
+  begin
+  -- точний випадок Check MF9sY: кандидати моста з рядка vehicles (модель площадки "macan", трим декодера "S", серія "Type 95B")
+  m := mi.match_version('Porsche', array['S', 'macan', 'macan S', 'Type 95B', 'S', 'Macan', 'Macan S'], 2021, 'macan');
+  ${A(`m->>'version_id' is null and not (m->>'ambiguous')::boolean`, 'Macan S still resolves to a Cayenne version')}
+  ${A(`mi.match_version('Porsche', array['S'], null, 'Macan')->>'version_id' is null`, 'a Cayenne S without catalogue years was borrowed by a Macan')}
+  ${A(`(mi.match_version('Porsche', array['S', 'Cayenne', 'Cayenne S'], 2013, 'Cayenne')->>'version_id')::bigint = (select subject_id from mi.vehicle_version where version_code = 'S' and name_en = 'Cayenne S')`, 'a real Cayenne S no longer matches its own version')}
+  ${A(`mi.match_version('Porsche', array['GTS'], 2013, 'Macan')->>'version_id' is null and (mi.match_version('Porsche', array['GTS'], 2013, 'Cayenne')->>'version_id')::bigint = mi_test.sid_of('version', 'GTS')`, 'the same label crosses the model boundary')}
+  ${A(`mi.match_version('Porsche', array['S', 'Macan S'], 2021)->>'note' = 'model line is required' and mi.match_version('Porsche', array['GTS', 'Cayenne GTS'], 2013)->>'version_id' is null`, 'a version was matched brand-wide without a model line')}
+  ${A(`mi.match_version_text('Porsche', 'Macan', 'Cayenne S')->>'version_id' is null and mi.match_version_text('Porsche', 'Macan', 'S')->>'version_id' is null`, 'the text matcher crosses the model boundary')}
+  -- міст: та сама машина у Vehicle Memory не отримує версії і знання Cayenne
+  perform mi_test.seed_check('WP1AB2A51MLB0MAC1', 'Porsche', 'Macan', 'S', 'Type 95B', 2021, 'autoria', 'UA', 70000, 40000, null, null, null);
+  ing := mi.ingest_identity_from_check('WP1AB2A51MLB0MAC1');
+  ${A(`ing->'version_match'->>'version_id' is null and ing->'version_match'->>'note' like 'no version of this model line%'`, 'the bridge still writes a Cayenne version for a Macan')}
+  ${A(`(select count(*) from public.vehicle_identity_observation where vin = 'WP1AB2A51MLB0MAC1' and dimension = 'version') = 0`, 'a version observation was written for the Macan')}
+  c := mi.research_context('WP1AB2A51MLB0MAC1', '{"brand":"Porsche","model_line":"Macan","version_text":"S","label":"PORSCHE Macan S 3.0 L Gasoline 348 hp 2021"}'::jsonb);
+  ${A(`c->>'mi_scope' = 'none' and (c->>'knowledge_count')::int = 0 and c->'subjects'->>'version' is null and c->'subjects'->>'generation' is null`, 'Cayenne knowledge still reaches the Macan research context')}
+  ${A(`(select count(*) from mi_vm.resolved_identity_dimension d join mi_vm.resolved_identity r on r.id = d.identity_id where r.vin = 'WP1AB2A51MLB0MAC1' and d.dimension = 'version' and d.resolution_status = 'confirmed') = 0`, 'the resolver confirmed a foreign version for the Macan')}
+  -- каталожний Macan (фікстура в межах транзакції): свій ряд і своя версія працюють
+  insert into mi.knowledge_subject (kind, label) values ('model_line', 'Porsche Macan') returning id into macan_line;
+  insert into mi.model_line (subject_id, brand_id, name) values (macan_line, (select subject_id from mi.brand where name = 'Porsche'), 'Macan');
+  insert into mi.knowledge_subject (kind, label) values ('generation', 'Porsche Macan 95B') returning id into macan_gen;
+  insert into mi.generation (subject_id, model_line_id, platform_code, phase, powertrain_types, default_system_profile) values (macan_gen, macan_line, '95B', 'base', array['ice']::mi.powertrain[], 'ice_default');
+  -- ряд відомий, версії у каталозі ще немає: область покоління, без чужого знання
+  c := mi.research_context('WP1AB2A51MLB0MAC1', '{"brand":"Porsche","model_line":"Macan","generation":"95B","version_text":"S","label":"x"}'::jsonb);
+  ${A(`c->>'mi_scope' = 'generation' and (c->'subjects'->>'generation')::bigint = macan_gen and c->'subjects'->>'version' is null and (c->>'knowledge_count')::int = 0`, 'exact model with unknown version did not stay at generation scope')}
+  insert into mi.knowledge_subject (kind, label) values ('vehicle_version', 'Porsche Macan S 95B') returning id into macan_s;
+  insert into mi.vehicle_version (subject_id, generation_id, version_code, name_en, powertrain) values (macan_s, macan_gen, 'S', 'Macan S', 'ice');
+  m := mi.match_version('Porsche', array['S', 'macan', 'macan S', 'Type 95B', 'S', 'Macan', 'Macan S'], 2021, 'macan');
+  ${A(`(m->>'version_id')::bigint = macan_s and not (m->>'ambiguous')::boolean`, 'the correct Macan S candidate does not match once it exists')}
+  ${A(`(mi.match_version('Porsche', array['S', 'Cayenne S'], 2013, 'Cayenne')->>'version_id')::bigint = (select subject_id from mi.vehicle_version where version_code = 'S' and name_en = 'Cayenne S')`, 'the Macan S fixture stole the Cayenne S match')}
+  end;`);
+
+t(77, 'калібрувальні картки і часткова ідентичність у межах свого ряду працюють після 032; непідтримувана марка не отримує чужого знання', `
+  declare ing jsonb; vid bigint; c jsonb;
+  begin
+  ${A(`(mi.match_version('BMW', array['xDrive', '530i', '530i xDrive'], 2017, '530i')->>'version_id')::bigint = mi_test.sid_of('version', '530I_XDRIVE')`, 'BMW 530i xDrive no longer resolves with the marketplace model 530i')}
+  ${A(`(mi.match_version('BMW', array['xDrive', '530i', '530i xDrive'], 2017, '5-Series')->>'version_id')::bigint = mi_test.sid_of('version', '530I_XDRIVE')`, 'BMW 530i xDrive no longer resolves with the decoder series 5-Series')}
+  ${A(`mi.match_version('BMW', array['xDrive', '530i', '530i xDrive'], 2017, 'X5')->>'version_id' is null`, 'a 530i xDrive label resolved for an X5')}
+  ${A(`(mi.match_version('Tesla', array['Long Range AWD', 'Model 3'], 2019, 'Model 3')->>'version_id')::bigint = mi_test.sid_of('version', 'M3_LR_AWD')`, 'Tesla Model 3 Long Range AWD no longer resolves')}
+  ${A(`mi.match_version('Tesla', array['Long Range AWD'], 2019, 'Model S')->>'version_id' is null`, 'Long Range AWD crossed from Model 3 to Model S')}
+  ${A(`(mi.match_version('Hyundai', array['2.4', 'Tucson', 'Tucson 2.4'], 2019, 'Tucson')->>'version_id')::bigint = mi_test.sid_of('version', 'TL_THETA2_24')`, 'Hyundai Tucson 2.4 no longer resolves')}
+  ${A(`mi.match_version('Hyundai', array['2.4'], 2019, 'Santa Fe')->>'version_id' is null`, 'the 2.4 label crossed from Tucson to Santa Fe')}
+  -- міст для 530i xDrive: версія підтверджена резолвером, як у продакшні
+  perform mi_test.seed_check('WBAJA7C55KWW05301', 'BMW', '530i', 'xDrive', '5-Series', 2019, 'autoria', 'UA', 30000, 90000, null, null, null);
+  ing := mi.ingest_identity_from_check('WBAJA7C55KWW05301');
+  vid := mi.resolve_from_memory('WBAJA7C55KWW05301');
+  ${A(`(ing->'version_match'->>'version_id')::bigint = mi_test.sid_of('version', '530I_XDRIVE') and (mi.identity_json(vid)->>'version')::bigint = mi_test.sid_of('version', '530I_XDRIVE')`, 'the bridge no longer resolves a supported 530i xDrive')}
+  c := mi.research_context('WBAJA7C55KWW05301', '{"brand":"BMW","model_line":"530i","generation":"G30","version_text":"xDrive","label":"x"}'::jsonb);
+  ${A(`c->>'mi_scope' = 'version' and (c->>'knowledge_count')::int > 0 and (c->'subjects'->>'version')::bigint = mi_test.sid_of('version', '530I_XDRIVE')`, 'the supported 530i lost its MI knowledge')}
+  -- часткова ідентичність у межах ряду: Cayenne GTS за тримом декодера
+  perform mi_test.seed_check('WP1ZZZ92ZDLA45900', 'Porsche', 'Cayenne', null, 'GTS', 2013, 'autoria', 'UA', 20000, 234000, null, null, null);
+  ing := mi.ingest_identity_from_check('WP1ZZZ92ZDLA45900');
+  ${A(`(ing->'version_match'->>'version_id')::bigint = mi_test.sid_of('version', 'GTS')`, 'partial identity inside the Cayenne line stopped resolving')}
+  -- непідтримувана марка: нічого чужого
+  perform mi_test.seed_check('1FA6P8TH0H50MUST1', 'Ford', 'Mustang', 'GT', 'GT', 2017, 'autoria', 'UA', 25000, 60000, null, null, null);
+  ${A(`mi.match_version('Ford', array['GT', 'Mustang', 'Mustang GT'], 2017, 'Mustang')->>'version_id' is null`, 'an unsupported brand matched a version')}
+  c := mi.research_context('1FA6P8TH0H50MUST1', '{"brand":"Ford","model_line":"Mustang","version_text":"GT","label":"x"}'::jsonb);
+  ${A(`(c->>'available')::boolean and c->>'mi_scope' = 'none' and (c->>'knowledge_count')::int = 0`, 'an unsupported identity received foreign knowledge')}
   end;`);
 
 /* ---- Підсумок ---- */
