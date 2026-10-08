@@ -14,7 +14,7 @@
      Writes <pairs-subdir>/<token>.json (control + shadow, hashes, latency,
      usage, checks). A warm-up run goes to its own subdir and is not
      summarized.
-   node fc-shadow-bench.js run ... --skip-control [--shadow-max-tokens N]
+   node fc-shadow-bench.js run ... --skip-control [--shadow-max-tokens N] [--shadow-timeout-ms N]
      shadow-only variant (another model or effort): the control is not
      called; pairs carry only the shadow side and its input hash.
    node fc-shadow-bench.js combine --control-dir DIR --shadow-dir DIR [--out DIR]
@@ -138,10 +138,11 @@ async function runEndpoint(tokens, base, shadowModel, shadowEffort, concurrency,
       if (shadowEffort) body.shadow_effort = shadowEffort;
       if (extra.skipControl) body.skip_control = true;
       if (extra.shadowMaxTokens) body.shadow_max_tokens = extra.shadowMaxTokens;
+      if (extra.shadowTimeoutMs) body.shadow_timeout_ms = extra.shadowTimeoutMs;
       const t0 = Date.now();
       let data;
       try {
-        const r = await fetch(base.replace(/\/$/, '') + '/api/conclusion-bench', { method: 'POST', headers: { 'content-type': 'application/json', 'x-calcar-bench': key }, body: JSON.stringify(body), signal: AbortSignal.timeout(295000) });
+        const r = await fetch(base.replace(/\/$/, '') + '/api/conclusion-bench', { method: 'POST', headers: { 'content-type': 'application/json', 'x-calcar-bench': key }, body: JSON.stringify(body), signal: AbortSignal.timeout(extra.shadowTimeoutMs ? extra.shadowTimeoutMs + 25000 : 295000) });
         const txt = await r.text();
         try { data = JSON.parse(txt); } catch (e) { data = { status: 'transport_error', reason: 'http ' + r.status + ' ' + txt.slice(0, 200) }; }
         if (!r.ok && !data.schema) data = { status: 'transport_error', reason: 'http ' + r.status + ' ' + JSON.stringify(data).slice(0, 200) };
@@ -377,7 +378,7 @@ async function summarize() {
     const via = opt('via', 'endpoint');
     const conc = parseInt(opt('concurrency', '2'), 10) || 2;
     const sm = opt('shadow-model', null), se = opt('shadow-effort', null);
-    const extra = { skipControl: args.includes('--skip-control'), shadowMaxTokens: opt('shadow-max-tokens', null) ? parseInt(opt('shadow-max-tokens', null), 10) : null };
+    const extra = { skipControl: args.includes('--skip-control'), shadowMaxTokens: opt('shadow-max-tokens', null) ? parseInt(opt('shadow-max-tokens', null), 10) : null, shadowTimeoutMs: opt('shadow-timeout-ms', null) ? parseInt(opt('shadow-timeout-ms', null), 10) : null };
     const res = via === 'local' ? await runLocal(tokens, sm, se, conc, extra) : await runEndpoint(tokens, opt('base', 'https://www.calcar.io'), sm, se, conc, extra);
     console.log('pairs written:', res.length, '->', PAIRS_DIR);
     return;

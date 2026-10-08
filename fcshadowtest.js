@@ -124,6 +124,31 @@ const ENV = { ANTHROPIC_API_KEY: 'sk-ant-TEST-SECRET', OPENAI_API_KEY: 'sk-TEST-
   /* max_tokens: a benchmark may raise the ceiling, never lower it */
   ok(A.anthropicMaxTokens(null) === 12000 && A.anthropicMaxTokens(32000) === 32000 && A.anthropicMaxTokens(4000) === 12000 && A.anthropicMaxTokens(999999) === 12000 && A.anthropicMaxTokens('32000') === 12000, 'max_tokens ceiling not validated');
   const r13 = await A.runAnthropicConclusion({ system: 'RULES', user: 'USER', env: ENV, effort: 'max', maxTokens: 32000, callModel: async b => { seen.push([b]); return anthropicGood(); } });
+  ok(seen[seen.length - 1][0].stream === true && !('stream' in A.anthropicConclusionBody({ system: 'R', user: 'U', model: 'claude-opus-5-5', effort: 'medium' })), 'a raised ceiling is not streamed or the default call streams');
+  /* streaming: SSE is assembled into the same message shape; thinking deltas dropped */
+  const SSE = [
+    { type: 'message_start', message: { model: 'claude-opus-5-5', usage: { input_tokens: 300, cache_read_input_tokens: 7000, cache_creation_input_tokens: 0, output_tokens: 1 } } },
+    { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'SECRET THOUGHT' } },
+    { type: 'content_block_start', index: 1, content_block: { type: 'text', text: '' } },
+    { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: '{"headline":"Max headline","paragraphs":["Max one."],' } },
+    { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: '"checks":[]}' } },
+    { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 5400 } },
+    { type: 'message_stop' },
+  ];
+  const asm = A.assembleAnthropicEvents(SSE);
+  ok(asm.stop_reason === 'end_turn' && asm.model === 'claude-opus-5-5' && asm.content.length === 1 && asm.content[0].text.includes('Max headline') && !JSON.stringify(asm).includes('SECRET THOUGHT') && asm.usage.output_tokens === 5400 && asm.usage.cache_read_input_tokens === 7000, 'SSE assembly wrong: ' + JSON.stringify(asm));
+  ok(A.assembleAnthropicEvents(SSE.slice(0, 5)).type === 'error' && A.assembleAnthropicEvents([...SSE.slice(0, 2), { type: 'error', error: { type: 'overloaded_error', message: 'x' } }]).error.type === 'overloaded_error', 'a cut or failed stream is not an error');
+  const sseText = SSE.map(e => 'event: ' + e.type + '\ndata: ' + JSON.stringify(e) + '\n\n').join('');
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(sseText, { status: 200, headers: { 'content-type': 'text/event-stream' } });
+  const streamed = await A.callAnthropic(A.anthropicConclusionBody({ system: 'R', user: 'U', model: 'claude-opus-5-5', effort: 'max', maxTokens: 32000, stream: true }), 5000, null, ENV);
+  globalThis.fetch = async () => new Response(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: 'bad' } }), { status: 400, headers: { 'content-type': 'application/json' } });
+  const streamedErr = await A.callAnthropic(A.anthropicConclusionBody({ system: 'R', user: 'U', model: 'claude-opus-5-5', effort: 'max', maxTokens: 32000, stream: true }), 5000, null, ENV);
+  globalThis.fetch = realFetch;
+  const pStream = A.parseAnthropicConclusion(streamed);
+  ok(streamed.http_status === 200 && pStream.clean && pStream.clean.headline === 'Max headline' && A.anthropicUsage(streamed, { model: 'claude-opus-5-5' }, 'max').output_tokens === 5400, 'streamed response not parsed into a conclusion');
+  ok(streamedErr.http_status === 400 && /invalid_request_error/.test(A.parseAnthropicConclusion(streamedErr).error), 'an HTTP error on a streamed call is not reported');
   ok(r13.status === 'ok' && r13.max_tokens === 32000 && seen[seen.length - 1][0].max_tokens === 32000 && seen[seen.length - 1][0].output_config.effort === 'max' && r13.ai.reasoning_effort === 'max', 'effort max or raised ceiling does not reach the request');
 
   /* ---------- frozen input and the pair ---------- */
@@ -256,6 +281,9 @@ const ENV = { ANTHROPIC_API_KEY: 'sk-ant-TEST-SECRET', OPENAI_API_KEY: 'sk-TEST-
   ok(/mode === 'shadow'/.test(benchSrc) && /mode === 'input'/.test(benchSrc) && /['"]input['"], ['"]shadow['"]\]\.includes\(b\.mode\)/.test(benchSrc), 'bench has no input/shadow modes');
   ok(/export async function callModel/.test(benchSrc), 'bench transport is not reusable by the local runner');
   ok(/schema_hash: frozen\.schema_hash/.test(benchSrc), 'bench input mode does not expose the schema hash');
+  ok(/export const config = \{ maxDuration: 800 \};/.test(benchSrc) && /const shadowTimeout = skipControl && Number\.isInteger\(b\.shadow_timeout_ms\)/.test(benchSrc) && /: 270000;/.test(benchSrc) && /timeoutMs: shadowTimeout/.test(benchSrc), 'only a shadow-only bench run may use the longer budget');
+  const bench = await import('file://' + path.join(dir, 'api', 'conclusion-bench.js'));
+  ok(bench.SHADOW_ONLY_TIMEOUT_MS.max === 780000 && bench.SHADOW_ONLY_TIMEOUT_MS.max < bench.config.maxDuration * 1000, 'shadow-only budget does not fit the function limit');
   ok(/const skipControl = b\.skip_control === true;/.test(benchSrc) && /shadowMaxTokens, skipControl/.test(benchSrc) && /Number\.isInteger\(b\.shadow_max_tokens\)/.test(benchSrc), 'bench does not pass the shadow-only options');
   ok((benchSrc.match(/method: 'POST'/g) || []).length === 1 && !/method: 'P(?:ATCH|UT)'|method: 'DELETE'|writeFile|\/rest\/v1\/reports/.test(benchSrc), 'bench writes somewhere');
   ok(benchSrc.indexOf('benchAllowed(req, process.env)') < benchSrc.indexOf("mode === 'shadow'") && /callAnthropic: null/.test(benchSrc) && /applyLanguage: applyConclusionLanguage, directiveHits: directiveVerdictHits/.test(benchSrc), 'shadow mode is reachable without the key or skips production post-processing');

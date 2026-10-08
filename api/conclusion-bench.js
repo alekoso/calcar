@@ -20,7 +20,8 @@
      тут ігноруються (control завжди production), shadow_model,
      shadow_effort і shadow_max_tokens лише для shadow-провайдера;
      skip_control: true запускає лише shadow (варіант моделі чи effort
-     проти вже зібраних control-виходів, звʼязка за input_hash локально).
+     проти вже зібраних control-виходів, звʼязка за input_hash локально);
+     лише тоді shadow_timeout_ms може бути до 780 с.
    rules (лише mode run): текст кандидатних редакційних правил для A/B. Він
    підміняє system-повідомлення ТІЛЬКИ в цьому одному bench-виклику; правила
    production (CONCLUSION_RULES), звичайні Check і збережені звіти не
@@ -30,7 +31,10 @@
    ключа ендпоінт відповідав лише до OPEN_UNTIL (вікно A/B 2026-10-02 перед
    beta); вікно закрите, тепер потрібен ключ. */
 
-export const config = { maxDuration: 300 };
+/* 800 s (Pro with Fluid compute) leaves room for a shadow-only run at a
+   high reasoning effort; every other mode keeps its own 270 s budget */
+export const config = { maxDuration: 800 };
+export const SHADOW_ONLY_TIMEOUT_MS = { min: 60000, max: 780000 };
 
 import { TOKEN_RE } from './share.js';
 import { runFinalConclusion, buildConclusionContext, conclusionModel } from './conclusion.js';
@@ -121,9 +125,11 @@ export default async function handler(req, res) {
       const shadowEffort = ANTHROPIC_EFFORTS.includes(b.shadow_effort) ? b.shadow_effort : null;
       const shadowMaxTokens = Number.isInteger(b.shadow_max_tokens) ? b.shadow_max_tokens : null;
       const skipControl = b.skip_control === true;
+      /* only a shadow-only run may use more than the paired 270 s */
+      const shadowTimeout = skipControl && Number.isInteger(b.shadow_timeout_ms) ? Math.min(SHADOW_ONLY_TIMEOUT_MS.max, Math.max(SHADOW_ONLY_TIMEOUT_MS.min, b.shadow_timeout_ms)) : 270000;
       const pair = await runShadowPair({
         token, report, lang, langDirective: languageDirective(lang),
-        callOpenAI: callModel, callAnthropic: null, env: process.env, timeoutMs: 270000,
+        callOpenAI: callModel, callAnthropic: null, env: process.env, timeoutMs: shadowTimeout,
         applyLanguage: applyConclusionLanguage, directiveHits: directiveVerdictHits, shadowModel, shadowEffort, shadowMaxTokens, skipControl,
       });
       pair.anthropic_key_present = !!process.env.ANTHROPIC_API_KEY;

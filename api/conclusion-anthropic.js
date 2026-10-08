@@ -55,10 +55,13 @@ export function anthropicConclusionModel(env) {
 /* the request body. `system` and `user` are the exact strings the control
    call sends (CONCLUSION_RULES and conclusionUserMessage); the schema is
    the production json_schema taken from conclusionResponseFormat() */
-export function anthropicConclusionBody({ system, user, model, effort, maxTokens = ANTHROPIC_MAX_TOKENS } = {}) {
+export function anthropicConclusionBody({ system, user, model, effort, maxTokens = ANTHROPIC_MAX_TOKENS, stream = false } = {}) {
   return {
     model,
     max_tokens: maxTokens,
+    /* a raised ceiling means a long call: the answer is streamed so the
+       connection never sits idle for minutes; the content is the same */
+    ...(stream ? { stream: true } : {}),
     /* static rules first with a cache breakpoint: the production OpenAI call
        gets its prefix cached automatically, the Messages API needs the marker */
     system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
@@ -84,11 +87,50 @@ export async function callAnthropic(body, ms, signal, env) {
       headers: { 'content-type': 'application/json', 'x-api-key': e.ANTHROPIC_API_KEY || '', 'anthropic-version': ANTHROPIC_VERSION },
       body: JSON.stringify(body),
     });
+    const isStream = body && body.stream === true && resp.ok && /event-stream/.test(String(resp.headers.get('content-type') || ''));
+    if (isStream) { const data = await readAnthropicStream(resp); data.http_status = resp.status; return data; }
     const json = await resp.json().catch(() => null);
     const data = isObj(json) ? json : { type: 'error', error: { type: 'bad_response', message: 'non-JSON response' } };
     data.http_status = resp.status;
     return data;
   } finally { clearTimeout(t); }
+}
+
+/* SSE stream -> the same shape as a non-streaming message: text blocks
+   joined, stop_reason and stop_details, usage from message_start and the
+   final message_delta. Thinking deltas are not kept (display is omitted) */
+export function assembleAnthropicEvents(events) {
+  const msg = { type: 'message', model: null, content: [], stop_reason: null, stop_details: null, usage: {} };
+  const blocks = {};
+  for (const ev of Array.isArray(events) ? events : []) {
+    if (!isObj(ev)) continue;
+    if (ev.type === 'error') return { type: 'error', error: isObj(ev.error) ? ev.error : { type: 'stream_error', message: 'stream error' } };
+    if (ev.type === 'message_start' && isObj(ev.message)) {
+      msg.model = ev.message.model || null;
+      if (isObj(ev.message.usage)) Object.assign(msg.usage, ev.message.usage);
+    } else if (ev.type === 'content_block_start' && isObj(ev.content_block)) {
+      blocks[ev.index] = { type: ev.content_block.type, text: typeof ev.content_block.text === 'string' ? ev.content_block.text : '' };
+    } else if (ev.type === 'content_block_delta' && isObj(ev.delta) && ev.delta.type === 'text_delta') {
+      (blocks[ev.index] = blocks[ev.index] || { type: 'text', text: '' }).text += ev.delta.text || '';
+    } else if (ev.type === 'message_delta') {
+      if (isObj(ev.delta)) { if (ev.delta.stop_reason !== undefined) msg.stop_reason = ev.delta.stop_reason; if (ev.delta.stop_details !== undefined) msg.stop_details = ev.delta.stop_details; }
+      if (isObj(ev.usage)) Object.assign(msg.usage, ev.usage);
+    }
+  }
+  msg.content = Object.keys(blocks).map(Number).sort((a, b) => a - b).map(i => blocks[i]).filter(b => b.type === 'text').map(b => ({ type: 'text', text: b.text }));
+  if (msg.stop_reason === null) return { type: 'error', error: { type: 'stream_incomplete', message: 'stream ended without a final message_delta' } };
+  return msg;
+}
+
+export async function readAnthropicStream(resp) {
+  const text = await resp.text();
+  const events = [];
+  for (const chunk of text.split(/\r?\n\r?\n/)) {
+    const data = chunk.split(/\r?\n/).filter(l => l.startsWith('data:')).map(l => l.slice(5).trim()).join('');
+    if (!data) continue;
+    try { events.push(JSON.parse(data)); } catch (e) { /* a partial last chunk is caught by the missing message_delta */ }
+  }
+  return assembleAnthropicEvents(events);
 }
 
 /* response -> { clean, error, retryable }. Never throws */
@@ -150,7 +192,7 @@ export async function runAnthropicConclusion({ system, user, callModel = null, t
   for (let pass = 0; pass < 2; pass++) {
     const left = timeoutMs - (Date.now() - t0);
     if (left < 15000) { out.reason = out.reason || 'timeout'; break; }
-    const body = anthropicConclusionBody({ system, user, model: m, effort: eff, maxTokens: mt });
+    const body = anthropicConclusionBody({ system, user, model: m, effort: eff, maxTokens: mt, stream: mt > ANTHROPIC_MAX_TOKENS });
     const tA = Date.now();
     let data = null, err = null;
     try { data = await transport(body, left, signal); }
