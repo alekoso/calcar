@@ -21,7 +21,9 @@ import {
 } from './visual-signals.js';
 import { hasHistoricalPhotoEvidence, stripUnbackedPhotoClaims } from './historical-claims.js';
 /* Final Conclusion: окремий synthesis-виклик по вже готовому звіту */
-import { runFinalConclusion, CONCLUSION_TIMEOUT_MS, CONCLUSION_MIN_BUDGET_MS } from './conclusion.js';
+import { CONCLUSION_TIMEOUT_MS, CONCLUSION_MIN_BUDGET_MS } from './conclusion.js';
+/* provider of the Final Conclusion: Claude by default, one OpenAI fallback on failure (env CONCLUSION_PROVIDER) */
+import { runProductionConclusion } from './conclusion-provider.js';
 import { parseOwnerEvents, annotateOwnerOrdinals, describeOwnerEvents, addMissingOwnerEvents } from './history-owners.js';
 import { validEngineCode, resolveGeneration } from './youtube.js';
 import {
@@ -1340,7 +1342,14 @@ export function attachFinalConclusion(parsed, fc, lang = 'en') {
   const hits = directiveVerdictHits({ headline: parsed.final_conclusion.headline, reasoning: parsed.final_conclusion.body });
   if (hits.length) console.log('[final-conclusion]', JSON.stringify({ op: 'directive', lang, hits }));
   if (parsed._meta && typeof parsed._meta === 'object') {
-    parsed._meta.final_conclusion = { version: fc.version || null, model: (fc.ai && fc.ai.model) || null, truncated: fc.conclusion.truncated === true, directive: hits.length ? hits : null };
+    const ai = fc.ai || {};
+    parsed._meta.final_conclusion = {
+      version: fc.version || null, model: ai.model || null, truncated: fc.conclusion.truncated === true, directive: hits.length ? hits : null,
+      /* which provider wrote the visible text: anthropic | openai_fallback | openai */
+      provider: fc.provider || null, effort: fc.effort || ai.reasoning_effort || null, fallback_reason: fc.fallback_reason || null,
+      ms: typeof fc.ms === 'number' ? fc.ms : null, input_tokens: typeof ai.input_tokens === 'number' ? ai.input_tokens : null, output_tokens: typeof ai.output_tokens === 'number' ? ai.output_tokens : null,
+      cached_tokens: typeof ai.cached_tokens === 'number' ? ai.cached_tokens : null,
+    };
   }
   return true;
 }
@@ -4232,7 +4241,7 @@ async function runCheck(req, res, job) {
     const tFc = Date.now();
     const fcBudget = Math.min(CONCLUSION_TIMEOUT_MS, 285000 - (Date.now() - tRun) - 10000);
     const fcPromise = fcBudget >= CONCLUSION_MIN_BUDGET_MS
-      ? Promise.resolve().then(() => runFinalConclusion({ report: parsed, langDirective, callModel, timeoutMs: fcBudget }))
+      ? Promise.resolve().then(() => runProductionConclusion({ report: parsed, langDirective, callModel, timeoutMs: fcBudget, env: process.env }))
           .catch(e => ({ status: 'error', reason: String((e && e.message) || e).slice(0, 160), conclusion: null, ms: Date.now() - tFc, ai: null, attempts: [] }))
       : Promise.resolve({ status: 'skipped', reason: 'no_time_budget', conclusion: null, ms: 0, ai: null, attempts: [] });
     mark('persistence', Date.now() - tPers, photoPreservation && photoPreservation.listing === 'pending' ? 'pending' : 'executed');
@@ -4294,10 +4303,10 @@ async function runCheck(req, res, job) {
         /* старий висновок не повертається: звіт нового покоління без
            висновку, сторінка ховає блок "Висновок CalCar" */
         parsed.final_conclusion = null;
-        parsed._meta.final_conclusion = { status: fc.status || 'error', reason: fc.reason || null, model: (fc.attempts && fc.attempts[0] && fc.attempts[0].model) || null };
-        console.log('[final-conclusion]', JSON.stringify({ op: 'check', status: fc.status, reason: fc.reason || null, vin: listing.vin || null }));
+        parsed._meta.final_conclusion = { status: fc.status || 'error', reason: fc.reason || null, model: (fc.attempts && fc.attempts[0] && fc.attempts[0].model) || null, provider: fc.provider || null, fallback_reason: fc.fallback_reason || null };
+        console.log('[final-conclusion]', JSON.stringify({ op: 'check', status: fc.status, reason: fc.reason || null, provider: fc.provider || null, fallback_reason: fc.fallback_reason || null, vin: listing.vin || null }));
       }
-      mark('final_conclusion', fc.ms || 0, attached ? 'executed' : (fc.status === 'ok' ? 'error' : fc.status), { at: tFc - tRun, reason: fc.reason || null, ai: fc.ai || null, attempts: fc.attempts || [], context_chars: fc.context_chars || null });
+      mark('final_conclusion', fc.ms || 0, attached ? 'executed' : (fc.status === 'ok' ? 'error' : fc.status), { at: tFc - tRun, reason: fc.reason || null, ai: fc.ai || null, attempts: fc.attempts || [], context_chars: fc.context_chars || null, provider: fc.provider || null, effort: fc.effort || null, fallback_reason: fc.fallback_reason || null });
     } catch (e) {
       parsed.final_conclusion = null;
       parsed._meta.final_conclusion = { status: 'error', reason: 'attach_failed', model: null };

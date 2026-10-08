@@ -278,9 +278,9 @@ const ENV = { ANTHROPIC_API_KEY: 'sk-ant-TEST-SECRET', OPENAI_API_KEY: 'sk-TEST-
 
   /* ---------- wiring: production path untouched, endpoint read-only, no secrets in logs ---------- */
   const checkSrc = fs.readFileSync('api/check.js', 'utf8');
-  ok(!/conclusion-anthropic|conclusion-shadow|conclusion-checks|anthropic/i.test(checkSrc), 'api/check.js reaches the shadow modules');
+  ok(!/conclusion-shadow|conclusion-checks|runShadowPair|conclusion-anthropic/.test(checkSrc) && /from '\.\/conclusion-provider\.js'/.test(checkSrc), 'api/check.js reaches the shadow modules or bypasses the provider selector');
   const benchSrc = fs.readFileSync('api/conclusion-bench.js', 'utf8');
-  ok(/mode === 'shadow'/.test(benchSrc) && /mode === 'input'/.test(benchSrc) && /['"]input['"], ['"]shadow['"]\]\.includes\(b\.mode\)/.test(benchSrc), 'bench has no input/shadow modes');
+  ok(/mode === 'shadow'/.test(benchSrc) && /mode === 'input'/.test(benchSrc) && /['"]input['"], ['"]shadow['"](?:, ['"]production['"])?\]\.includes\(b\.mode\)/.test(benchSrc), 'bench has no input/shadow modes');
   ok(/export async function callModel/.test(benchSrc), 'bench transport is not reusable by the local runner');
   ok(/schema_hash: frozen\.schema_hash/.test(benchSrc), 'bench input mode does not expose the schema hash');
   ok(/export const config = \{ maxDuration: 800 \};/.test(benchSrc) && /const shadowTimeout = skipControl && Number\.isInteger\(b\.shadow_timeout_ms\)/.test(benchSrc) && /: 270000;/.test(benchSrc) && /timeoutMs: shadowTimeout/.test(benchSrc), 'only a shadow-only bench run may use the longer budget');

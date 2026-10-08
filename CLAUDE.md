@@ -40,8 +40,9 @@ api/feedback.js       відгук 👍/👎 про звіт Check -> report_fee
 api/value.js          секція «Ринкова вартість» Check: крива знецінення, якорі цін, ліквідність (не Vercel-функція)
 api/conclusion.js     Final Conclusion («Висновок CalCar»): окремий synthesis-виклик по готовому звіту (не Vercel-функція)
 api/vehicle-spec.js   канонічний паспорт авто Check: поля ідентичності з джерелом, силою і станом конфлікту; слабкий декодер VIN не перебиває інші джерела (не Vercel-функція)
-api/conclusion-bench.js  benchmark Final Conclusion на збережених звітах (лише з BENCH_KEY, нічого не пише); mode shadow = пара OpenAI/Anthropic на одному замороженому вході
-api/conclusion-anthropic.js  Final Conclusion через Anthropic (claude-opus-5-5) ЛИШЕ як shadow для A/B: ті самі правила, контекст і схема, без fallback-моделі; api/check.js його не імпортує (не Vercel-функція)
+api/conclusion-bench.js  benchmark Final Conclusion на збережених звітах (лише з BENCH_KEY, нічого не пише); mode shadow = пара OpenAI/Anthropic на одному замороженому вході, mode production = смоук production-ланцюжка на копії звіту
+api/conclusion-anthropic.js  Final Conclusion через Anthropic (claude-opus-5-5, effort medium): production-провайдер висновку і shadow для A/B; ті самі правила, контекст і схема (не Vercel-функція)
+api/conclusion-provider.js  вибір провайдера Final Conclusion: env CONCLUSION_PROVIDER = anthropic (типово) | openai; при збої Claude один fallback на OpenAI; meta provider anthropic | openai_fallback | openai (не Vercel-функція)
 api/conclusion-shadow.js  shadow A/B висновку: заморожений вхід з input_hash (правила, контекст, схема), доказ однакового входу обох провайдерів, прев'ю злиття checks, сліпі пари A/B (не Vercel-функція)
 api/conclusion-checks.js  детерміновані перевірки тексту і checks висновку проти канонічних фактів для A/B: гейт узгодженості, Score, Confidence, власники, тяжкість, проблеми, яких нема у вході (не Vercel-функція)
 fc-shadow-bench.js    раннер shadow A/B: dry-run, run через /api/conclusion-bench mode shadow, summarize -> summary.md, blind.html, key.json

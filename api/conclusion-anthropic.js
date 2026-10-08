@@ -1,4 +1,4 @@
-/* CalCar Check: Final Conclusion, Anthropic provider (SHADOW ONLY).
+/* CalCar Check: Final Conclusion, Anthropic provider.
 
    Same product rules (CONCLUSION_RULES), the same user message and the same
    output schema as the production OpenAI Final Conclusion. Only the wire
@@ -8,12 +8,14 @@
    (medium, like the production reasoning_effort); thinking stays adaptive
    because this model cannot run without it.
 
-   Nothing here reaches a user: api/check.js never imports this file. Callers
-   are the benchmark endpoint (api/conclusion-bench.js, mode shadow) and the
-   local runner (fc-shadow-bench.js), always with the frozen input of a
-   stored report. There is no fallback model and no server-side refusal
-   fallback: a benchmark run must stay on the model under test, so a
-   refusal, a timeout or an API error is recorded as a failure.
+   Production (since 2026-10-08): api/conclusion-provider.js calls it for
+   every Check when CONCLUSION_PROVIDER is anthropic (the default), with one
+   OpenAI fallback there. Benchmarks: api/conclusion-bench.js (modes shadow,
+   production) and fc-shadow-bench.js, with the frozen input of a stored
+   report. There is no fallback model and no server-side refusal
+   fallback inside this module: a benchmark run must stay on the model under
+   test, so a refusal, a timeout or an API error is returned as a failure;
+   the production fallback to OpenAI lives in api/conclusion-provider.js.
 
    Not a Vercel function (no default export). */
 

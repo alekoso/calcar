@@ -76,7 +76,7 @@ for (const p of LEGAL) {
     if (!text.includes(need)) errs.push('privacy: нема "' + need + '"');
   }
   if (/never (receives|shares|sends)/.test(text) && !/does not claim that any provider never receives/.test(text)) errs.push('privacy: обіцянка "ніколи не передає", якої код не тримає');
-  /* реальні провайдери з коду: OpenAI і Anthropic (shadow A/B висновку) в api/ */
+  /* реальні провайдери з коду: OpenAI і Anthropic (Final Conclusion з 2026-10-08) в api/ */
   const api = fs.readdirSync('api').filter(f => f.endsWith('.js')).map(f => fs.readFileSync('api/' + f, 'utf8')).join('\n');
   if (/generativelanguage\.googleapis/.test(api)) errs.push('privacy: у коді зʼявився інший AI-провайдер, політика його не згадує');
   const usesAnthropic = /api\.anthropic\.com/.test(api);

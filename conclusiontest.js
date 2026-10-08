@@ -166,7 +166,7 @@ const REPORT = {
   const iValue = src.indexOf("mark('value_section'");
   const iMv = src.indexOf('parsed.market_value = composeMarketValue');
   const iMeta = src.indexOf('parsed._meta = {');
-  const iFc = src.indexOf('runFinalConclusion({ report: parsed');
+  const iFc = src.indexOf('runProductionConclusion({ report: parsed');
   const iRet = src.indexOf('return res.status(200).json(parsed);');
   ok(iFc > 0 && [iConf, iScore, iValue, iMv, iMeta].every(i => i > 0 && i < iFc) && iFc < iRet, 'Final Conclusion стартує не після Score, Confidence, ринкової вартості і _meta');
   ok(/const attached = attachFinalConclusion\(parsed, fc, lang\);/.test(src) && (src.match(/parsed\.final_conclusion = null;/g) || []).length === 2 && /parsed\._meta\.final_conclusion = \{ status: fc\.status \|\| 'error', reason: fc\.reason \|\| null/.test(src), 'результат етапу не додається у звіт або збій кроку не ізольований');

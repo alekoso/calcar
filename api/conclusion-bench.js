@@ -10,6 +10,9 @@
    - models: які моделі бачить production-ключ (лише ідентифікатори);
    - context: компактний контекст, який отримає модель;
    - run: { conclusion, ms, ai, attempts, context_chars };
+   - production: смоук production-ланцюжка на КОПІЇ збереженого звіту:
+     провайдер за env (runProductionConclusion), attachFinalConclusion,
+     злиття checks у чеклист, гейт узгодженості; нічого не пише;
    - input: заморожений вхід без виклику моделі: input_hash (правила,
      контекст звіту і схема відповіді), версія правил, доступність звіту
      для shadow A/B (api/conclusion-shadow.js);
@@ -39,7 +42,10 @@ export const HEARTBEAT_MS = 15000;
 
 import { TOKEN_RE } from './share.js';
 import { runFinalConclusion, buildConclusionContext, conclusionModel } from './conclusion.js';
-import { applyConclusionLanguage, directiveVerdictHits } from './check.js';
+import { applyConclusionLanguage, directiveVerdictHits, attachFinalConclusion } from './check.js';
+import { runProductionConclusion } from './conclusion-provider.js';
+import { sanitizeFcChecks, mergeChecklist } from './checklist-merge.js';
+import { enforceReportConsistency } from './report-consistency.js';
 import { resolveLocale, languageDirective } from './locale.js';
 import { runShadowPair, freezeConclusionInput, shadowAvailability, storedConclusionInfo } from './conclusion-shadow.js';
 import { ANTHROPIC_MODEL_RE, ANTHROPIC_EFFORTS } from './conclusion-anthropic.js';
@@ -89,7 +95,7 @@ export default async function handler(req, res) {
   const b = req.body || {};
   const token = String(b.job_token || '').trim();
   if (!TOKEN_RE.test(token)) return res.status(404).json({ error: 'not found' });
-  const mode = ['run', 'models', 'context', 'input', 'shadow'].includes(b.mode) ? b.mode : 'run';
+  const mode = ['run', 'models', 'context', 'input', 'shadow', 'production'].includes(b.mode) ? b.mode : 'run';
   try {
     const r = await fetch(base.replace(/\/$/, '') + '/rest/v1/check_jobs?token=eq.' + encodeURIComponent(token) + '&status=eq.done&select=report,lang&limit=1',
       { headers: { apikey: key, authorization: 'Bearer ' + key } });
@@ -114,6 +120,28 @@ export default async function handler(req, res) {
 
     const report = row.report;
     if (mode === 'context') return res.status(200).json({ ok: true, context: buildConclusionContext(report) });
+
+    if (mode === 'production') {
+      const lang = resolveLocale(row.lang || (report._meta && report._meta.lang));
+      const rep = JSON.parse(JSON.stringify(report));
+      delete rep.final_conclusion;
+      if (rep._meta) { delete rep._meta.final_conclusion; delete rep._meta.checklist_merge; delete rep._meta.consistency; }
+      const fc = await runProductionConclusion({ report: rep, langDirective: languageDirective(lang), callModel, timeoutMs: 270000, env: process.env });
+      const attached = attachFinalConclusion(rep, fc, lang);
+      const fcOk = attached && fc.status === 'ok' && fc.conclusion;
+      const snapshot = fcOk && Array.isArray(fc.checklist_snapshot) ? fc.checklist_snapshot : null;
+      const fcc = fcOk ? sanitizeFcChecks(fc.conclusion.checks, snapshot ? snapshot.length : 0) : { checks: [], rejected: [] };
+      const cm = mergeChecklist(rep, { fcChecks: fcc.checks, snapshot, lang });
+      const rc = enforceReportConsistency(rep, { lang });
+      return res.status(200).json({
+        ok: !!attached, lang, provider: fc.provider || null, model: (fc.ai && fc.ai.model) || null, effort: fc.effort || null, version: fc.version || null,
+        status: fc.status, reason: fc.reason || null, fallback_reason: fc.fallback_reason || null, ms: fc.ms, ai: fc.ai || null, attempts: fc.attempts || [],
+        meta: rep._meta ? rep._meta.final_conclusion : null, final_conclusion: rep.final_conclusion || null,
+        checks: { returned: fcOk && Array.isArray(fc.conclusion.checks) ? fc.conclusion.checks : [], accepted: fcc.checks, rejected: fcc.rejected },
+        checklist_merge: { before: cm.before, after: cm.after, refined: cm.refined, added: cm.added, skipped: cm.skipped }, checklist_after: rep.checklist,
+        consistency: { version: rc.version, violations: rc.violations.length, dropped: rc.dropped, sentences_removed: rc.sentences_removed, hidden: rc.hidden, fc_violations: rc.violations.filter(v => String(v.section || '').startsWith('final_conclusion')) },
+      });
+    }
 
     if (mode === 'input' || mode === 'shadow') {
       const lang = resolveLocale(row.lang || (report._meta && report._meta.lang));

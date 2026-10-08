@@ -43,7 +43,7 @@ const NAME = { ru: 'російською', ua: 'українською', en: 'а
   ok(/text: langDirective \+ '\\n\\n' \+ SIDE_RULE/.test(run), 'історичний візуал без директиви мови звіту');
   ok(/content: \[\{ type: 'text', text: currentVisualLanguageNote\(lang\) \}/.test(run), 'Vision поточних фото без мови пояснень звіту');
   ok(/valueResearch\.analyze\(\{\s*langDirective,/.test(run), 'Market Value / Liquidity без директиви мови звіту');
-  ok(/runFinalConclusion\(\{ report: parsed, langDirective, callModel,/.test(run), 'Final Conclusion бере не ту саму директиву');
+  ok(/runProductionConclusion\(\{ report: parsed, langDirective, callModel,/.test(run), 'Final Conclusion бере не ту саму директиву');
   ok(/attachFinalConclusion\(parsed, fc, lang\)/.test(run), 'постобробка Final Conclusion не з мовою звіту');
   ok(/parsed\._meta = \{\s*kind: 'check',\s*lang,/.test(run), '_meta.lang не зберігає локаль звіту');
   ok(/const lang = resolveLocale\(row\.lang\);/.test(fs.readFileSync('api/check-email.js', 'utf8')), 'лист бере мову не з рядка job');
