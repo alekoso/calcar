@@ -35,6 +35,7 @@
    high reasoning effort; every other mode keeps its own 270 s budget */
 export const config = { maxDuration: 800 };
 export const SHADOW_ONLY_TIMEOUT_MS = { min: 60000, max: 780000 };
+export const HEARTBEAT_MS = 15000;
 
 import { TOKEN_RE } from './share.js';
 import { runFinalConclusion, buildConclusionContext, conclusionModel } from './conclusion.js';
@@ -127,12 +128,27 @@ export default async function handler(req, res) {
       const skipControl = b.skip_control === true;
       /* only a shadow-only run may use more than the paired 270 s */
       const shadowTimeout = skipControl && Number.isInteger(b.shadow_timeout_ms) ? Math.min(SHADOW_ONLY_TIMEOUT_MS.max, Math.max(SHADOW_ONLY_TIMEOUT_MS.min, b.shadow_timeout_ms)) : 270000;
-      const pair = await runShadowPair({
-        token, report, lang, langDirective: languageDirective(lang),
-        callOpenAI: callModel, callAnthropic: null, env: process.env, timeoutMs: shadowTimeout,
-        applyLanguage: applyConclusionLanguage, directiveHits: directiveVerdictHits, shadowModel, shadowEffort, shadowMaxTokens, skipControl,
-      });
+      /* a long shadow-only run keeps the client connection alive: headers go
+         out at once and a space every 15 s, the JSON follows at the end
+         (leading whitespace is valid JSON). A connection with no bytes for
+         minutes is dropped on the way, the answer would be lost */
+      let beat = null;
+      if (shadowTimeout > 270000) {
+        res.statusCode = 200;
+        res.setHeader('content-type', 'application/json; charset=utf-8');
+        res.write(' ');
+        beat = setInterval(() => { try { res.write(' '); } catch (e) { /* client gone; the run still finishes */ } }, HEARTBEAT_MS);
+      }
+      let pair;
+      try {
+        pair = await runShadowPair({
+          token, report, lang, langDirective: languageDirective(lang),
+          callOpenAI: callModel, callAnthropic: null, env: process.env, timeoutMs: shadowTimeout,
+          applyLanguage: applyConclusionLanguage, directiveHits: directiveVerdictHits, shadowModel, shadowEffort, shadowMaxTokens, skipControl,
+        });
+      } finally { if (beat) clearInterval(beat); }
       pair.anthropic_key_present = !!process.env.ANTHROPIC_API_KEY;
+      if (beat) return res.end(JSON.stringify({ ok: pair.status === 'ok', ...pair }));
       return res.status(200).json({ ok: pair.status === 'ok', ...pair });
     }
 
@@ -151,6 +167,7 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: out.status === 'ok', status: out.status, reason: out.reason, lang, ms: out.ms, ai: out.ai, attempts: out.attempts, context_chars: out.context_chars, version: out.version, rules: rules ? 'candidate' : 'production', rules_chars: rules ? rules.length : null, conclusion, directive });
   } catch (e) {
     console.error('[conclusion-bench]', JSON.stringify({ op: mode, error: String((e && e.message) || e).slice(0, 200) }));
+    if (res.headersSent) return res.end(JSON.stringify({ ok: false, status: 'error', reason: 'internal' }));
     return res.status(500).json({ error: 'internal' });
   }
 }

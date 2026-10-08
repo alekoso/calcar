@@ -284,6 +284,31 @@ const ENV = { ANTHROPIC_API_KEY: 'sk-ant-TEST-SECRET', OPENAI_API_KEY: 'sk-TEST-
   ok(/export const config = \{ maxDuration: 800 \};/.test(benchSrc) && /const shadowTimeout = skipControl && Number\.isInteger\(b\.shadow_timeout_ms\)/.test(benchSrc) && /: 270000;/.test(benchSrc) && /timeoutMs: shadowTimeout/.test(benchSrc), 'only a shadow-only bench run may use the longer budget');
   const bench = await import('file://' + path.join(dir, 'api', 'conclusion-bench.js'));
   ok(bench.SHADOW_ONLY_TIMEOUT_MS.max === 780000 && bench.SHADOW_ONLY_TIMEOUT_MS.max < bench.config.maxDuration * 1000, 'shadow-only budget does not fit the function limit');
+  ok(/if \(shadowTimeout > 270000\) \{/.test(benchSrc) && /res\.write\(' '\);/.test(benchSrc) && /finally \{ if \(beat\) clearInterval\(beat\); \}/.test(benchSrc) && /if \(beat\) return res\.end\(JSON\.stringify/.test(benchSrc) && /if \(res\.headersSent\) return res\.end/.test(benchSrc) && bench.HEARTBEAT_MS <= 30000, 'a long shadow-only run does not keep the connection alive or leaks the timer');
+  ok(JSON.parse('   ' + JSON.stringify({ ok: true })).ok === true, 'leading heartbeat spaces break the JSON answer');
+  /* the handler end to end: shadow-only with a long budget streams spaces, then a parseable pair; OpenAI is never called */
+  {
+    const saved = { ...process.env };
+    Object.assign(process.env, { BENCH_KEY: 'bench-test-key', SUPABASE_URL: 'https://db.test', SUPABASE_SERVICE_ROLE_KEY: 'svc-test', OPENAI_API_KEY: 'sk-TEST-SECRET', ANTHROPIC_API_KEY: 'sk-ant-TEST-SECRET' });
+    const calls = [];
+    const realFetch2 = globalThis.fetch;
+    globalThis.fetch = async (url, init) => {
+      calls.push(String(url));
+      if (String(url).includes('/rest/v1/check_jobs')) return new Response(JSON.stringify([{ report: JSON.parse(JSON.stringify(REPORT)), lang: 'ru' }]), { status: 200, headers: { 'content-type': 'application/json' } });
+      if (String(url).includes('api.anthropic.com')) return new Response(sseText, { status: 200, headers: { 'content-type': 'text/event-stream' } });
+      return new Response('{}', { status: 500 });
+    };
+    const chunks = []; let ended = false;
+    const res = { statusCode: 0, headers: {}, get headersSent() { return chunks.length > 0; }, setHeader(k, v) { this.headers[k.toLowerCase()] = v; }, write(c) { chunks.push(String(c)); }, end(c) { if (c) chunks.push(String(c)); ended = true; }, status(code) { this.statusCode = code; return this; }, json(o) { chunks.push(JSON.stringify(o)); ended = true; return this; } };
+    await bench.default({ method: 'POST', headers: { 'x-calcar-bench': 'bench-test-key' }, body: { job_token: 'abcdefghijklmnop1234', mode: 'shadow', skip_control: true, shadow_effort: 'max', shadow_max_tokens: 32000, shadow_timeout_ms: 780000 } }, res);
+    globalThis.fetch = realFetch2;
+    for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
+    Object.assign(process.env, saved);
+    const raw = chunks.join('');
+    let parsed = null; try { parsed = JSON.parse(raw); } catch (e) { parsed = null; }
+    ok(ended && chunks[0] === ' ' && res.headers['content-type'].startsWith('application/json') && parsed && parsed.status === 'ok' && parsed.control === null && parsed.input.control_skipped === true && parsed.input.identical_input === true && parsed.shadow.effort === 'max' && parsed.shadow.max_tokens === 32000 && parsed.shadow.output.headline === 'Max headline', 'shadow-only heartbeat answer is not a parseable pair: ' + raw.slice(0, 300));
+    ok(!calls.some(u => u.includes('api.openai.com')) && calls.filter(u => u.includes('api.anthropic.com')).length === 1 && !raw.includes('SECRET'), 'shadow-only handler called OpenAI, retried Anthropic or leaked a key');
+  }
   ok(/const skipControl = b\.skip_control === true;/.test(benchSrc) && /shadowMaxTokens, skipControl/.test(benchSrc) && /Number\.isInteger\(b\.shadow_max_tokens\)/.test(benchSrc), 'bench does not pass the shadow-only options');
   ok((benchSrc.match(/method: 'POST'/g) || []).length === 1 && !/method: 'P(?:ATCH|UT)'|method: 'DELETE'|writeFile|\/rest\/v1\/reports/.test(benchSrc), 'bench writes somewhere');
   ok(benchSrc.indexOf('benchAllowed(req, process.env)') < benchSrc.indexOf("mode === 'shadow'") && /callAnthropic: null/.test(benchSrc) && /applyLanguage: applyConclusionLanguage, directiveHits: directiveVerdictHits/.test(benchSrc), 'shadow mode is reachable without the key or skips production post-processing');

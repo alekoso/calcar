@@ -36,6 +36,29 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
+const https = require('https');
+
+/* POST over node:https. Node's fetch gives up waiting for response headers
+   after 300 s, and the bench answers only when the run is finished, so a
+   long shadow-only run needs a client without that limit */
+function postJson(url, headers, body, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const payload = JSON.stringify(body);
+    const req = https.request({ method: 'POST', hostname: u.hostname, path: u.pathname + u.search, headers: { ...headers, 'content-length': Buffer.byteLength(payload) } }, res => {
+      let txt = '';
+      res.setEncoding('utf8');
+      res.on('data', c => { txt += c; });
+      res.on('end', () => resolve({ status: res.statusCode, ok: res.statusCode >= 200 && res.statusCode < 300, text: txt }));
+      res.on('error', reject);
+    });
+    req.setTimeout(timeoutMs, () => req.destroy(new Error('client timeout ' + timeoutMs + ' ms')));
+    /* TCP keep-alive probes keep an idle connection open while the server works */
+    req.on('socket', sock => { sock.setKeepAlive(true, 10000); sock.setNoDelay(true); });
+    req.on('error', reject);
+    req.end(payload);
+  });
+}
 
 const args = process.argv.slice(2);
 const cmd = args[0];
@@ -142,8 +165,8 @@ async function runEndpoint(tokens, base, shadowModel, shadowEffort, concurrency,
       const t0 = Date.now();
       let data;
       try {
-        const r = await fetch(base.replace(/\/$/, '') + '/api/conclusion-bench', { method: 'POST', headers: { 'content-type': 'application/json', 'x-calcar-bench': key }, body: JSON.stringify(body), signal: AbortSignal.timeout(extra.shadowTimeoutMs ? extra.shadowTimeoutMs + 25000 : 295000) });
-        const txt = await r.text();
+        const r = await postJson(base.replace(/\/$/, '') + '/api/conclusion-bench', { 'content-type': 'application/json', 'x-calcar-bench': key }, body, extra.shadowTimeoutMs ? extra.shadowTimeoutMs + 25000 : 295000);
+        const txt = r.text;
         try { data = JSON.parse(txt); } catch (e) { data = { status: 'transport_error', reason: 'http ' + r.status + ' ' + txt.slice(0, 200) }; }
         if (!r.ok && !data.schema) data = { status: 'transport_error', reason: 'http ' + r.status + ' ' + JSON.stringify(data).slice(0, 200) };
       } catch (e) { data = { status: 'transport_error', reason: String(e.message || e).slice(0, 200) }; }
