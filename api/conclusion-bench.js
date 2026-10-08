@@ -17,8 +17,10 @@
      api/conclusion-anthropic.js) на ОДНОМУ замороженому вході; пара з
      хешами входу, латентністю, usage і детермінованими перевірками.
      Користувачу нічого не показується, звіт не змінюється. model/effort
-     тут ігноруються (control завжди production), shadow_model і
-     shadow_effort лише для shadow-провайдера.
+     тут ігноруються (control завжди production), shadow_model,
+     shadow_effort і shadow_max_tokens лише для shadow-провайдера;
+     skip_control: true запускає лише shadow (варіант моделі чи effort
+     проти вже зібраних control-виходів, звʼязка за input_hash локально).
    rules (лише mode run): текст кандидатних редакційних правил для A/B. Він
    підміняє system-повідомлення ТІЛЬКИ в цьому одному bench-виклику; правила
    production (CONCLUSION_RULES), звичайні Check і збережені звіти не
@@ -117,10 +119,12 @@ export default async function handler(req, res) {
       }
       const shadowModel = typeof b.shadow_model === 'string' && ANTHROPIC_MODEL_RE.test(b.shadow_model) ? b.shadow_model : null;
       const shadowEffort = ANTHROPIC_EFFORTS.includes(b.shadow_effort) ? b.shadow_effort : null;
+      const shadowMaxTokens = Number.isInteger(b.shadow_max_tokens) ? b.shadow_max_tokens : null;
+      const skipControl = b.skip_control === true;
       const pair = await runShadowPair({
         token, report, lang, langDirective: languageDirective(lang),
         callOpenAI: callModel, callAnthropic: null, env: process.env, timeoutMs: 270000,
-        applyLanguage: applyConclusionLanguage, directiveHits: directiveVerdictHits, shadowModel, shadowEffort,
+        applyLanguage: applyConclusionLanguage, directiveHits: directiveVerdictHits, shadowModel, shadowEffort, shadowMaxTokens, skipControl,
       });
       pair.anthropic_key_present = !!process.env.ANTHROPIC_API_KEY;
       return res.status(200).json({ ok: pair.status === 'ok', ...pair });

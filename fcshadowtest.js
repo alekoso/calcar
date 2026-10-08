@@ -121,6 +121,10 @@ const ENV = { ANTHROPIC_API_KEY: 'sk-ant-TEST-SECRET', OPENAI_API_KEY: 'sk-TEST-
   ok(r11.status === 'ok' && seen[seen.length - 1][0].model === 'claude-sonnet-5-5' && seen[seen.length - 1][0].output_config.effort === 'high' && r11.ai.model === 'claude-sonnet-5-5', 'explicit model or effort override ignored');
   const r12 = await A.runAnthropicConclusion({ system: 'RULES', user: 'USER', env: ENV, model: 'gpt-4', callModel: async b => { seen.push([b]); return anthropicGood(); } });
   ok(seen[seen.length - 1][0].model === 'claude-opus-5-5' && r12.status === 'ok', 'a non-Anthropic model id is accepted for the shadow call');
+  /* max_tokens: a benchmark may raise the ceiling, never lower it */
+  ok(A.anthropicMaxTokens(null) === 12000 && A.anthropicMaxTokens(32000) === 32000 && A.anthropicMaxTokens(4000) === 12000 && A.anthropicMaxTokens(999999) === 12000 && A.anthropicMaxTokens('32000') === 12000, 'max_tokens ceiling not validated');
+  const r13 = await A.runAnthropicConclusion({ system: 'RULES', user: 'USER', env: ENV, effort: 'max', maxTokens: 32000, callModel: async b => { seen.push([b]); return anthropicGood(); } });
+  ok(r13.status === 'ok' && r13.max_tokens === 32000 && seen[seen.length - 1][0].max_tokens === 32000 && seen[seen.length - 1][0].output_config.effort === 'max' && r13.ai.reasoning_effort === 'max', 'effort max or raised ceiling does not reach the request');
 
   /* ---------- frozen input and the pair ---------- */
   const fz = S.freezeConclusionInput({ report: REPORT, langDirective: 'LANG.' });
@@ -167,6 +171,18 @@ const ENV = { ANTHROPIC_API_KEY: 'sk-ant-TEST-SECRET', OPENAI_API_KEY: 'sk-TEST-
   const bodyNoChecks = A.anthropicConclusionBody({ system: fz.system, user: fz.user, model: 'claude-opus-5-5', effort: 'medium' }); bodyNoChecks.output_config.format.schema = { type: 'object' };
   await capSchema(bodyNoChecks, 1000);
   ok(capSchema.firstHash() !== fz.input_hash, 'a changed schema keeps the input hash');
+  /* shadow-only variant: the control is not called, the stored control is paired by hash */
+  let openaiCalls = 0;
+  const so = await S.runShadowPair({ token: 'tok1', report: REPORT, lang: 'ru', langDirective: 'LANG.', env: ENV, callOpenAI: async () => { openaiCalls++; return OPENAI_GOOD; }, callAnthropic: async () => anthropicGood(), shadowEffort: 'max', shadowMaxTokens: 32000, skipControl: true });
+  ok(openaiCalls === 0 && so.control === null && so.status === 'ok' && so.input.control_skipped === true && so.input.identical_input === true && so.input.shadow_sent_hash === fz.input_hash && so.shadow.effort === 'max' && so.shadow.max_tokens === 32000 && so.checks.control === null, 'shadow-only run calls the control or loses the hash: ' + JSON.stringify(so.input));
+  const comb = S.combineReusedControl(pair, so);
+  ok(comb.status === 'ok' && comb.input.identical_input === true && comb.input.control_sent_hash === fz.input_hash && comb.input.shadow_sent_hash === fz.input_hash && comb.control === pair.control && comb.shadow === so.shadow && comb.checks.control === pair.checks.control, 'stored control and new shadow are not combined by hash');
+  const otherReport = JSON.parse(JSON.stringify(REPORT)); otherReport._meta.price = 9999;
+  const soOther = await S.runShadowPair({ token: 'tok1', report: otherReport, lang: 'ru', langDirective: 'LANG.', env: ENV, callOpenAI: async () => OPENAI_GOOD, callAnthropic: async () => anthropicGood(), skipControl: true });
+  const combBad = S.combineReusedControl(pair, soOther);
+  ok(combBad.input.identical_input === false && combBad.status === 'input_mismatch' && combBad.reason === 'input_hash_mismatch', 'a shadow on a different input is combined as identical');
+  ok(S.combineReusedControl(null, so).status === 'unavailable' && S.combineReusedControl(pair, { ...so, report_id: 'other' }).input.identical_input === false, 'missing control or another report is combined');
+
   /* control unchanged: the body the pair sent is the body runFinalConclusion sends on its own */
   const alone = [];
   await F.runFinalConclusion({ report: REPORT, langDirective: 'LANG.', env: ENV, callModel: async b => { alone.push(b); return OPENAI_GOOD; } });
@@ -240,6 +256,7 @@ const ENV = { ANTHROPIC_API_KEY: 'sk-ant-TEST-SECRET', OPENAI_API_KEY: 'sk-TEST-
   ok(/mode === 'shadow'/.test(benchSrc) && /mode === 'input'/.test(benchSrc) && /['"]input['"], ['"]shadow['"]\]\.includes\(b\.mode\)/.test(benchSrc), 'bench has no input/shadow modes');
   ok(/export async function callModel/.test(benchSrc), 'bench transport is not reusable by the local runner');
   ok(/schema_hash: frozen\.schema_hash/.test(benchSrc), 'bench input mode does not expose the schema hash');
+  ok(/const skipControl = b\.skip_control === true;/.test(benchSrc) && /shadowMaxTokens, skipControl/.test(benchSrc) && /Number\.isInteger\(b\.shadow_max_tokens\)/.test(benchSrc), 'bench does not pass the shadow-only options');
   ok((benchSrc.match(/method: 'POST'/g) || []).length === 1 && !/method: 'P(?:ATCH|UT)'|method: 'DELETE'|writeFile|\/rest\/v1\/reports/.test(benchSrc), 'bench writes somewhere');
   ok(benchSrc.indexOf('benchAllowed(req, process.env)') < benchSrc.indexOf("mode === 'shadow'") && /callAnthropic: null/.test(benchSrc) && /applyLanguage: applyConclusionLanguage, directiveHits: directiveVerdictHits/.test(benchSrc), 'shadow mode is reachable without the key or skips production post-processing');
   ok(!/ANTHROPIC_API_KEY/.test(benchSrc.replace(/!!process\.env\.ANTHROPIC_API_KEY/g, '')), 'bench exposes more than the presence of the key');

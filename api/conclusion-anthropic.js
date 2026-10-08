@@ -28,6 +28,11 @@ export const ANTHROPIC_MODEL_RE = /^claude-[A-Za-z0-9.-]{1,60}$/;
 /* same output budget as the production call (max_completion_tokens 12000).
    On both APIs this ceiling includes the model's reasoning tokens */
 export const ANTHROPIC_MAX_TOKENS = 12000;
+/* a benchmark may raise the ceiling (never lower it) for a high-effort run:
+   the model does not see max_tokens, so a higher ceiling changes nothing
+   but whether a long answer is cut off */
+export const ANTHROPIC_MAX_TOKENS_LIMIT = 64000;
+export function anthropicMaxTokens(v) { return Number.isInteger(v) && v >= ANTHROPIC_MAX_TOKENS && v <= ANTHROPIC_MAX_TOKENS_LIMIT ? v : ANTHROPIC_MAX_TOKENS; }
 /* one retry only for transient failures; a short pause between attempts */
 export const ANTHROPIC_RETRY_PAUSE_MS = 1500;
 const RETRYABLE_STATUS = new Set([408, 409, 429, 500, 502, 503, 504, 529]);
@@ -131,20 +136,21 @@ const logLine = o => console.log('[final-conclusion-shadow]', JSON.stringify(o))
    model, effort, stop_reason, context_chars }. Never throws. `system` and
    `user` come from the frozen input (api/conclusion-shadow.js); the
    function does not rebuild them, so it cannot drift from the control */
-export async function runAnthropicConclusion({ system, user, callModel = null, timeoutMs = CONCLUSION_TIMEOUT_MS, model = null, effort = null, env = null, signal = null } = {}) {
+export async function runAnthropicConclusion({ system, user, callModel = null, timeoutMs = CONCLUSION_TIMEOUT_MS, model = null, effort = null, maxTokens = null, env = null, signal = null } = {}) {
   const t0 = Date.now();
   const e = env || (typeof process !== 'undefined' ? process.env : {}) || {};
   const cfg = anthropicConclusionModel(e);
   const m = model && ANTHROPIC_MODEL_RE.test(model) ? model : cfg.model;
   const eff = ANTHROPIC_EFFORTS.includes(effort) ? effort : cfg.effort;
-  const out = { provider: 'anthropic', status: 'skipped', conclusion: null, ms: 0, ai: null, attempts: [], reason: null, version: CONCLUSION_VERSION, model: m, effort: eff, stop_reason: null, context_chars: typeof user === 'string' ? user.length : 0 };
+  const mt = anthropicMaxTokens(maxTokens);
+  const out = { provider: 'anthropic', status: 'skipped', conclusion: null, ms: 0, ai: null, attempts: [], reason: null, version: CONCLUSION_VERSION, model: m, effort: eff, max_tokens: mt, stop_reason: null, context_chars: typeof user === 'string' ? user.length : 0 };
   if (typeof system !== 'string' || !system || typeof user !== 'string' || !user) { out.reason = 'no_input'; return out; }
   if (!callModel && !e.ANTHROPIC_API_KEY) { out.reason = 'no_key'; return out; }
   const transport = callModel || ((b, ms, s) => callAnthropic(b, ms, s, e));
   for (let pass = 0; pass < 2; pass++) {
     const left = timeoutMs - (Date.now() - t0);
     if (left < 15000) { out.reason = out.reason || 'timeout'; break; }
-    const body = anthropicConclusionBody({ system, user, model: m, effort: eff });
+    const body = anthropicConclusionBody({ system, user, model: m, effort: eff, maxTokens: mt });
     const tA = Date.now();
     let data = null, err = null;
     try { data = await transport(body, left, signal); }

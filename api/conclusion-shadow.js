@@ -164,7 +164,10 @@ export function shadowAvailability(report) {
    `callAnthropic` the shadow transport or null for the real one.
    `applyLanguage` and `directiveHits` are the production post-processing
    and directive detector from api/check.js, applied to both outputs alike */
-export async function runShadowPair({ token, report, lang = 'en', langDirective = '', callOpenAI, callAnthropic = null, env = null, timeoutMs = SHADOW_TIMEOUT_MS, applyLanguage = null, directiveHits = null, shadowModel = null, shadowEffort = null, signal = null } = {}) {
+/* skipControl: benchmark variant of the shadow alone (a new model or effort
+   against control outputs already collected); the control is not called and
+   combineReusedControl() pairs the result with the stored control by hash */
+export async function runShadowPair({ token, report, lang = 'en', langDirective = '', callOpenAI, callAnthropic = null, env = null, timeoutMs = SHADOW_TIMEOUT_MS, applyLanguage = null, directiveHits = null, shadowModel = null, shadowEffort = null, shadowMaxTokens = null, skipControl = false, signal = null } = {}) {
   const e = env || (typeof process !== 'undefined' ? process.env : {}) || {};
   const t0 = Date.now();
   const meta = isObj(report) && isObj(report._meta) ? report._meta : {};
@@ -184,9 +187,9 @@ export async function runShadowPair({ token, report, lang = 'en', langDirective 
   const onFail = ex => ({ status: 'error', reason: String((ex && ex.message) || ex).slice(0, 160), conclusion: null, ms: Date.now() - t0, ai: null, attempts: [] });
   const shadowRun = !callAnthropic && !e.ANTHROPIC_API_KEY
     ? Promise.resolve({ status: 'skipped', reason: 'no_key', conclusion: null, ms: 0, ai: null, attempts: [] })
-    : Promise.resolve().then(() => runAnthropicConclusion({ system: frozen.system, user: frozen.user, callModel: capS, timeoutMs, model: shadowModel, effort: shadowEffort, env: e, signal })).catch(onFail);
+    : Promise.resolve().then(() => runAnthropicConclusion({ system: frozen.system, user: frozen.user, callModel: capS, timeoutMs, model: shadowModel, effort: shadowEffort, maxTokens: shadowMaxTokens, env: e, signal })).catch(onFail);
   const [control, shadow] = await Promise.all([
-    Promise.resolve().then(() => runFinalConclusion({ report, langDirective, callModel: capC, timeoutMs, env: { ...e, FINAL_CONCLUSION: 'on' }, signal })).catch(onFail),
+    skipControl ? Promise.resolve(null) : Promise.resolve().then(() => runFinalConclusion({ report, langDirective, callModel: capC, timeoutMs, env: { ...e, FINAL_CONCLUSION: 'on' }, signal })).catch(onFail),
     shadowRun,
   ]);
   const controlSent = capC.firstHash();
@@ -198,15 +201,16 @@ export async function runShadowPair({ token, report, lang = 'en', langDirective 
   };
   const controlText = finish(control);
   const shadowText = finish(shadow);
-  const controlRec = providerRecord(control, { provider: 'openai', requested_model: cfg.model, effort: cfg.effort, prompt_version: CONCLUSION_VERSION });
+  const controlRec = skipControl ? null : providerRecord(control, { provider: 'openai', requested_model: cfg.model, effort: cfg.effort, prompt_version: CONCLUSION_VERSION });
   const shadowRec = providerRecord(shadow, { provider: 'anthropic', requested_model: shadowModel || acfg.model, effort: shadowEffort || acfg.effort, prompt_version: CONCLUSION_VERSION });
+  shadowRec.max_tokens = shadow && shadow.max_tokens ? shadow.max_tokens : null;
   const snapshot = frozen.checklist_snapshot;
-  if (controlText) { controlRec.output = { ...controlRec.output, ...controlText }; controlRec.checks_preview = checksPreview(control.conclusion, report, snapshot, lang); }
+  if (controlText && controlRec) { controlRec.output = { ...controlRec.output, ...controlText }; controlRec.checks_preview = checksPreview(control.conclusion, report, snapshot, lang); }
   if (shadowText) { shadowRec.output = { ...shadowRec.output, ...shadowText }; shadowRec.checks_preview = checksPreview(shadow.conclusion, report, snapshot, lang); }
   const checkOf = (txt, rec) => (txt ? conclusionInvariantChecks({ text: { ...txt, checks: rec.checks_preview ? rec.checks_preview.accepted.map(c => c.text) : [] }, report, context: frozen.context, directiveHits }) : null);
   return {
     ...base,
-    status: controlRec.status === 'ok' && shadowRec.status === 'ok' ? 'ok' : 'partial',
+    status: (skipControl || controlRec.status === 'ok') && shadowRec.status === 'ok' ? 'ok' : 'partial',
     reason: null,
     input: {
       input_hash: frozen.input_hash, rules_version: frozen.rules_version, rules_hash: frozen.rules_hash, schema_hash: frozen.schema_hash,
@@ -214,12 +218,45 @@ export async function runShadowPair({ token, report, lang = 'en', langDirective 
       control_sent_hash: controlSent, shadow_sent_hash: shadowSent,
       control_attempts_sent: capC.sent.length, shadow_attempts_sent: capS.sent.length,
       control_attempts_same_input: capC.allSame(), shadow_attempts_same_input: capS.allSame(),
-      identical_input: controlSent !== null && controlSent === frozen.input_hash && shadowSent === frozen.input_hash && capC.allSame() && capS.allSame(),
+      control_skipped: !!skipControl,
+      identical_input: skipControl
+        ? shadowSent === frozen.input_hash && capS.allSame()
+        : controlSent !== null && controlSent === frozen.input_hash && shadowSent === frozen.input_hash && capC.allSame() && capS.allSame(),
     },
     control: controlRec,
     shadow: shadowRec,
     checks: { control: checkOf(controlText, controlRec), shadow: checkOf(shadowText, shadowRec) },
     ms: Date.now() - t0,
+  };
+}
+
+/* a shadow-only pair + the stored pair that holds the control output of the
+   same report -> one comparison pair. identical_input holds only when the
+   stored control was sent exactly the frozen input and the new shadow was
+   sent the same hash */
+export function combineReusedControl(controlPair, shadowPair) {
+  const okC = isObj(controlPair) && isObj(controlPair.input) && isObj(controlPair.control);
+  const okS = isObj(shadowPair) && isObj(shadowPair.input) && isObj(shadowPair.shadow);
+  if (!okC || !okS) return { schema: SHADOW_PAIR_SCHEMA, report_id: (okS && shadowPair.report_id) || (okC && controlPair.report_id) || null, status: 'unavailable', reason: !okC ? 'no_control_pair' : 'no_shadow_pair', input: null, control: null, shadow: null, checks: null };
+  const ci = controlPair.input, si = shadowPair.input;
+  const sameReport = controlPair.report_id === shadowPair.report_id;
+  const controlProven = ci.input_hash === ci.control_sent_hash && ci.control_attempts_same_input !== false;
+  const shadowProven = si.input_hash === si.shadow_sent_hash && si.shadow_attempts_same_input !== false;
+  const identical = sameReport && controlProven && shadowProven && ci.input_hash === si.input_hash;
+  return {
+    schema: SHADOW_PAIR_SCHEMA, created_at: shadowPair.created_at, report_id: shadowPair.report_id, vehicle: shadowPair.vehicle, lang: shadowPair.lang,
+    availability: shadowPair.availability, stored_conclusion: shadowPair.stored_conclusion,
+    status: identical && controlPair.control.status === 'ok' && shadowPair.shadow.status === 'ok' ? 'ok' : (identical ? 'partial' : 'input_mismatch'),
+    reason: identical ? null : 'input_hash_mismatch',
+    input: {
+      ...si,
+      control_sent_hash: ci.control_sent_hash, control_attempts_sent: ci.control_attempts_sent, control_attempts_same_input: ci.control_attempts_same_input,
+      control_input_hash: ci.input_hash, control_reused_from: controlPair.created_at || null, control_skipped: false,
+      identical_input: identical,
+    },
+    control: controlPair.control,
+    shadow: shadowPair.shadow,
+    checks: { control: controlPair.checks ? controlPair.checks.control : null, shadow: shadowPair.checks ? shadowPair.checks.shadow : null },
   };
 }
 

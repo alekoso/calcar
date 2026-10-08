@@ -14,6 +14,13 @@
      Writes <pairs-subdir>/<token>.json (control + shadow, hashes, latency,
      usage, checks). A warm-up run goes to its own subdir and is not
      summarized.
+   node fc-shadow-bench.js run ... --skip-control [--shadow-max-tokens N]
+     shadow-only variant (another model or effort): the control is not
+     called; pairs carry only the shadow side and its input hash.
+   node fc-shadow-bench.js combine --control-dir DIR --shadow-dir DIR [--out DIR]
+     pairs each shadow-only result with the stored pair holding the control
+     output of the same report; identical_input only when both hashes match
+     the same frozen input. Writes <out>/pairs.
    node fc-shadow-bench.js summarize [--out DIR] [--price-openai in,out,cached] [--no-recheck]
      summary.json / summary.md (latency p50 p90 p95, tokens, cost, failures,
      invariant flags, checks) and the blind artifact: blind.html + blind.json
@@ -114,10 +121,10 @@ async function dryRun() {
 }
 
 function logPair(token, d) {
-  console.log(token, d.status, d.reason || '', d.control ? `control ${d.control.status}${d.control.reason ? '(' + d.control.reason + ')' : ''} ${d.control.latency_ms}ms` : '', d.shadow ? `shadow ${d.shadow.status}${d.shadow.reason ? '(' + d.shadow.reason + ')' : ''} ${d.shadow.latency_ms}ms` : '', d.input ? `identical ${d.input.identical_input}` : '');
+  console.log(token, d.status, d.reason || '', d.input && d.input.control_skipped ? 'control skipped' : '', d.control ? `control ${d.control.status}${d.control.reason ? '(' + d.control.reason + ')' : ''} ${d.control.latency_ms}ms` : '', d.shadow ? `shadow ${d.shadow.status}${d.shadow.reason ? '(' + d.shadow.reason + ')' : ''} ${d.shadow.latency_ms}ms` : '', d.input ? `identical ${d.input.identical_input}` : '');
 }
 
-async function runEndpoint(tokens, base, shadowModel, shadowEffort, concurrency) {
+async function runEndpoint(tokens, base, shadowModel, shadowEffort, concurrency, extra = {}) {
   const key = benchKey();
   if (!key) { console.log('no BENCH_KEY (env or ~/.calcar-bench.env)'); process.exit(1); }
   fs.mkdirSync(PAIRS_DIR, { recursive: true });
@@ -129,6 +136,8 @@ async function runEndpoint(tokens, base, shadowModel, shadowEffort, concurrency)
       const body = { job_token: token, mode: 'shadow' };
       if (shadowModel) body.shadow_model = shadowModel;
       if (shadowEffort) body.shadow_effort = shadowEffort;
+      if (extra.skipControl) body.skip_control = true;
+      if (extra.shadowMaxTokens) body.shadow_max_tokens = extra.shadowMaxTokens;
       const t0 = Date.now();
       let data;
       try {
@@ -149,7 +158,7 @@ async function runEndpoint(tokens, base, shadowModel, shadowEffort, concurrency)
   return results;
 }
 
-async function runLocal(tokens, shadowModel, shadowEffort, concurrency) {
+async function runLocal(tokens, shadowModel, shadowEffort, concurrency, extra = {}) {
   if (!process.env.OPENAI_API_KEY || !process.env.ANTHROPIC_API_KEY) { console.log('local mode needs OPENAI_API_KEY and ANTHROPIC_API_KEY in env'); process.exit(1); }
   const { shadow, locale } = await mods();
   const chk = await import('./api/check.js');
@@ -162,7 +171,7 @@ async function runLocal(tokens, shadowModel, shadowEffort, concurrency) {
     while (queue.length) {
       const row = queue.shift();
       const lang = locale.resolveLocale(row.lang || (row.report._meta && row.report._meta.lang));
-      const pair = await shadow.runShadowPair({ token: row.token, report: row.report, lang, langDirective: locale.languageDirective(lang), callOpenAI: bench.callModel, callAnthropic: null, env: process.env, applyLanguage: chk.applyConclusionLanguage, directiveHits: chk.directiveVerdictHits, shadowModel, shadowEffort });
+      const pair = await shadow.runShadowPair({ token: row.token, report: row.report, lang, langDirective: locale.languageDirective(lang), callOpenAI: bench.callModel, callAnthropic: null, env: process.env, applyLanguage: chk.applyConclusionLanguage, directiveHits: chk.directiveVerdictHits, shadowModel, shadowEffort, shadowMaxTokens: extra.shadowMaxTokens || null, skipControl: !!extra.skipControl });
       pair.via = 'local';
       fs.writeFileSync(path.join(PAIRS_DIR, row.token + '.json'), JSON.stringify(pair, null, 1));
       results.push(pair);
@@ -171,6 +180,27 @@ async function runLocal(tokens, shadowModel, shadowEffort, concurrency) {
   };
   await Promise.all(Array.from({ length: Math.max(1, concurrency) }, worker));
   return results;
+}
+
+async function combine() {
+  const { shadow } = await mods();
+  const cDir = path.resolve(opt('control-dir', '')), sDir = path.resolve(opt('shadow-dir', ''));
+  if (!fs.existsSync(cDir) || !fs.existsSync(sDir)) { console.log('need --control-dir and --shadow-dir'); process.exit(1); }
+  fs.mkdirSync(PAIRS_DIR, { recursive: true });
+  let ok = 0, bad = 0;
+  for (const f of fs.readdirSync(sDir).filter(x => x.endsWith('.json'))) {
+    const sp = JSON.parse(fs.readFileSync(path.join(sDir, f), 'utf8'));
+    const cpPath = path.join(cDir, f);
+    const cp = fs.existsSync(cpPath) ? JSON.parse(fs.readFileSync(cpPath, 'utf8')) : null;
+    const pair = shadow.combineReusedControl(cp, sp);
+    pair.via = 'combined';
+    pair.control_source = path.relative(OUT, cpPath);
+    pair.shadow_source = path.relative(OUT, path.join(sDir, f));
+    fs.writeFileSync(path.join(PAIRS_DIR, f), JSON.stringify(pair, null, 1));
+    if (pair.input && pair.input.identical_input) ok++; else bad++;
+    console.log(pair.report_id, pair.status, 'identical', pair.input ? pair.input.identical_input : null, pair.input ? pair.input.input_hash.slice(0, 12) : '', pair.reason || '');
+  }
+  console.log('combined:', ok, 'identical,', bad, 'not proven ->', PAIRS_DIR);
 }
 
 function loadPairs() {
@@ -290,6 +320,7 @@ async function summarize() {
     })),
     pricing: { anthropic: PRICE_ANTHROPIC, openai: priceOpenAI || 'not provided (--price-openai in,out,cached)' },
     flags_recheck: recheck,
+    control_reused: pairs.some(p => p.input && p.input.control_reused_from),
     flags_endpoint_total: { control: pairs.reduce((a, p) => a + (p.checks_endpoint && p.checks_endpoint.control ? p.checks_endpoint.control.total : 0), 0), shadow: pairs.reduce((a, p) => a + (p.checks_endpoint && p.checks_endpoint.shadow ? p.checks_endpoint.shadow.total : 0), 0) },
   };
   fs.writeFileSync(path.join(OUT, 'summary.json'), JSON.stringify(summary, null, 1));
@@ -309,6 +340,7 @@ async function summarize() {
     `| runs ok / failed | ${C.ok} / ${C.failed} | ${S.ok} / ${S.failed} |`,
     `| model | ${C.models.join(', ')} | ${S.models.join(', ')} |`,
     `| effort | ${C.effort.join(', ')} | ${S.effort.join(', ')} |`,
+    `| control run | ${summary.control_reused ? 'reused from an earlier run, not called again' : 'called in this run'} | called in this run, max_tokens ${[...new Set(pairs.map(p => p.shadow && p.shadow.max_tokens).filter(Boolean))].join(', ') || 'n/a'} |`,
     `| latency p50 / p90 / p95, ms | ${L(C).p50} / ${L(C).p90} / ${L(C).p95} | ${L(S).p50} / ${L(S).p90} / ${L(S).p95} |`,
     `| latency min / mean / max, ms | ${L(C).min} / ${L(C).mean} / ${L(C).max} | ${L(S).min} / ${L(S).mean} / ${L(S).max} |`,
     `| retries / timeouts / fallback model | ${C.retries} / ${C.timeouts} / ${C.fallback_model_used} | ${S.retries} / ${S.timeouts} / ${S.fallback_model_used} |`,
@@ -345,10 +377,12 @@ async function summarize() {
     const via = opt('via', 'endpoint');
     const conc = parseInt(opt('concurrency', '2'), 10) || 2;
     const sm = opt('shadow-model', null), se = opt('shadow-effort', null);
-    const res = via === 'local' ? await runLocal(tokens, sm, se, conc) : await runEndpoint(tokens, opt('base', 'https://www.calcar.io'), sm, se, conc);
+    const extra = { skipControl: args.includes('--skip-control'), shadowMaxTokens: opt('shadow-max-tokens', null) ? parseInt(opt('shadow-max-tokens', null), 10) : null };
+    const res = via === 'local' ? await runLocal(tokens, sm, se, conc, extra) : await runEndpoint(tokens, opt('base', 'https://www.calcar.io'), sm, se, conc, extra);
     console.log('pairs written:', res.length, '->', PAIRS_DIR);
     return;
   }
+  if (cmd === 'combine') return combine();
   if (cmd === 'summarize') return summarize();
   console.log('usage: node fc-shadow-bench.js dry-run | run [--via endpoint|local] | summarize');
   process.exit(1);
