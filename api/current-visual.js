@@ -707,7 +707,7 @@ export const EQUIPMENT_CONCEPTS = [
   ['parking_sensors', /парктрон|паркув\S*\s+(датчик|сенсор)|датчик\S*\s+паркув|парков\S*\s+(датчик|сенсор)|датчик\S*\s+парков|parking\s*sensors?|park\s*distance|\bpdc\b|датчик\S*\s+(спереду|ззаду|сзади|спереди)/i], ['rear_camera', /камера заднього|задня камера|камера заднего|задняя камера|камера.*задн|rear.*camera/i], ['surround_camera', /кругов|360|камера в корпусі|камер.*дзеркал|surround|bird.?s eye/i], ['adaptive_cruise', /круїз|круиз|cruise|дистрон/i], ['lane_assist', /смуг|полос|\blane\b/i], ['blind_spot', /сліп|слеп|blind/i], ['gesture_control', /жест|gesture/i], ['navigation', /навігац|навигац|navigat/i], ['driver_assist_other', /асистент|ассистент|автопілот|автопилот|попереджен|предупрежд|гальмуван|торможен|driver assist|допомог\S*\s+водію|помощи\s+водителю|driver assist/i],
   ['carplay', /carplay|android auto/i],
   ['multifunction_wheel', /мультируль|мультикерм|(мультифункц|багатофункц|многофункц|multi-?function)\S*\s+(керм|рул|steering)|(кнопк|клавіш|клавиш)\S*[^,;]{0,28}(керм|рул)|steering\s*wheel\s*(controls|buttons)/i],
-  ['m_steering_wheel', /\bm[\s-]?(кермо|руль|steering)|спортивн\S*\s+(кермо|руль|рулев)|sport\S*\s+steering|amg\s*(кермо|руль|steering)|(кермо|руль)\S*[^,;]{0,12}спортивн/i], ['sport_chrono_clock', /chrono|годинник|часы|хронометр/i], ['colored_calipers', /супорт|суппорт|caliper/i], ['badge', /edrive|напис|надпис|шильд|badge/i], ['roof_rails', /рейлінг|рейлинг|roof rail/i], ['fog_lights', /протитуман|противотуман|\bfog\b/i], ['manual_gearbox', /механічн.*коробк|механическ.*коробк|manual (gearbox|transmission)/i], ['cargo_cover', /шторк|сітк|сетк|cargo cover|tonneau/i], ['keyless', /безключов|бесключев|keyless/i], ['led_lights', /\bled\b|світлодіод|светодиод|лазерн|адаптивн.*(фар|оптик)/i], ['wireless_charging', /бездрот.*заряд|беспровод.*заряд|wireless charg/i],
+  ['m_steering_wheel', /\bm[\s-]?(кермо|руль|steering)|спортивн\S*\s+(кермо|руль|рулев)|sport\S*\s+steering|amg\s*(кермо|руль|steering)|(кермо|руль)\S*[^,;]{0,12}спортивн/i], ['sport_chrono_clock', /chrono|годинник|часы|хронометр/i], ['colored_calipers', /супорт|суппорт|caliper/i], ['badge', /edrive|напис|надпис|шильд|badge/i], ['roof_rails', /рейлінг|рейлинг|roof rail/i], ['fog_lights', /протитуман|противотуман|\bfog\b/i], ['manual_gearbox', /механічн.*коробк|механическ.*коробк|manual (gearbox|transmission)/i], ['cargo_cover', /шторк|сітк|сетк|cargo cover|tonneau/i], ['keyless', /безключов|бесключев|keyless/i], ['laser_headlights', /лазер|laser/i], ['adaptive_headlights', /matrix|матри[чц]н|адаптивн\S*[^,;]{0,16}(фар|оптик|світл|свет|led)|(фар|оптик)\S*[^,;]{0,12}адаптивн|adaptive\s*(led|head|light)/i], ['xenon_headlights', /ксенон|xenon/i], ['led_lights', /\bled\b|світлодіод|светодиод/i], ['wireless_charging', /бездрот.*заряд|беспровод.*заряд|wireless charg/i],
 ];
 /* Семантика доказу. Вужче спостереження НЕ підтверджує ширшу опцію, а дві
    різні здатності не підтверджують одна одну, хоч би як схоже вони
@@ -723,6 +723,10 @@ export const CONCEPT_NARROWER = [
   ['seat_power', 'seat_memory'],
   ['leather_seats', 'leather'],
   ['auto_wipers', 'rain_sensor'],
+  /* увімкнені світлодіодні елементи сумісні з лазерними чи адаптивними
+     фарами, але не доводять їх: лазер і адаптивність по кадру не видно */
+  ['led_lights', 'laser_headlights'],
+  ['led_lights', 'adaptive_headlights'],
 ];
 export const CONCEPT_INCOMPATIBLE = [
   ['parking_sensors', 'light_sensor'], ['parking_sensors', 'rain_sensor'], ['light_sensor', 'rain_sensor'],
@@ -730,6 +734,7 @@ export const CONCEPT_INCOMPATIBLE = [
   ['leather', 'leather_steering_wheel'], ['leather_seats', 'leather_steering_wheel'], ['multifunction_wheel', 'leather'], ['multifunction_wheel', 'leather_seats'], ['multifunction_wheel', 'leather_steering_wheel'],
   ['cluster_brightness', 'ambient_lighting'],
   ['rear_vents', 'dual_zone_climate'],
+  ['led_lights', 'xenon_headlights'], ['laser_headlights', 'xenon_headlights'],
 ];
 export const CONCEPT_RELATIONS = ['exact', 'narrower', 'broader_unsupported', 'incompatible', 'unrelated'];
 /* relateConcepts(observation, claim): чи доводить спостереження саме цю опцію */

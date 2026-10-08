@@ -35,6 +35,11 @@ const errs = [];
     ['7. твітер не підтверджує преміум-акустику', 'Премиальная аудиосистема', vis('преміум-акустика з окремими твітерами', 7, 'круглый твитер в передней стойке'), /Премиальная аудиосистема/, /динамик или твитер/],
     ['8. кнопки аудіо на кермі не підтверджують преміум-акустику', 'Премиальная аудиосистема', vis('кнопки керування аудіо на кермі', 32, 'кнопки на левой спице руля'), /Премиальная аудиосистема/, /Кнопки управления аудио на руле/],
     ['9. коліщатко яскравості не підтверджує атмосферне підсвічування', 'Атмосферная подсветка салона', vis('підсвічування панелі приладів', 22, 'колёсико регулировки яркости подсветки'), /Атмосферная подсветка/, null],
+    /* бета-гейт 2026-10-08: одне відро led_lights робило увімкнені LED-контури
+       точним доказом лазерних і адаптивних фар */
+    ['10. увімкнені LED-елементи не підтверджують лазерні фари', 'Лазерные фары', vis('увімкнені світлодіодні світлові елементи у передніх фарах', 2, 'На передней фаре видны включённые световые контуры.'), /Лазерные/, /Светодиодная оптика/],
+    ['11. увімкнені LED-елементи не підтверджують адаптивні фари', 'Адаптивные светодиодные фары', vis('світлодіодні фари', 3, 'В обеих передних фарах видны включённые световые контуры.'), /Адаптивные/, /Светодиодная оптика/],
+    ['12. LED-елементи не підтверджують ксенон', 'Ксеноновые фары', vis('світлодіодні фари', 3, 'В передних фарах видны включённые световые контуры.'), /Ксеноновые/, /Светодиодная оптика/],
   ];
   for (const [title, claim, observation, claimRe, narrowerRe] of NEG) {
     const m = run([seller(claim)], [observation]);
@@ -76,6 +81,12 @@ const errs = [];
     const m2 = run([seller('Подогрев сидений')], [vis('підігрів передніх сидінь', 9, 'кнопки з піктограмами підігріву')]);
     if (find(m2, /Подогрев/).confidence_level !== 'seller_and_visual') errs.push('П5. точний збіг не підняв заяву до підтвердженої');
   }
+  {
+    const m = run([seller('Светодиодные фары')], [vis('світлодіодні фари', 3, 'В передних фарах видны включённые светодиодные контуры.')]);
+    if (find(m, /Светодиодные/).confidence_level !== 'seller_and_visual') errs.push('П8. точне спостереження LED не підтвердило світлодіодні фари');
+    const m2 = run([seller('Лазерные фары')], [vis('лазерні фари', 2, 'на розсіювачі читається позначення Laser')]);
+    if (find(m2, /Лазерные/).confidence_level !== 'seller_and_visual') errs.push('П9. точне спостереження лазерних фар не підтвердило заяву');
+  }
   /* спостереження без заяви продавця не викидається */
   {
     const m = run([], [vis('задні дефлектори вентиляції', 36, 'воздуховоды'), vis('круглый твитер в передней стойке', 7, 'твитер'), vis('кнопки керування аудіо на кермі', 32, 'кнопки')]);
@@ -90,6 +101,7 @@ const errs = [];
   if (R('rear_climate', 'rear_vents') !== 'broader_unsupported') errs.push('зворотне відношення не broader_unsupported');
   if (R('leather_seats', 'leather') !== 'narrower' || R('auto_wipers', 'rain_sensor') !== 'narrower') errs.push('шкіра сидінь і режим AUTO не позначені narrower');
   if (R('parking_sensors', 'light_sensor') !== 'incompatible' || R('seat_power', 'mirror_power') !== 'incompatible' || R('leather', 'leather_steering_wheel') !== 'incompatible' || R('cluster_brightness', 'ambient_lighting') !== 'incompatible') errs.push('несумісні пари не позначені');
+  if (R('led_lights', 'laser_headlights') !== 'narrower' || R('led_lights', 'adaptive_headlights') !== 'narrower' || R('led_lights', 'xenon_headlights') !== 'incompatible') errs.push('фари: LED не позначений вужчим за лазер/адаптив і несумісним із ксеноном');
   if (R('seat_heating', 'seat_heating') !== 'exact' || R('hud', 'navigation') !== 'unrelated') errs.push('exact/unrelated зламані');
   for (const [a, b] of [...CV.CONCEPT_NARROWER, ...CV.CONCEPT_INCOMPATIBLE]) {
     for (const k of [a, b]) if (!CV.EQUIPMENT_CONCEPTS.some(([key]) => key === k)) errs.push('таксономія посилається на невідоме поняття: ' + k);
@@ -108,9 +120,12 @@ const errs = [];
     ['Отдельный динамик или твитер', 'speaker_visible'], ['Премиальная аудиосистема', 'premium_audio'], ['Кнопки управления аудио на руле', 'audio_steering_controls'],
     ['Многофункциональный руль', 'multifunction_wheel'], ['Спортивный руль', 'm_steering_wheel'], ['подогрев руля', 'heated_wheel'],
     ['Атмосферная подсветка салона', 'ambient_lighting'], ['контурная подсветка салона', 'ambient_lighting'], ['регулятор яскравості підсвітки приладів', 'cluster_brightness'],
-    ['Парковочные датчики', 'parking_sensors'], ['парктроніки', 'parking_sensors'], ['Ассистент автоматической парковки', 'automatic_parking']]) {
+    ['Парковочные датчики', 'parking_sensors'], ['парктроніки', 'parking_sensors'], ['Ассистент автоматической парковки', 'automatic_parking'],
+    ['Лазерные фары', 'laser_headlights'], ['Laser headlights', 'laser_headlights'], ['Лазерні фари', 'laser_headlights'], ['Адаптивные светодиодные фары', 'adaptive_headlights'], ['Matrix LED', 'adaptive_headlights'], ['Адаптивні фари', 'adaptive_headlights'], ['Adaptive LED headlights', 'adaptive_headlights'],
+    ['Ксеноновые фары', 'xenon_headlights'], ['Біксенонові фари', 'xenon_headlights'], ['Светодиодные фары', 'led_lights'], ['LED фари', 'led_lights'], ['увімкнені світлодіодні світлові елементи у передніх фарах', 'led_lights']]) {
     if (CV.equipmentConcept(name) !== key) errs.push('поняття: ' + name + ' -> ' + CV.equipmentConcept(name) + ', очікували ' + key);
   }
+  if (CV.equipmentConcept('Адаптивный круиз-контроль') === 'adaptive_headlights' || CV.equipmentConcept('Адаптивна підвіска') === 'adaptive_headlights') errs.push('адаптивний круїз або підвіска стали адаптивними фарами');
   /* Vision називає те, що видно; Final Conclusion не робить заяву продавця фактом */
   if (!/називай САМЕ ТЕ, ЩО ВИДНО, а не ширшу функцію/.test(CV.CURRENT_VISUAL_RULES)) errs.push('правило Vision про вужче спостереження відсутнє');
   const fc = fs.readFileSync('api/conclusion.js', 'utf8');

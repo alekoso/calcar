@@ -92,6 +92,9 @@ export const CONCEPT_LABELS = {
   cargo_cover: L('comfort', 'Шторка або сітка багажника', 'Шторка или сетка багажника', 'Cargo cover'),
   keyless: L('comfort', 'Безключовий доступ', 'Бесключевой доступ', 'Keyless entry'),
   led_lights: L('exterior', 'Світлодіодна оптика', 'Светодиодная оптика', 'LED lighting'),
+  laser_headlights: L('exterior', 'Лазерні фари', 'Лазерные фары', 'Laser headlights'),
+  adaptive_headlights: L('exterior', 'Адаптивні фари', 'Адаптивные фары', 'Adaptive headlights'),
+  xenon_headlights: L('exterior', 'Ксенонові фари', 'Ксеноновые фары', 'Xenon headlights'),
   wireless_charging: L('comfort', 'Бездротова зарядка', 'Беспроводная зарядка', 'Wireless charging'),
 };
 
