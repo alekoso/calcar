@@ -40,7 +40,11 @@ api/feedback.js       відгук 👍/👎 про звіт Check -> report_fee
 api/value.js          секція «Ринкова вартість» Check: крива знецінення, якорі цін, ліквідність (не Vercel-функція)
 api/conclusion.js     Final Conclusion («Висновок CalCar»): окремий synthesis-виклик по готовому звіту (не Vercel-функція)
 api/vehicle-spec.js   канонічний паспорт авто Check: поля ідентичності з джерелом, силою і станом конфлікту; слабкий декодер VIN не перебиває інші джерела (не Vercel-функція)
-api/conclusion-bench.js  benchmark Final Conclusion на збережених звітах (лише з BENCH_KEY, нічого не пише)
+api/conclusion-bench.js  benchmark Final Conclusion на збережених звітах (лише з BENCH_KEY, нічого не пише); mode shadow = пара OpenAI/Anthropic на одному замороженому вході
+api/conclusion-anthropic.js  Final Conclusion через Anthropic (claude-opus-5-5) ЛИШЕ як shadow для A/B: ті самі правила, контекст і схема, без fallback-моделі; api/check.js його не імпортує (не Vercel-функція)
+api/conclusion-shadow.js  shadow A/B висновку: заморожений вхід з input_hash (правила, контекст, схема), доказ однакового входу обох провайдерів, прев'ю злиття checks, сліпі пари A/B (не Vercel-функція)
+api/conclusion-checks.js  детерміновані перевірки тексту і checks висновку проти канонічних фактів для A/B: гейт узгодженості, Score, Confidence, власники, тяжкість, проблеми, яких нема у вході (не Vercel-функція)
+fc-shadow-bench.js    раннер shadow A/B: dry-run, run через /api/conclusion-bench mode shadow, summarize -> summary.md, blind.html, key.json
 api/report-consistency.js  фінальний гейт узгодженості звіту: прозові секції звіряються з канонічними фактами (паспорт, ДТП, подушки, пробіг, панель); суперечливий пункт прибирається, речення знімається, Final Conclusion ховається (не Vercel-функція)
 api/score-ceiling.js  стеля балу (ceiling-v1) над Score v4: фізична тяжкість минулого пошкодження з Historical Vision, повнота доказів з доменів Confidence (плавна смуга 45..35), цілісність пробігу; підсумок = v4 мінус просадка стелі, одна аварія рахується один раз; конфлікт базової ідентичності = числа нема (не Vercel-функція)
 api/history-records.js  записи джерела з блоку історії площадки (ДТП, страхові, точки пробігу з походженням) і групування записів ДТП в канонічні події: ті самі зони і суміжні роки = одна подія (possibly_same), повінь/пожежа окремо від ДТП; без правил під країну (не Vercel-функція)

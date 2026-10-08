@@ -76,9 +76,12 @@ for (const p of LEGAL) {
     if (!text.includes(need)) errs.push('privacy: нема "' + need + '"');
   }
   if (/never (receives|shares|sends)/.test(text) && !/does not claim that any provider never receives/.test(text)) errs.push('privacy: обіцянка "ніколи не передає", якої код не тримає');
-  /* реальні провайдери з коду: OpenAI єдиний AI-провайдер в api/ */
+  /* реальні провайдери з коду: OpenAI і Anthropic (shadow A/B висновку) в api/ */
   const api = fs.readdirSync('api').filter(f => f.endsWith('.js')).map(f => fs.readFileSync('api/' + f, 'utf8')).join('\n');
-  if (/api\.anthropic\.com|generativelanguage\.googleapis/.test(api)) errs.push('privacy: у коді зʼявився інший AI-провайдер, політика згадує лише OpenAI');
+  if (/generativelanguage\.googleapis/.test(api)) errs.push('privacy: у коді зʼявився інший AI-провайдер, політика його не згадує');
+  const usesAnthropic = /api\.anthropic\.com/.test(api);
+  if (usesAnthropic && !(text.includes('to Anthropic models') && text.includes('(currently OpenAI and Anthropic)'))) errs.push('privacy: код надсилає дані Anthropic, а політика цього не каже');
+  if (!usesAnthropic && /Anthropic/.test(text)) errs.push('privacy: політика згадує Anthropic, а код його не викликає');
   if (!/api\.openai\.com/.test(api)) errs.push('privacy: політика згадує OpenAI, а код його не викликає');
 }
 
@@ -116,7 +119,7 @@ if (!/telegram: 'https:\/\/t\.me\/calcar_ai'/.test(pub)) errs.push('calcar-publi
 /* ---------- 7. словники: кожен рядок тексту має UA і RU (повніше перевіряє localetest) ---------- */
 for (const d of ['i18n/ua.js', 'i18n/ru.js']) {
   const t = fs.readFileSync(d, 'utf8');
-  for (const k of ['Privacy Policy', 'Terms of Service', 'Legal', 'Privacy', 'Terms', 'Google user data', 'Nature of the results', 'Last updated: 8 September 2026']) if (!t.includes("'" + k + "':")) errs.push(d + ': нема ключа "' + k + '"');
+  for (const k of ['Privacy Policy', 'Terms of Service', 'Legal', 'Privacy', 'Terms', 'Google user data', 'Nature of the results', 'Last updated: 8 September 2026', 'Last updated: 8 October 2026']) if (!t.includes("'" + k + "':")) errs.push(d + ': нема ключа "' + k + '"');
 }
 
 if (errs.length) { console.log('LEGAL TEST FAILED:'); errs.forEach(e => console.log('  - ' + e)); process.exit(1); }
