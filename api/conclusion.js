@@ -202,7 +202,10 @@ function priceBlock(report, meta) {
       amount_usd: np.value,
       basis: np.basis || null,
       version: exact ? str(exact.version, 80) : null,
-      is_estimate: np.basis === 'reverse_estimate' || np.basis === 'msrp_base_floor' ? true : null,
+      /* exact | equivalent | analog | estimate (value.js newPriceReference):
+         only an exact or equivalent price is the price of this version */
+      reference: np.reference || null,
+      is_estimate: np.basis === 'reverse_estimate' || np.basis === 'msrp_base_floor' || np.reference === 'estimate' ? true : null,
     } : null,
     value_retention: ret.state && ret.state !== 'unknown' ? { state: ret.state, kept_share_of_new_price: num(ret.observed_retention), typical_share_for_this_age: num(ret.expected_retention) } : null,
     forecast: isObj(vc.future) && num(vc.future.value) !== null ? { value_usd: vc.future.value, in_years: vc.future.years || null } : null,

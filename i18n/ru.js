@@ -1013,7 +1013,7 @@ window.CALCAR_DICTS.ru = {
   'Premium option': 'Премиум-опция',
   'High-end equipment that noticeably sets this car apart.': 'Оснащение высокого класса, которое заметно выделяет эту машину.',
   'The new-car price is estimated from the US list prices of this model year.': 'Цена новой оценена по прайс-ценам версий этого модельного года в США.',
-  'The new-car price is the US list price of the technically equivalent version.': 'Цена новой: прайс-цена в США технически равнозначной версии.',
+  'The new-car price is the US list price of a version with the same engine and output, not of this exact version.': 'Цена новой: прайс-цена в США версии с тем же двигателем и мощностью, не этой точной версии.',
   'The new-car price is estimated from US list prices of versions with this powertrain.': 'Цена новой оценена по прайс-ценам в США версий с таким же агрегатом.',
   'Value loss: Low': 'Потеря стоимости: Низкая',
   'Value loss: Medium': 'Потеря стоимости: Средняя',

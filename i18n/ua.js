@@ -1013,7 +1013,7 @@ window.CALCAR_DICTS.ua = {
   'Premium option': 'Преміум-опція',
   'High-end equipment that noticeably sets this car apart.': 'Оснащення високого класу, яке помітно вирізняє цю машину.',
   'The new-car price is estimated from the US list prices of this model year.': 'Ціну нового авто оцінено за прайс-цінами версій цього модельного року у США.',
-  'The new-car price is the US list price of the technically equivalent version.': 'Ціна нового авто: прайс-ціна у США технічно рівнозначної версії.',
+  'The new-car price is the US list price of a version with the same engine and output, not of this exact version.': 'Ціна нового авто: прайс-ціна у США версії з тим самим двигуном і потужністю, не цієї точної версії.',
   'The new-car price is estimated from US list prices of versions with this powertrain.': 'Ціну нового авто оцінено за прайс-цінами у США версій з таким самим агрегатом.',
   'Value loss: Low': 'Втрата вартості: Низька',
   'Value loss: Medium': 'Втрата вартості: Середня',

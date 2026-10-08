@@ -2157,8 +2157,11 @@ function renderValueSection(D) {
      рахує сервер (value_curve.retention; _meta не перекладається), іншими
      словами. Ненадійна ціна нового (зворотна оцінка, нижня межа) дає стан
      unknown, і статусу тоді немає зовсім */
-  const LOSS = { strong_retention: ['r-strong', t('Value loss: Low')], normal_depreciation: ['r-normal', t('Value loss: Medium')], heavy_depreciation: ['r-heavy', t('Value loss: High')] };
-  const retState = vc && vc.retention && LOSS[vc.retention.state] && mv && mv.why_price ? LOSS[vc.retention.state] : null;
+  const LOSS = { low: ['r-strong', t('Value loss: Low')], medium: ['r-normal', t('Value loss: Medium')], high: ['r-heavy', t('Value loss: High')] };
+  /* the label comes with the composed card (why_price.value_loss): the
+     server withholds it for an analog or estimated price when new and when
+     the reasons shown tell the opposite story */
+  const retState = mv && mv.why_price && LOSS[mv.why_price.value_loss] ? LOSS[mv.why_price.value_loss] : null;
   $('valWhyLoss').hidden = !retState;
   if (retState) {
     $('valWhyState').className = 'mk-state ' + retState[0]; $('valWhyState').textContent = retState[1];
@@ -2180,7 +2183,7 @@ function renderValueSection(D) {
     msrp_range: t('The new-car price is estimated from the current price and age, within the list prices of this model year.'),
     msrp_base_floor: t('The new-car price is estimated from the current price and age, within the list prices of this model year.'),
     msrp_median: t('The new-car price is estimated from the US list prices of this model year.'),
-    msrp_equivalent_version: t('The new-car price is the US list price of the technically equivalent version.'),
+    msrp_equivalent_version: t('The new-car price is the US list price of a version with the same engine and output, not of this exact version.'),
     msrp_powertrain_median: t('The new-car price is estimated from US list prices of versions with this powertrain.'),
     msrp_powertrain_midpoint: t('The new-car price is estimated from US list prices of versions with this powertrain.'),
     msrp_midpoint: t('The new-car price is estimated from the US list prices of this model year.'),

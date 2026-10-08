@@ -19,7 +19,7 @@
 
 import { searchSerper, classifySource, hostOf } from './mi-research.js';
 
-export const VALUE_VERSION = 'value-v1';
+export const VALUE_VERSION = 'value-v1.1';
 export const FORECAST_YEARS = 5;
 export const STEP_YEARS = 0.5;
 
@@ -602,20 +602,60 @@ export const RETENTION_STATES = ['heavy_depreciation', 'normal_depreciation', 's
 /* методи ціни нового авто, з яких висновок про сохранність був би
    циклічним (зворотна оцінка) або не про цю версію (стартова ціна моделі) */
 export const RETENTION_UNKNOWN_BASIS = new Set(['reverse_estimate', 'msrp_base_floor']);
-export function retentionBasisMeaningful(basis) { return !!basis && !RETENTION_UNKNOWN_BASIS.has(basis); }
+/* Three kinds of price when new, never presented with the same confidence:
+   exact: the list price of this version on the same market terms (local
+     list of the exact version; the source-market MSRP of the exact version);
+   equivalent: the list price of a version with the same engine and output
+     under another market name (compareTechnical: fuel, displacement, power
+     within 7%, same performance line);
+   analog: a close but different reference (weak local list of an unmatched
+     version, a single MSRP of an unknown version, the central price of
+     versions that share the engine family);
+   estimate: a fallback (model-year family median or midpoint, base floor,
+     reverse estimate).
+   comparable: the reference is in the same market terms as the current
+   price (a local price, or a source-market MSRP with import costs applied);
+   a raw MSRP of another market stays an anchor of the chart but cannot
+   measure how well the model kept its value here */
+export const NEW_PRICE_REFERENCE = ['exact', 'equivalent', 'analog', 'estimate'];
+export function newPriceReference(np) {
+  const n = np && typeof np === 'object' ? np : {};
+  const basis = n.basis || null;
+  const exactMsrp = !!(n.msrp && n.msrp.exact);
+  const localized = !!n.localization;
+  let reference;
+  if (basis === 'local_list') reference = n.strength === 'strong' ? 'exact' : 'analog';
+  else if (basis === 'source_msrp' || basis === 'localized_msrp') reference = exactMsrp ? 'exact' : 'analog';
+  else if (basis === 'msrp_equivalent_version') reference = 'equivalent';
+  else if (basis === 'msrp_powertrain_median' || basis === 'msrp_powertrain_midpoint') reference = 'analog';
+  else reference = 'estimate';
+  const comparable = basis === 'local_list' ? true : reference === 'estimate' ? null : localized;
+  return { reference, comparable };
+}
+/* a value-loss state needs an exact or equivalent price when new in the
+   same market terms; analogs and estimates give approximate context only */
+export function retentionBasisMeaningful(basis, reference = null, comparable = null) {
+  if (!basis || RETENTION_UNKNOWN_BASIS.has(basis)) return false;
+  if (reference === null) return true;
+  return (reference === 'exact' || reference === 'equivalent') && comparable === true;
+}
 
 /* representative: середня площадки, коли вона є і в тій самій валюті,
    інакше ціна оголошення. Це наближення поточної ціни МОДЕЛІ, а не цього
    оголошення; якір "сьогодні" графіка лишається своїм (нижча з двох).
    Ціна нового авто, відновлена зворотною оцінкою з тієї самої базової
    кривої, незалежного висновку не дає: стан unknown */
-export function retentionContext({ newPrice, basis, representative, representativeSource, T }) {
+export function retentionContext({ newPrice, basis, reference = null, comparable = null, representative, representativeSource, T }) {
   const p0 = num(newPrice), pc = num(representative), t = num(T);
-  const out = { state: 'unknown', basis: basis || null, representative_current_value: pc !== null ? Math.round(pc) : null, representative_current_value_source: representativeSource || null };
+  const out = { state: 'unknown', basis: basis || null, ...(reference ? { reference, comparable } : {}), representative_current_value: pc !== null ? Math.round(pc) : null, representative_current_value_source: representativeSource || null };
   if (p0 === null || pc === null || t === null || t <= 0 || p0 <= 0 || pc <= 0) return { ...out, reason: 'insufficient_inputs' };
   const observed = pc / p0, expected = retentionFactor(t), index = observed / expected;
   const metrics = { observed_retention: Math.round(observed * 1000) / 1000, expected_retention: Math.round(expected * 1000) / 1000, retention_index: Math.round(index * 1000) / 1000 };
-  if (!retentionBasisMeaningful(basis)) return { ...out, ...metrics, reason: basis === 'msrp_base_floor' ? 'new_price_from_base_floor' : 'new_price_from_reverse_estimate' };
+  if (!retentionBasisMeaningful(basis, reference, comparable)) {
+    const reason = basis === 'msrp_base_floor' ? 'new_price_from_base_floor' : basis === 'reverse_estimate' ? 'new_price_from_reverse_estimate'
+      : reference === 'estimate' ? 'new_price_is_estimate' : reference === 'analog' ? 'new_price_is_analog' : 'new_price_other_market_unlocalized';
+    return { ...out, ...metrics, reason };
+  }
   const state = index < RETENTION_THRESHOLDS.heavy ? 'heavy_depreciation' : index > RETENTION_THRESHOLDS.strong ? 'strong_retention' : 'normal_depreciation';
   return { ...out, ...metrics, state };
 }
@@ -644,6 +684,9 @@ export function buildValueCurve({ price = null, currency = null, price_context =
     prices: cur.prices || null,
     new_price: {
       value: np.value, approx: np.approx, basis: np.basis,
+      /* what kind of reference this is and whether it is in the same market
+         terms as the current price (newPriceReference) */
+      ...newPriceReference(np),
       /* яким режимом ввезення локалізовано MSRP ринку-джерела */
       ...(np.localization ? { localization: np.localization } : {}),
       /* походження числа одним поглядом: що за джерело, яка ціна і валюта в
@@ -675,7 +718,7 @@ export function buildValueCurve({ price = null, currency = null, price_context =
   /* сохранність моделі: середня площадки, інакше ціна оголошення */
   const rep = cur.source === 'marketplace_average' ? { value: cur.value, source: 'marketplace_average' }
     : cur.average ? { value: cur.average.value, source: 'marketplace_average' } : { value: cur.value, source: cur.source };
-  out.retention = retentionContext({ newPrice: np.value, basis: np.basis, representative: rep.value, representativeSource: rep.source, T });
+  out.retention = retentionContext({ newPrice: np.value, basis: np.basis, reference: out.new_price.reference, comparable: out.new_price.comparable, representative: rep.value, representativeSource: rep.source, T });
   if (np.reason === 'strong_anchor_not_above_market') return { ...out, status: 'hidden', reason: np.reason };
   const c = fitCurve(np.value, cur.value, T);
   if (!c) return { ...out, status: 'hidden', reason: 'curve_not_credible' };
@@ -851,6 +894,22 @@ export const WHY_DRIVERS = ['ownership_cost', 'fuel_cost', 'maintenance_cost', '
 /* вузька технічна несправність у тексті: конкретна деталь або режим відмови */
 const NARROW_FAILURE_RE = /утечк|протечк|протека|теч[ьи]\b|течёт|течет|leak|насос|помп[аыуе]|\bpump|клапан|valve|форсунк|injector|цеп[ьи]\s+грм|ланцюг\S*\s+грм|timing chain|задир|прокладк|gasket|сальник|соленоид|solenoid|термостат|thermostat|вкладыш|вкладиш|маслосъ[её]мн|маслознімн|\bегр\b|\begr\b|сажев|dpf\b|интеркулер|інтеркулер|подшипник|підшипник|bearing|витік|витоки|протіка/i;
 export function narrowFailure(text) { return NARROW_FAILURE_RE.test(String(text || '')); }
+/* Both cards are MODEL-level: a fact of this exact car (its accident, flood
+   or fire, its owners, mileage, seller, listing, discount, auction record,
+   VIN, service records) explains this listing, not the model, and is
+   dropped whatever the model wrote. Market-agnostic word list */
+const INSTANCE_FACT_RE = /дтп|авари|аварі|accident|collision|crash|затоп|повін|flood|пожар|пожеж|(?:^|[^a-z])fire(?![a-z])|(?:\d+|один|одного|одним|два|двух|три|трёх|трех|четыр|пять|несколько|много|многих|частая|часта|смен\S*|зміна|одного|кілька|багато|one|two|three|four|several|many|multiple|previous|prior|frequent)\s+(?:владельц|власник|owners?)|(?:владельц|власник)\S*\s+(?:этого|цього)\s+(?:авто|экземпляр|примірник|машин)|owners? of this (?:car|vehicle)|пробег|пробіг|mileage|odometer|одометр|продавц|продавец|(?:^|[^a-z])seller|объявлен|оголошен|(?:^|[^a-z])listing|скидк|знижк|discount|средн\S*\s+(?:по|на)\s+площадк|середн\S*\s+(?:по|на)\s+майданчик|marketplace average|аукцион\S*\s+(?:истори|запис|лот)|аукціон\S*\s+(?:істор|запис|лот)|истори\S*\s+аукцион|істор\S*\s+аукціон|auction (?:history|record|lot)|(?:^|[^a-z])vin(?![a-z])|эт(?:от|ого|ому)\s+экземпляр|ц(?:ей|ього|ьому)\s+(?:екземпляр|примірник)|this (?:car|vehicle|specimen|example|unit)|истори\S*\s+(?:владен|эксплуат|обслуж)|істор\S*\s+(?:володін|експлуат|обслугов)|service (?:history|records)|сервисн\S*\s+(?:истори|книж|запис)|сервісн\S*\s+(?:істор|книж|запис)/i;
+export function instanceFact(text) { return INSTANCE_FACT_RE.test(String(text || '')); }
+/* a number with a market unit is a statistic nobody measured: days to sell,
+   shares, sales or listing counts. Engine sizes and years stay */
+const FABRICATED_STAT_RE = /\d+(?:[.,]\d+)?\s*(?:%|процент|відсот|percent|дн(?:ей|я|і|ів)(?![a-zа-яіїєґ])|days?(?![a-z])|недел|тижн|weeks?(?![a-z])|месяц|місяц|months?(?![a-z])|шт(?![a-zа-яіїєґ])|units?(?![a-z])|sales|продаж|объявлен|оголошен|listings?(?![a-z])|экземпляр|примірник|покупател|покупц|buyers?(?![a-z]))/i;
+export function fabricatedStat(text) { return FABRICATED_STAT_RE.test(String(text || '')); }
+/* why a sentence cannot stay in a model-level card, or null */
+export function modelLevelRejection(text) {
+  if (fabricatedStat(text)) return 'fabricated_stat';
+  if (instanceFact(text)) return 'instance_fact';
+  return null;
+}
 /* довге тире у продукті заборонене: модель могла його поставити */
 const noDash = s => String(s || '').replace(/\s*[\u2014\u2013]\s*/g, ', ').replace(/\s+/g, ' ').trim();
 /* кожен рядок картки це самостійна причина: сполучник на початку ("Однако",
@@ -861,12 +920,14 @@ export function standalone(text) {
   for (let i = 0; i < 2 && LEAD_CONNECTOR.test(s); i++) s = s.replace(LEAD_CONNECTOR, '');
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 }
-const cleanList = (arr, max, maxLen) => {
+const cleanList = (arr, max, maxLen, dropped = null, where = 'liquidity') => {
   const seen = new Set(), out = [];
   for (const x of Array.isArray(arr) ? arr : []) {
     const s = standalone(x).slice(0, maxLen);
     const key = s.toLowerCase();
     if (s.length < 4 || seen.has(key)) continue;
+    const why = modelLevelRejection(s);
+    if (why) { if (dropped) dropped.push({ where, reason: why, text: s }); continue; }
     seen.add(key); out.push(s);
     if (out.length >= max) break;
   }
@@ -877,7 +938,9 @@ export function sanitizeMarketValue(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const lq = raw.liquidity && typeof raw.liquidity === 'object' ? raw.liquidity : {};
   const level = LIQ.includes(lq.level) ? lq.level : 'unknown';
-  const reasons = cleanList(lq.reasons, 3, 200);
+  /* dropped lines are diagnostics for the log, never report content */
+  const dropped = [];
+  const reasons = cleanList(lq.reasons, 3, 200, dropped, 'liquidity');
   const reasonKeys = new Set(reasons.map(r => r.toLowerCase()));
   /* дві картки не повторюють одне речення */
   const seen = new Set();
@@ -889,11 +952,13 @@ export function sanitizeMarketValue(raw) {
     const text = standalone(f.text).slice(0, 200);
     const key = text.toLowerCase();
     if (text.length < 4 || seen.has(key) || reasonKeys.has(key) || narrowFailure(text)) continue;
+    const why = modelLevelRejection(text);
+    if (why) { dropped.push({ where: 'price_forces', reason: why, text }); continue; }
     seen.add(key); forces.push({ direction: f.direction, driver: f.driver, text });
     if (forces.length >= 6) break;
   }
-  if (!reasons.length && !forces.length) return null;
-  return { liquidity: { level: reasons.length ? level : 'unknown', reasons }, price_forces: forces };
+  if (!reasons.length && !forces.length) return dropped.length ? { liquidity: { level: 'unknown', reasons: [] }, price_forces: [], dropped } : null;
+  return { liquidity: { level: reasons.length ? level : 'unknown', reasons }, price_forces: forces, ...(dropped.length ? { dropped } : {}) };
 }
 
 /* Картка "Чому це авто коштує стільки": детермінований стан сохранності
@@ -911,8 +976,15 @@ export const WHY_PRICE_MAX = 4;
 export const PRICE_STORY_THRESHOLDS = { depreciation_below: 0.65, retention_above: 0.75 };
 export function priceStory(retention) {
   const r = retention && typeof retention === 'object' ? retention : {};
+  /* a state measured against the expectation for the car's AGE decides
+     first: an old car that kept more than cars of its age usually keep is a
+     retention story even though it has lost most of its new price in
+     absolute terms, and a young car that lost more than expected is a
+     depreciation story even though it still keeps a large share */
+  if (r.state === 'strong_retention') return 'retention';
+  if (r.state === 'heavy_depreciation') return 'depreciation';
   const share = r.state === 'unknown' ? num(r.expected_retention) : num(r.observed_retention);
-  if (share === null) return r.state === 'strong_retention' ? 'retention' : 'depreciation';
+  if (share === null) return 'depreciation';
   if (share < PRICE_STORY_THRESHOLDS.depreciation_below) return 'depreciation';
   if (share > PRICE_STORY_THRESHOLDS.retention_above) return 'retention';
   if (r.state === 'heavy_depreciation') return 'depreciation';
@@ -922,12 +994,16 @@ export function priceStory(retention) {
 /* Одна історія, без чергування плюсів і мінусів: лише сили обраного
    напрямку, скільки є (до чотирьох), без добивання протилежними. Якщо сил
    потрібного напрямку немає зовсім, показуємо наявні, а не порожню картку */
-export function composeWhyPrice(forces, story) {
+export function composeWhyPrice(forces, story) { return whyPriceComposition(forces, story).reasons; }
+/* reasons plus whether they tell the chosen story; when only the opposite
+   direction exists the card shows it, and the value-loss label is withheld
+   so the label and the reasons never contradict each other */
+export function whyPriceComposition(forces, story) {
   const list = Array.isArray(forces) ? forces : [];
   const want = story === 'retention' ? 'supports' : 'reduces';
   const main = list.filter(f => f.direction === want).map(f => f.text);
   const other = list.filter(f => f.direction !== want).map(f => f.text);
-  return (main.length ? main : other).slice(0, WHY_PRICE_MAX);
+  return { reasons: (main.length ? main : other).slice(0, WHY_PRICE_MAX), matches_story: main.length > 0 };
 }
 /* Підпис для людини: "Втрата вартості: низька / середня / висока". Це той
    самий стан сохранності іншими словами; для ненадійної ціни нового
@@ -937,8 +1013,11 @@ export function composeMarketValue(mv, retention) {
   if (!mv || typeof mv !== 'object') return null;
   const state = retention && RETENTION_STATES.includes(retention.state) ? retention.state : 'unknown';
   const story = priceStory(retention);
-  const reasons = composeWhyPrice(mv.price_forces, story);
-  return { liquidity: mv.liquidity, why_price: { retention_state: state, value_loss: VALUE_LOSS_BY_STATE[state] || null, price_story: story, reasons } };
+  const { reasons, matches_story } = whyPriceComposition(mv.price_forces, story);
+  /* the label is the page's only source for "Value loss": it exists only
+     for a comparable exact or equivalent price when new (retentionContext)
+     and only when the reasons shown tell the same story */
+  return { liquidity: mv.liquidity, why_price: { retention_state: state, value_loss: matches_story ? (VALUE_LOSS_BY_STATE[state] || null) : null, price_story: story, reasons } };
 }
 
 /* ---------- Виклик моделі ---------- */
@@ -966,19 +1045,20 @@ export const VALUE_RULES = `You write the market context block of a used-car rep
 
 Three outputs.
 
-1. liquidity: how easy it normally is to sell THIS MODEL AND VERSION on the LOCAL used-car market (named in MARKET) at a reasonable market price. This is the breadth of the buyer pool that remains AFTER ownership barriers are taken into account; it is marketability of the model and version, not of this particular listing.
+1. liquidity: how easy it normally is to sell THIS MODEL, GENERATION AND VERSION on the used-car market named in MARKET at a reasonable market price. It is a property of the model on that market: the breadth of the buyer pool that remains after ownership barriers are taken into account. It is never a property of this listing.
    level: high, medium, low, or unknown.
-   Calibrate the level by barriers first. Strong barriers: very high fuel consumption, expensive servicing, expensive engine, gearbox or suspension repairs as the car ages, old complex luxury systems, performance-version running costs, a buyer pool limited by budget and risk tolerance. A famous brand, a practical body or all-wheel drive do NOT offset several strong barriers: an aging luxury or performance model that is expensive to own is normally "low" unless MODEL_CONTEXT gives grounded evidence of unusually broad demand. "high" is for mainstream models with a broad audience and low perceived ownership risk. "medium" is for real mixed cases, not a default.
+   Weigh, where the input gives grounds: popularity of the model and generation on that market; body type; age of the generation; powertrain, engine size, fuel type and transmission; brand demand; segment; how accessible service and parts are; ownership cost; mass-market versus niche positioning; unusually expensive, rare or specialised configurations.
+   Premium does not mean low: a popular premium model with broad demand can be "high" or "medium" even though it costs more to run, and an unpopular or obsolete mass-market model can be "low". A famous brand is not a reason by itself in either direction. What lowers liquidity is a narrow buyer pool: a rare body or engine, a niche trim, a configuration that is unusually expensive to own for its age, a powertrain that market avoids, an old high-displacement luxury car with heavy running costs. Several strong barriers are not offset by a famous badge, a practical body or all-wheel drive alone. "medium" is for genuinely mixed cases, not a default.
    reasons: 2 or 3 sentences. Every sentence is an INDEPENDENT reason that reads on its own and explains why reselling this kind of car is easier or harder. Never start a reason with a connector (however, but, although, yet, at the same time, nevertheless; однако, но, хотя, при этом, тем не менее; однак, але, хоча, проте, при цьому) and never write a reason as a continuation of the previous one. One sentence states one reason and its effect on resale; do not put "X, but Y" into one sentence.
-   Never use: this listing's price, any discount or the marketplace average, the seller, or this car's condition, mileage, accident, flood or history. None of that is in the input and none of it changes the liquidity of the model.
-   No numeric ratings and no invented statistics (days to sell, shares, counts). If the input is not enough to judge, use level "unknown" with one neutral reason.
+   Never use: this listing's price, any discount or the marketplace average, the seller, or this car's condition, mileage, accident, flood or history. The same for fire, the number of owners, time on sale and service records of this car. None of that is in the input and none of it changes the liquidity of the model.
+   No numeric ratings and no invented statistics: no days to sell, market shares, sales counts, inventory or listing counts, not even approximate ones. Without quantitative market data the explanation stays qualitative. If the input is not enough to judge, use level "unknown" with one neutral reason.
 
-2. price_forces: 4 to 6 forces that explain how well THIS MODEL AND VERSION keeps its original value as it ages (why a car like this is worth a large or a small share of its new price at its age).
+2. price_forces: 4 to 6 forces that explain how well THIS MODEL AND VERSION keeps its original value as it ages: why cars of this model, generation, version and age on the market named in MARKET generally cost what they cost (a large or a small share of the new price). Never why this particular car is cheaper or dearer than others.
    This is market ECONOMICS of residual value, not a list of the model's weak points.
    Each item: direction "supports" (helps it keep value) or "reduces" (makes it lose value faster); driver: the type of the economic driver, one of ownership_cost, fuel_cost, maintenance_cost, repair_cost_risk, technical_complexity, reliability_reputation, brand_strength, buyer_demand, buyer_pool_width, powertrain_desirability, efficiency, technology_obsolescence, practical_demand, long_term_reputation; text: one short sentence that names the factor AND its effect on retained value, for example "High running costs of premium technology cut demand as the car ages." A bare attribute ("All-wheel drive", "Premium positioning", "Practical body") is not acceptable.
    A narrow technical weak point is NOT a force: a specific leak, pump, valve, injector, chain, gasket or any other named failure mode never appears here, even when MODEL_CONTEXT describes it; those belong to the risks section of the report. A technical system may appear only at the economic level. Wrong: "Aging air suspension struts can fail." Right: "Air suspension that is expensive to keep up with age raises expected ownership costs and lowers residual value."
    Give at least three forces that reduce value and at least two that support it when the context allows it; each force is one independent sentence with no leading connector. A force that fits none of the driver types is not written. Do not pad: fewer grounded forces are better than a filler.
-   Never mention this listing's price, any discount, the marketplace average, the seller, or this car's condition, mileage, accident, flood or history.
+   Never mention this listing's price, any discount, the marketplace average, the seller, or this car's condition, mileage, accident, flood or history. The same for fire, the number of owners, time on sale and service records of this car. No invented statistics of any kind.
    Do not repeat a liquidity sentence: the same underlying factor may appear in both, but liquidity explains ease of resale and price_forces explains retained value.
 
 3. new_price_candidates: prices of this model when NEW found in SEARCH_RESULTS.
@@ -1089,7 +1169,9 @@ export function startValueResearch(input = {}, deps = {}) {
       state.recovered = v.candidates.filter(c => c.extraction === 'deterministic').length;
       state.ai = { usage: data.usage || null, model: data.model || body.model, reasoning_effort: body.reasoning_effort };
       state.ms = Date.now() - tA;
-      return { market_value: sanitizeMarketValue(parsed), candidates: v.candidates };
+      const mv = sanitizeMarketValue(parsed);
+      if (mv && mv.dropped) { logLine('model_level_guard', { dropped: mv.dropped.map(d => ({ where: d.where, reason: d.reason, text: d.text.slice(0, 120) })), make: identity.make || null, model: identity.model || null }); state.model_level_dropped = mv.dropped.length; }
+      return { market_value: mv, candidates: v.candidates };
     })().catch(e => {
       state.status = 'error'; state.reason = e && e.name === 'AbortError' ? 'timeout' : 'error'; state.ms = Date.now() - tA;
       logLine('analyze', { status: 'error', reason: state.reason, error: String((e && e.message) || e).slice(0, 160), make: identity.make || null, model: identity.model || null });
