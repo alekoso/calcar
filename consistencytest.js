@@ -157,6 +157,50 @@ const deep = (o, p, v) => { const ks = p.split('.'); let c = o; for (const k of 
   r.checklist = ['Система подушок безпеки: перевірити блок, ремені, піропатрони та відсутність спрацювання після ремонту.', 'Перевірити, чи немає ознак скручування пробігу за сервісною книжкою.'];
   enforceReportConsistency(r, { lang: 'ua' });
   ok('6g. an instruction to check airbags or mileage is not a claim about their state', r.checklist.length === 2, JSON.stringify(r.checklist));
+  /* ---- 6h. rc-v3: what photos show vs what they cannot prove (RAV4 smoke 2026-10-08) ---- */
+  {
+    const noDep = report(); noDep.score_breakdown.events = [{ v4_category: 'medium', airbags: false }]; noDep.historical_visual.srs_visual_status = 'no_deployment_visible';
+    const dep = report(); /* the base report: archive shows a deployed airbag */
+    const unk = report(); unk.score_breakdown.events = [{ v4_category: 'medium' }]; delete unk.historical_visual;
+    const fNo = canonicalFacts(noDep), fDep = canonicalFacts(dep), fUnk = canonicalFacts(unk);
+    ok('6h. fixtures: canonical airbags false / true / unknown', fNo.airbags === false && fDep.airbags === true && fUnk.airbags === null, JSON.stringify([fNo.airbags, fDep.airbags, fUnk.airbags]));
+    const v = (txt, f) => sentenceViolations(txt, f).filter(x => x.domain === 'airbags' || x.domain === 'accident');
+    const RAV4 = 'Подушки не видно раскрытыми, признаков повреждения силовых частей кузова на тех кадрах нет, так что это скорее средний удар по наружным панелям.';
+    ok('6h.0 the exact RAV4 smoke sentence is an observation, not a deployment claim', v(RAV4, fNo).length === 0, JSON.stringify(v(RAV4, fNo)));
+    const r6 = report(); r6.score_breakdown.events = [{ v4_category: 'medium', airbags: false }]; r6.historical_visual.srs_visual_status = 'no_deployment_visible';
+    r6.final_conclusion = { headline: 'Понятный RAV4 с одним ремонтом', body: 'Это понятный кроссовер. ' + RAV4 + ' Ремонт стоит разобрать на осмотре.\n\nЦена близка к средней.' };
+    const o6 = enforceReportConsistency(r6, { lang: 'ru' });
+    ok('6h.0 the RAV4 sentence survives the gate inside the Final Conclusion', r6.final_conclusion && r6.final_conclusion.body.includes('Подушки не видно раскрытыми') && !o6.violations.some(x => x.domain === 'airbags' && String(x.section).startsWith('final_conclusion')), JSON.stringify(o6.violations));
+    for (const t of ['На текущих фото не видно раскрытых подушек.', 'Видимых признаков раскрытия подушек на доступных кадрах нет.', 'Deployed airbags are not visible in the current photos.']) {
+      ok('6h.1 cautious observation allowed without a conflicting fact: ' + t, v(t, fNo).length === 0 && v(t, fUnk).length === 0, JSON.stringify([v(t, fNo), v(t, fUnk)]));
+    }
+    for (const t of ['Подушки не срабатывали.', 'Подушки безпеки не спрацьовували.', 'The airbags never deployed.']) {
+      ok('6h.2 "never deployed" blocked when only photos support it: ' + t, v(t, fNo).some(x => x.found === 'never_deployed' && x.canonical === 'not_visible_only') && v(t, fUnk).some(x => x.found === 'never_deployed'), JSON.stringify(v(t, fNo)));
+    }
+    for (const t of ['SRS исправна.', 'Система безпеки повністю відновлена.', 'Система безопасности полностью восстановлена.', 'The airbag system is working.']) {
+      ok('6h.3 SRS health blocked without diagnostic evidence: ' + t, [fNo, fUnk, fDep].every(f => v(t, f).some(x => x.field === 'srs_health')), JSON.stringify(v(t, fNo)));
+    }
+    for (const t of ['Подушки целые.', 'Подушки цілі.', 'The airbags are intact.']) {
+      ok('6h.4 "airbags intact" blocked: ' + t, v(t, fNo).length > 0 && v(t, fUnk).length > 0 && v(t, fDep).length > 0, JSON.stringify([v(t, fNo), v(t, fDep)]));
+    }
+    for (const t of ['На архивных фото не видно раскрытых подушек.', 'На фото не видно раскрытых подушек.', 'Подушки не срабатывали.']) {
+      ok('6h.5 confirmed historical deployment not erased: ' + t, v(t, fDep).some(x => x.canonical === 'deployed'), JSON.stringify(v(t, fDep)));
+    }
+    for (const t of ['На текущих фото салона раскрытых подушек не видно, но исторически они срабатывали.', 'Сейчас в салоне не видно раскрытых подушек.', 'On the current photos no deployed airbags are visible after the repair.']) {
+      ok('6h.6 today\'s photos may show no deployed airbags without erasing history: ' + t, v(t, fDep).length === 0, JSON.stringify(v(t, fDep)));
+    }
+    ok('6h.6 a current-photo sentence that also names the auction state is still blocked', v('На текущих фото и на аукционе раскрытых подушек не видно.', fDep).length > 0);
+    for (const t of ['Авария была лёгкой, потому что подушки не раскрылись.', 'ДТП було легким, бо подушки не спрацювали.', 'It was a minor accident because the airbags did not deploy.']) {
+      ok('6h.7 light severity inferred from airbags blocked: ' + t, v(t, fNo).some(x => x.found === 'light_from_airbags'), JSON.stringify(v(t, fNo)));
+    }
+    ok('6h. instructions and reported speech stay claims-free', v('Проверить, что SRS исправна и подушки не срабатывали.', fNo).length === 0 && v('Продавец утверждает, что подушки не срабатывали.', fNo).length === 0);
+    const SC = await import('file://' + path.join(dir, 'api', 'score-ceiling.js'));
+    const ev = { v4_category: 'medium', category_basis: ['panels'], zone_classes: ['front'] };
+    const hvBase = { visible_damage_zones: ['капот'], damage_depth: 'exterior_panels_only', inner_component_damage_extent: 'none', load_bearing_structure_deformation_visible: false, cabin_intrusion_visible: false, structural_visual_status: 'no_obvious_severe_signs' };
+    const sevNo = SC.physicalDamageSeverity({ ...ev, airbags: false }, { ...hvBase, srs_visual_status: 'no_deployment_visible' });
+    const sevYes = SC.physicalDamageSeverity({ ...ev, airbags: true }, { ...hvBase, srs_visual_status: 'deployed_visible', airbags_visible_parts: ['driver'] });
+    ok('6h.7 airbag status does not change the Score Ceiling damage severity', JSON.stringify(sevNo) === JSON.stringify(sevYes), JSON.stringify([sevNo, sevYes]));
+  }
   r = report();
   r.verdict.summary = 'ДТП не зафіксовано у реєстрі. Ціна нижча за середню.';
   enforceReportConsistency(r, { lang: 'ua' });

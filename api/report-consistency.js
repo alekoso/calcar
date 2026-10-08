@@ -33,7 +33,7 @@
 
    Not a Vercel function: imported by api/check.js. */
 
-export const CONSISTENCY_VERSION = 'rc-v2';
+export const CONSISTENCY_VERSION = 'rc-v3';
 export const CONSISTENCY_DOMAINS = ['fuel', 'forced_induction', 'drivetrain', 'transmission', 'version', 'power_hp', 'identity_conflict', 'identity_unknown', 'airbags', 'accident', 'mileage', 'dashboard'];
 /* share of Final Conclusion sentences that may be removed before the block is hidden */
 export const FC_MAX_REMOVED_SHARE = 0.25;
@@ -176,6 +176,28 @@ const AIRBAG_DEPLOYED = rx("подуш\\w*[^.]{0,30}(?:спрацюва\\w*|ср
 const AIRBAG_NOT = rx("подуш\\w*[^.]{0,40}не (?:спрацюва\\w*|сработа\\w*|розкрив\\w*|раскрыва\\w*|розкрилис\\w*|раскрылись)|(?:розкрит\\w*|раскрыт\\w*|спрацьован\\w*|сработавш\\w*|deployed|fired)[^.]{0,20}(?:подуш\\w*|airbags?)[^.]{0,40}(?:не видно|не зафіксован\\w*|не зафиксирован\\w*|не спостеріга\\w*|не наблюда\\w*|немає|нема|нет|not visible|not seen|cannot be seen|not evident)|(?:не видно|нема[єе]?|нет|без|відсутн\\w*|отсутству\\w*|no|without)[^.]{0,70}(?:розкрит\\w*|раскрыт\\w*|спрацьован\\w*|сработавш\\w*|deployed|fired)[^.]{0,20}(?:подуш\\w*|airbags?)|airbags? (?:did not|didn't|had not|hadn't|haven't|have not) (?:deploy|fire|go off)|no (?:deployed|fired) airbags?|without airbag deployment|подушки цілі|подушки целы|airbags (?:are|were|remain) intact");
 const ACCIDENT_HAD = rx("(?:бул[аои]|був|была|было|пережи\\w+|потрапи\\w+|попа(?:л|ла|ло)|after|після|после|зафіксован\\w*|зафиксирован\\w*|recorded|відновлен\\w*|восстановлен\\w*|repaired)[^.]{0,25}(?:дтп|авар\\w*|accident|collision|crash|удар\\w*)|(?:дтп|авар\\w*|accident|collision|crash)[^.]{0,20}(?:бул[аои]|була|було|была|было|зафіксован\\w*|зафиксирован\\w*|recorded|в сша|in the us|у сша)");
 const ACCIDENT_NONE = rx("(?:без|нет|нема[єе]?|не було|не было|no|without)\\s+(?:зафіксован\\w+\\s+|зареєстрован\\w+\\s+|recorded\\s+|registered\\s+)?(?:дтп|авар\\w*|accident|collision|crash)|(?:дтп|авар\\w*|accident|collision|crash)\\w*[^.]{0,30}не (?:зафіксован\\w*|зареєстрован\\w*|було|было|зафиксирован\\w*|зарегистрирован\\w*)|(?:дтп|авар\\w*|accident|collision|crash)[^.]{0,20}(?:not recorded|not registered|history is clean|is clean)|чиста історія|чистая история|clean history|не бит\\w*|небит\\w*");
+/* rc-v3 airbags. A visibility statement ("airbags are not seen deployed on
+   the photos") describes only the photos; a categorical one ("the airbags
+   never deployed", "the airbags are intact", "SRS works") claims a state
+   that photos cannot prove. RAV4 smoke 2026-10-08: "Подушки не видно
+   раскрытыми" (noun, then the negated visibility, then the participle) was
+   read as a deployment claim because AIRBAG_NOT had no pattern for that
+   word order */
+const AIRBAG_WORD = rx("подуш\\w*|airbags?B>|\\bsrsB>");
+const DEPLOY_WORD = rx("розкрит\\w*|раскрыт\\w*|спрацьован\\w*|сработавш\\w*|спрацюванн\\w*|срабатывани\\w*|deploy\\w*|fired");
+const VIS_NEG = rx("не видн\\w*|не помітн\\w*|не заметн\\w*|не просматрива\\w*|not (?:visible|seen|evident)|cannot be seen|can't be seen|no visible|видим\\w*[^.]{0,60}(?:нет|нема[єе]?|відсутн\\w*|отсутств\\w*)|(?:фото|кадр\\w*|снимк\\w*|знімк\\w*|photos?|images?)[^.]{0,60}(?:нет|нема[єе]?|відсутн\\w*|отсутств\\w*|show no|do not show|don't show)");
+const visibilityOnly = s => AIRBAG_WORD.test(s) && DEPLOY_WORD.test(s) && VIS_NEG.test(s);
+/* a definitive "never deployed / intact" claim, whatever the photos show */
+const AIRBAG_NEVER = rx("подуш\\w*[^.]{0,40}не (?:спрацюва\\w*|спрацьовува\\w*|сработа\\w*|срабатыва\\w*|розкрив\\w*|раскрыва\\w*|розкрилис\\w*|раскрылись)|airbags? (?:did not|didn't|had not|hadn't|haven't|have not|never) (?:deploy|fire|go off)|never deployed|без (?:срабатывания|спрацювання|раскрытия|розкриття) подуш\\w*|without airbag deployment|подушки (?:целы|целые|цілі|не тронуты|не зачеплені)|airbags (?:are|were|remain) intact");
+/* SRS health or a restored safety system: no source in the report proves it */
+const SRS_HEALTHY = rx("(?:<Bsrs|систем\\w* (?:пассивной )?безопасност\\w*|систем\\w* (?:пасивної )?безпеки|подуш\\w*|airbag system|safety system)[^.]{0,40}(?:исправн\\w*|справн\\w*|в порядке|в порядку|работает|працює|функционир\\w*|функціону\\w*|полностью восстановлен\\w*|повністю відновлен\\w*|(?:is|are) (?:fine|ok|healthy|functional|working)|fully restored)");
+/* light severity inferred from airbag non-deployment (airbags are not a severity basis) */
+const LIGHT_WORD = "(?:легк\\w*|лёгк\\w*|незначн\\w*|несерйозн\\w*|несерьёзн\\w*|несерьезн\\w*|minor|light|small)";
+const CAUSE = "(?:потому что|так как|раз |поскольку|оскільки|бо |тому що|адже|since|because|as )";
+const LIGHT_FROM_AIRBAGS = rx(LIGHT_WORD + "[^.]{0,60}" + CAUSE + "[^.]{0,40}подуш\\w*[^.]{0,30}не |" + LIGHT_WORD + "[^.]{0,60}" + CAUSE + "[^.]{0,40}airbags?[^.]{0,30}(?:did not|didn't|not|never)|подуш\\w*[^.]{0,30}не (?:спрацюва\\w*|сработа\\w*|розкрил\\w*|раскрыл\\w*)[^.]{0,30}(?:значит|отже|тож|so|therefore|поэтому|тому)[^.]{0,40}" + LIGHT_WORD);
+/* the photos of today against an event of the past */
+const AIRBAG_NOW = rx("сейчас|теперь|текущ\\w*|нинішн\\w*|поточн\\w*|зараз|тепер|после ремонта|після ремонту|в салоне сегодня|currently|current photos|today|now<B|after (?:the )?repair");
+const AIRBAG_PAST = rx("аукцион\\w*|аукціон\\w*|архив\\w*|архів\\w*|до ремонта|до ремонту|на момент|тогда|тоді|в момент|auction|archive|at the time|before (?:the )?repair");
 const ROLLBACK_CONFIRMED = rx("(?:пробіг|пробег|одометр|mileage|odometer)[^.]{0,40}(?:скручен\\w*|змотан\\w*|смотан\\w*|rolled back|was rolled|відмотан\\w*|отмотан\\w*|занижен\\w*)|(?:скрутк\\w*|скручуванн\\w*|rollback|rolled-back)[^.]{0,20}(?:підтверджен\\w*|подтвержден\\w*|confirmed|очевидн\\w*|obvious)");
 const ROLLBACK_NONE = rx("(?:без|нет|нема[єе]?|no)\\s+(?:ознак|признаков|signs? of|evidence of)\\s+(?:скру\\w+|відмот\\w+|отмот\\w+|rollback|tamper\\w*)|(?:скрут\\w+|відмот\\w+|отмот\\w+|rollback|tamper\\w*)[^.]{0,20}(?:не виявлен\\w*|не выявлен\\w*|не зафіксован\\w*|не зафиксирован\\w*|not (?:found|detected|indicated))|(?:пробіг|пробег|mileage|odometer)[^.]{0,40}(?:без розбіжност\\w*|без расхожден\\w*|consistent with (?:the )?(?:records|history)|узгоджу\\w+|согласу\\w+|послідовн\\w+|последователь\\w+)");
 const MILEAGE_CONFIRMED = rx("(?:пробіг|пробег|mileage|odometer)[^.]{0,40}(?:підтверджен\\w*|подтвержд[её]н\\w*|confirmed|documented|supported)[^.]{0,30}(?:істор\\w*|истор\\w*|history|record\\w*|запис\\w*|точк\\w*|сервіс\\w*|сервис\\w*|service)|(?:істор\\w*|истор\\w*|history|records?|запис\\w*)[^.]{0,30}(?:підтверджу\\w+|подтвержда\\w+|confirm\\w*|support\\w*)[^.]{0,20}(?:пробіг|пробег|mileage|odometer)");
@@ -241,9 +263,21 @@ export function sentenceViolations(sentence, facts, { section = '' } = {}) {
       }
     }
   }
-  /* airbags: only against an established state; an instruction to check them is not a claim */
-  if (facts.airbags === true && !instruction && AIRBAG_NOT.test(s)) out.push({ domain: 'airbags', field: 'airbags', found: 'not_deployed', canonical: 'deployed' });
-  if (facts.airbags === false && !hedged && !reported && !instruction && AIRBAG_DEPLOYED.test(s) && !AIRBAG_NOT.test(s)) out.push({ domain: 'airbags', field: 'airbags', found: 'deployed', canonical: 'not_deployed' });
+  /* airbags: an instruction to check them is not a claim. A visibility
+     statement is an observation of the photos; a categorical one is a claim */
+  const visNot = visibilityOnly(s);
+  const never = AIRBAG_NEVER.test(s);
+  if (facts.airbags === true && !instruction) {
+    /* confirmed deployment: a categorical denial always contradicts it; "not
+       seen deployed" stands only when it is about today's photos */
+    if (never) out.push({ domain: 'airbags', field: 'airbags', found: 'not_deployed', canonical: 'deployed' });
+    else if ((AIRBAG_NOT.test(s) || visNot) && !(AIRBAG_NOW.test(s) && !AIRBAG_PAST.test(s))) out.push({ domain: 'airbags', field: 'airbags', found: 'not_visible', canonical: 'deployed' });
+  }
+  if (facts.airbags === false && !hedged && !reported && !instruction && AIRBAG_DEPLOYED.test(s) && !AIRBAG_NOT.test(s) && !visNot) out.push({ domain: 'airbags', field: 'airbags', found: 'deployed', canonical: 'not_deployed' });
+  /* without confirmed deployment: "never deployed" claims more than photos show */
+  if (facts.airbags !== true && never && !hedged && !reported && !instruction) out.push({ domain: 'airbags', field: 'airbags', found: 'never_deployed', canonical: facts.airbags === false ? 'not_visible_only' : 'unknown' });
+  if (SRS_HEALTHY.test(s) && !hedged && !reported && !instruction) out.push({ domain: 'airbags', field: 'srs_health', found: 'healthy', canonical: 'no_diagnostic_evidence' });
+  if (LIGHT_FROM_AIRBAGS.test(s) && !reported && !instruction) out.push({ domain: 'accident', field: 'severity_basis', found: 'light_from_airbags', canonical: 'airbags_not_severity' });
   /* accident */
   if (facts.accident === 'recorded' && !instruction && ACCIDENT_NONE.test(s) && !reported) out.push({ domain: 'accident', field: 'accident', found: 'none', canonical: 'recorded' });
   if (facts.accident === 'none' && !hedged && !reported && !instruction && ACCIDENT_HAD.test(s) && !ACCIDENT_NONE.test(s)) out.push({ domain: 'accident', field: 'accident', found: 'had', canonical: 'none' });
