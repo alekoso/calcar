@@ -216,6 +216,9 @@ const ENV = { ANTHROPIC_API_KEY: 'sk-ant-TEST-SECRET', OPENAI_API_KEY: 'sk-TEST-
   ok(inChecks.violations.some(v => v.where === 'checks' && v.check === 'gate' && v.domain === 'fuel' && v.found === 'diesel') && inChecks.violations.every(v => v.where === 'checks'), 'a check line contradicting canonical identity is not flagged as checks: ' + JSON.stringify(inChecks.violations));
   ok(C.conclusionInvariantChecks({ text: { headline: 'H', body: 'Body.', checks: ['Score 7/10 means trouble.'] }, report: REPORT, context: ctx }).violations.filter(v => v.check === 'score').length === 1, 'one score figure is flagged twice');
   ok(kinds(chk('Следов затопления не видно.')).length === 0, 'a postpositive negation is flagged');
+  /* fc-checks-v1.1: tenure with one owner is not the total count (real Santa Fe output, registry 3) */
+  ok(kinds(chk('С 2019 года она уже семь с половиной лет у одного хозяина.')).length === 0 && kinds(chk('It has been with one owner since 2019.')).length === 0, 'tenure with one owner is flagged as an owners count');
+  ok(kinds(chk('У машины был один владелец.')).includes('owners:owners:1>3') && kinds(chk('Машина сменила двух владельцев.')).includes('owners:owners:2>3') && kinds(chk('Зарегистрированы три владельца.')).length === 0, 'Russian owner counts are not read');
   ok(C.conclusionInvariantChecks({ text: null }).total === 0 && C.conclusionInvariantChecks({ text: { headline: 'H', body: '' } }).total === 0, 'empty text is not a clean result');
 
   /* ---------- blind artifact ---------- */

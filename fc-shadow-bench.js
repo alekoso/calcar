@@ -14,10 +14,14 @@
      Writes <pairs-subdir>/<token>.json (control + shadow, hashes, latency,
      usage, checks). A warm-up run goes to its own subdir and is not
      summarized.
-   node fc-shadow-bench.js summarize [--out DIR] [--price-openai in,out,cached]
+   node fc-shadow-bench.js summarize [--out DIR] [--price-openai in,out,cached] [--no-recheck]
      summary.json / summary.md (latency p50 p90 p95, tokens, cost, failures,
      invariant flags, checks) and the blind artifact: blind.html + blind.json
      without any provider signal, key.json with the A/B assignment apart.
+     Invariant flags are recomputed locally with the current
+     api/conclusion-checks.js when the corpus report re-freezes to the same
+     input_hash as the pair (no model call); the flags the endpoint returned
+     stay in the pair files.
 
    Writes only under --out (default docs/audits/fc-shadow-2026-10-07).
    Never writes to the database, to reports or to Vehicle Memory. */
@@ -213,9 +217,26 @@ function blindHtml(blind) {
 }
 
 async function summarize() {
-  const { shadow } = await mods();
+  const { shadow, checks, locale } = await mods();
   const pairs = loadPairs();
   if (!pairs.length) { console.log('no pairs in ' + PAIRS_DIR); process.exit(1); }
+  const recheck = { version: checks.CHECKS_VERSION, recomputed: 0, hash_mismatch: [], no_corpus: [] };
+  if (!args.includes('--no-recheck')) {
+    const chk = await import('./api/check.js');
+    const corpus = Object.fromEntries(loadCorpus(null).map(r => [r.token, r]));
+    for (const p of pairs) {
+      if (!p.input || !p.control || !p.shadow) continue;
+      const row = corpus[p.report_id];
+      if (!row) { recheck.no_corpus.push(p.report_id); continue; }
+      const lang = locale.resolveLocale(row.lang || (row.report._meta && row.report._meta.lang));
+      const frozen = shadow.freezeConclusionInput({ report: row.report, langDirective: locale.languageDirective(lang) });
+      if (!frozen || frozen.input_hash !== p.input.input_hash) { recheck.hash_mismatch.push(p.report_id); continue; }
+      const one = rec => (rec && rec.status === 'ok' && rec.output ? checks.conclusionInvariantChecks({ text: { headline: rec.output.headline, body: rec.output.body, checks: rec.checks_preview ? rec.checks_preview.accepted.map(c => c.text) : [] }, report: row.report, context: frozen.context, directiveHits: chk.directiveVerdictHits }) : null);
+      p.checks_endpoint = p.checks;
+      p.checks = { control: one(p.control), shadow: one(p.shadow) };
+      recheck.recomputed++;
+    }
+  }
   const po = opt('price-openai', null);
   const priceOpenAI = po ? (() => { const [i, o, c] = po.split(',').map(Number); return { in: i, out: o, cached: isFinite(c) ? c : i }; })() : null;
   const sideStats = (name) => {
@@ -268,6 +289,8 @@ async function summarize() {
       shadow: p.shadow ? { status: p.shadow.status, model: p.shadow.model, ms: p.shadow.latency_ms, in: p.shadow.input_tokens, out: p.shadow.output_tokens, cached: p.shadow.cached_tokens, retries: p.shadow.retries, flags: p.checks && p.checks.shadow ? p.checks.shadow.total : null, checks: p.shadow.checks_preview ? p.shadow.checks_preview.raw.length : null, reason: p.shadow.reason } : null,
     })),
     pricing: { anthropic: PRICE_ANTHROPIC, openai: priceOpenAI || 'not provided (--price-openai in,out,cached)' },
+    flags_recheck: recheck,
+    flags_endpoint_total: { control: pairs.reduce((a, p) => a + (p.checks_endpoint && p.checks_endpoint.control ? p.checks_endpoint.control.total : 0), 0), shadow: pairs.reduce((a, p) => a + (p.checks_endpoint && p.checks_endpoint.shadow ? p.checks_endpoint.shadow.total : 0), 0) },
   };
   fs.writeFileSync(path.join(OUT, 'summary.json'), JSON.stringify(summary, null, 1));
   const { blind, key } = shadow.blindPairs(pairs.filter(p => p.control && p.shadow), () => crypto.randomInt(2) === 1);
@@ -302,6 +325,7 @@ async function summarize() {
     `| flags total (in checks) | ${C.flags.flags_total} (${C.flags.in_checks}) | ${S.flags.flags_total} (${S.flags.in_checks}) |`,
     `| flags by check | ${JSON.stringify(C.flags.by_check)} | ${JSON.stringify(S.flags.by_check)} |`,
     `| consistency gate would hide the block | ${C.flags.gate_would_hide} | ${S.flags.gate_would_hide} |`,
+    '', `Invariant flags: ${recheck.recomputed} pairs recomputed locally with ${recheck.version} (hash verified); flags as returned by the endpoint: control ${summary.flags_endpoint_total.control}, shadow ${summary.flags_endpoint_total.shadow}.${recheck.hash_mismatch.length ? ' Hash mismatch, kept endpoint flags: ' + recheck.hash_mismatch.join(', ') + '.' : ''}`,
     '', `Historical production call of the same reports (fc-v2.3, from stored diagnostics): p50 ${summary.stored_production_reference.p50} ms, p90 ${summary.stored_production_reference.p90} ms.`,
     '', '## Per pair', '',
     '| report | car | identical | control ms | shadow ms | control in/out | shadow in(+cache)/out | retries c/s | flags c/s | checks c/s | status |', '|---|---|---|---|---|---|---|---|---|---|---|',
