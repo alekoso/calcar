@@ -59,7 +59,7 @@ import { runMiShadow } from './mi-shadow.js';
 import { fetchMiEquipmentCandidates, candidatePromptBlock, visionHintBlock, supplementVisionEquipment, applyMiEquipment, equipmentMemoryObservations, recordMiEquipment, miIdentityGeneration } from './mi-equipment.js';
 /* Model Intelligence Research v1: наявне MI плюс малий паралельний веб-пошук
    у контекст поточного звіту, придатні знахідки у конвеєр MI */
-import { startCheckResearch, researchBlock, researchMeta, guardModelNotes } from './mi-research.js';
+import { startCheckResearch, fetchResearchContext, researchBlock, researchMeta, guardModelNotes } from './mi-research.js';
 import { startValueResearch, buildValueCurve, composeMarketValue } from './value.js';
 import { buildVehicleSpec, reconcileVehicleSpec, trustedDecoderView, vehicleSpecPromptBlock, conflictNotes, identityConflictItem, identityFieldOf, syncHeaderWithSpec, powertrainClassFromSpec, publicSpec } from './vehicle-spec.js';
 
@@ -2897,7 +2897,13 @@ async function runCheck(req, res, job) {
         model_year: (nhtsa && nhtsa.ModelYear) || listing.year || null,
         mileage_km: listing.odometer_km || null,
       },
-    }, { callModel, t0: tRun });
+      /* контекст MI читається ПІСЛЯ кандидатів обладнання: обидва RPC на
+         першому Check машини міст і резолвер ідентичності тієї самої VIN
+         (select, потім insert у mi_vm.resolved_identity). Паралельно один із
+         них падав на унікальному ключі, і звіт втрачав знання MI про вже
+         розвʼязану версію ("Типові слабкі місця" порожні у BMW 530i xDrive
+         MY2019). Послідовно другий виклик знаходить готову ідентичність */
+    }, { callModel, t0: tRun, fetchContext: (vin, identity, o) => miEqPromise.then(() => fetchResearchContext(vin, identity, o)) });
     /* Value v1: пошук ціни нового авто стартує тут і йде паралельно з усім
        Check; виклик моделі запускається разом з основним аналізом. На Score
        і Confidence секція не впливає */

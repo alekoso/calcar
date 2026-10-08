@@ -371,6 +371,62 @@ const F = (text, over = {}) => ({ text_en: text, scope: 'version', component_rol
     ok('10q. стелі дослідження не змінились', M.RESEARCH_LIMITS.max_batches === 5 && M.RESEARCH_LIMITS.max_queries === 15 && M.RESEARCH_LIMITS.max_sources === 20 && M.RESEARCH_LIMITS.queries_per_batch === 3 && M.RESEARCH_LIMITS.sources_per_batch === 4 && M.RESEARCH_LIMITS.findings_per_batch === 2);
   }
 
+  /* ---- 11. "Типові слабкі місця версії": від знання MI до видимого блоку ---- */
+  {
+    const page = fs.readFileSync('result-check.html', 'utf8');
+    const fillSrc = (page.match(/function fill\(cardId, listId, arr, tpl\) \{[\s\S]*?\n\}/) || [''])[0];
+    const issuesSrc = (page.match(/fill\('issuesCard', 'issuesList', D\.model_notes\?\.issues, i =>[\s\S]*?<\/p><\/div>'\);/) || [''])[0];
+    ok('11. сторінка: блок малюється з model_notes.issues через fill і ховається без пунктів', !!fillSrc && !!issuesSrc && /<div class="card" id="issuesCard" style="display:none">/.test(page));
+    const render = issues => {
+      const els = { issuesCard: { style: { display: 'none' } }, issuesList: { innerHTML: '' } };
+      const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      new Function('$', 'esc', 't', 'D', fillSrc + '\n' + issuesSrc)(id => els[id], esc, s => s, { model_notes: { issues } });
+      return { shown: els.issuesCard.style.display !== 'none', html: els.issuesList.innerHTML };
+    };
+    /* опублікований пакет версії (як BMW 530i xDrive G30 MY2017-2020) */
+    const CTX_PACK = { available: true, mi_scope: 'version', catalog_brand: true, identity_precision: 'partial',
+      identity_summary: { brand: 'BMW', version: 'BMW 530i xDrive G30', model_year: '2019' }, knowledge_count: 2,
+      knowledge: [
+        { claim_id: 1, kind: 'issues', area: 'cooling', text: 'The air conditioning evaporator of this generation fails early and leaks refrigerant.', knowledge_type: 'known_issue', status: 'APPLICABLE', severity: 'moderate' },
+        { claim_id: 2, kind: 'claims', area: 'drivetrain', text: 'The flexible propshaft coupling is replaced between 80,000 and 120,000 km.', knowledge_type: 'specialist_practice', status: 'APPLICABLE' },
+      ], open_candidates: [], open_candidates_count: 0 };
+    const snapPack = { context: CTX_PACK, identity: { brand: 'BMW', model_line: '530i', generation: 'G30' }, findings: [], reportYear: 2026 };
+    const blkPack = M.researchBlock(snapPack);
+    ok('11a. опублікований пакет доходить до основного виклику як MODEL_INTELLIGENCE з вимогою source_ref', !!blkPack && /^MODEL_INTELLIGENCE/.test(blkPack) && /evaporator of this generation/.test(blkPack) && /source_ref "MI"/.test(blkPack));
+    const parsedPack = { model_notes: { issues: [
+      { unit: 'клімат', title: 'Випаровувач кондиціонера', detail: 'Відоме слабке місце цього покоління.', severity: 'med', source_ref: 'MI' },
+      { unit: 'двигун', title: 'Вигадана болячка з памʼяті моделі', detail: 'x', severity: 'low', source_ref: null },
+    ] } };
+    M.guardModelNotes(parsedPack, snapPack);
+    const shownPack = render(parsedPack.model_notes.issues);
+    ok('11b. пункт з MI лишається, необґрунтований прибраний, блок видно з пунктом', parsedPack.model_notes.issues.length === 1 && shownPack.shown && /Випаровувач кондиціонера/.test(shownPack.html) && !/Вигадана/.test(shownPack.html));
+    /* непідтримувана або нерозвʼязана ідентичність: знання немає */
+    const snapNone = { context: { ...CTX_COLD, mi_scope: 'none' }, identity: { brand: 'Ford', model_line: 'Mustang' }, findings: [], reportYear: 2026 };
+    ok('11c. без знання MI і без знахідок блоку для основного виклику немає', M.researchBlock(snapNone) === null);
+    const parsedNone = { model_notes: { issues: [{ unit: 'двигун', title: 'Загальновідома болячка', detail: 'x', severity: 'med', source_ref: 'MI' }, { unit: 'коробка', title: 'Фольклор', detail: 'y', severity: 'low', source_ref: null }] } };
+    const gNone = M.guardModelNotes(parsedNone, snapNone);
+    const shownNone = render(parsedNone.model_notes.issues);
+    ok('11d. непідтримувана версія: посилання на MI без знання і фольклор прибрані, блок лишається прихованим', parsedNone.model_notes.issues.length === 0 && gNone.dropped.some(d => d.reason === 'no_mi_knowledge') && gNone.dropped.some(d => d.reason === 'ungrounded') && !shownNone.shown);
+    ok('11e. збій контексту дає порожнє знання, а не вигадку: researchBlock без контексту null', M.researchBlock({ context: null, findings: [] }) === null && !render([]).shown);
+
+    /* контекст MI читається лише після RPC кандидатів обладнання: паралельні
+       виклики мосту і резолвера на тій самій VIN падали на unique */
+    const order = [];
+    let release;
+    const eqPromise = new Promise(r => { release = r; });
+    const st = stubs({ ctx: CTX_PACK });
+    const ctrl = M.startCheckResearch({ vin: 'WBAJA7C55KWW00001', identity: { brand: 'BMW', model_line: '530i', generation: 'G30' } },
+      { ...st.opts, fetchContext: (vin, identity, o) => eqPromise.then(() => { order.push('context'); return st.opts.fetchContext(vin, identity, o); }) });
+    await new Promise(r => setTimeout(r, 30));
+    ok('11f. поки RPC обладнання не завершився, контекст MI не запитується', order.length === 0 && st.calls.context === 0);
+    order.push('equipment'); release({ ok: true });
+    const stFinal = await ctrl.promise;
+    ok('11g. після обладнання контекст запитано рівно раз, область version і знання є', order.join(',') === 'equipment,context' && st.calls.context === 1 && stFinal.context.mi_scope === 'version' && stFinal.context.knowledge.length === 2);
+    const CHECKSRC = core;
+    const eqAt = CHECKSRC.indexOf('const miEqPromise = '), resAt = CHECKSRC.indexOf('const miResearch = startCheckResearch({');
+    ok('11h. Check: контекст MI ланцюжком після miEqPromise, а не паралельно', eqAt > 0 && resAt > eqAt && /fetchContext: \(vin, identity, o\) => miEqPromise\.then\(\(\) => fetchResearchContext\(vin, identity, o\)\)/.test(CHECKSRC) && /import \{ startCheckResearch, fetchResearchContext,/.test(CHECK));
+  }
+
   fs.rmSync(dir, { recursive: true, force: true });
   if (errs.length) {
     console.error('miresearchtest: помилок ' + errs.length + ' із ' + checks);
