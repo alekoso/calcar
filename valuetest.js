@@ -512,24 +512,25 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
 
     /* вибір історії: одна історія, без чергування */
     const forces = [F('supports', 'S1 тримає ціну'), F('reduces', 'R1 прискорює втрату'), F('supports', 'S2'), F('reduces', 'R2'), F('reduces', 'R3'), F('supports', 'S3'), F('reduces', 'R4'), F('reduces', 'R5')];
-    const dep = V.composeWhyPrice(forces, 'depreciation');
-    ok('14l. K: історія втрати: лише сили, що знижують вартість, до чотирьох', dep.length === 4 && dep.every(x => /^R/.test(x)));
-    const keep = V.composeWhyPrice(forces, 'retention');
-    ok('14m. L: історія сохранності: лише те, що підтримує, без добивання мінусами', keep.length === 3 && keep.every(x => /^S/.test(x)));
-    ok('14n. N: чергування плюс-мінус більше немає в жодній історії', [dep, keep].every(list => new Set(list.map(x => x[0])).size === 1));
-    ok('14o. лише дві причини потрібного напрямку: показуємо дві, третю не вигадуємо', JSON.stringify(V.composeWhyPrice([F('reduces', 'R1'), F('supports', 'S1'), F('reduces', 'R2'), F('supports', 'S2')], 'depreciation')) === JSON.stringify(['R1', 'R2']));
-    ok('14p. сил потрібного напрямку немає зовсім: наявні, а не порожня картка', JSON.stringify(V.composeWhyPrice([F('supports', 'S1'), F('supports', 'S2')], 'depreciation')) === JSON.stringify(['S1', 'S2']));
+    const dep = V.composeWhyPrice(forces, 'weak');
+    ok('14l. K: слабка сохранність: насамперед сили, що знижують (до трьох), і не більше одного підтримувального', dep.length === 4 && dep.slice(0, 3).every(x => /^R/.test(x)) && /^S/.test(dep[3]));
+    const keep = V.composeWhyPrice(forces, 'strong');
+    ok('14m. L: сильна сохранність: насамперед те, що підтримує (до трьох), один вторинний контрчинник', keep.length === 4 && keep.slice(0, 3).every(x => /^S/.test(x)) && /^R/.test(keep[3]));
+    ok('14n. N: сильний чи слабкий статус не стає списком протилежного знаку', dep.filter(x => /^S/.test(x)).length <= 1 && keep.filter(x => /^R/.test(x)).length <= 1);
+    ok('14o. лише дві причини потрібного напрямку: показуємо дві і один контрчинник, третю не вигадуємо', JSON.stringify(V.composeWhyPrice([F('reduces', 'R1'), F('supports', 'S1'), F('reduces', 'R2'), F('supports', 'S2')], 'weak')) === JSON.stringify(['R1', 'R2', 'S1']));
+    ok('14p. сил потрібного напрямку немає зовсім: картка порожня, список мінусів не пояснює сильну сохранність', JSON.stringify(V.composeWhyPrice([F('reduces', 'R1'), F('reduces', 'R2')], 'strong')) === '[]' && V.whyPriceComposition([F('reduces', 'R1')], 'strong').mode === 'insufficient');
     /* яка історія: частка збереженої ціни, стан лише в прикордонній смузі */
-    const st = (observed, state, expected) => V.priceStory({ state, observed_retention: observed, expected_retention: expected === undefined ? 0.5 : expected });
-    ok('14p1. K: низька частка: втрата; висока: сохранність', st(0.4, 'normal_depreciation') === 'depreciation' && st(0.82, 'normal_depreciation') === 'retention' && st(0.3, 'heavy_depreciation') === 'depreciation' && st(0.8, 'strong_retention') === 'retention');
-    ok('14p2. M: звичайна амортизація при низькій частці: історія втрати', st(0.38, 'normal_depreciation') === 'depreciation' && st(0.6, 'strong_retention') === 'retention');
-    ok('14p3. прикордонна смуга 0.65-0.75: вирішує стан', st(0.7, 'heavy_depreciation') === 'depreciation' && st(0.7, 'strong_retention') === 'retention' && st(0.66, 'normal_depreciation') === 'depreciation' && st(0.74, 'normal_depreciation') === 'retention');
-    ok('14p4. ціна нового зі зворотної оцінки: береться очікувана для віку частка, не циклічна спостережена', st(0.83, 'unknown', 0.44) === 'depreciation' && st(0.3, 'unknown', 0.85) === 'retention' && V.priceStory(null) === 'depreciation');
-    ok('14p5. пороги в одному місці', V.PRICE_STORY_THRESHOLDS.depreciation_below === 0.65 && V.PRICE_STORY_THRESHOLDS.retention_above === 0.75);
-    ok('14q. порожньо не ламає', V.composeWhyPrice(null, 'depreciation').length === 0 && V.composeMarketValue(null, null) === null);
+    /* статус сохранності: лише з детермінованого стану за віком (точна чи рівнозначна порівнянна ціна нового), інакше unknown */
+    const vs = (state, reason) => V.valueRetentionStatus({ state, reason });
+    ok('14p1. K: стани переходять у статус strong / average / weak', vs('strong_retention').status === 'strong' && vs('normal_depreciation').status === 'average' && vs('heavy_depreciation').status === 'weak');
+    ok('14p2. M: невідомий стан = unknown із причиною, не здогадка за часткою', vs('unknown', 'new_price_is_analog').status === 'unknown' && vs('unknown', 'new_price_is_analog').status_reason === 'new_price_is_analog' && V.valueRetentionStatus(null).status === 'unknown');
+    ok('14p3. джерело статусу назване: поправка на вік базової кривої, не когорта', vs('strong_retention').source === 'age_adjusted_index' && V.RETENTION_STATUS_SOURCE === 'age_adjusted_index' && vs('unknown').source === null);
+    ok('14p4. average: обидві сторони по черзі; unknown: нейтрально обидві сторони, без збігу зі статусом', JSON.stringify(V.composeWhyPrice(forces, 'average')) === JSON.stringify(['S1 тримає ціну', 'R1 прискорює втрату', 'S2', 'R2']) && V.whyPriceComposition(forces, 'unknown').mode === 'neutral' && V.whyPriceComposition(forces, 'unknown').matches_status === false);
+    ok('14p5. межі в одному місці', V.WHY_PRICE_MAX === 4 && V.WHY_PRICE_MAIN_MAX === 3 && JSON.stringify(V.VALUE_LOSS_BY_STATUS) === JSON.stringify({ strong: 'low', average: 'medium', weak: 'high' }));
+    ok('14q. порожньо не ламає', V.composeWhyPrice(null, 'weak').length === 0 && V.composeMarketValue(null, null) === null);
     const mv = V.composeMarketValue({ liquidity: { level: 'medium', reasons: ['L1'] }, price_forces: forces }, a);
-    ok('14r. у звіті: ліквідність як є, історія ціни зі станом і напрямком', mv.liquidity.level === 'medium' && mv.why_price.retention_state === 'heavy_depreciation' && mv.why_price.price_story === 'depreciation' && mv.why_price.reasons.length === 4 && mv.why_price.reasons.every(x => /^R/.test(x)) && !('price_forces' in mv));
-    ok('14s. невідомий стан від моделі не приймається', V.composeMarketValue({ liquidity: { level: 'low', reasons: ['L'] }, price_forces: forces }, { state: 'sehr gut' }).why_price.retention_state === 'unknown');
+    ok('14r. у звіті: ліквідність як є, статус і склад картки за ним', mv.liquidity.level === 'medium' && mv.why_price.retention_state === 'heavy_depreciation' && mv.why_price.value_retention.status === 'weak' && mv.why_price.mode === 'weak' && mv.why_price.reasons.length === 4 && mv.why_price.reasons.slice(0, 3).every(x => /^R/.test(x)) && mv.why_price.value_loss === 'high' && !('price_forces' in mv) && !('price_story' in mv.why_price));
+    ok('14s. невідомий стан від моделі не приймається', V.composeMarketValue({ liquidity: { level: 'low', reasons: forces.slice(0, 1).map(f => f.text) }, price_forces: forces }, { state: 'sehr gut' }).why_price.retention_state === 'unknown' && V.composeMarketValue({ liquidity: { level: 'low', reasons: ['L'] }, price_forces: forces }, { state: 'sehr gut' }).why_price.value_retention.status === 'unknown');
     /* E: дешеве оголошення не змінює ліквідність: у виклик ціна не йде */
     const check = fs.readFileSync('api/check.js', 'utf8');
     const callArgs = check.slice(check.indexOf('valueResearch.analyze({'), check.indexOf('let mainSystem = mainMsg.system;'));
@@ -666,7 +667,7 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
     ok('16q. рубрика: чинники моделі на ринку, преміум не дорівнює низькій, бренд сам по собі не причина, "medium" не значення за замовчуванням', /Premium does not mean low/.test(V.VALUE_RULES)
       && /Several strong barriers are not offset by a famous badge/.test(V.VALUE_RULES) && /not a default/.test(V.VALUE_RULES) && /Never start a reason with a connector/.test(V.VALUE_RULES));
     /* історія ціни для двох кейсів: обидва втратили більшу частину ціни нового */
-    ok('16r. історія "втрата" для авто, що зберегло менше 65% ціни нового', V.priceStory(withPerf.retention) === 'depreciation' && V.priceStory(reg.retention) === 'depreciation');
+    ok('16r. обидва кейси: статус unknown без точної ціни нового, картка нейтральна', V.valueRetentionStatus(withPerf.retention).status === 'unknown' && V.valueRetentionStatus(reg.retention).status === 'unknown');
     const srcV = fs.readFileSync('api/value.js', 'utf8');
     ok('16s. без хардкоду цих авто і без нових викликів', !/gl\s?63|gl\s?450|wdc166|4jgdf/i.test(srcV + fs.readFileSync('api/confidence.js', 'utf8')) && (srcV.match(/google\.serper\.dev|serper/gi) || []).length === (srcV.match(/serper/gi) || []).length);
   }
@@ -759,8 +760,8 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
     ok('17v. T, U: витік охолодження, клапан і насос у картку не йдуть', !forces.some(f => /утечк|клапан|насос/i.test(f.text)));
     ok('17w. V, W: дороге обслуговування і дорога пневмопідвіска як економіка володіння лишаються', forces.some(f => /обслуживание/.test(f.text)) && forces.some(f => /пневмоподвеска/.test(f.text)));
     ok('17x. чинник поза переліком типів або без типу відкинутий; тип зберігається', forces.length === 3 && forces.every(f => V.WHY_DRIVERS.includes(f.driver)) && V.WHY_DRIVERS.length === 14);
-    const story = V.composeWhyPrice(forces, 'depreciation');
-    ok('17y. X, Y: історія високої втрати це лише чинники, що знижують вартість, без чергування', story.length === 2 && !story.some(x => /бренд/.test(x)));
+    const story = V.composeWhyPrice(forces, 'weak');
+    ok('17y. X, Y: слабка сохранність: чинники, що знижують, перші, бренд не більше ніж одним вторинним рядком', story.length === 3 && story.slice(0, 2).every(x => !/бренд/.test(x)) && /бренд/.test(story[2]));
     ok('17z. схема: тип чинника обовʼязковий і лише з переліку', JSON.stringify(V.valueResponseFormat().json_schema.schema.properties.price_forces.items.properties.driver.enum) === JSON.stringify(V.WHY_DRIVERS)
       && V.valueResponseFormat().json_schema.schema.properties.price_forces.items.required.includes('driver') && /never appears here/.test(V.VALUE_RULES));
     ok('17z1. детектор вузької несправності трьома мовами', ['Coolant leaks are common', 'Витік охолоджувальної рідини', 'Течь сальника', 'Timing chain stretch'].every(V.narrowFailure) && !V.narrowFailure('Высокий расход топлива сокращает число покупателей'));
@@ -1042,7 +1043,7 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
       F('reduces', 'Дорогое обслуживание премиального кроссовера ускоряет потерю стоимости с возрастом.', 'maintenance_cost'),
       F('reduces', 'Пробег этого автомобиля выше обычного, что снижает цену.', 'buyer_demand'),
       F('supports', 'Репутация надёжного агрегата поддерживает спрос.', 'reliability_reputation')] }), { state: 'normal_depreciation', observed_retention: 0.4, expected_retention: 0.45 });
-    ok('19b. затоплення і пробіг цього авто не пояснюють ціну моделі', fl.why_price.reasons.length === 1 && /Дорогое обслуживание/.test(fl.why_price.reasons[0]) && !/затоплен|пробег/i.test(JSON.stringify(fl)), JSON.stringify(fl.why_price));
+    ok('19b. затоплення і пробіг цього авто не пояснюють ціну моделі; звичайна амортизація дає збалансовану картку з двох чинників моделі', fl.why_price.reasons.length === 2 && fl.why_price.reasons.some(x => /Дорогое обслуживание/.test(x)) && fl.why_price.reasons.some(x => /Репутация/.test(x)) && !/затоплен|пробег/i.test(JSON.stringify(fl)), JSON.stringify(fl.why_price));
     for (const [t, want] of [['Сервисная история этого экземпляра неполная.', true], ['Продавец заявляет один владелец.', true], ['Объявление висит давно.', true], ['Цена ниже средней по площадке.', true], ['Два владельца за десять лет.', true], ['This car was in a collision.', true], ['Flood-damaged vehicles lose value.', true],
       ['Дорогой ремонт сложных агрегатов снижает остаточную стоимость.', false], ['Репутация надёжности поддерживает спрос.', false], ['Service and parts are easy to find.', false], ['Owners of this model value its comfort.', false], ['Круг потенциальных владельцев ограничен высокими расходами.', false], ['Частая смена владельцев снижает доверие.', true], ['Many owners in a short time raise questions.', true], ['Аукционные автомобили из США формируют нижний ценовой сегмент.', false], ['Аукционная история этого экземпляра известна.', true]]) {
       ok('19b1. факт екземпляра: "' + t + '"', V.instanceFact(t) === want);
@@ -1082,24 +1083,84 @@ const near = (v, lo, hi) => typeof v === 'number' && v >= lo && v <= hi;
     ok('19h3. точна або рівнозначна порівнянна ціна: стан є', ['localized_msrp:exact', 'msrp_equivalent_version:equivalent', 'local_list:exact'].every(x => { const [b, r] = x.split(':'); return rc(b, r, true).state === 'normal_depreciation' && !rc(b, r, true).reason; }));
     ok('19h4. без відомостей про вид посилання стара поведінка: лише зворотна оцінка і нижня межа невідомі', rc('msrp_median', null, null).state !== 'unknown' && rc('reverse_estimate', null, null).state === 'unknown');
     const est = V.composeMarketValue({ liquidity: { level: 'low', reasons: ['L'] }, price_forces: [F('reduces', 'R'), F('supports', 'S')] }, rc('msrp_median', 'estimate', null));
-    ok('19h5. картка без рівня втрати для оцінки, історія лишається', est.why_price.value_loss === null && est.why_price.retention_state === 'unknown' && est.why_price.reasons.length === 1);
+    ok('19h5. оцінна ціна нового: статус unknown, підпису втрати немає, картка нейтральна з обома сторонами', est.why_price.value_loss === null && est.why_price.retention_state === 'unknown' && est.why_price.value_retention.status === 'unknown' && est.why_price.mode === 'neutral' && est.why_price.reasons.length === 2);
     ok('19h6. сторінка бере рівень лише з why_price.value_loss', /LOSS\[mv\.why_price\.value_loss\]/.test(page) && !/LOSS\[vc\.retention\.state\]/.test(page));
     /* 9. the story is age-aware: measured against the age expectation, not an absolute share */
     const old = { state: 'strong_retention', observed_retention: 0.53, expected_retention: 0.417, retention_index: 1.27 };
     const young = { state: 'heavy_depreciation', observed_retention: 0.78, expected_retention: 0.9, retention_index: 0.87 };
     const mid = { state: 'normal_depreciation', observed_retention: 0.53, expected_retention: 0.588, retention_index: 0.9 };
-    ok('19i. 13 років і 53% ціни нового при сильній сохранності для віку: історія сохранності, рівень втрати низький', V.priceStory(old) === 'retention' && V.composeMarketValue({ liquidity: { level: 'medium', reasons: ['L'] }, price_forces: [F('supports', 'Репутація надійності тримає ціну.'), F('reduces', 'R')] }, old).why_price.value_loss === 'low');
-    ok('19i1. молоде авто з 78% при сильній амортизації для віку: історія втрати', V.priceStory(young) === 'depreciation');
-    ok('19i2. та сама частка 53% при звичайній амортизації: історія втрати (абсолютна частка вирішує лише для звичайного стану)', V.priceStory(mid) === 'depreciation');
+    const oldMv = V.composeMarketValue({ liquidity: { level: 'medium', reasons: ['L'] }, price_forces: [F('reduces', 'R1'), F('supports', 'S1'), F('supports', 'S2')] }, old);
+    ok('19i. 13 років і 53% ціни нового при сильній сохранності для віку: статус strong, підтримувальні перші, рівень втрати низький', V.valueRetentionStatus(old).status === 'strong' && oldMv.why_price.reasons[0] === 'S1' && oldMv.why_price.reasons[1] === 'S2' && oldMv.why_price.reasons[2] === 'R1' && oldMv.why_price.value_loss === 'low');
+    ok('19i1. молоде авто з 78% при сильній амортизації для віку: статус weak', V.valueRetentionStatus(young).status === 'weak');
+    ok('19i2. та сама частка 53% при звичайній амортизації: статус average, картка збалансована', V.valueRetentionStatus(mid).status === 'average' && V.composeMarketValue({ liquidity: { level: 'medium', reasons: ['L'] }, price_forces: [F('reduces', 'R1'), F('supports', 'S1')] }, mid).why_price.mode === 'balanced');
     const onlyReduce = V.composeMarketValue({ liquidity: { level: 'medium', reasons: ['L'] }, price_forces: [F('reduces', 'R1'), F('reduces', 'R2')] }, old);
-    ok('19i3. сильна сохранність, але модель дала лише причини втрати: причини показуються, рівень втрати не пишеться, суперечності немає', onlyReduce.why_price.reasons.length === 2 && onlyReduce.why_price.value_loss === null && onlyReduce.why_price.price_story === 'retention');
+    ok('19i3. сильна сохранність, але модель дала лише причини втрати: картка порожня, рівень втрати не пишеться, мінуси не видаються за пояснення', onlyReduce.why_price.reasons.length === 0 && onlyReduce.why_price.value_loss === null && onlyReduce.why_price.mode === 'insufficient');
     /* 10. market-agnostic */
     const cards = V.VALUE_RULES.slice(V.VALUE_RULES.indexOf('1. liquidity'), V.VALUE_RULES.indexOf('3. new_price_candidates'));
     ok('19j. правила карток не називають країну: ринок приходить із MARKET', cards.length > 500 && !/ukrain|україн|украин|\bUA\b|\bUSA?\b|europe|kyiv/i.test(cards) && /market named in MARKET/.test(cards));
     ok('19j1. захисні списки без країн і марок', !/ukrain|україн|украин|\bua\b|auto\.?ria|bmw|toyota/i.test(src.slice(src.indexOf('const INSTANCE_FACT_RE'), src.indexOf('export function modelLevelRejection'))));
     ok('19j2. ринок у виклику з контексту оголошення', /market: \{ country: listing\.country \|\| null \},/.test(check) && /lines\.push\('MARKET: ' \+ JSON\.stringify\(market\)\);/.test(src));
-    ok('19j3. версія секції піднята', V.VALUE_VERSION === 'value-v1.1');
+    ok('19j3. версія секції піднята', V.VALUE_VERSION === 'value-v1.2');
   }
+
+  /* ===== 20. "Чому така ціна": напрямок ставлять дані, модель лише пояснює ===== */
+  {
+    const F = (direction, text, driver = 'ownership_cost') => ({ direction, driver, text });
+    const src = fs.readFileSync('api/value.js', 'utf8');
+    const check = fs.readFileSync('api/check.js', 'utf8');
+    const page = fs.readFileSync('result-check.html', 'utf8');
+    const san = (forces) => V.sanitizeMarketValue({ liquidity: { level: 'medium', reasons: ['Причина моделі.'] }, price_forces: forces });
+    const mixed = [F('supports', 'Спрос на практичные кроссоверы поддерживает стоимость.', 'buyer_demand'), F('reduces', 'Дорогой ремонт сложных агрегатов снижает остаточную стоимость.', 'repair_cost_risk'), F('supports', 'Репутация надёжности поддерживает интерес покупателей.', 'reliability_reputation'), F('reduces', 'Новые поколения давят на стоимость прежних.', 'technology_obsolescence')];
+    /* 1. модель не визначає статус: у схемі відповіді немає поля статусу, у правилах заборона вердикту */
+    const schema = JSON.stringify(V.valueResponseFormat());
+    ok('20a. схема відповіді моделі без поля статусу сохранності', !/retention|value_loss|status/.test(schema) && /price_forces/.test(schema));
+    ok('20a1. правила: напрямок не є рішенням моделі, вердикт про сохранність прибирається', /DIRECTION IS NOT YOUR CALL/.test(V.VALUE_RULES) && /Never write an overall verdict on how well the model keeps value/.test(V.VALUE_RULES));
+    /* 2. статус входить у звіт явно */
+    const rc = (state, reason) => ({ state, reason, observed_retention: 0.6, expected_retention: 0.5 });
+    const outS = V.composeMarketValue(san(mixed), rc('strong_retention'));
+    ok('20b. статус у why_price.value_retention явно, зі джерелом', outS.why_price.value_retention.status === 'strong' && outS.why_price.value_retention.source === 'age_adjusted_index' && outS.why_price.mode === 'strong');
+    /* семантика джерела відтворювана: базова вікова крива CalCar, не когорта однокласників */
+    ok('20b1. метадані називають базову вікову криву і заперечують порівняння з однокласниками', outS.why_price.value_retention.benchmark === 'calcar_age_baseline' && outS.why_price.value_retention.peer_comparison === false && V.RETENTION_STATUS_BENCHMARK === 'calcar_age_baseline' && V.valueRetentionStatus(null).benchmark === null && V.valueRetentionStatus(null).peer_comparison === false);
+    /* відомий статус не породжує порівняльних тверджень: guard прибирає їх до композиції */
+    const peerForces = [F('supports', 'Лучше аналогов держит цену на вторичном рынке.', 'brand_strength'), F('supports', 'Одна из самых ликвидных моделей в классе.', 'buyer_demand'), F('supports', 'Выше рынка по остаточной стоимости.', 'buyer_demand'), F('reduces', 'Хуже конкурентов по сохранности.', 'buyer_demand'), F('supports', 'Top 10 percentile of residual value in its segment.', 'buyer_demand'), F('supports', 'Спрос на практичные кроссоверы поддерживает стоимость.', 'buyer_demand')];
+    const peerOut = V.composeMarketValue(san(peerForces), rc('strong_retention'));
+    ok('20b2. strong: порівняльні твердження про однокласників і ринок прибрані, лишається чинник моделі', peerOut.why_price.reasons.length === 1 && /Спрос/.test(peerOut.why_price.reasons[0]) && san(peerForces).dropped.filter(d => d.reason === 'retention_claim' || d.reason === 'fabricated_stat').length === 5 && san(peerForces).dropped.filter(d => d.reason === 'retention_claim').length === 4);
+    ok('20b3. природні формулювання чинників проходять', ['Стоимость поддерживают высокий спрос и востребованность версии.', 'Вартість підтримують попит і доступність сервісу.', 'Demand for practical crossovers supports value.', 'Высокие расходы на содержание снижают стоимость с возрастом.', 'В классе компактных кроссоверов спрос остаётся устойчивым.'].every(t => !V.retentionClaim(t)));
+    /* підпис втрати і статус це один сигнал */
+    ok('20b4. value_loss завжди дорівнює статусу того ж сигналу', [['strong_retention', 'low'], ['normal_depreciation', 'medium'], ['heavy_depreciation', 'high']].every(([st, loss]) => { const o = V.composeMarketValue(san(mixed), rc(st)); return o.why_price.value_loss === loss && V.VALUE_LOSS_BY_STATE[st] === loss && V.VALUE_LOSS_BY_STATUS[o.why_price.value_retention.status] === loss; }));
+    /* 3. strong не стає переліком мінусів */
+    ok('20c. strong: підтримувальні перші, мінус не більше одного', outS.why_price.reasons.length === 3 && /Спрос/.test(outS.why_price.reasons[0]) && /Репутац/.test(outS.why_price.reasons[1]) && outS.why_price.reasons.filter(x => /снижает|давят/.test(x)).length === 1);
+    ok('20c1. strong без жодного підтримувального: картка порожня, не список мінусів', V.composeMarketValue(san(mixed.filter(f => f.direction === 'reduces')), rc('strong_retention')).why_price.reasons.length === 0);
+    /* 4. weak не розповідає про добру сохранність */
+    const outW = V.composeMarketValue(san(mixed), rc('heavy_depreciation'));
+    ok('20d. weak: знижувальні перші, підтримувальний не більше одного, рівень втрати високий', outW.why_price.mode === 'weak' && /снижает/.test(outW.why_price.reasons[0]) && outW.why_price.reasons.filter(x => /поддерживает/.test(x)).length === 1 && outW.why_price.value_loss === 'high');
+    /* 5. unknown: жодних порівняльних тверджень про сохранність, підпису втрати немає */
+    const outU = V.composeMarketValue(san([...mixed, F('supports', 'Модель хорошо держит цену на вторичном рынке.', 'brand_strength'), F('supports', 'Теряет стоимость меньше аналогов.', 'buyer_demand'), F('reduces', 'Быстро дешевеет с возрастом.', 'technology_obsolescence')]), rc('unknown', 'new_price_is_analog'));
+    ok('20e. unknown: нейтральний режим, обидві сторони, без підпису втрати', outU.why_price.value_retention.status === 'unknown' && outU.why_price.mode === 'neutral' && outU.why_price.value_loss === null && outU.why_price.reasons.length === 4 && outU.why_price.reasons.some(x => /поддерживает/.test(x)) && outU.why_price.reasons.some(x => /снижает/.test(x)));
+    ok('20e1. вердикти про сохранність прибрані детерміновано у будь-якому режимі', !/хорошо держит|меньше аналогов|Быстро дешевеет/.test(JSON.stringify(outU)) && ['Модель хорошо держит цену.', 'Теряет стоимость меньше аналогов.', 'Быстро дешевеет с возрастом.', 'Holds its value better than rivals.', 'Residual value stays above the market.', 'Низкая остаточная стоимость у этой модели.'].every(t => V.retentionClaim(t)) && ['Спрос поддерживает стоимость.', 'Дорогой ремонт снижает остаточную стоимость.', 'High demand keeps buyers interested.'].every(t => !V.retentionClaim(t)));
+    /* 6. різниця ціни оголошення із середньою не визначає статус */
+    const rcCtx = (rep) => V.retentionContext({ newPrice: 45000, basis: 'localized_msrp', reference: 'exact', comparable: true, representative: rep, representativeSource: 'marketplace_average', T: 7 });
+    ok('20f. статус рахується від представницької ціни моделі, не від знижки оголошення', rcCtx(31000).state === rcCtx(31000).state && !/listing_price|listing\.price|discount|delta/.test(src.slice(src.indexOf('export function valueRetentionStatus'), src.indexOf('export function composeWhyPrice'))) && !/representativeSource === 'listing_price'/.test(src.slice(src.indexOf('export function retentionContext'), src.indexOf('export function buildValueCurve'))));
+    /* 7-11. факти екземпляра не потрапляють у картку */
+    const vinForces = [F('reduces', 'Этот автомобиль был в ДТП, что снижает его цену.', 'repair_cost_risk'), F('reduces', 'Пробег этого экземпляра выше среднего.', 'buyer_demand'), F('reduces', 'Пять владельцев снижают стоимость.', 'buyer_demand'), F('supports', 'Продавец заявляет полную сервисную историю.', 'reliability_reputation'), F('reduces', 'Объявление висит давно и цена ниже средней по площадке.', 'buyer_demand'), F('reduces', 'На фото видны следы ремонта кузова.', 'repair_cost_risk'), F('supports', 'Спрос на модель поддерживает стоимость.', 'buyer_demand')];
+    const vinOut = V.composeMarketValue(san(vinForces), rc('unknown', 'new_price_is_analog'));
+    ok('20g. ДТП, пробіг, власники, продавець, оголошення цього авто не пояснюють ціну моделі', vinOut.why_price.reasons.length === 1 && /Спрос/.test(vinOut.why_price.reasons[0]) && san(vinForces).dropped.filter(d => d.reason === 'instance_fact').length >= 5);
+    ok('20g1. кадри цього авто (поточні чи архівні) не пояснюють ціну моделі', V.instanceFact('На фото видны следы ремонта кузова этого экземпляра.') && !/На фото/.test(JSON.stringify(vinOut)));
+    const callBlock = check.slice(check.indexOf('const valuePromise = valueResearch.analyze({'), check.indexOf('let mainSystem = mainMsg.system;'));
+    ok('20g2. у виклик моделі не йдуть ДТП, пробіг, власники, продавець, кадри, аукціон, ціна і знижка', !/accident|odometer|mileage|owner|seller|photo|vision|hv\b|cv\b|auction|price|discount|average|flood|score|confidence/i.test(callBlock.replace(/\/\*[\s\S]*?\*\//g, '')));
+    /* 12. чинники моделі з MI лишаються доступні */
+    ok('20h. контекст MI іде у виклик як MODEL_CONTEXT', /modelContext: miResearchBlock/.test(callBlock) && /MODEL_CONTEXT \(CalCar knowledge base and sourced web findings about this model/.test(src));
+    /* 13-14. слабке походження ціни нового і відсутність когорти: unknown, не здогадка */
+    const weakNew = (basis, reference, comparable) => V.valueRetentionStatus(V.retentionContext({ newPrice: 60000, basis, reference, comparable, representative: 50000, representativeSource: 'marketplace_average', T: 3 }));
+    ok('20i. аналог, оцінка, нижня межа і зворотна оцінка не дають упевненого статусу', ['msrp_powertrain_median:analog:true', 'msrp_median:estimate:null', 'msrp_base_floor:estimate:null', 'reverse_estimate:estimate:null', 'source_msrp:exact:false'].every(x => { const [b, r, c] = x.split(':'); const s = weakNew(b, r, c === 'true' ? true : c === 'null' ? null : false); return s.status === 'unknown' && typeof s.status_reason === 'string'; }));
+    ok('20i1. у коді немає окремої таблиці порогів "70% = strong": статус лише з retention_state', !/0\.7\s*[=:]\s*['"]?strong|PRICE_STORY_THRESHOLDS|priceStory/.test(src) && JSON.stringify(Object.keys(V.RETENTION_STATUS_BY_STATE)) === JSON.stringify(['strong_retention', 'normal_depreciation', 'heavy_depreciation']));
+    /* 15. захисти походження ціни нового працюють як раніше */
+    ok('20j. точна порівнянна ціна дає стан, аналог ні', weakNew('localized_msrp', 'exact', true).status === 'average' && weakNew('msrp_powertrain_median', 'analog', true).status === 'unknown');
+    /* сторінка і висновок читають лише reasons і value_loss: інтерфейс без змін */
+    ok('20k. сторінка читає reasons і value_loss, заголовок картки колишній', /mv\.why_price\.reasons/.test(page) && /LOSS\[mv\.why_price\.value_loss\]/.test(page) && /<h3>Why this price<\/h3>/.test(page) && !/value_retention|price_story/.test(page));
+    ok('20l. службові ключі картки не перекладаються', /'mode', 'status_reason'/.test(fs.readFileSync('api/report-translate.js', 'utf8')));
+  }
+
 
   if (errs.length) {
     console.error('valuetest: помилок ' + errs.length + ' із ' + checks);

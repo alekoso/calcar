@@ -26,7 +26,7 @@ const SECTIONS = ['vehicle', 'verdict', 'purchase_decision', 'final_conclusion',
 /* коди, перелічення і службові поля: ніколи не перекладаються */
 const CODE_KEYS = new Set(['status', 'severity', 'level', 'kind', 'category', 'confidence_level', 'factory_status',
   'marketplace', 'photo_id', 'source', 'source_ref', 'type', 'value_tier', 'owner_ordinal_source', 'event_source',
-  'date', 'gap', 'price_story', 'retention_state', 'value_loss', 'state', 'side', 'unit_raw', 'id', 'key', 'lang',
+  'date', 'gap', 'price_story', 'retention_state', 'value_loss', 'state', 'side', 'unit_raw', 'id', 'key', 'lang', 'mode', 'status_reason', 'benchmark', 'peer_comparison',
   'code', 'label_key', 'input', 'family', 'operation', 'provenance', 'currency', 'fuel', 'generation', 'trim',
   'year', 'model_year', 'url', 'vin', 'plate', 'make', 'model']);
 /* назва авто це бренд і модель, не текст */

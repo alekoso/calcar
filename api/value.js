@@ -19,7 +19,7 @@
 
 import { searchSerper, classifySource, hostOf } from './mi-research.js';
 
-export const VALUE_VERSION = 'value-v1.1';
+export const VALUE_VERSION = 'value-v1.2';
 export const FORECAST_YEARS = 5;
 export const STEP_YEARS = 0.5;
 
@@ -898,16 +898,23 @@ export function narrowFailure(text) { return NARROW_FAILURE_RE.test(String(text 
    or fire, its owners, mileage, seller, listing, discount, auction record,
    VIN, service records) explains this listing, not the model, and is
    dropped whatever the model wrote. Market-agnostic word list */
-const INSTANCE_FACT_RE = /дтп|авари|аварі|accident|collision|crash|затоп|повін|flood|пожар|пожеж|(?:^|[^a-z])fire(?![a-z])|(?:\d+|один|одного|одним|два|двух|три|трёх|трех|четыр|пять|несколько|много|многих|частая|часта|смен\S*|зміна|одного|кілька|багато|one|two|three|four|several|many|multiple|previous|prior|frequent)\s+(?:владельц|власник|owners?)|(?:владельц|власник)\S*\s+(?:этого|цього)\s+(?:авто|экземпляр|примірник|машин)|owners? of this (?:car|vehicle)|пробег|пробіг|mileage|odometer|одометр|продавц|продавец|(?:^|[^a-z])seller|объявлен|оголошен|(?:^|[^a-z])listing|скидк|знижк|discount|средн\S*\s+(?:по|на)\s+площадк|середн\S*\s+(?:по|на)\s+майданчик|marketplace average|аукцион\S*\s+(?:истори|запис|лот)|аукціон\S*\s+(?:істор|запис|лот)|истори\S*\s+аукцион|істор\S*\s+аукціон|auction (?:history|record|lot)|(?:^|[^a-z])vin(?![a-z])|эт(?:от|ого|ому)\s+экземпляр|ц(?:ей|ього|ьому)\s+(?:екземпляр|примірник)|this (?:car|vehicle|specimen|example|unit)|истори\S*\s+(?:владен|эксплуат|обслуж)|істор\S*\s+(?:володін|експлуат|обслугов)|service (?:history|records)|сервисн\S*\s+(?:истори|книж|запис)|сервісн\S*\s+(?:істор|книж|запис)/i;
+const INSTANCE_FACT_RE = /дтп|авари|аварі|accident|collision|crash|затоп|повін|flood|пожар|пожеж|(?:^|[^a-z])fire(?![a-z])|(?:\d+|один|одного|одним|два|двух|три|трёх|трех|четыр|пять|несколько|много|многих|частая|часта|смен\S*|зміна|одного|кілька|багато|one|two|three|four|several|many|multiple|previous|prior|frequent)\s+(?:владельц|власник|owners?)|(?:владельц|власник)\S*\s+(?:этого|цього)\s+(?:авто|экземпляр|примірник|машин)|owners? of this (?:car|vehicle)|пробег|пробіг|mileage|odometer|одометр|продавц|продавец|(?:^|[^a-z])seller|объявлен|оголошен|(?:^|[^a-z])listing|скидк|знижк|discount|средн\S*\s+(?:по|на)\s+площадк|середн\S*\s+(?:по|на)\s+майданчик|marketplace average|аукцион\S*\s+(?:истори|запис|лот)|аукціон\S*\s+(?:істор|запис|лот)|истори\S*\s+аукцион|істор\S*\s+аукціон|auction (?:history|record|lot)|(?:^|[^a-z])vin(?![a-z])|эт(?:от|ого|ому)\s+экземпляр|ц(?:ей|ього|ьому)\s+(?:екземпляр|примірник)|this (?:car|vehicle|specimen|example|unit)|истори\S*\s+(?:владен|эксплуат|обслуж)|істор\S*\s+(?:володін|експлуат|обслугов)|service (?:history|records)|сервисн\S*\s+(?:истори|книж|запис)|сервісн\S*\s+(?:істор|книж|запис)|на\s+(?:фото|кадр|снимк|знімк)|(?:in|on)\s+the\s+(?:photos?|frames?|pictures?)|следы\s+ремонт|сліди\s+ремонт|repair\s+(?:traces|marks)|current\s+vision|historical\s+vision/i;
 export function instanceFact(text) { return INSTANCE_FACT_RE.test(String(text || '')); }
 /* a number with a market unit is a statistic nobody measured: days to sell,
    shares, sales or listing counts. Engine sizes and years stay */
 const FABRICATED_STAT_RE = /\d+(?:[.,]\d+)?\s*(?:%|процент|відсот|percent|дн(?:ей|я|і|ів)(?![a-zа-яіїєґ])|days?(?![a-z])|недел|тижн|weeks?(?![a-z])|месяц|місяц|months?(?![a-z])|шт(?![a-zа-яіїєґ])|units?(?![a-z])|sales|продаж|объявлен|оголошен|listings?(?![a-z])|экземпляр|примірник|покупател|покупц|buyers?(?![a-z]))/i;
 export function fabricatedStat(text) { return FABRICATED_STAT_RE.test(String(text || '')); }
+/* an overall verdict on how well the model keeps value ("holds value well",
+   "loses value fast", "better than rivals") is a DIRECTION, and direction is
+   decided by CalCar data (valueRetentionStatus), never by the model's general
+   knowledge; a force is one factor with its own sign, not a verdict */
+const RETENTION_CLAIM_RE = /(?:хорошо|отлично|неплохо|плохо|слабо|добре|відмінно|непогано|погано|well|poorly|strongly)\s+(?:держ|удерж|сохран|трима|утрим|збер|hold|retain|keep)\S*\s+(?:цен|стоим|варт|value|price)|(?:держ|удерж|трима|утрим|hold|retain|keep)\S*(?:\s+(?:its|their|свою|свої|the))?\s+(?:цен|стоим|варт|value|price)\S*\s+(?:хорошо|отлично|плохо|слабо|добре|відмінно|погано|well|poorly|better|worse)|(?:быстро|медленно|швидко|повільно|quickly|rapidly|slowly|fast)\s+(?:дешеве|теря|обесцен|втрач|знецін|depreciat|los)|(?:теря|втрач|сохран|збер|держ|трима|retain|hold|keep|los|depreciat)\S*\s+(?:цен|стоим|варт|value)\S*\s+(?:меньше|больше|лучше|хуже|менше|більше|краще|гірше|less|more|better|worse)\s+(?:аналог|конкур|рынк|ринк|одноклас|rival|competitor|the market|peers|segment)|(?:better|worse)\s+than\s+(?:rivals|competitors|the market|peers|the segment)|(?:низк|высок|низьк|висок|low|high|strong|weak)\S*\s+(?:остаточн|залишков|residual)\S*\s+(?:стоим|варт|value)|(?:остаточн|залишков|residual)\S*\s+(?:стоим|варт|value)\S*(?:\s+\S+){0,2}\s+(?:выше|ниже|вища|нижча|above|below)\s+(?:the\s+)?(?:рынк|ринк|аналог|конкур|одноклас|market|rivals|peers|segment)|(?:лучше|хуже|сильнее|слабее|краще|гірше|сильніше|слабше|better|worse)\s+(?:чем\s+|ніж\s+|than\s+)?(?:аналог|конкур|одноклас|соперник|rival|competitor|peer|класс|class|сегмент|segment)|(?:одн[аи]м?\s+из\s+(?:самых|наиболее)|одн[аи](?:єю|ією)?\s+з\s+най|one of the most|among the most|одна\s+из\s+лучших|одна\s+з\s+найкращих)(?:\s+\S+){1,3}\s+(?:в|у|in)\s+(?:своём|своем|своєму|its|the)?\s*(?:класс|клас|class|сегмент|segment)|(?:лидер|лідер|leader)\S*\s+(?:класс|клас|сегмент|class|segment)|percentile|процентил|(?:топ|top)[-\s]?\d|(?:выше|ниже|вища|нижча|above|below)\s+(?:рынк|ринк|market)\S*\s+(?:по|за|in|by)\s+(?:остаточн|залишков|residual)/i;
+export function retentionClaim(text) { return RETENTION_CLAIM_RE.test(String(text || '')); }
 /* why a sentence cannot stay in a model-level card, or null */
 export function modelLevelRejection(text) {
   if (fabricatedStat(text)) return 'fabricated_stat';
   if (instanceFact(text)) return 'instance_fact';
+  if (retentionClaim(text)) return 'retention_claim';
   return null;
 }
 /* довге тире у продукті заборонене: модель могла його поставити */
@@ -961,63 +968,71 @@ export function sanitizeMarketValue(raw) {
   return { liquidity: { level: reasons.length ? level : 'unknown', reasons }, price_forces: forces, ...(dropped.length ? { dropped } : {}) };
 }
 
-/* Картка "Чому це авто коштує стільки": детермінований стан сохранності
-   обирає, яку історію розповідати, модель лише дає сили з напрямком.
-   Сильна амортизація: насамперед те, що знижує; хороша сохранність: що
-   підтримує; звичайна чи невідома: обидві сторони. Не більше чотирьох */
-export const WHY_PRICE_MAX = 4;
-/* Яку історію розповідає картка. Це не те саме, що retention_state:
-   стан каже, наскільки НЕЗВИЧНА амортизація для віку, історія каже, який
-   бік пояснювати. Старе авто зі звичайною амортизацією все одно втратило
-   більшу частину ціни, і картка пояснює саме втрату.
-   Частка: збережена доля ціни нового авто; коли ціна нового відновлена
-   зворотною оцінкою, береться очікувана для віку (спостережена була б
-   циклічною). Пороги в одному місці */
-export const PRICE_STORY_THRESHOLDS = { depreciation_below: 0.65, retention_above: 0.75 };
-export function priceStory(retention) {
+/* Картка "Чому така ціна" (why_price) пояснює залишкову вартість МОДЕЛІ
+   і версії в її віці, не ціну цього оголошення. Напрямок пояснення
+   (сильна, звичайна, слабка сохранність) ставлять дані CalCar, модель
+   дає лише чинники з власним знаком; картка складається детерміновано.
+
+   value_retention.status: strong | average | weak | unknown. Єдине джерело
+   сьогодні: retention_state з value_curve, тобто частка ціни нового, яку
+   зберіг представницький екземпляр моделі (середня площадки), проти
+   очікуваної для його ВІКУ частки базової кривої (retentionContext), і лише
+   при точній або рівнозначній порівнянній ціні нового. Це поправка на вік,
+   але не когорта однокласників: порівняльної бази "схожі моделі того ж
+   віку і класу" у CalCar немає, тому поза точною ціною нового статус
+   чесно unknown, і картка стає нейтральною: що зазвичай впливає на
+   вартість цієї моделі, без жодного вердикту про сохранність.
+   Різниця ціни оголошення з середньою площадки у статус не входить: це
+   питання Market Value, не цієї картки */
+export const RETENTION_STATUS_BY_STATE = { strong_retention: 'strong', normal_depreciation: 'average', heavy_depreciation: 'weak' };
+/* source: retention_index = observed share of the new price / share expected
+   for the car's age; benchmark: CalCar's own age baseline (annualRetention),
+   NOT a peer cohort. strong means "kept more than the age baseline expects",
+   never "better than rivals", a percentile or a class ranking */
+export const RETENTION_STATUS_SOURCE = 'age_adjusted_index';
+export const RETENTION_STATUS_BENCHMARK = 'calcar_age_baseline';
+export function valueRetentionStatus(retention) {
   const r = retention && typeof retention === 'object' ? retention : {};
-  /* a state measured against the expectation for the car's AGE decides
-     first: an old car that kept more than cars of its age usually keep is a
-     retention story even though it has lost most of its new price in
-     absolute terms, and a young car that lost more than expected is a
-     depreciation story even though it still keeps a large share */
-  if (r.state === 'strong_retention') return 'retention';
-  if (r.state === 'heavy_depreciation') return 'depreciation';
-  const share = r.state === 'unknown' ? num(r.expected_retention) : num(r.observed_retention);
-  if (share === null) return 'depreciation';
-  if (share < PRICE_STORY_THRESHOLDS.depreciation_below) return 'depreciation';
-  if (share > PRICE_STORY_THRESHOLDS.retention_above) return 'retention';
-  if (r.state === 'heavy_depreciation') return 'depreciation';
-  if (r.state === 'strong_retention') return 'retention';
-  return share < (PRICE_STORY_THRESHOLDS.depreciation_below + PRICE_STORY_THRESHOLDS.retention_above) / 2 ? 'depreciation' : 'retention';
+  const status = RETENTION_STATUS_BY_STATE[r.state] || null;
+  if (status) return { status, source: RETENTION_STATUS_SOURCE, benchmark: RETENTION_STATUS_BENCHMARK, peer_comparison: false, status_reason: null };
+  return { status: 'unknown', source: null, benchmark: null, peer_comparison: false, status_reason: r.reason || (r.state === 'unknown' ? 'retention_unknown' : 'no_retention_context') };
 }
-/* Одна історія, без чергування плюсів і мінусів: лише сили обраного
-   напрямку, скільки є (до чотирьох), без добивання протилежними. Якщо сил
-   потрібного напрямку немає зовсім, показуємо наявні, а не порожню картку */
-export function composeWhyPrice(forces, story) { return whyPriceComposition(forces, story).reasons; }
-/* reasons plus whether they tell the chosen story; when only the opposite
-   direction exists the card shows it, and the value-loss label is withheld
-   so the label and the reasons never contradict each other */
-export function whyPriceComposition(forces, story) {
+/* Склад картки за статусом, не більше чотирьох рядків:
+   strong: до трьох чинників, що підтримують, і не більше одного, що
+     знижує; без жодного підтримувального картка порожня (список мінусів
+     не є поясненням сильної сохранності);
+   weak: дзеркально;
+   average: обидві сторони по черзі;
+   unknown: нейтрально, обидві сторони по черзі, без вердикту */
+export const WHY_PRICE_MAX = 4;
+export const WHY_PRICE_MAIN_MAX = 3;
+const interleave = (a, b) => { const out = []; for (let i = 0; i < Math.max(a.length, b.length); i++) { if (a[i]) out.push(a[i]); if (b[i]) out.push(b[i]); } return out; };
+export function whyPriceComposition(forces, status) {
   const list = Array.isArray(forces) ? forces : [];
-  const want = story === 'retention' ? 'supports' : 'reduces';
-  const main = list.filter(f => f.direction === want).map(f => f.text);
-  const other = list.filter(f => f.direction !== want).map(f => f.text);
-  return { reasons: (main.length ? main : other).slice(0, WHY_PRICE_MAX), matches_story: main.length > 0 };
+  const sup = list.filter(f => f && f.direction === 'supports').map(f => f.text);
+  const red = list.filter(f => f && f.direction === 'reduces').map(f => f.text);
+  if (status === 'strong' || status === 'weak') {
+    const [main, other] = status === 'strong' ? [sup, red] : [red, sup];
+    if (!main.length) return { reasons: [], mode: 'insufficient', matches_status: false };
+    return { reasons: [...main.slice(0, WHY_PRICE_MAIN_MAX), ...other.slice(0, 1)].slice(0, WHY_PRICE_MAX), mode: status, matches_status: true };
+  }
+  const reasons = interleave(sup, red).slice(0, WHY_PRICE_MAX);
+  return { reasons, mode: status === 'average' ? 'balanced' : 'neutral', matches_status: status === 'average' ? reasons.length > 0 : false };
 }
-/* Підпис для людини: "Втрата вартості: низька / середня / висока". Це той
-   самий стан сохранності іншими словами; для ненадійної ціни нового
-   (зворотна оцінка, нижня межа) рівня немає */
+export function composeWhyPrice(forces, status) { return whyPriceComposition(forces, status).reasons; }
+/* Підпис для людини: "Втрата вартості: низька / середня / висока". Той
+   самий статус іншими словами; при unknown підпису немає */
+export const VALUE_LOSS_BY_STATUS = { strong: 'low', average: 'medium', weak: 'high' };
 export const VALUE_LOSS_BY_STATE = { strong_retention: 'low', normal_depreciation: 'medium', heavy_depreciation: 'high' };
 export function composeMarketValue(mv, retention) {
   if (!mv || typeof mv !== 'object') return null;
   const state = retention && RETENTION_STATES.includes(retention.state) ? retention.state : 'unknown';
-  const story = priceStory(retention);
-  const { reasons, matches_story } = whyPriceComposition(mv.price_forces, story);
+  const vr = valueRetentionStatus(retention && RETENTION_STATES.includes(retention.state) ? retention : { state: 'unknown', reason: retention && retention.reason });
+  const { reasons, mode, matches_status } = whyPriceComposition(mv.price_forces, vr.status);
   /* the label is the page's only source for "Value loss": it exists only
-     for a comparable exact or equivalent price when new (retentionContext)
-     and only when the reasons shown tell the same story */
-  return { liquidity: mv.liquidity, why_price: { retention_state: state, value_loss: matches_story ? (VALUE_LOSS_BY_STATE[state] || null) : null, price_story: story, reasons } };
+     for a status measured from a comparable exact or equivalent price when
+     new and only when the reasons shown tell that status */
+  return { liquidity: mv.liquidity, why_price: { retention_state: state, value_retention: vr, value_loss: matches_status ? (VALUE_LOSS_BY_STATUS[vr.status] || null) : null, mode, reasons } };
 }
 
 /* ---------- Виклик моделі ---------- */
@@ -1055,6 +1070,7 @@ Three outputs.
 
 2. price_forces: 4 to 6 forces that explain how well THIS MODEL AND VERSION keeps its original value as it ages: why cars of this model, generation, version and age on the market named in MARKET generally cost what they cost (a large or a small share of the new price). Never why this particular car is cheaper or dearer than others.
    This is market ECONOMICS of residual value, not a list of the model's weak points.
+   DIRECTION IS NOT YOUR CALL: CalCar decides downstream, from its own price data, whether this model keeps value strongly, averagely or weakly, and then selects forces by their direction. Never write an overall verdict on how well the model keeps value: not that it holds value well, loses value fast, keeps value better or worse than rivals or the market, or has a high or low residual value. Each force is one factor with its own sign. A sentence with such a verdict is dropped.
    Each item: direction "supports" (helps it keep value) or "reduces" (makes it lose value faster); driver: the type of the economic driver, one of ownership_cost, fuel_cost, maintenance_cost, repair_cost_risk, technical_complexity, reliability_reputation, brand_strength, buyer_demand, buyer_pool_width, powertrain_desirability, efficiency, technology_obsolescence, practical_demand, long_term_reputation; text: one short sentence that names the factor AND its effect on retained value, for example "High running costs of premium technology cut demand as the car ages." A bare attribute ("All-wheel drive", "Premium positioning", "Practical body") is not acceptable.
    A narrow technical weak point is NOT a force: a specific leak, pump, valve, injector, chain, gasket or any other named failure mode never appears here, even when MODEL_CONTEXT describes it; those belong to the risks section of the report. A technical system may appear only at the economic level. Wrong: "Aging air suspension struts can fail." Right: "Air suspension that is expensive to keep up with age raises expected ownership costs and lowers residual value."
    Give at least three forces that reduce value and at least two that support it when the context allows it; each force is one independent sentence with no leading connector. A force that fits none of the driver types is not written. Do not pad: fewer grounded forces are better than a filler.
