@@ -104,7 +104,11 @@ function identitySteps(spec, lang) {
   for (const f of Array.isArray(spec.conflicts) ? spec.conflicts : []) {
     if (!ID_LABEL[f]) continue;
     const cands = (spec.fields[f] && Array.isArray(spec.fields[f].candidates) ? spec.fields[f].candidates : []).map(c => c && c.value).filter(v => v !== null && v !== undefined);
-    const vals = f === 'power_hp' ? [...new Set(cands.map(v => Math.round(Number(v))).filter(Number.isFinite))].map(v => v + ' ' + HP[L2]) : [];
+    /* power: each candidate in the unit its source used; a converted kW
+       figure shows both ("204 кВт (277 л.с.)"), never a bare normalised number */
+    const raw = (spec.fields[f] && Array.isArray(spec.fields[f].candidates) ? spec.fields[f].candidates : []).filter(c => c && c.value !== null && c.value !== undefined);
+    const KW = { ua: 'кВт', ru: 'кВт', en: 'kW' };
+    const vals = f === 'power_hp' ? [...new Set(raw.map(c => (c.unit === 'kw' && Number.isFinite(Number(c.raw_value)) ? Number(c.raw_value) + ' ' + KW[L2] + ' (' + Math.round(Number(c.value)) + ' ' + HP[L2] + ')' : Math.round(Number(c.value)) + ' ' + HP[L2])))] : [];
     const list = vals.length > 1 ? ' (' + vals.join(OR[L2]) + ')' : '';
     out.push({ field: f, text: L2 === 'ua' ? `${ID_LABEL[f].ua}: джерела розходяться${list}; встановити фактичне значення за документами і маркуванням на огляді, не обираючи жодне з них заздалегідь.`
       : L2 === 'en' ? `${ID_LABEL[f].en}: the sources disagree${list}; establish the actual value from the documents and markings at the inspection, without assuming either one.`

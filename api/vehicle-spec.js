@@ -110,35 +110,114 @@ function electrificationConflict(a, b) {
 }
 
 /* ---------- power ----------
-   Units are normalised before any comparison: kW -> metric hp (x1.36), SAE hp
-   -> metric hp (x1.014). Two figures are the same power when they differ by
-   at most 6 hp or 4 percent, whichever is larger: 200 kW, 268 hp and 272 PS
-   are one engine, not a conflict */
-export function normPower(raw) {
-  const t = low(raw);
+   A figure is never compared by its number alone. Order: raw text -> number
+   -> unit (kW, metric hp: к.с. / л.с. / PS, SAE hp, unknown) -> semantic type
+   (engine-only, system output of an electrified car, unknown) -> metric hp
+   -> equivalence of COMPARABLE types -> value or conflict. Tolerance: 6 hp or
+   4 percent, whichever is larger (POWER_TOLERANCE): 200 kW, 268 hp and 272 PS
+   are one engine; 163 and 204 PS are two versions. Battery capacity
+   (82 кВт·год, 82 kWh) is energy, not power. A decimal figure is one figure
+   ("277.44 к.с." never yields a second "44"). A bare number without a unit
+   stays unit 'unknown': kept in the provenance, never compared, never the
+   value. The original text, unit and number survive every conversion */
+const KW_TO_PS = 1.35962;
+const SAE_TO_PS = 1.01387;
+export const POWER_TOLERANCE = { abs_hp: 6, rel: 0.04 };
+const POWER_UNIT_SRC = "(квт|kw|к\\.?\\s?с\\.?|л\\.?\\s?с\\.?|кс|лс|ps|bhp|hp|horsepower)";
+/* no letter may follow the unit (kwh, ксенон) and no hour marker (кВт·год, кВт-год, kW h) */
+const POWER_AFTER_SRC = "(?![a-zа-яіїєґ])(?!\\s*[·⋅\\-/*]?\\s*(?:год|ч|h|hr|г)(?![a-zа-яіїєґ]))";
+const POWER_FIGURE_RE = new RegExp("(?<![\\d.,])(\\d{2,4}(?:[.,]\\d{1,3})?)\\s*" + POWER_UNIT_SRC + POWER_AFTER_SRC, 'gi');
+const BARE_NUMBER_RE = /^\s*(\d{2,4}(?:[.,]\d{1,3})?)\s*$/;
+export function powerUnitOf(u) {
+  const t = String(u || '').toLowerCase().replace(/[\s.]/g, '');
+  if (t === 'квт' || t === 'kw') return 'kw';
+  if (t === 'кс' || t === 'лс' || t === 'ps') return 'ps';
+  if (t === 'hp' || t === 'bhp' || t === 'horsepower') return 'hp';
+  return 'unknown';
+}
+function figureOf(m) {
+  const rawValue = parseFloat(m[1].replace(',', '.'));
+  const unit = powerUnitOf(m[2]);
+  const exact = unit === 'kw' ? rawValue * KW_TO_PS : rawValue;
+  const value = Math.round(exact);
+  if (!(value >= 20 && value <= 2500)) return null;
+  return { value, raw_value: rawValue, unit, converted: unit === 'kw' ? 'kw_to_ps' : null, raw: clean(m[0]) };
+}
+/* the first figure of a text with its unit; a bare number is unit 'unknown' */
+export function parsePower(raw) {
+  const t = clean(raw);
   if (!t) return null;
-  let m = /(\d{2,4})\s*(?:квт|kw)(?![a-zа-я])/.exec(t);
-  if (m) { const v = Math.round(parseInt(m[1], 10) * 1.36); return v >= 20 && v <= 2500 ? v : null; }
-  m = /(\d{2,4})\s*(?:к\.?\s?с\.?|л\.?\s?с\.?|кс\b|лс\b|\bps\b|\bhp\b|\bbhp\b|horsepower)/.exec(t);
-  if (m) { const v = parseInt(m[1], 10); return v >= 20 && v <= 2500 ? v : null; }
-  return null;
+  POWER_FIGURE_RE.lastIndex = 0;
+  const m = POWER_FIGURE_RE.exec(t);
+  POWER_FIGURE_RE.lastIndex = 0;
+  if (m) return figureOf(m);
+  const n = BARE_NUMBER_RE.exec(t);
+  return n ? { value: null, raw_value: parseFloat(n[1].replace(',', '.')), unit: 'unknown', converted: null, raw: t } : null;
+}
+/* SAE horsepower (vPIC EngineHP) in metric hp */
+export function parseSaeHp(raw) {
+  const hp = parseFloat(String(raw == null ? '' : raw).replace(',', '.'));
+  if (!(hp > 0)) return null;
+  const value = Math.round(hp * SAE_TO_PS);
+  if (!(value >= 20 && value <= 2500)) return null;
+  return { value, raw_value: hp, unit: 'hp_sae', converted: 'sae_to_ps', raw: clean(raw) + ' hp' };
+}
+export function normPower(raw) {
+  const p = parsePower(raw);
+  return p && p.value !== null ? p.value : null;
 }
 export function powerEquivalent(a, b) {
   if (a === null || b === null || a === undefined || b === undefined) return true;
-  return Math.abs(a - b) <= Math.max(6, 0.04 * Math.max(a, b));
+  return Math.abs(a - b) <= Math.max(POWER_TOLERANCE.abs_hp, POWER_TOLERANCE.rel * Math.max(a, b));
 }
-/* every distinct power figure in a text, already normalised */
-export function powerValues(text) {
-  const t = low(text);
+/* every distinct power figure in a text with its unit and original snippet;
+   a kW / hp pair of one statement ("163.2 к.с. / 120 кВт") is one figure */
+export function powerFigures(text) {
+  const t = clean(text);
   const out = [];
-  const re = /(\d{2,4})\s*(квт|kw|к\.?\s?с\.?|л\.?\s?с\.?|кс\b|лс\b|\bps\b|\bhp\b|\bbhp\b|horsepower)/g;
+  if (!t) return out;
+  POWER_FIGURE_RE.lastIndex = 0;
   let m;
-  while ((m = re.exec(t))) {
-    const v = normPower(m[0]);
-    if (v !== null && !out.some(x => powerEquivalent(x, v))) out.push(v);
+  while ((m = POWER_FIGURE_RE.exec(t))) {
+    const f = figureOf(m);
+    if (f && !out.some(x => powerEquivalent(x.value, f.value))) out.push({ ...f, label_type: powerLabelType(t, m.index) });
   }
+  POWER_FIGURE_RE.lastIndex = 0;
   return out;
 }
+/* every distinct power figure in a text, already normalised */
+export function powerValues(text) { return powerFigures(text).map(f => f.value); }
+/* semantic type. A full hybrid, a plug-in or an electric car has several
+   kinds of power (engine, motor, system). The type comes only from what the
+   source itself says: the marketplace modification figure is the system
+   output; a figure under an explicit field label takes that label (the
+   marketplace block "Двигун Гібрид (HEV), 2.49 л, (163.2 к.с. / 120 кВт)",
+   "Потужність двигуна", "Engine output" -> engine; "Сумарна потужність",
+   "Combined / System output" -> system; "Номінальна", "Rated",
+   "Continuous" -> rated). A figure without such a label (seller prose, the
+   main analysis, the decoder) stays unknown: never guessed from the number
+   or the model. A mild hybrid and a conventional car have one engine figure */
+export const ELECTRIFIED_POWER = new Set(['hybrid', 'phev', 'bev']);
+const POWER_LABEL = [
+  ['system', /систем\S*\s+потужн|системн\S*\s+мощн|сумарн\S*\s+потужн|суммарн\S*\s+мощн|сукупн\S*\s+потужн|совокупн\S*\s+мощн|combined\s+(?:power|output)|system\s+(?:power|output)|total\s+system/i],
+  ['rated', /номінальн\S*\s+потужн|номинальн\S*\s+мощн|тривал\S*\s+потужн|длительн\S*\s+мощн|rated\s+(?:power|output)|continuous\s+(?:power|output)/i],
+  ['engine', /двигун|двигател|двигатель|engine\s+(?:power|output)|engine\b/i],
+];
+/* the field label right before a figure, inside its own clause: at most 60
+   characters back and never across a bullet, a semicolon or a sentence end */
+export function powerLabelType(text, index) {
+  const before = String(text || '').slice(Math.max(0, index - 60), index);
+  const clause = before.split(/[•;|]|[.!?](?=\s+[A-ZА-ЯІЇЄҐ])/).pop();
+  for (const [type, re] of POWER_LABEL) if (re.test(clause)) return type;
+  return null;
+}
+export function powerTypeFor(origin, electrified, labelType = null) {
+  if (!electrified) return 'engine';
+  if (origin === 'modification') return 'system';
+  return labelType || 'unknown';
+}
+/* two figures are comparable only when both types are known and equal */
+export function powerComparable(a, b) { return !!a && !!b && a !== 'unknown' && b !== 'unknown' && a === b; }
 
 /* ---------- version kind ----------
    Marketplaces put very different things into the "modification" slot: a
@@ -245,6 +324,54 @@ function resolveField(cands, isConflict = (a, b) => a !== b) {
     candidates: cands.filter(c => c && (c.raw || c.value !== null)).map(c => ({ source: c.source, value: c.value, raw: c.raw || null, strength: c.strength })) };
 }
 
+/* power. Invariant: a conflict exists only between candidates of the same
+   known semantic type that differ after normalisation (two system figures,
+   two engine figures). Different known types are several valid quantities
+   at once (multi_type), recorded per type in by_type. An unknown-type figure
+   never conflicts with a known one and never confirms it: it only makes the
+   generic value ambiguous when it disagrees. A unit-unknown figure never
+   takes part */
+function resolvePower(cands) {
+  const pack = c => ({ source: c.source, value: c.value === undefined ? null : c.value, raw: c.raw || null, strength: c.strength || null,
+    unit: c.unit || null, raw_value: c.raw_value === undefined ? null : c.raw_value, type: c.type || null, converted: c.converted || null });
+  const all = cands.filter(c => c && (c.raw || (c.value !== null && c.value !== undefined)));
+  const list = all.filter(c => c.value !== null && c.value !== undefined);
+  if (!list.length) return { value: null, source: null, strength: null, conflict: false, ambiguous: false, candidates: all.map(pack) };
+  const pool = list.filter(c => c.strength !== 'weak');
+  if (!pool.length) return { value: null, source: null, strength: 'weak', conflict: false, ambiguous: false, candidates: list.map(pack) };
+  let conflict = false, multiType = false, unknownDisagrees = false;
+  for (let i = 0; i < pool.length; i++) {
+    for (let j = i + 1; j < pool.length; j++) {
+      if (powerEquivalent(pool[i].value, pool[j].value)) continue;
+      if (powerComparable(pool[i].type, pool[j].type)) conflict = true;
+      else if (pool[i].type === 'unknown' || pool[j].type === 'unknown' || !pool[i].type || !pool[j].type) unknownDisagrees = true;
+      else multiType = true;
+    }
+  }
+  if (conflict) return { value: null, source: null, strength: null, conflict: true, ambiguous: false, candidates: pool.map(pack) };
+  const rank = { strong: 3, medium: 2, weak: 1 };
+  /* each known type resolved on its own: its sources agree, so one value */
+  const byType = {};
+  for (const c of pool) {
+    if (!c.type || c.type === 'unknown') continue;
+    const cur = byType[c.type];
+    if (!cur) byType[c.type] = { value: c.value, raw: c.raw || null, unit: c.unit || null, raw_value: c.raw_value === undefined ? null : c.raw_value, sources: [c.source] };
+    else if (!cur.sources.includes(c.source)) cur.sources.push(c.source);
+  }
+  for (const t of Object.keys(byType)) byType[t].source = byType[t].sources.join('+');
+  if (multiType || unknownDisagrees) {
+    return { value: null, source: null, strength: null, conflict: false, ambiguous: true, ambiguity: multiType && !unknownDisagrees ? 'distinct_types' : 'unknown_type', by_type: byType, candidates: pool.map(pack) };
+  }
+  /* agreement: known-type candidates carry the value and the strength; an
+     unknown-type figure that agrees adds nothing */
+  const known = pool.filter(c => c.type && c.type !== 'unknown');
+  const basis = known.length ? known : pool;
+  const best = basis.slice().sort((a, b) => rank[b.strength] - rank[a.strength])[0];
+  const sources = [...new Set(basis.map(c => c.source))];
+  const strength = basis.length > 1 && sources.length > 1 ? 'strong' : best.strength;
+  return { value: best.value, raw: best.raw || null, source: sources.join('+'), strength, conflict: false, ambiguous: false, type: best.type || null, by_type: byType, candidates: all.map(pack) };
+}
+
 function decoderCandidates(nhtsa) {
   if (!nhtsa || typeof nhtsa !== 'object') return {};
   const s = decoderStrong(nhtsa) ? 'strong' : 'weak';
@@ -259,7 +386,7 @@ function decoderCandidates(nhtsa) {
     fuel: c(normFuel(nhtsa.FuelTypePrimary, nhtsa.ElectrificationLevel), nhtsa.FuelTypePrimary),
     electrification: c(normElectrification(nhtsa.FuelTypePrimary, nhtsa.ElectrificationLevel), nhtsa.ElectrificationLevel),
     /* vPIC EngineHP is SAE horsepower */
-    power_hp: c(nhtsa.EngineHP ? (Math.round(parseFloat(nhtsa.EngineHP) * 1.014) || null) : null, nhtsa.EngineHP ? nhtsa.EngineHP + ' hp' : null),
+    power_hp: (() => { const p = nhtsa.EngineHP ? parseSaeHp(nhtsa.EngineHP) : null; return p ? { ...c(p.value, p.raw), unit: p.unit, raw_value: p.raw_value, converted: p.converted, origin: 'decoder' } : c(null, nhtsa.EngineHP ? nhtsa.EngineHP + ' hp' : null); })(),
     displacement_l: c(nhtsa.DisplacementL ? (parseFloat(nhtsa.DisplacementL) || null) : null, nhtsa.DisplacementL),
     forced_induction: c(normForcedInduction([nhtsa.Turbo === 'Yes' ? 'turbo' : '', nhtsa.OtherEngineInfo || '', nhtsa.EngineModel || ''].join(' ')), nhtsa.OtherEngineInfo || nhtsa.EngineModel),
     transmission: c(normTransmission(nhtsa.TransmissionStyle), nhtsa.TransmissionStyle),
@@ -284,11 +411,12 @@ function listingCandidates(listing) {
     production_year: c(normYear(l.year), l.year),
     fuel: c(normFuel(mod) || normFuel(title), mod || title),
     electrification: c(normElectrification(mod) || normElectrification(title), mod || title),
-    power_hp: c(normPower(mod), mod),
-    /* every power figure the listing page states (modification plus the
-       marketplace technical block): two different figures are a conflict
-       inside one source, and the conflict must stay visible */
-    power_values: (l.power_hp ? [Number(l.power_hp)] : []).concat(powerValues(l.text || '')).filter(v => Number.isFinite(v) && v > 0),
+    power_hp: (() => { const p = parsePower(mod); return p && p.value !== null ? { ...c(p.value, mod), unit: p.unit, raw_value: p.raw_value, converted: p.converted, raw_figure: p.raw, origin: 'modification' } : c(null, mod); })(),
+    /* every power figure the listing page states besides the modification
+       (seller text, the marketplace technical block), each with its unit and
+       original snippet; a structured figure without a unit stays unknown */
+    power_figures: (l.power_hp !== undefined && l.power_hp !== null && String(l.power_hp).trim() ? [(() => { const p = parsePower(l.power_hp); return p ? { source: 'listing', value: p.value, raw: p.raw, raw_value: p.raw_value, unit: p.unit, converted: p.converted, strength: 'medium', origin: p.unit === 'unknown' ? 'structured_unit_unknown' : 'structured' } : null; })()] : []).filter(Boolean)
+      .concat(powerFigures(l.text || '').map(f => ({ source: 'listing', value: f.value, raw: f.raw, raw_value: f.raw_value, unit: f.unit, converted: f.converted, strength: 'medium', origin: 'text', label_type: f.label_type }))),
     displacement_l: c(normDisplacement(mod) || normDisplacement(title), mod || title),
     forced_induction: c(normForcedInduction(mod) || normForcedInduction(title), mod || title),
     /* the marketplace technical block names the gearbox under a label
@@ -316,7 +444,7 @@ function analysisCandidates(v) {
     production_year: c(normYear(v.year), v.year),
     fuel: c(normFuel(engine) || normFuel(v.fuel), engine || v.fuel),
     electrification: c(normElectrification(engine) || normElectrification(v.fuel), engine || v.fuel),
-    power_hp: c(normPower(engine), engine),
+    power_hp: (() => { const p = parsePower(engine); return p && p.value !== null ? { ...c(p.value, engine), unit: p.unit, raw_value: p.raw_value, converted: p.converted, raw_figure: p.raw, origin: 'analysis' } : c(null, engine); })(),
     displacement_l: c(normDisplacement(engine), engine),
     forced_induction: c(normForcedInduction(engine), engine),
     transmission: c(normTransmission(v.transmission), v.transmission),
@@ -350,11 +478,17 @@ function assemble(dec, lst, ana, prev = null) {
   for (const f of ['make', 'model', 'version', 'model_year', 'production_year', 'fuel', 'electrification', 'displacement_l', 'forced_induction', 'transmission', 'drivetrain', 'body', 'generation']) {
     spec[f] = resolveField([dec[f], lst[f], ana[f]], CONFLICT_RULES[f] || ((a, b) => a !== b));
   }
-  /* power: the listing may state several figures; each is its own candidate */
-  const powerCands = [dec.power_hp, lst.power_hp];
-  for (const v of (lst.power_values || [])) if (!powerCands.some(c => c && c.value !== null && powerEquivalent(c.value, v))) powerCands.push({ source: 'listing', value: v, raw: v + ' hp', strength: 'medium' });
-  powerCands.push(ana.power_hp);
-  spec.power_hp = resolveField(powerCands, CONFLICT_RULES.power_hp);
+  /* power: every figure of every source is its own typed candidate; the
+     semantic type needs the resolved electrification first */
+  const electrified = ELECTRIFIED_POWER.has(spec.electrification.value) || ['hybrid', 'phev', 'electric'].includes(spec.fuel.value);
+  const typed = (cand, origin) => (cand ? { ...cand, type: powerTypeFor(origin, electrified, cand.label_type || null) } : null);
+  const powerCands = [typed(dec.power_hp, 'decoder'), typed(lst.power_hp, 'modification')];
+  for (const f of (lst.power_figures || [])) {
+    if (f.value !== null && powerCands.some(c => c && c.value !== null && c.value !== undefined && powerEquivalent(c.value, f.value))) continue;
+    powerCands.push(typed(f, f.origin));
+  }
+  powerCands.push(typed(ana.power_hp, 'analysis'));
+  spec.power_hp = resolvePower(powerCands);
   /* exact gearbox type inside the automatic family: resolved only when every
      trusted source names the same type; otherwise the family is known and
      the exact type is not, which is a limit of the data and not a conflict */
@@ -435,12 +569,16 @@ export function vehicleSpecPromptBlock(spec) {
   }
   if (spec.transmission_type) fields.transmission_type = spec.transmission_type.exact ? { value: spec.transmission_type.value, exact: true } : { value: null, exact: false, candidates: spec.transmission_type.candidates.map(c => c.value + ' (' + c.source + ')') };
   if (spec.decoder && spec.decoder.engine_text) fields.decoder_engine = spec.decoder.engine_text;
-  const unknown = ['version', 'fuel', 'transmission', 'drivetrain', 'power_hp'].filter(f => spec[f] && spec[f].value === null && !spec[f].conflict);
+  const unknown = ['version', 'fuel', 'transmission', 'drivetrain', 'power_hp'].filter(f => spec[f] && spec[f].value === null && !spec[f].conflict && !spec[f].ambiguous);
   const conflicts = (spec.conflicts || []).map(f => f + ': ' + ((spec[f] && spec[f].candidates) || []).filter(c => c.value !== null).map(c => (c.raw || c.value) + ' (' + c.source + ')').join(' | '));
+  const powerAmbiguous = spec.power_hp && spec.power_hp.ambiguous ? spec.power_hp.candidates.filter(c => c.value !== null).map(c => (c.raw || c.value) + ' [' + (c.type || 'unknown') + ', ' + c.source + ']').join(' | ') : '';
   const lines = ['VEHICLE_SPEC (канонічний паспорт CalCar, зібраний кодом; поля з їхнім джерелом і силою): ' + JSON.stringify(fields)
     + (conflicts.length ? '\nКОНФЛІКТИ ІДЕНТИЧНОСТІ (значення НЕ встановлене, обидва кандидати названі): ' + conflicts.join('; ') : '')
     + (unknown.length ? '\nНЕВІДОМО (жодне джерело не дає значення): ' + unknown.join(', ') + '. Невідоме не виводь із загальних знань про модель: лиши null у шапці і не стверджуй у текстах.' : '')
     + (spec.transmission_type && !spec.transmission_type.exact && spec.transmission_type.family ? '\nКОРОБКА: сімейство встановлене (' + spec.transmission_type.family + '), точний тип ні (кандидати: ' + spec.transmission_type.candidates.map(c => c.value + ' від ' + c.source).join(', ') + '). Варіатор і ступінчастий автомат це одне сімейство: це НЕ "несумісні характеристики" і не розбіжність із продавцем, а невстановлений точний тип; у discrepancies його не клади, у checklist можна лишити перевірку коду агрегату.' : '')];
+  if (powerAmbiguous) {
+    lines.push('ПОТУЖНІСТЬ НЕ ЗВЕДЕНА ДО ОДНОГО ЧИСЛА: джерела називають показники різних типів (' + powerAmbiguous + '). Для гібрида чи електромобіля системна потужність і потужність двигуна це різні величини: це НЕ розбіжність, НЕ конфлікт і НЕ помилка продавця. Не обирай одне число як факт і не проси уточнити "яке з них правильне".');
+  }
   if (spec.decoder && spec.decoder.present && !spec.decoder.strong) {
     lines.push('УВАГА: VIN-декодер розібрав цей VIN НЕПОВНО (ErrorCode ' + (spec.decoder.error_code || '?') + '), тому його технічні поля (' + (spec.decoder.unreliable_fields.join(', ') || 'паливо, обʼєм, привід, коробка, версія') + ') НЕНАДІЙНІ і в паспорт не увійшли. Технічні характеристики бери зі сторінки оголошення, держблоку і фото. Розбіжність "декодер проти оголошення" НЕ створюй: це слабкість декодера, а не проблема авто і не обман продавця.');
   }
@@ -452,7 +590,10 @@ export function vehicleSpecPromptBlock(spec) {
 export function conflictNotes(spec, lang = 'en') {
   const L = ['ua', 'ru', 'en'].includes(lang) ? lang : 'en';
   const out = [];
-  const fmt = c => (SOURCE_LABEL[c.source] ? SOURCE_LABEL[c.source][L] : c.source) + ': ' + (c.raw || c.value);
+  const HPU = L === 'en' ? 'hp' : L === 'ua' ? 'к.с.' : 'л.с.';
+  /* a converted kW figure is shown with its hp equivalent, so "204 кВт" and
+     "204 к.с." read as different figures, not as one number twice */
+  const fmt = c => (SOURCE_LABEL[c.source] ? SOURCE_LABEL[c.source][L] : c.source) + ': ' + (c.raw || c.value) + (c.unit === 'kw' && c.value !== null ? ` (${c.value} ${HPU})` : '');
   for (const f of (spec && spec.conflicts) || []) {
     const x = spec[f];
     if (!x || !Array.isArray(x.candidates)) continue;
@@ -461,6 +602,16 @@ export function conflictNotes(spec, lang = 'en') {
     out.push(L === 'ua' ? `Джерела розходяться щодо: ${label} (${parts.join('; ')}). До огляду авто характеристику не вважаємо встановленою; це не свідчить проти продавця.`
       : L === 'ru' ? `Источники расходятся: ${label} (${parts.join('; ')}). До осмотра характеристику не считаем установленной; это не свидетельствует против продавца.`
       : `Sources disagree on ${label} (${parts.join('; ')}). Until the car is inspected this is not treated as established; it is not evidence against the seller.`);
+  }
+  /* power of an electrified car stated as figures of different types: not a conflict */
+  const pw = spec && spec.power_hp;
+  if (pw && pw.ambiguous && Array.isArray(pw.candidates)) {
+    /* a figure with a known kind is named by its kind: "системна 219 к.с.; двигуна 163.2 к.с." */
+    const KIND = { system: { ua: 'системна', ru: 'системная', en: 'system' }, engine: { ua: 'двигуна', ru: 'двигателя', en: 'engine' }, rated: { ua: 'номінальна', ru: 'номинальная', en: 'rated' } };
+    const parts = pw.candidates.filter(c => c.value !== null).map(c => (KIND[c.type] ? KIND[c.type][L] + ', ' : '') + fmt(c));
+    out.push(L === 'ua' ? `Потужність: джерела називають показники різних типів (${parts.join('; ')}); для гібрида чи електромобіля системна потужність і потужність двигуна це різні величини, тому це не суперечність і не помилка продавця.`
+      : L === 'ru' ? `Мощность: источники называют показатели разных типов (${parts.join('; ')}); для гибрида или электромобиля системная мощность и мощность двигателя это разные величины, поэтому это не противоречие и не ошибка продавца.`
+      : `Power: the sources state figures of different kinds (${parts.join('; ')}); for a hybrid or an electric car the system output and the engine output are different quantities, so this is neither a contradiction nor a seller's error.`);
   }
   /* family known, exact type not: a limit of the data, worded as such */
   const tt = spec && spec.transmission_type;
@@ -530,12 +681,16 @@ export function syncHeaderWithSpec(vehicle, spec, { driveLabel = null } = {}) {
   if (!vehicle || typeof vehicle !== 'object' || !spec) return changes;
   const set = (key, value, why) => { if (vehicle[key] !== value) { changes.push({ field: key, from: vehicle[key] === undefined ? null : vehicle[key], to: value, why }); vehicle[key] = value; } };
   const HEADER_FIELD = { fuel: 'fuel', drivetrain: 'drive', transmission: 'transmission', version: 'trim', model_year: 'model_year', displacement_l: 'engine', forced_induction: 'engine' };
+  /* power that is not one established number (a conflict, or figures of
+     different kinds) leaves the engine line: the analysis may not show one
+     arbitrary figure as if it were confirmed */
+  const powerOpen = (spec.conflicts || []).includes('power_hp') || !!(spec.power_hp && spec.power_hp.ambiguous);
+  if (powerOpen && typeof vehicle.engine === 'string' && POWER_IN_TEXT.test(vehicle.engine)) {
+    set('engine', vehicle.engine.replace(POWER_IN_TEXT, '').replace(/\s*,\s*$/, '').replace(/\s{2,}/g, ' ').trim() || null, (spec.conflicts || []).includes('power_hp') ? 'power_conflict' : 'power_ambiguous');
+  }
+  POWER_IN_TEXT.lastIndex = 0;
   for (const f of spec.conflicts || []) {
-    if (f === 'power_hp') {
-      if (typeof vehicle.engine === 'string' && POWER_IN_TEXT.test(vehicle.engine)) set('engine', vehicle.engine.replace(POWER_IN_TEXT, '').replace(/\s*,\s*$/, '').replace(/\s{2,}/g, ' ').trim() || null, 'power_conflict');
-      POWER_IN_TEXT.lastIndex = 0;
-      continue;
-    }
+    if (f === 'power_hp') continue;
     if (HEADER_FIELD[f] && vehicle[HEADER_FIELD[f]] !== null && vehicle[HEADER_FIELD[f]] !== undefined) set(HEADER_FIELD[f], null, 'identity_conflict');
   }
   const resolved = f => spec[f] && !spec[f].conflict && spec[f].value !== null && spec[f].value !== undefined && spec[f].strength !== 'weak';
@@ -558,9 +713,10 @@ export function publicSpec(spec) {
     if (!x) continue;
     out.fields[f] = { value: x.value === undefined ? null : x.value, source: x.source || null, strength: x.strength || null, conflict: !!x.conflict };
     if (f === 'transmission_type') out.fields[f].exact = !!x.exact;
-    if ((x.conflict || (f === 'transmission_type' && !x.exact)) && Array.isArray(x.candidates)) out.fields[f].candidates = x.candidates.filter(c => c.value !== null).map(c => ({ source: c.source, value: c.value, raw: c.raw || null }));
+    if (f === 'power_hp') { out.fields[f].ambiguous = !!x.ambiguous; if (x.ambiguity) out.fields[f].ambiguity = x.ambiguity; if (x.by_type && Object.keys(x.by_type).length) out.fields[f].by_type = Object.fromEntries(Object.entries(x.by_type).map(([t, v]) => [t, { value: v.value, unit: v.unit, raw_value: v.raw_value, source: v.source }])); }
+    if ((x.conflict || x.ambiguous || (f === 'transmission_type' && !x.exact)) && Array.isArray(x.candidates)) out.fields[f].candidates = x.candidates.filter(c => c.value !== null).map(c => ({ source: c.source, value: c.value, raw: c.raw || null, ...(f === 'power_hp' ? { unit: c.unit || null, raw_value: c.raw_value === undefined ? null : c.raw_value, type: c.type || null, converted: c.converted || null } : {}) }));
   }
   /* genuinely unknown identity fields: no trusted source gives a value and there is no conflict */
-  out.unknown = ['version', 'fuel', 'transmission', 'drivetrain', 'power_hp'].filter(f => spec[f] && spec[f].value === null && !spec[f].conflict);
+  out.unknown = ['version', 'fuel', 'transmission', 'drivetrain', 'power_hp'].filter(f => spec[f] && spec[f].value === null && !spec[f].conflict && !spec[f].ambiguous);
   return out;
 }
