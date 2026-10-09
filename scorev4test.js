@@ -299,21 +299,34 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
     eq(run({ vehicle: { odometer_km: 1000, age_months: 480, powertrain_class: 'petrol' } }).items.find(i => i.key === 'input7:age').amount, 4.0, '40 років = 4.0, без капа');
   }
 
-  /* ===== 9в. вхід 8: кількість власників. 2026-10-08: кількість власників сама по
-     собі не дефект (OWNERS.enabled = false); лічильник лишається у inputs для UI ===== */
+  /* ===== 9в. вхід 8: кількість власників: прогресивна гранична шкала (правило власника 2026-10-09):
+     1..3 = 0; 4..6 по 0.1; 7..9 по 0.2; від 10-го по 0.3; разом не більше 2.0 ===== */
   {
+    const round1 = x => Math.round((x + Number.EPSILON) * 10) / 10, round2 = x => Math.round((x + Number.EPSILON) * 100) / 100;
     const ev = (...ords) => ords.map((o, i) => ({ ordinal: o, date: '20' + (10 + i) + '-01-01' }));
-    const own = (events, reg) => run({ ownerEvents: events, ownersCountRegistry: reg });
-    eq(C.OWNERS.enabled, false, 'штраф за власників має бути вимкнений');
-    for (const n of [1, 2, 3, 5, 7, 10]) {
-      const r = own(ev(...Array.from({ length: n }, (_, i) => i + 1)), n);
-      ok(!r.items.some(i => i.key === 'input8:owners'), 'власників ' + n + ' дали рядок штрафу'); eq(r.inputs.vehicle_owners.owners_count, n, 'owners_count ' + n);
-      eq(r.inputs.vehicle_owners.status, 'not_scored', 'статус власників ' + n); eq(sum(r), 0, 'власників ' + n + ' щось відняли');
+    const own = (events, reg, extra = {}) => run({ ownerEvents: events, ownersCountRegistry: reg, ...extra });
+    const ownN = (n, extra = {}) => own(ev(...Array.from({ length: n }, (_, i) => i + 1)), n, extra);
+    eq(JSON.stringify(C.OWNERS), JSON.stringify({ free: 3, tiers: [[6, 0.1], [9, 0.2]], beyond: 0.3, max: 2.0 }), 'конфіг власників');
+    for (const [n, pen] of [[1, 0], [2, 0], [3, 0], [4, 0.1], [5, 0.2], [6, 0.3], [7, 0.5], [8, 0.7], [9, 0.9], [10, 1.2], [11, 1.5], [12, 1.8], [13, 2.0], [20, 2.0]]) {
+      const r = ownN(n);
+      const it = r.items.find(i => i.key === 'input8:owners');
+      eq(it ? it.amount : 0, pen, 'власників ' + n); eq(V4.ownersPenalty(n), pen, 'ownersPenalty ' + n);
+      eq(r.inputs.vehicle_owners.owners_count, n, 'owners_count ' + n); eq(r.inputs.vehicle_owners.penalty, pen, 'inputs.penalty ' + n);
+      eq(r.vehicle_owners.owners_count, n, 'breakdown owners_count ' + n); eq(r.vehicle_owners.owners_penalty, pen, 'breakdown owners_penalty ' + n);
+      eq(r.inputs.vehicle_owners.status, pen > 0 ? 'applied' : 'clean', 'статус власників ' + n);
       eq(r.availability.ownership_history, 'known', 'availability власників ' + n);
+      if (it) { eq(it.label_key, 'Number of owners', 'label власників'); eq(it.params.owners_count, n, 'params owners_count'); eq(it.params.owners_penalty, pen, 'params owners_penalty'); }
+      eq((r.items.filter(i => i.key === 'input8:owners')).length, it ? 1 : 0, 'рядок власників має бути один');
+      eq(r.final, round1(10 - pen), 'власники ' + n + ' входять у бал рівно один раз');
     }
-    const legacy = { ...C, OWNERS: { ...C.OWNERS, enabled: true } };
-    const legacyOwn = n => computeScoreV4({ findings: [], evidence: { identity_confirmed: true, basics_known: true, photos_count: 15, seller_text_chars: 300, registry_present: true, historical_listings_count: 0, cv_status: 'ok', cv_zones_sufficient: 10, listing_vin: 'WBAJE7C34HG887901' }, listingText: 'x', ownerEvents: ev(...Array.from({ length: n }, (_, i) => i + 1)), ownersCountRegistry: n }, legacy);
-    for (const [n, pen] of [[1, 0], [3, 0.2], [10, 0.9]]) eq((legacyOwn(n).items.find(i => i.key === 'input8:owners') || { amount: 0 }).amount, pen, 'legacy власників ' + n);
+    /* гранична, не ступінчаста: крок між сусідніми лічильниками дорівнює ставці саме цього власника */
+    for (const [n, step] of [[4, 0.1], [6, 0.1], [7, 0.2], [9, 0.2], [10, 0.3], [12, 0.3]]) ok(Math.abs(round2(V4.ownersPenalty(n) - V4.ownersPenalty(n - 1)) - step) < 1e-9, 'гранична ставка ' + n + '-го власника: ' + round2(V4.ownersPenalty(n) - V4.ownersPenalty(n - 1)));
+    eq(V4.ownerMarginalRate(3), 0, 'ставка 3-го'); eq(V4.ownerMarginalRate(4), 0.1, 'ставка 4-го'); eq(V4.ownerMarginalRate(7), 0.2, 'ставка 7-го'); eq(V4.ownerMarginalRate(10), 0.3, 'ставка 10-го'); eq(V4.ownerMarginalRate(50), 0.3, 'ставка 50-го');
+    eq(V4.ownersPenalty(0), 0, '0 власників'); eq(V4.ownersPenalty(null), 0, 'null власників');
+    /* вік не змінює штраф за власників: 10 власників у 5-, 10- і 20-річного авто однакові; обидва штрафи існують разом */
+    const ownersAt = m => ownN(10, { vehicle: { odometer_km: 1000, age_months: m, powertrain_class: 'petrol' } });
+    for (const m of [60, 120, 240]) { const r = ownersAt(m); eq(r.items.find(i => i.key === 'input8:owners').amount, 1.2, 'власники при віці ' + m); ok(r.items.some(i => i.key === 'input7:age'), 'вік при власниках ' + m); }
+    eq(ownersAt(120).final, round1(10 - 1.2 - 1.0), '10 власників + 10 років = 10 - 1.2 - 1.0');
     const unk = own([], null);
     eq(unk.inputs.vehicle_owners.status, 'unavailable', 'невідомо = unavailable'); eq(unk.inputs.vehicle_owners.owners_count, null, 'owners_count null'); eq(sum(unk), 0, 'невідомо = 0');
     eq(unk.availability.ownership_history, 'unavailable', 'availability для Confidence');
@@ -572,8 +585,9 @@ const ok = (c, msg) => { if (!c) errs.push(msg); };
        того ж дня дрібний зазор панелі в накопиченні, тег v4-prod-2026-09-30b.
        2026-10-07: v4-prod-2026-10-07. 2026-10-08: кількість власників не штрафується
        (OWNERS.enabled = false), тег v4-prod-2026-10-08; того ж дня вік 0.1 за рік від точних
-       місяців (AGE.per_year), тег v4-prod-2026-10-08b */
-    const EXPECTED = 'b661c61ffcdb26fea1b9c7724702a77f';
+       місяців (AGE.per_year), тег v4-prod-2026-10-08b. 2026-10-09: прогресивна шкала власників
+       (free 3, 0.1/0.2/0.3, max 2.0), тег v4-prod-2026-10-09 */
+    const EXPECTED = 'e22129162dc1f34059f39b03e0e47e12';
     if (hash !== EXPECTED) errs.push('SCORE_CONFIG_V4 змінився (md5 ' + hash + '), онови CONFIG_TAG і хеш у тесті');
   }
 

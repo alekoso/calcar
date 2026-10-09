@@ -328,8 +328,8 @@ const r1 = x => Math.round((x + Number.EPSILON) * 10) / 10;
     ok(/t\('Maximum supported by available data: \{v\}'\)\.replace\('\{v\}', evidenceLine\.toFixed\(1\)\)/.test(page) && /t\('Confirmed problems: \{v\}'\)\.replace\('\{v\}', '\\u2212' \+ comp\.confirmed_total\.toFixed\(1\)\)/.test(page), 'UI не показує межу за даними і підтверджені недоліки');
     ok(/score_unavailable_reason === 'core_identity_unresolved' \? t\('Vehicle identity not established'\)/.test(page), 'UI не показує причину ідентичності');
     const hash = crypto.createHash('md5').update(JSON.stringify(C4)).digest('hex');
-    eq(hash, 'b661c61ffcdb26fea1b9c7724702a77f', 'SCORE_CONFIG_V4 змінився поза тегом v4-prod-2026-10-08b'); eq(C4.CONFIG_TAG, 'v4-prod-2026-10-08b', 'тег v4');
-    ok(!('enabled' in C4.AGE), 'вік має бути свідомим штрафом без перемикача'); eq(C4.OWNERS.enabled, false, 'власники знову штрафуються');
+    eq(hash, 'e22129162dc1f34059f39b03e0e47e12', 'SCORE_CONFIG_V4 змінився поза тегом v4-prod-2026-10-09'); eq(C4.CONFIG_TAG, 'v4-prod-2026-10-09', 'тег v4');
+    ok(!('enabled' in C4.AGE), 'вік має бути свідомим штрафом без перемикача'); eq(C4.OWNERS.max, 2.0, 'кап власників 2.0');
     for (const f of ['api/score-ceiling.js', 'scoreceilingtest.js']) ok(!fs.readFileSync(f, 'utf8').includes(String.fromCharCode(0x2014)), f + ': довге тире');
   }
 

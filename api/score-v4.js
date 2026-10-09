@@ -21,7 +21,7 @@ import { resolveAccidentEvents, sanitizeFindingsV3, zoneClasses } from './score-
 import { ownerEventsConsistent } from './history-owners.js';
 
 export const SCORE_CONFIG_V4 = {
-  CONFIG_TAG: 'v4-prod-2026-10-08b',
+  CONFIG_TAG: 'v4-prod-2026-10-09',
   STARTING_SCORE: 10,
   /* 2026-09-30: відремонтоване ДТП середньої тяжкості 1.2 -> 0.7: історія
      лишається негативом, але не домінує над нинішнім фізичним станом */
@@ -60,10 +60,13 @@ export const SCORE_CONFIG_V4 = {
      капа; ідеально збережене 10-річне авто має максимум ~9.0 до решти
      чинників. Очікування доказів за віком живе окремо у Confidence */
   AGE: { per_year: 0.1 },
-  /* власники: перший 0, кожен наступний 0.1, без капа. 2026-10-08: кількість
-     власників сама по собі не є дефектом і не штрафується (enabled false);
-     лічильник лишається видимим, вага збережена для реплею старих звітів */
-  OWNERS: { enabled: false, per_extra_owner: 0.1 },
+  /* власники (правило власника 2026-10-09): багато підтверджених змін
+     власника це негатив конкретного авто. Прогресивна гранична шкала:
+     власники 1..3 = 0; 4..6 по 0.1 за кожного понад 3; 7..9 по 0.2;
+     від 10-го по 0.3; разом не більше max. Без нормалізації за віком і без
+     семантики "справжнього" власника: рахується підтверджений реєстром
+     лічильник (resolveOwnersCount); невідомий лічильник = 0 */
+  OWNERS: { free: 3, tiers: [[6, 0.1], [9, 0.2]], beyond: 0.3, max: 2.0 },
   ROLLBACK: { threshold_km: 30000, tiers: [[60000, 1.0], [120000, 2.0], [Infinity, 3.0]], platform_flag: 0.8, same_day_ms: 36 * 3600 * 1000, dedupe_km: 1000 },
   SELLER: {
     vehicle_not_running_or_unit_replacement: 5.0, major_powertrain_symptom: 3.0, generic_powertrain_warning: 1.0,
@@ -651,14 +654,26 @@ export function resolveOwnersCount(ownerEvents, registryCount) {
   const rc = typeof registryCount === 'number' && registryCount > 0 ? registryCount : undefined;
   return ownerEventsConsistent(sorted, rc) ? sorted.length : null;
 }
+/* гранична ставка за k-го власника: 0 до free, далі за tiers (верхня межа
+   включно), понад останню межу beyond */
+export function ownerMarginalRate(k, cfg = SCORE_CONFIG_V4) {
+  const O = cfg.OWNERS;
+  if (k <= O.free) return 0;
+  for (const [upto, rate] of O.tiers) if (k <= upto) return rate;
+  return O.beyond;
+}
+export function ownersPenalty(count, cfg = SCORE_CONFIG_V4) {
+  if (!Number.isInteger(count) || count <= 0) return 0;
+  let sum = 0;
+  for (let k = 1; k <= count; k++) sum += ownerMarginalRate(k, cfg);
+  return round2(Math.min(cfg.OWNERS.max, sum));
+}
 function ownersInput(inp, cfg) {
   const count = resolveOwnersCount(inp.ownerEvents, inp.ownersCountRegistry);
-  if (count === null) return { items: [], available: false, status: 'unavailable', owners_count: null };
-  /* кількість власників відома і показується, але сама по собі не штрафується */
-  if (cfg.OWNERS.enabled === false) return { items: [], available: true, status: 'not_scored', owners_count: count };
-  const amount = round2(Math.max(0, count - 1) * cfg.OWNERS.per_extra_owner);
-  const items = amount > 0 ? [{ key: 'input8:owners', input: 'vehicle_owners', amount, label_key: 'Number of owners', params: { owners_count: count }, evidence: [{ source: 'registry', ref: 'platform_registry', description: 'owners ' + count }] }] : [];
-  return { items, available: true, status: amount > 0 ? 'applied' : 'clean', owners_count: count };
+  if (count === null) return { items: [], available: false, status: 'unavailable', owners_count: null, owners_penalty: 0 };
+  const amount = ownersPenalty(count, cfg);
+  const items = amount > 0 ? [{ key: 'input8:owners', input: 'vehicle_owners', amount, label_key: 'Number of owners', params: { owners_count: count, owners_penalty: amount }, evidence: [{ source: 'registry', ref: 'platform_registry', description: 'owners ' + count }] }] : [];
+  return { items, available: true, status: amount > 0 ? 'applied' : 'clean', owners_count: count, owners_penalty: amount };
 }
 
 /* ---------- 5. відкат пробігу ---------- */
@@ -943,7 +958,7 @@ export function computeScoreV4(input, cfg = SCORE_CONFIG_V4) {
     mileage_points: roll.points,
     mileage_intensity: inten.detail,
     vehicle_age: age.detail,
-    vehicle_owners: { owners_count: owners.owners_count, status: owners.status },
+    vehicle_owners: { owners_count: owners.owners_count, owners_penalty: owners.owners_penalty, status: owners.status },
     availability: {
       hv: !!inp.historicalVisual, auction_record: ev.auction_record_exists === true, registry: ev.registry_present === true,
       cv_exterior: cur.body.available, cv_interior: cur.interior.available, cv_status: ev.cv_status || null,
