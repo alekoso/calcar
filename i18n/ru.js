@@ -970,6 +970,7 @@ window.CALCAR_DICTS.ru = {
   'Resuming your analysis…': 'Возобновляем твой анализ…',
   'Recent checks on this device': 'Недавние проверки на этом устройстве',
   'The report is not ready yet': 'Отчёт ещё не готов',
+  'CalCar could not form the conclusion for this report. The score and the sections below are complete.': 'CalCar не смог сформировать вывод для этого отчёта. Оценка и разделы ниже готовы.',
   'Report not found': 'Отчёт не найден',
   'Check this car: {title}': 'Проверка авто: {title}',
   'The analysis did not finish in time. Try again, the second run is usually faster': 'Анализ не успел завершиться. Попробуй ещё раз, обычно со второй попытки быстрее',

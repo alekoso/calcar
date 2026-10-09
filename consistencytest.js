@@ -260,7 +260,7 @@ const deep = (o, p, v) => { const ks = p.split('.'); let c = o; for (const k of 
   const fTurbo = canonicalFacts(report({ _meta: turboMeta }));
   const fSc = canonicalFacts(report());
   const sc = (s, f) => sentenceViolations(s, f).filter(v => v.domain === 'forced_induction' && v.found === 'supercharger');
-  ok('12. version bumped to rc-v3.1', RC.CONSISTENCY_VERSION === 'rc-v3.1');
+  ok('12. version bumped to rc-v3.2', RC.CONSISTENCY_VERSION === 'rc-v3.2');
   for (const s of ['Компрессор пневмоподвески на таком пробеге может потребовать замены.', 'Проверить компрессор пневмоподвески.',
     'Стойки, компрессор и клапанный блок AIRMATIC могут потребовать ремонта.', 'Пневмокомпрессор работает слишком долго.',
     'Компресор пневмопідвіски на такому пробігу може потребувати заміни.', 'Стійки, компресор і блок клапанів пневмопідвіски дорогі в ремонті.',

@@ -770,7 +770,7 @@ const page = fs.readFileSync('result-check.html', 'utf8');
     btnEl.getBoundingClientRect = () => ({ top: -400 });
     toggle();
     if (fullEl.style.display !== 'none' || order.join() !== 'after,before,scroll' || lbl.textContent !== 'Read the full reasoning' || btnEl.attrs['aria-expanded'] !== 'false') errs.push('згорнутий висновок: кнопка не під превʼю або зникла з екрана (' + order.join() + ')');
-    if (!/  pdMorePlace\(false\);\n  if \(fc && typeof fc\.headline/.test(page)) errs.push('після перемалювання звіту кнопка розбору не повертається під превʼю');
+    if (!/  pdMorePlace\(false\);\n  if \(fc && typeof fc\.body/.test(page)) errs.push('після перемалювання звіту кнопка розбору не повертається під превʼю');
     /* відгук: на телефоні питання окремим рядком, обидві відповіді в один ряд */
     if (!page.includes('@media(max-width:620px){.fbx-row .fbx-q{flex:1 0 100%}.fbx-row .fbx-btn{flex:1 1 0;min-width:112px;height:38px;white-space:nowrap}}')) errs.push('кнопки відгуку на телефоні не в один ряд');
   }

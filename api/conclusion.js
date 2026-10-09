@@ -509,16 +509,45 @@ export function sanitizeConclusion(raw) {
       if (paras.length >= CONCLUSION_LIMITS.paragraphs || total + t.length > CONCLUSION_LIMITS.body) {
         /* ліміт: цілий абзац відкидається, речення посередині не ріжеться */
         if (!paras.length) paras.push(cutAtBoundary(t, CONCLUSION_LIMITS.body));
-        return headline && paras.length ? { headline, body: paras.join('\n\n'), truncated: true, ...(Array.isArray(raw.checks) ? { checks: raw.checks.slice(0, 6) } : {}) } : null;
+        return paras.length ? { headline, body: paras.join('\n\n'), truncated: true, ...(Array.isArray(raw.checks) ? { checks: raw.checks.slice(0, 6) } : {}) } : null;
       }
       paras.push(t);
       total += t.length;
     }
   }
-  if (!headline || !paras.length) return null;
+  /* the core of a conclusion is its text; a missing headline is survivable
+     (the page hides the lead), a missing text is not */
+  if (!paras.length) return null;
   const out = { headline, body: paras.join('\n\n') };
   /* checks are sanitized by checklist-merge.js against the checklist snapshot */
   if (Array.isArray(raw.checks)) out.checks = raw.checks.slice(0, 6);
+  return out;
+}
+
+/* ---------- readiness invariant ----------
+   A finished report with a numeric Score is never shown without a
+   conclusion. What is visible, in order: the structured Final Conclusion
+   (body present); the verdict summary written by the main analysis and
+   already passed through the same consistency gate; nothing, which the page
+   shows as an explicit "could not form the conclusion" state. No new model
+   call is made for the fallback. The result is recorded in
+   _meta.final_conclusion next to the provider fields that are already there:
+   visible, fallback_used, fallback_source, fallback_cause (the status or
+   reason of the structured conclusion that was lost), headline_missing */
+export const CONCLUSION_VISIBLE = ['structured', 'verdict_summary', 'none'];
+export function conclusionReadiness(report) {
+  if (!isObj(report)) return { visible: 'none', fallback_used: true, fallback_source: null, fallback_cause: 'no_report' };
+  const fc = report.final_conclusion;
+  const structured = isObj(fc) && typeof fc.body === 'string' && !!fc.body.trim();
+  const summary = isObj(report.verdict) && typeof report.verdict.summary === 'string' && !!report.verdict.summary.trim();
+  const visible = structured ? 'structured' : summary ? 'verdict_summary' : 'none';
+  const m = isObj(report._meta) && isObj(report._meta.final_conclusion) ? report._meta.final_conclusion : {};
+  const out = {
+    visible, fallback_used: visible !== 'structured', fallback_source: visible === 'verdict_summary' ? 'verdict_summary' : null,
+    fallback_cause: visible === 'structured' ? null : (m.reason || m.status || 'missing'),
+    ...(structured && !(typeof fc.headline === 'string' && fc.headline.trim()) ? { headline_missing: true } : {}),
+  };
+  if (isObj(report._meta)) report._meta.final_conclusion = { ...m, ...out };
   return out;
 }
 

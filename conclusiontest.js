@@ -122,7 +122,7 @@ const REPORT = {
   /* ---------- відповідь моделі ---------- */
   const s1 = sanitizeConclusion({ headline: 'Багатий GL63 ' + DASH + ' але історія складна.', paragraphs: ['Перший абзац ' + DASH + ' з думкою.\n\nДругий абзац.', '- третій абзац', '', 42] });
   ok(s1 && s1.headline === 'Багатий GL63, але історія складна' && s1.body === 'Перший абзац, з думкою.\n\nДругий абзац.\n\nтретій абзац', 'абзаци не збережені або тире не прибране: ' + JSON.stringify(s1));
-  ok(sanitizeConclusion({ headline: '', paragraphs: ['x'] }) === null && sanitizeConclusion({ headline: 'x', paragraphs: [] }) === null && sanitizeConclusion(null) === null, 'неповна відповідь не відхиляється');
+  ok(sanitizeConclusion({ headline: '', paragraphs: ['x'] }) && sanitizeConclusion({ headline: '', paragraphs: ['x'] }).body === 'x' && sanitizeConclusion({ headline: 'x', paragraphs: [] }) === null && sanitizeConclusion(null) === null, 'ядро висновку це текст: без заголовка приймається, без тексту ні');
   ok(sanitizeConclusion({ headline: 'H', body: 'A.\n\nB.' }).body === 'A.\n\nB.', 'body рядком не приймається');
   const longPara = ('Речення про машину. ').repeat(120).trim();
   const many = sanitizeConclusion({ headline: 'H', paragraphs: [longPara, longPara, longPara, longPara] });

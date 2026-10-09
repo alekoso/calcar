@@ -2536,14 +2536,18 @@ function boot2(D){
     if (open && $('pdMoreBtn').getBoundingClientRect().top < 0) $('pdMoreBtn').scrollIntoView({ block: 'center' });
   };
   pdMorePlace(false);
-  if (fc && typeof fc.headline === 'string' && fc.headline.trim() && typeof fc.body === 'string' && fc.body.trim()) {
+  if (fc && typeof fc.body === 'string' && fc.body.trim()) {
     /* Final Conclusion: заголовок, превʼю і решта тексту за кнопкою "Читати
        повний розбір". Превʼю закінчується лише на межі абзацу чи речення.
-       Абзаци розділені порожнім рядком */
+       Абзаци розділені порожнім рядком. Ядро висновку це текст: без
+       заголовка лід просто не показується */
     $('verdictCard').style.display = '';
+    $('verdictCard').dataset.conclusion = 'structured';
     $('pdBlock').style.display = '';
     $('vText').style.display = 'none';
-    $('pdHeadline').textContent = clean(fc.headline);
+    const fcHead = typeof fc.headline === 'string' ? clean(fc.headline) : '';
+    $('pdHeadline').textContent = fcHead;
+    $('pdHeadline').style.display = fcHead ? '' : 'none';
     const fcParts = fcPreview(clean(fc.body).split(/\n\s*\n/).map(p => p.trim()).filter(Boolean));
     $('pdShort').innerHTML = fcParts.head.map(p => '<p class="pd-short">' + esc(p) + '</p>').join('');
     $('pdReasoning').innerHTML = fcParts.rest.map(p => '<p>' + esc(p) + '</p>').join('');
@@ -2594,6 +2598,18 @@ function boot2(D){
     } else {
       $('pdMoreBtn').style.display = 'none';
     }
+  } else if (fcGen) {
+    /* інваріант готовності: звіт з Оцінкою ніколи не ховає картку висновку.
+       Структурованого висновку немає (збій виклику або гейт узгодженості):
+       показується підсумок вердикту, який пройшов той самий гейт; немає і
+       його: явний стан замість порожнього місця. Нового виклику моделі
+       заради цього не буває */
+    $('verdictCard').style.display = '';
+    $('pdBlock').style.display = 'none';
+    $('vText').style.display = '';
+    const hasSummary = !!(vd && typeof vd.summary === 'string' && vd.summary.trim());
+    $('verdictCard').dataset.conclusion = hasSummary ? 'verdict_summary' : 'none';
+    if (!hasSummary) $('vText').textContent = t('CalCar could not form the conclusion for this report. The score and the sections below are complete.');
   }
   if (vd && vd.summary) {
     if (!fcGen && !(pd && pd.headline)) $('verdictCard').style.display = '';

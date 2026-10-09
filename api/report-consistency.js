@@ -33,7 +33,7 @@
 
    Not a Vercel function: imported by api/check.js. */
 
-export const CONSISTENCY_VERSION = 'rc-v3.1';
+export const CONSISTENCY_VERSION = 'rc-v3.2';
 export const CONSISTENCY_DOMAINS = ['fuel', 'forced_induction', 'drivetrain', 'transmission', 'version', 'power_hp', 'identity_conflict', 'identity_unknown', 'airbags', 'accident', 'mileage', 'dashboard'];
 /* share of Final Conclusion sentences that may be removed before the block is hidden */
 export const FC_MAX_REMOVED_SHARE = 0.25;
@@ -109,6 +109,8 @@ const rx = (src, flags = 'i') => new RegExp(src.replace(/\\w/g, L).replace(/<B/g
    two values or is hedged is not the report's own claim */
 const REPORTED = rx("(?:продав\\w+|оголошенн\\w*|объявлени\\w*|декодер\\w*|decoder|площадк\\w*|реєстр\\w*|реестр\\w*|картк\\w*|карточк\\w*|seller|listing|marketplace|registry)\\S*\\s+(?:\\S+\\s+){0,2}(?:вказ\\w*|указ\\w*|каже|говор\\w*|назива\\w*|называ\\w*|заявля\\w*|стверджу\\w*|утвержда\\w*|пише|пишет|описує|описыва\\w*|says|claims|describes|lists|calls|states|indicates|shows)|за словами|зі слів|со слов|по словам|according to|заявлен\\w*|\\bvin\\b|розшифр\\w*|расшифр\\w*|декодер|decoder|джерела розходяться|источники расходятся|sources disagree|розбіжн\\w*|расхожд\\w*|не встановлен\\w*|не установлен\\w*|not established|не збігається|не совпадает|не підтверджу\\w*|не подтвержда\\w*|not confirmed|unconfirmed|замість|вместо|instead of|rather than|<Bа неB>|<Bа не\\s|, але це|, но это|, but (?:it|this|that) is|,? not an? ");
 const HEDGED = rx("не виключ\\w*|нельзя исключ\\w*|не можна виключ\\w*|cannot be ruled out|can't be ruled out|можлив\\w*|возможн\\w*|може бути|может быть|\\bmay\\b|\\bmight\\b|\\bcould\\b|ймовірн\\w*|вероятн\\w*|likely|perhaps|підозр\\w*|подозр\\w*|suspect|<Bякщо|<Bесли|\\bif\\b|<BчиB>|<BлиB>|whether");
+/* "as if X were not so": the sentence presupposes X */
+const COUNTERFACTUAL = rx("<B(?:будто|как будто|словно|точно бы|наче|неначе|ніби|нібито|немов|немовби|мовби|as if|as though|like there (?:was|were|had been)|like it (?:was|were|had) never)B>");
 const NEG_BEFORE = rx("(?:^|[\\s(«\"'])(не|ні|нет|без|no|not|non|never|neither|nor|without|isn't|wasn't|aren't|weren't|don't|doesn't|didn't|cannot|can't|hasn't|haven't)[\\s-]*(?:\\S+\\s+){0,2}$");
 
 function negated(sentence, idx) { return NEG_BEFORE.test(sentence.slice(Math.max(0, idx - 40), idx)); }
@@ -317,8 +319,11 @@ export function sentenceViolations(sentence, facts, { section = '', context = ''
   if (facts.airbags !== true && never && !hedged && !reported && !instruction) out.push({ domain: 'airbags', field: 'airbags', found: 'never_deployed', canonical: facts.airbags === false ? 'not_visible_only' : 'unknown' });
   if (SRS_HEALTHY.test(s) && !hedged && !reported && !instruction) out.push({ domain: 'airbags', field: 'srs_health', found: 'healthy', canonical: 'no_diagnostic_evidence' });
   if (LIGHT_FROM_AIRBAGS.test(s) && !reported && !instruction) out.push({ domain: 'accident', field: 'severity_basis', found: 'light_from_airbags', canonical: 'airbags_not_severity' });
-  /* accident */
-  if (facts.accident === 'recorded' && !instruction && ACCIDENT_NONE.test(s) && !reported) out.push({ domain: 'accident', field: 'accident', found: 'none', canonical: 'recorded' });
+  /* accident. rc-v3.2: a counterfactual ("priced as if there had been no
+     accident", "будто аварии не было") presupposes the accident and is
+     not a claim that there was none (BMW X5 2023, 2026-10-09: a valid
+     conclusion was hidden over such a headline) */
+  if (facts.accident === 'recorded' && !instruction && ACCIDENT_NONE.test(s) && !reported && !COUNTERFACTUAL.test(s)) out.push({ domain: 'accident', field: 'accident', found: 'none', canonical: 'recorded' });
   if (facts.accident === 'none' && !hedged && !reported && !instruction && ACCIDENT_HAD.test(s) && !ACCIDENT_NONE.test(s)) out.push({ domain: 'accident', field: 'accident', found: 'had', canonical: 'none' });
   /* mileage */
   const m = facts.mileage || {};

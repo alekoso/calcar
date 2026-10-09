@@ -21,7 +21,7 @@ import {
 } from './visual-signals.js';
 import { hasHistoricalPhotoEvidence, stripUnbackedPhotoClaims } from './historical-claims.js';
 /* Final Conclusion: окремий synthesis-виклик по вже готовому звіту */
-import { CONCLUSION_TIMEOUT_MS, CONCLUSION_MIN_BUDGET_MS } from './conclusion.js';
+import { CONCLUSION_TIMEOUT_MS, CONCLUSION_MIN_BUDGET_MS, conclusionReadiness } from './conclusion.js';
 /* provider of the Final Conclusion: Claude by default, one OpenAI fallback on failure (env CONCLUSION_PROVIDER) */
 import { runProductionConclusion } from './conclusion-provider.js';
 import { parseOwnerEvents, annotateOwnerOrdinals, describeOwnerEvents, addMissingOwnerEvents } from './history-owners.js';
@@ -1351,8 +1351,8 @@ export function applyConclusionLanguage(fc, report, lang = 'en') {
 /* результат фінального виклику -> поля звіту. true, якщо висновок доданий.
    Директива "купуй / не купуй" у тексті лише фіксується в діагностиці */
 export function attachFinalConclusion(parsed, fc, lang = 'en') {
-  if (!parsed || !fc || fc.status !== 'ok' || !fc.conclusion || !fc.conclusion.headline || !fc.conclusion.body) return false;
-  parsed.final_conclusion = applyConclusionLanguage({ headline: fc.conclusion.headline, body: fc.conclusion.body }, parsed, lang);
+  if (!parsed || !fc || fc.status !== 'ok' || !fc.conclusion || typeof fc.conclusion.body !== 'string' || !fc.conclusion.body.trim()) return false;
+  parsed.final_conclusion = applyConclusionLanguage({ headline: typeof fc.conclusion.headline === 'string' ? fc.conclusion.headline : '', body: fc.conclusion.body }, parsed, lang);
   const hits = directiveVerdictHits({ headline: parsed.final_conclusion.headline, reasoning: parsed.final_conclusion.body });
   if (hits.length) console.log('[final-conclusion]', JSON.stringify({ op: 'directive', lang, hits }));
   if (parsed._meta && typeof parsed._meta === 'object') {
@@ -4368,6 +4368,16 @@ async function runCheck(req, res, job) {
     } catch (e) {
       console.log('[consistency]', JSON.stringify({ op: 'enforce', error: String((e && e.message) || e).slice(0, 160), vin: listing.vin || null }));
       mark('consistency', Date.now() - tRc, 'error', { reason: String((e && e.message) || e).slice(0, 80) });
+    }
+    /* ---- readiness invariant (conclusion.js) ----
+       Runs after the gate, which is the last step that can remove the
+       structured conclusion. A report with a Score always carries a
+       visible conclusion: structured, or the verdict summary as fallback,
+       or an explicit "none" the page shows as a state, never a hidden card */
+    try {
+      const ready = conclusionReadiness(parsed);
+      if (ready.visible !== 'structured') console.log('[final-conclusion]', JSON.stringify({ op: 'readiness', visible: ready.visible, fallback_cause: ready.fallback_cause, provider: (parsed._meta.final_conclusion && parsed._meta.final_conclusion.provider) || null, vin: listing.vin || null }));
+    } catch (e) { console.log('[final-conclusion]', JSON.stringify({ op: 'readiness', error: String((e && e.message) || e).slice(0, 160), vin: listing.vin || null }));
     }
     timings.total_ms = Date.now() - tRun;
 
