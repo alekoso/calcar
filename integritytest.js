@@ -211,7 +211,7 @@ const ok = (name, cond, detail) => { checks++; if (!cond) errs.push(name + (deta
     const html = '{"id":"basicInfoGenerationBase","items":[{"content":"X166 •"},{"content":"Brand-AMG X 63 AT (557 к.с.)"}]}';
     ok('R7. модифікація читається зі структурованого рядка площадки', run(html, 'X166') === 'Brand-AMG X 63 AT (557 к.с.)', String(run(html, 'X166')));
     ok('R8. рядка немає або в ньому лише покоління: версії немає, нічого не вигадано', run('{"id":"other"}', 'X166') === null && run('{"id":"basicInfoGenerationBase","items":[{"content":"X166"}]}', 'X166') === null);
-    ok('R9. версія площадки йде у вибір ціни нового лише коли декодер версії не дав (і лише декодер з чистим розбором)', /trim: \(spec0\.decoder\.strong && nhtsa && \(nhtsa\.Trim \|\| nhtsa\.Series\)\) \|\| listing\.modification \|\| null/.test(src) && (src.match(/trim: (?:spec0|vehicleSpec)\.version\.value \|\| null/g) || []).length >= 3 && !/\(nhtsa && \(nhtsa\.Trim \|\| nhtsa\.Series\)\) \|\| listing\.modification \|\| null, body/.test(src));
+    ok('R9. версія площадки йде у вибір ціни нового лише коли канонічна версія (чистий декодер і площадка) її не дала; у конфлікті пошук не звужується', /trim: spec0\.version && spec0\.version\.conflict \? null : \(\(spec0\.version && spec0\.version\.value\) \|\| listing\.modification \|\| null\)/.test(src) && (src.match(/trim: (?:spec0|vehicleSpec)\.version\.value \|\| null/g) || []).length >= 3 && !/\(nhtsa && \(nhtsa\.Trim \|\| nhtsa\.Series\)\) \|\| listing\.modification \|\| null, body/.test(src));
   }
 
   fs.rmSync(dir, { recursive: true, force: true });

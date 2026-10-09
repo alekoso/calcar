@@ -148,9 +148,12 @@ const BASE = {
     const { log: l2 } = run(r2);
     ok('6b. no identity step when the checklist already verifies that field', !l2.added.some(a => a.source === 'identity'));
     const r3 = clone(BASE);
-    r3._meta.vehicle_spec = { conflicts: ['version'], fields: { version: { value: null, conflict: true, candidates: [{ value: 'S' }, { value: 'SE' }] } } };
+    r3._meta.vehicle_spec = { conflicts: ['version'], fields: { version: { value: null, conflict: true, candidates: [{ source: 'decoder', value: 'S' }, { source: 'analysis', value: 'SE' }] } } };
     const { log: l3 } = run(r3);
-    ok('6c. a trim (version) conflict adds no checklist step', !l3.added.some(a => a.source === 'identity'));
+    /* identity status 2026-10-09: a version the sources name differently gets
+       one concrete step that says who said what and how to settle it */
+    const vstep = r3.checklist.find(t => /^Версия/.test(t)) || '';
+    ok('6c. a trim (version) conflict adds one concrete step naming each source', l3.added.filter(a => a.source === 'identity').length === 1 && /декодер VIN: S;/.test(vstep) && /разбор страницы: SE/.test(vstep) && /техпаспорт/.test(vstep), JSON.stringify(r3.checklist));
     const r4 = clone(BASE);
     r4.checklist = BASE.checklist.slice(0, 2);
     r4._meta.vehicle_spec = { conflicts: [], fields: { transmission_type: { value: null, exact: false, candidates: [{ value: 'automatic' }, { value: 'cvt' }] } } };

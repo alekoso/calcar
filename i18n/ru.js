@@ -249,6 +249,8 @@ window.CALCAR_DICTS.ru = {
   'Partially checked': 'Проверено частично',
   'Enough data': 'Данных достаточно',
   'Studied in detail': 'Автомобиль изучен подробно',
+  'but the vehicle configuration is not established': 'но конфигурация автомобиля не установлена',
+  'but the version is not confirmed': 'но версия не подтверждена',
   'Accident: light damage': 'ДТП, лёгкие повреждения',
   'Accident: medium damage': 'ДТП средней тяжести',
   'Accident: heavy damage': 'ДТП, тяжёлые повреждения',

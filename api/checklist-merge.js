@@ -73,6 +73,9 @@ export function assertsFault(text) { return FAULT.test(String(text || '')) && !S
    reading, not what to inspect, and marketplace generation strings still
    reach it, so it does not produce a checklist step */
 const ID_WORDS = {
+  model: /модел|model/i,
+  generation: /покол|generation/i,
+  version: /верси|версі|version|комплектац|модифікац|модификац|\btrim\b/i,
   power_hp: /потужн|мощн|horsepower|power|к\.?\s?с|л\.?\s?с|\bhp\b/i,
   fuel: /палив|топлив|fuel|бензин|дизел|petrol|diesel/i,
   electrification: /гібрид|гибрид|hybrid|mhev|phev/i,
@@ -82,6 +85,9 @@ const ID_WORDS = {
   drivetrain: /привід|привод|drivetrain|awd|4wd|4x4/i,
 };
 const ID_LABEL = {
+  model: { ua: 'Модель', ru: 'Модель', en: 'Model' },
+  generation: { ua: 'Покоління', ru: 'Поколение', en: 'Generation' },
+  version: { ua: 'Версія', ru: 'Версия', en: 'Version' },
   power_hp: { ua: 'Потужність двигуна', ru: 'Мощность двигателя', en: 'Engine power' },
   fuel: { ua: 'Тип палива', ru: 'Тип топлива', en: 'Fuel type' },
   electrification: { ua: 'Тип гібридної системи', ru: 'Тип гибридной системы', en: 'Hybrid system type' },
@@ -97,12 +103,24 @@ const HP = { ua: 'к.с.', ru: 'л.с.', en: 'hp' };
 const OR = { ua: ' або ', ru: ' или ', en: ' or ' };
 const TT = { cvt: { ua: 'варіатор', ru: 'вариатор', en: 'CVT' }, automatic: { ua: 'ступінчастий автомат', ru: 'ступенчатый автомат', en: 'stepped automatic' }, dct: { ua: 'роботизована коробка', ru: 'роботизированная коробка', en: 'dual-clutch gearbox' } };
 
+/* a naming conflict (model line, generation, version) is settled by the
+   VIN plate and the documents; the step names what each source said */
+const SRC = { decoder: { ua: 'декодер VIN', ru: 'декодер VIN', en: 'VIN decoder' }, listing: { ua: 'оголошення', ru: 'объявление', en: 'listing' }, analysis: { ua: 'розбір сторінки', ru: 'разбор страницы', en: 'page analysis' } };
+const NAMING = ['model', 'generation', 'version'];
 function identitySteps(spec, lang) {
   const L2 = lang === 'ua' || lang === 'en' ? lang : 'ru';
   const out = [];
   if (!isObj(spec) || !isObj(spec.fields)) return out;
   for (const f of Array.isArray(spec.conflicts) ? spec.conflicts : []) {
     if (!ID_LABEL[f]) continue;
+    if (NAMING.includes(f)) {
+      const named = [...new Set((spec.fields[f] && Array.isArray(spec.fields[f].candidates) ? spec.fields[f].candidates : []).filter(c => c && (c.raw || c.value)).map(c => (SRC[c.source] ? SRC[c.source][L2] : c.source) + ': ' + String(c.raw || c.value).slice(0, 40)))];
+      const list = named.length ? ' (' + named.join('; ') + ')' : '';
+      out.push({ field: f, text: L2 === 'ua' ? `${ID_LABEL[f].ua}: джерела називають її по-різному${list}; звірити VIN на кузові і в техпаспорті з даними оголошення і встановити фактичне значення.`
+        : L2 === 'en' ? `${ID_LABEL[f].en}: the sources name it differently${list}; compare the VIN on the body and in the registration papers with the listing and establish the actual value.`
+        : `${ID_LABEL[f].ru}: источники называют её по-разному${list}; сверить VIN на кузове и в техпаспорте с данными объявления и установить фактическое значение.` });
+      continue;
+    }
     const cands = (spec.fields[f] && Array.isArray(spec.fields[f].candidates) ? spec.fields[f].candidates : []).map(c => c && c.value).filter(v => v !== null && v !== undefined);
     /* power: each candidate in the unit its source used; a converted kW
        figure shows both ("204 кВт (277 л.с.)"), never a bare normalised number */

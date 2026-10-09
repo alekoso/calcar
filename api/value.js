@@ -699,7 +699,10 @@ export function buildValueCurve({ price = null, currency = null, price_context =
       rejection_reason: np.basis !== 'reverse_estimate' ? null : np.reason === 'performance_version_msrp_not_found' ? np.reason : np.rejected.length ? np.rejected[0].reason : null,
       /* MSRP ринку-джерела: точна версія або діапазон модельного року як
          межі правдоподібності зворотної оцінки */
-      msrp: np.msrp || null,
+      /* the version scope of the selection follows the canonical identity:
+         with version_status conflict or unknown no exact-version price was
+         asked for, and the reader can see it */
+      msrp: np.msrp ? { ...np.msrp, selection: np.msrp.selection ? { ...np.msrp.selection, version_status: identity.version_status || null } : np.msrp.selection } : null,
       /* факт із джерела у контракті Model Intelligence (область: марка,
          модель, покоління, версія, рік, ринок, валюта, джерело, довіра).
          Зворотна оцінка фактом не є: fact лишається null */

@@ -148,7 +148,7 @@ const DASH = String.fromCharCode(0x2014);
   ok('6a. check.js: identity-field discrepancies are dropped as the passport\'s business', /const f = identityFieldOf\(it\);/.test(SRC) && /reason: 'identity_field'/.test(SRC));
   ok('6b. no model-specific identity hacks', !/quattro\s*=|Tiptronic/.test(fs.readFileSync('api/vehicle-spec.js', 'utf8')) && !/auto\.ria|autoria/i.test(fs.readFileSync('api/vehicle-spec.js', 'utf8')));
   ok('6c. FC context exposes canonical version, power, electrification, exact gearbox, both years, unknown list', /version: str\(vsv\('version'\), 80\)/.test(fs.readFileSync('api/conclusion.js', 'utf8')) && /identity_unknown:/.test(fs.readFileSync('api/conclusion.js', 'utf8')));
-  ok('6d. ceiling core identity does not include version or power (a trim conflict never zeroes the score)', !/IDENTITY_CORE: \[[^\]]*(?:version|power_hp)/.test(fs.readFileSync('api/score-ceiling.js', 'utf8')));
+  ok('6d. the one core identity list (vehicle-spec, read by the ceiling) does not include version or power (a trim conflict never zeroes the score)', !M.IDENTITY_CORE_FIELDS.includes('version') && !M.IDENTITY_CORE_FIELDS.includes('power_hp') && /IDENTITY_CORE: IDENTITY_CORE_FIELDS/.test(fs.readFileSync('api/score-ceiling.js', 'utf8')));
   for (const f of ['api/vehicle-spec.js', 'api/report-consistency.js', 'api/conclusion.js', 'identityinvarianttest.js']) ok('no em dash in ' + f, !fs.readFileSync(f, 'utf8').includes(DASH));
 
   fs.rmSync(dir, { recursive: true, force: true });

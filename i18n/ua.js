@@ -249,6 +249,8 @@ window.CALCAR_DICTS.ua = {
   'Partially checked': 'Перевірено частково',
   'Enough data': 'Даних достатньо',
   'Studied in detail': 'Автомобіль вивчено детально',
+  'but the vehicle configuration is not established': 'але конфігурацію автомобіля не встановлено',
+  'but the version is not confirmed': 'але версію не підтверджено',
   'Accident: light damage': 'ДТП, легкі пошкодження',
   'Accident: medium damage': 'ДТП середньої тяжкості',
   'Accident: heavy damage': 'ДТП, тяжкі пошкодження',

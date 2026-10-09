@@ -228,6 +228,9 @@ export function powerComparable(a, b) { return !!a && !!b && a !== 'unknown' && 
 export function versionKind(raw) {
   const t = clean(raw);
   if (!t) return null;
+  /* a marketplace generation string names the generation in words or carries a
+     facelift marker ("III покоління/URJ200 (2nd FL)", "95B (FL)", "Type 95B") */
+  if (/покол[іе]н|generation|\(\s*(?:\d(?:st|nd|rd|th)\s+)?fl\s*\)|(?:^|\s)fl$|facelift|рестайл|^type\s+\S+$/i.test(t)) return 'generation';
   if (/\d[.,]\d\s*(?:л|l|tdi|tsi|tfsi|cdi|td|d|i|t)?\b|\d{2,4}\s*(?:к\.?\s?с|л\.?\s?с|hp|ps|kw|квт)|\b(?:at|mt|cvt|dsg|awd|4x4|4wd|fwd|rwd|mhev|phev|tdi|tsi|tfsi|cdi|hdi|dci|crdi|td[46])\b/i.test(t)) return 'powertrain';
   if (/^(?:[a-z]{0,2}\d{2,3}(?:[./]\d{1,2}[a-z]?)?|[a-z]\d{1,2}(?:\/[a-z]?\d{1,2}[a-z]?)?)\s*(?:\((?:fl|рест\w*|facelift)\)|fl|рестайл\w*|facelift)?$/i.test(t)) return 'generation';
   return 'trim';
@@ -379,7 +382,7 @@ function decoderCandidates(nhtsa) {
   const engineRaw = [nhtsa.DisplacementL ? nhtsa.DisplacementL + ' L' : null, nhtsa.FuelTypePrimary || null, nhtsa.ElectrificationLevel || null, nhtsa.EngineHP ? nhtsa.EngineHP + ' hp' : null].filter(Boolean).join(' ');
   return {
     make: c(nhtsa.Make ? clean(nhtsa.Make) : null, nhtsa.Make),
-    model: c(nhtsa.Model ? clean(nhtsa.Model) : null, nhtsa.Model),
+    model: { ...c(nhtsa.Model ? clean(nhtsa.Model) : null, nhtsa.Model), series: nhtsa.Series ? clean(nhtsa.Series) : null, trim_raw: nhtsa.Trim ? clean(nhtsa.Trim) : null },
     version: c(trimOnly(nhtsa.Trim || nhtsa.Series), nhtsa.Trim || nhtsa.Series),
     /* рік вже пройшов gateDecoderYear: при слабкому розборі його тут немає */
     model_year: c(normYear(nhtsa.ModelYear), nhtsa.ModelYear),
@@ -473,11 +476,34 @@ const CONFLICT_RULES = {
 };
 const key = s => low(s).replace(/[^a-z0-9а-яіїєґ]+/g, '');
 
-function assemble(dec, lst, ana, prev = null) {
+/* vPIC puts the model LINE into Series and the variant into Model for some
+   makes ("328i" / "3-Series" / "xDrive"). When the marketplace model line
+   matches the decoder Series and not its Model, the decoder's model is the
+   Series and its Model is a version designation, joined with the Trim
+   ("328i xDrive"). Decided from the decoder's own fields and the listing
+   only; no make rule, no guessing from the number */
+export function decoderModelLine(dec, lst) {
+  const m = dec && dec.model, l = lst && lst.model;
+  if (!m || !m.value || !m.series || !l || !l.value) return null;
+  const lk = key(l.value), mk = key(m.value), sk = key(m.series);
+  if (!lk || !mk || !sk) return null;
+  const same = (a, b) => a === b || (Math.min(a.length, b.length) >= 2 && (a.includes(b) || b.includes(a)));
+  if (same(lk, mk) || !same(lk, sk)) return null;
+  const variant = [m.value, m.trim_raw].filter(Boolean).join(' ');
+  return {
+    model: { ...m, value: m.series, raw: m.raw + ' / ' + m.series, line_source: 'decoder_series' },
+    version: { ...(dec.version || { source: 'decoder', strength: m.strength }), value: trimOnly(variant), raw: variant, variant_source: 'decoder_model' },
+  };
+}
+
+function assemble(dec0, lst, ana, prev = null) {
   const spec = {};
+  const line = decoderModelLine(dec0, lst);
+  const dec = line ? { ...dec0, model: line.model, version: line.version } : dec0;
   for (const f of ['make', 'model', 'version', 'model_year', 'production_year', 'fuel', 'electrification', 'displacement_l', 'forced_induction', 'transmission', 'drivetrain', 'body', 'generation']) {
     spec[f] = resolveField([dec[f], lst[f], ana[f]], CONFLICT_RULES[f] || ((a, b) => a !== b));
   }
+  if (line) spec.model.line_source = 'decoder_series';
   /* power: every figure of every source is its own typed candidate; the
      semantic type needs the resolved electrification first */
   const electrified = ELECTRIFIED_POWER.has(spec.electrification.value) || ['hybrid', 'phev', 'electric'].includes(spec.fuel.value);
@@ -502,6 +528,35 @@ function assemble(dec, lst, ana, prev = null) {
       ? { value: typeCands[0].value, exact: true, source: typeCands[0].source, strength: spec.transmission.strength, candidates: [] }
       : { value: null, exact: false, family: spec.transmission.value, candidates: typeCands });
   return spec;
+}
+
+/* ---------- canonical identity status ----------
+   One reading for every consumer (Score eligibility, header, Final
+   Conclusion, Market Value, checklist). CORE is what the car IS (make, model
+   line, generation, fuel, displacement, induction, gearbox, drivetrain): a
+   conflict of trusted sources there means the identity is unresolved and the
+   Score has no number. Version / trim, body, year and power are not core:
+   their conflict makes the identity partial (the car is known, the exact
+   version is not), never unresolved. Fields that no source gives are unknown,
+   not conflicting */
+export const IDENTITY_CORE_FIELDS = ['make', 'model', 'generation', 'fuel', 'displacement_l', 'forced_induction', 'transmission', 'drivetrain'];
+export const IDENTITY_STATUS_VERSION = 'is-v1';
+export function identityStatus(spec) {
+  if (!spec) return null;
+  const f = n => spec[n] || null;
+  const confirmed = n => { const x = f(n); return !!x && !x.conflict && x.value !== null && x.value !== undefined && x.strength !== 'weak'; };
+  const conflicts = Array.isArray(spec.conflicts) ? spec.conflicts.slice() : SPEC_FIELDS.filter(n => f(n) && f(n).conflict);
+  const core_conflicts = conflicts.filter(n => IDENTITY_CORE_FIELDS.includes(n));
+  const fields = ['make', 'model', 'generation', 'version', 'model_year', 'production_year', 'fuel', 'electrification', 'displacement_l', 'forced_induction', 'power_hp', 'transmission', 'drivetrain', 'body'];
+  const confirmed_fields = fields.filter(confirmed);
+  const conflict_fields = conflicts.filter(n => fields.includes(n));
+  const unknown_fields = ['version', 'fuel', 'transmission', 'drivetrain', 'power_hp'].filter(n => f(n) && f(n).value === null && !f(n).conflict && !f(n).ambiguous);
+  const conditional_fields = [...conflicts.filter(n => !IDENTITY_CORE_FIELDS.includes(n) && fields.includes(n)), ...(f('power_hp') && f('power_hp').ambiguous ? ['power_hp'] : [])];
+  const version_status = f('version') && f('version').conflict ? 'conflict' : (confirmed('version') ? 'confirmed' : 'unknown');
+  const core_status = core_conflicts.length ? 'unresolved' : 'resolved';
+  const status = core_status === 'unresolved' ? 'unresolved' : (version_status === 'conflict' || conditional_fields.length ? 'partial' : 'resolved');
+  return { version: IDENTITY_STATUS_VERSION, status, core_status, version_status, core_conflicts, conflict_fields, conditional_fields, confirmed_fields, unknown_fields,
+    model_line_source: f('model') && f('model').line_source ? f('model').line_source : null };
 }
 
 /* ---------- публічні збирачі ---------- */
@@ -538,6 +593,7 @@ export function reconcileVehicleSpec(spec0, parsedVehicle, { nhtsa = null, listi
   spec.engine_code = { value: engineCode || null, source: engineCode ? 'decoder' : null, strength: engineCode ? 'strong' : null, conflict: false };
   spec.conflicts = ['make', 'model', 'version', 'model_year', 'fuel', 'electrification', 'displacement_l', 'forced_induction', 'power_hp', 'transmission', 'drivetrain', 'body'].filter(f => spec[f] && spec[f].conflict);
   spec.stage = 'reconciled';
+  spec.identity = identityStatus(spec);
   return spec;
 }
 
@@ -576,6 +632,11 @@ export function vehicleSpecPromptBlock(spec) {
     + (conflicts.length ? '\nКОНФЛІКТИ ІДЕНТИЧНОСТІ (значення НЕ встановлене, обидва кандидати названі): ' + conflicts.join('; ') : '')
     + (unknown.length ? '\nНЕВІДОМО (жодне джерело не дає значення): ' + unknown.join(', ') + '. Невідоме не виводь із загальних знань про модель: лиши null у шапці і не стверджуй у текстах.' : '')
     + (spec.transmission_type && !spec.transmission_type.exact && spec.transmission_type.family ? '\nКОРОБКА: сімейство встановлене (' + spec.transmission_type.family + '), точний тип ні (кандидати: ' + spec.transmission_type.candidates.map(c => c.value + ' від ' + c.source).join(', ') + '). Варіатор і ступінчастий автомат це одне сімейство: це НЕ "несумісні характеристики" і не розбіжність із продавцем, а невстановлений точний тип; у discrepancies його не клади, у checklist можна лишити перевірку коду агрегату.' : '')];
+  const ids = identityStatus(spec);
+  if (ids && ids.status !== 'resolved') {
+    lines.push('IDENTITY_STATUS: ' + JSON.stringify({ status: ids.status, core_status: ids.core_status, version_status: ids.version_status, core_conflicts: ids.core_conflicts, conditional_fields: ids.conditional_fields })
+      + (ids.core_status === 'unresolved' ? '. Базова ідентичність НЕ встановлена: не описуй авто як певну конфігурацію і не роби висновку, який передбачає, що машина ідентифікована.' : '. Базова ідентичність встановлена; непідтверджені лише поля вище: не подавай їх як факт, називай умовно ("за даними оголошення").'));
+  }
   if (powerAmbiguous) {
     lines.push('ПОТУЖНІСТЬ НЕ ЗВЕДЕНА ДО ОДНОГО ЧИСЛА: джерела називають показники різних типів (' + powerAmbiguous + '). Для гібрида чи електромобіля системна потужність і потужність двигуна це різні величини: це НЕ розбіжність, НЕ конфлікт і НЕ помилка продавця. Не обирай одне число як факт і не проси уточнити "яке з них правильне".');
   }
@@ -718,5 +779,6 @@ export function publicSpec(spec) {
   }
   /* genuinely unknown identity fields: no trusted source gives a value and there is no conflict */
   out.unknown = ['version', 'fuel', 'transmission', 'drivetrain', 'power_hp'].filter(f => spec[f] && spec[f].value === null && !spec[f].conflict && !spec[f].ambiguous);
+  out.identity = identityStatus(spec);
   return out;
 }

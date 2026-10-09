@@ -10,7 +10,7 @@ import { parseHistoryRecords, groupAccidentRecords } from './history-records.js'
 import { computeScoreV4, resolvePowertrainClass, mileageNormKmYear, SCORE_CONFIG_V4, validateDisclosures } from './score-v4.js';
 import { applyScoreCeiling } from './score-ceiling.js';
 /* повнота перевірки (Confidence v1): знімок у момент Check, Score не змінює */
-import { buildConfidenceInput, computeConfidenceV1, CONFIDENCE_CONFIG_V1 } from './confidence.js';
+import { buildConfidenceInput, computeConfidenceV1, CONFIDENCE_CONFIG_V1, identityNoteKey } from './confidence.js';
 /* надійність Current Vision: передзавантаження кадрів, обмежений ретрай, gate фіналізації */
 import { prefetchFrames, withVisionRetry, visionGate } from './vision-reliability.js';
 import {
@@ -2928,8 +2928,10 @@ async function runCheck(req, res, job) {
         make: listing.make || (nhtsa && nhtsa.Make) || null,
         model: listing.model || (nhtsa && nhtsa.Model) || null,
         generation: listing.generation || null,
-        /* версія: декодер з чистим розбором, інакше структурована модифікація площадки */
-        trim: (spec0.decoder.strong && nhtsa && (nhtsa.Trim || nhtsa.Series)) || listing.modification || null,
+        /* версія: канонічна з паспорта (декодер з чистим розбором і площадка
+           разом), інакше структурована модифікація площадки; поки версія у
+           конфлікті, пошук ціни не звужується до жодної з них */
+        trim: spec0.version && spec0.version.conflict ? null : ((spec0.version && spec0.version.value) || listing.modification || null),
         year: listing.year || (nhtsa && parseInt(nhtsa.ModelYear, 10)) || null,
         /* MSRP публікують за модельним роком: довірений рік декодера, інакше рік оголошення */
         model_year: (nhtsa && parseInt(nhtsa.ModelYear, 10)) || listing.year || null,
@@ -3817,6 +3819,8 @@ async function runCheck(req, res, job) {
           photosCount: coverageInputs.photos_count,
           disclosuresCount: validateDisclosures(parsed.seller_disclosures, listing.text || '').ok.length,
         }));
+        /* the label never reads as unconditional while the canonical identity is not */
+        if (parsed.confidence && vehicleSpec && vehicleSpec.identity) parsed.confidence.identity_note_key = identityNoteKey(vehicleSpec.identity);
         console.log('[confidence]', JSON.stringify({ v: 'v1', overall: parsed.confidence.overall_internal, caps: parsed.confidence.caps_applied.filter(c => c.binding).map(c => c.name), vin: listing.vin || null }));
       } catch (e) {
         console.log('[confidence]', JSON.stringify({ op: 'compute', error: String((e && e.message) || e).slice(0, 160), vin: listing.vin || null }));
@@ -4126,7 +4130,8 @@ async function runCheck(req, res, job) {
           engine: (parsed.vehicle && parsed.vehicle.engine) || null, drive: vehicleSpec.drivetrain.value || null,
           title: [(parsed.vehicle && parsed.vehicle.title) || '', listing.modification || '', (parsed.vehicle && parsed.vehicle.trim) || ''].join(' ').trim() || null,
           model_year: vehicleSpec.model_year.value || null },
-        identity: { make: listing.make || (nhtsa && nhtsa.Make) || null, model: listing.model || (nhtsa && nhtsa.Model) || null, generation: genResolved.generation, trim: vehicleSpec.version.value || null },
+        identity: { make: listing.make || (nhtsa && nhtsa.Make) || null, model: listing.model || (nhtsa && nhtsa.Model) || null, generation: genResolved.generation, trim: vehicleSpec.version.value || null,
+          version_status: vehicleSpec.identity ? vehicleSpec.identity.version_status : null },
       });
     } catch (e) { console.log('[value]', JSON.stringify({ op: 'build_curve', error: String((e && e.message) || e).slice(0, 160) })); }
     /* тексти карток: історію "Чому це авто коштує стільки" обирає детермінований

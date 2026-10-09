@@ -42,6 +42,7 @@
    reason core_identity_unresolved. Модуль чистий і не залежить від
    ринку: без мережі, без моделі, без назв країн. */
 import { classifyEventV4 } from './score-v4.js';
+import { IDENTITY_CORE_FIELDS } from './vehicle-spec.js';
 
 export const SCORE_CEILING_CONFIG = {
   CONFIG_TAG: 'ceiling-v2-2026-10-08',
@@ -61,7 +62,8 @@ export const SCORE_CEILING_CONFIG = {
   MILEAGE: { anomaly: 8.0, rollback: 7.0, rollback_major: 6.5, major_drop_km: 60000 },
   /* базова ідентичність: конфлікт сильних джерел у цих полях = числа нема.
      Версія, кузов, рік і опції не блокують бал */
-  IDENTITY_CORE: ['make', 'model', 'generation', 'fuel', 'displacement_l', 'forced_induction', 'transmission', 'drivetrain'],
+  /* the one list lives in vehicle-spec (identityStatus reads the same one) */
+  IDENTITY_CORE: IDENTITY_CORE_FIELDS,
 };
 
 const round1 = x => Math.round((x + Number.EPSILON) * 10) / 10;

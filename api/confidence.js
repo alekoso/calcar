@@ -391,3 +391,15 @@ export function computeConfidenceV1(input, cfg = CONFIDENCE_CONFIG_V1) {
     score_basis: { role: 'score_composition', overall: basis ? basis.overall : shown.overall, excluded },
     unavailable_reason: null };
 }
+
+/* Confidence measures how well the evidence covers the car; identity
+   measures whether we know which car it is. The number stays, the label
+   may not read as unconditional "studied in detail" while the canonical
+   identity says the configuration is not established (core conflict) or
+   the version is disputed. i18n keys, rendered after the coverage label */
+export function identityNoteKey(identity) {
+  if (!identity || typeof identity !== 'object') return null;
+  if (identity.core_status === 'unresolved') return 'but the vehicle configuration is not established';
+  if (identity.version_status === 'conflict') return 'but the version is not confirmed';
+  return null;
+}

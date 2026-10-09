@@ -3201,7 +3201,8 @@ function renderScoreBlock(D) {
         : (typeof vd.score === 'number' ? Math.round(Math.max(0, Math.min(10, vd.score)) * 10) / 10 : null)));
   if (final === null && !unavailable) return;
   const conf = D.confidence && typeof D.confidence.overall_internal === 'number' && COVERAGE_TEXT[D.confidence.text_key] ? D.confidence : null;
-  const covText = conf ? t(conf.text_key) : null;
+  /* the coverage label is not unconditional while the canonical identity is not (identity_note_key from the report) */
+  const covText = conf ? (conf.identity_note_key ? t(conf.text_key) + ', ' + t(conf.identity_note_key) : t(conf.text_key)) : null;
   /* базова ідентичність авто не встановлена: числа нема саме тому, а не через брак даних */
   const naText = bd && bd.score_unavailable_reason === 'core_identity_unresolved' ? t('Vehicle identity not established') : t('Not enough data to score');
   const scoreHtml = final !== null ? esc(final.toFixed(1)) + '<small>/ 10</small>' : esc(naText);
