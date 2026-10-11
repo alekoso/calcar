@@ -1112,8 +1112,12 @@ function normalizeListingUrl(u) {
   try {
     const url = new URL(String(u));
     url.hash = '';
+    /* трекінг, аналітика і share-мітки не змінюють оголошення; r_* це мітки
+       share-посилань AUTO.RIA (iOS), тому лише на її хостах: на інших площадках
+       такий ключ може бути значущим */
+    const ria = /(^|\.)auto\.ria\.com$/i.test(url.hostname);
     const drop = [];
-    url.searchParams.forEach((v, k) => { if (/^(utm_|fbclid$|gclid$|yclid$|ref$|referrer$)/i.test(k)) drop.push(k); });
+    url.searchParams.forEach((v, k) => { if (/^(utm_|fb_|_ga|fbclid$|gclid$|yclid$|_gl$|igshid$|si$|ref$|referrer$)/i.test(k) || (ria && /^r_/i.test(k))) drop.push(k); });
     drop.forEach(k => url.searchParams.delete(k));
     return url.toString();
   } catch (e) { return String(u || ''); }

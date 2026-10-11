@@ -606,11 +606,14 @@ export function screenMileageWidget(text) {
 /* ---------- 3а. Метадані оголошення для Vehicle Memory ----------
    Усе, що площадка вже віддає структуровано (JSON-LD, хлібні крихти,
    вбудований стан), без AI. Чого нема, те null: не вигадуємо */
+/* id оголошення: RIA auto_<make>_<model>_<id>.html, інакше останнє довге число шляху */
+export function listingIdFromUrl(url) {
+  const idM = /_(\d{5,})\.html/.exec(String(url || '')) || /\/(\d{6,})(?:[\/?#]|$)/.exec(String(url || ''));
+  return idM ? idM[1] : null;
+}
 export function extractListingMeta(html, url, flat, text) {
   const out = { source_listing_id: null, location: null, seller_meta: null, listing_status: 'active', raw_page_text: null };
-  /* id оголошення: RIA auto_<make>_<model>_<id>.html, інакше останнє довге число шляху */
-  const idM = /_(\d{5,})\.html/.exec(url) || /\/(\d{6,})(?:[\/?#]|$)/.exec(url);
-  out.source_listing_id = idM ? idM[1] : null;
+  out.source_listing_id = listingIdFromUrl(url);
   try {
     const blobs = pageJsonBlobs(html);
     /* локація з хлібних крихт схеми: "... > Київська область > Київ > Tesla > ..." */
@@ -703,14 +706,21 @@ function normalizeListingUrl(u) {
   try {
     const url = new URL(String(u));
     url.hash = '';
+    /* трекінг, аналітика і share-мітки не змінюють оголошення; r_* це мітки
+       share-посилань AUTO.RIA (iOS), тому лише на її хостах: на інших площадках
+       такий ключ може бути значущим */
+    const ria = /(^|\.)auto\.ria\.com$/i.test(url.hostname);
     const drop = [];
-    url.searchParams.forEach((v, k) => { if (/^(utm_|fbclid$|gclid$|yclid$|ref$|referrer$)/i.test(k)) drop.push(k); });
+    url.searchParams.forEach((v, k) => { if (/^(utm_|fb_|_ga|fbclid$|gclid$|yclid$|_gl$|igshid$|si$|ref$|referrer$)/i.test(k) || (ria && /^r_/i.test(k))) drop.push(k); });
     drop.forEach(k => url.searchParams.delete(k));
     return url.toString();
   } catch (e) { return String(u || ''); }
 }
 
-export async function readSnapshots(vin, currentUrl) {
+/* currentListingId: id поточного оголошення на площадці. Знімок із тим самим
+   хостом і id це те саме оголошення, хоч би як відрізнявся URL: незалежною
+   історичною точкою пробігу він не стає. Сирі знімки не змінюються */
+export async function readSnapshots(vin, currentUrl, currentListingId = null) {
   const base = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!base || !key || !vin) return [];
   try {
@@ -718,7 +728,7 @@ export async function readSnapshots(vin, currentUrl) {
        немає, і запит із нею роками тихо давав HTTP 400 і порожню історію */
     const r = await fetch(base.replace(/\/$/, '')
       + '/rest/v1/vehicle_snapshots?vin=eq.' + encodeURIComponent(vin)
-      + '&select=odometer_km,source_url,captured_at&order=captured_at.asc&limit=200', {
+      + '&select=odometer_km,source_url,captured_at,source_listing_id&order=captured_at.asc&limit=200', {
       headers: { apikey: key, authorization: 'Bearer ' + key },
     });
     if (!r.ok) {
@@ -729,11 +739,17 @@ export async function readSnapshots(vin, currentUrl) {
     const rows = await r.json();
     /* одне джерело рахується один раз: дедуплікація за нормалізованим URL */
     const cur = normalizeListingUrl(currentUrl);
+    const hostOf = x => { try { return new URL(String(x)).hostname.replace(/^www\./, '').toLowerCase(); } catch (e) { return null; } };
+    const curHost = hostOf(currentUrl);
+    const curId = currentListingId || listingIdFromUrl(currentUrl);
     const seen = new Set();
     const out = [];
     for (const row of Array.isArray(rows) ? rows : []) {
       const u = normalizeListingUrl(row.source_url);
       if (!u || u === cur || seen.has(u)) continue;
+      /* те саме оголошення за id площадки (стовпець, інакше той самий розбір URL) */
+      const rowId = row.source_listing_id || listingIdFromUrl(row.source_url);
+      if (curId && rowId && String(rowId) === String(curId) && curHost && hostOf(row.source_url) === curHost) continue;
       seen.add(u);
       /* ключ created_at лишається інтерфейсом для споживачів нижче */
       out.push({ odometer_km: row.odometer_km ?? null, source_url: u, created_at: row.captured_at });
@@ -3296,7 +3312,7 @@ async function runCheck(req, res, job) {
        перевикористовуємо у скорингу */
     let snaps = [];
     let snapsLookup = listing.vin ? 'ok' : 'no_vin';
-    try { snaps = await readSnapshots(listing.vin, url); if (snaps && snaps.lookup_failed) snapsLookup = 'failed'; } catch (e) { snapsLookup = 'failed'; console.log('[check] snapshots read failed:', e.message); }
+    try { snaps = await readSnapshots(listing.vin, url, listing.source_listing_id || null); if (snaps && snaps.lookup_failed) snapsLookup = 'failed'; } catch (e) { snapsLookup = 'failed'; console.log('[check] snapshots read failed:', e.message); }
     let decisionContext = null;
     try {
       const ptClass = powertrainClassFromSpec(spec0);

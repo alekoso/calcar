@@ -28,6 +28,20 @@ const normApi = grab(api, 'normalizeListingUrl');
 const normPage = grab(page, 'normalizeListingUrl');
 if (!normApi || !normPage) errs.push('normalizeListingUrl не знайдена в одному з файлів');
 else if (normApi !== normPage) errs.push('normalizeListingUrl розійшлася між check.html і api/check.js');
+/* A, B, E, F: трекінг і share-мітки не змінюють ідентичність оголошення, значущий query змінює */
+{
+  const norm = normApi ? new Function(normApi + '\nreturn normalizeListingUrl;')() : (x => x);
+  const CLEAN = 'https://auto.ria.com/uk/auto_porsche_cayenne_39577545.html';
+  const SHARE = CLEAN + '?utm_source=ios&utm_medium=share_final_page&utm_campaign=ads_bu&r_audience=smo&r_source=ios&r_medium=share_final_page&r_campaign=ads_bu';
+  if (norm(SHARE) !== norm(CLEAN)) errs.push('A: iOS share-URL AUTO.RIA (utm_* + r_*) дає іншу ідентичність: ' + norm(SHARE));
+  for (const k of ['r_source', 'r_medium', 'r_campaign', 'r_audience']) if (norm(CLEAN + '?' + k + '=x') !== norm(CLEAN)) errs.push('B: ' + k + ' змінює ідентичність');
+  for (const q of ['fbclid=1', 'fb_action_ids=2', 'gclid=3', 'yclid=4', '_ga=5', '_gl=6', 'igshid=7', 'si=8', 'ref=9', 'referrer=a', 'utm_term=b']) if (norm(CLEAN + '?' + q) !== norm(CLEAN)) errs.push('E: ' + q + ' змінює ідентичність');
+  if (norm('https://m.auto.ria.com/uk/auto_x_1.html?r_source=ios') !== 'https://m.auto.ria.com/uk/auto_x_1.html') errs.push('B: r_* на піддомені AUTO.RIA не прибрано');
+  if (norm('https://example-cars.com/listing?r_id=5') === norm('https://example-cars.com/listing?r_id=6')) errs.push('F: r_* поза AUTO.RIA прибрано наосліп');
+  if (norm('https://mobile.de/car/777?page=2') === norm('https://mobile.de/car/777?page=3')) errs.push('F: значущий query склеївся');
+  if (norm(CLEAN) === norm('https://auto.ria.com/uk/auto_porsche_cayenne_39577546.html')) errs.push('F: інший шлях оголошення склеївся');
+  if (!/readSnapshots\(listing\.vin, url, listing\.source_listing_id \|\| null\)/.test(api)) errs.push('C: readSnapshots не отримує id поточного оголошення');
+}
 
 /* 2. функціональні перевірки findExistingCheck на мок-SB */
 const findFn = grab(page, 'findExistingCheck');
