@@ -234,7 +234,7 @@ const deep = (o, p, v) => { const ks = p.split('.'); let c = o; for (const k of 
   r = report();
   r.final_conclusion.headline = 'Турбований Range Rover із питаннями до відновлення';
   out = enforceReportConsistency(r, { lang: 'ua' });
-  ok('9. a contradicting headline hides the whole block', r.final_conclusion === null && out.hidden.includes('final_conclusion') && r._meta.final_conclusion.status === 'error' && /^consistency_/.test(r._meta.final_conclusion.reason), JSON.stringify(r._meta.final_conclusion));
+  ok('9. rc-v3.3: a contradicting headline is removed on its own, the body stays and the block is not hidden', r.final_conclusion && r.final_conclusion.headline === '' && r.final_conclusion.body.length > 50 && !out.hidden.includes('final_conclusion') && r._meta.final_conclusion.consistency.headline_removed === true && out.violations.some(v => v.section === 'final_conclusion.headline' && v.action === 'headline_removed'), JSON.stringify(r._meta.final_conclusion));
   r = report();
   r.final_conclusion.body = 'Турбований V8 потужний.\n\nУ 2019 році автомобіль потрапив у ДТП середньої тяжкості.';
   enforceReportConsistency(r, { lang: 'ua' });
@@ -260,7 +260,7 @@ const deep = (o, p, v) => { const ks = p.split('.'); let c = o; for (const k of 
   const fTurbo = canonicalFacts(report({ _meta: turboMeta }));
   const fSc = canonicalFacts(report());
   const sc = (s, f) => sentenceViolations(s, f).filter(v => v.domain === 'forced_induction' && v.found === 'supercharger');
-  ok('12. version bumped to rc-v3.2', RC.CONSISTENCY_VERSION === 'rc-v3.2');
+  ok('12. version bumped to rc-v3.3', RC.CONSISTENCY_VERSION === 'rc-v3.3');
   for (const s of ['Компрессор пневмоподвески на таком пробеге может потребовать замены.', 'Проверить компрессор пневмоподвески.',
     'Стойки, компрессор и клапанный блок AIRMATIC могут потребовать ремонта.', 'Пневмокомпрессор работает слишком долго.',
     'Компресор пневмопідвіски на такому пробігу може потребувати заміни.', 'Стійки, компресор і блок клапанів пневмопідвіски дорогі в ремонті.',

@@ -33,8 +33,8 @@
 
    Not a Vercel function: imported by api/check.js. */
 
-export const CONSISTENCY_VERSION = 'rc-v3.2';
-export const CONSISTENCY_DOMAINS = ['fuel', 'forced_induction', 'drivetrain', 'transmission', 'version', 'power_hp', 'identity_conflict', 'identity_unknown', 'airbags', 'accident', 'mileage', 'dashboard'];
+export const CONSISTENCY_VERSION = 'rc-v3.3';
+export const CONSISTENCY_DOMAINS = ['fuel', 'forced_induction', 'drivetrain', 'transmission', 'version', 'power_hp', 'identity_conflict', 'identity_unknown', 'airbags', 'accident', 'mileage', 'dashboard', 'mileage_certainty', 'absence_certainty', 'causality', 'global_condition', 'seller_fact', 'recommendation'];
 /* share of Final Conclusion sentences that may be removed before the block is hidden */
 export const FC_MAX_REMOVED_SHARE = 0.25;
 
@@ -44,6 +44,7 @@ const isObj = v => !!v && typeof v === 'object' && !Array.isArray(v);
 const arr = v => (Array.isArray(v) ? v : []);
 const str = v => (typeof v === 'string' ? v : '');
 const TRUSTED = new Set(['strong', 'medium']);
+const num3 = v => (typeof v === 'number' && isFinite(v) ? v : 0);
 
 /* ---------- canonical facts ---------- */
 
@@ -94,6 +95,9 @@ export function canonicalFacts(report) {
       historical_points: points.length,
     },
     dashboard: dashA ? { state: dashA.state || 'unknown', active: arr(dashA.active), explicit: arr(dashA.explicit_fault_messages) } : null,
+    /* how many material checks the report lists: a closing thought may not
+       reduce the purchase to one or two of them */
+    checklist_items: arr(r.checklist).filter(t => typeof t === 'string' && t.trim()).length,
   };
 }
 
@@ -247,6 +251,87 @@ const LAMP_WORD = rx("лампа|лампочк\\w*|індикатор\\w*|ин�
 const MAINT_REMINDER = rx("maint|<BТОB>|service (?:reminder|due)|обслуговуванн\\w*|обслуживани\\w*|нагадуванн\\w*|напоминани\\w*");
 const VERSION_UNKNOWN = rx("(?:точн\\w+ |exact )?(?:верс\\w+|комплектац\\w+|version|trim)[^.]{0,40}(?:не встановлен\\w*|не установлен\\w*|невідом\\w*|неизвест\\w*|не підтверджен\\w*|не подтвержд\\w*|не визначен\\w*|не определен\\w*|не з[’'ʼ]ясован\\w*|не выяснен\\w*|not established|unknown|not confirmed|unclear|uncertain|not determined)|(?:не встановлен\\w*|не установлен\\w*|невідом\\w*|неизвест\\w*)[^.]{0,20}(?:верс\\w+|комплектац\\w+|version|trim)");
 const VERSION_ASSERT = rx("(?:це|это|this is|is a|is the|саме|именно|версі\\w+|верси\\w+|version|комплектац\\w+|trim|у |в |for the |на )");
+/* ---------- rc-v3.3: evidence-aware claims ----------
+   The conclusion may explain, prioritise and speak plainly, but it may not
+   raise the evidence status: consistent points, a clean rollback check,
+   "not found", "not visible in the photos" and "the seller says" never
+   become honest, confirmed, never happened, almost new or "the discount
+   was made for X". Each class names what is allowed in its comment, and
+   the positive control (Cayenne 2013, 2026-10-10) must pass untouched */
+/* a hedge right before the claim ("probably honest", "may explain") */
+const NEAR_HEDGE = rx("(?:можлив\\w*|возможн\\w*|може бути|может быть|\\bmay\\b|\\bmight\\b|\\bcould\\b|ймовірн\\w*|вероятн\\w*|likely|perhaps|схоже|похоже|seems?|appears?|здається|кажется|скоріш\\w*|скорее|швидше|probably|частков\\w*|частичн\\w*|partly|in part|мабуть|напевно, що ні)[^.]{0,30}$");
+/* only inside the claim's own clause: a hedge in the previous clause
+   ("the seller's explanation looks true: the discount was made for X")
+   does not soften the assertion that follows */
+const hedgedBefore = (s, idx) => NEAR_HEDGE.test(clauseBefore(s, idx).slice(-45));
+/* A. mileage certainty. Allowed: "the found points are consistent", "no
+   signs of a rollback found", "looks plausible". Not allowed: honest,
+   genuine, original, confirmed, verified, "the figure can be trusted",
+   "certainly not rolled back": no source of the Check proves lifetime mileage */
+const MILEAGE_WORD = "(?:пробіг\\w*|пробег\\w*|одометр\\w*|mileage|odometer|кілометраж\\w*|километраж\\w*)";
+const HONEST_WORD = "(?:чесн\\w*|честн\\w*|реальн\\w*|справжн\\w*|настоящ\\w*|оригінальн\\w*|оригинальн\\w*|родн\\w*|рідн\\w*|honest|genuine|\\breal\\b|original)";
+const MILEAGE_HONEST = rx(HONEST_WORD + "[^.]{0,25}" + MILEAGE_WORD + "|" + MILEAGE_WORD + "[^.]{0,25}" + HONEST_WORD);
+const MILEAGE_TRUST = rx("(?:цифр\\w*|показ\\w*|пробіг\\w*|пробег\\w*|одометр\\w*|mileage|odometer|figure|reading)[^.]{0,30}(?:можна вірити|можно верить|можна довіряти|можно доверять|заслуговує довіри|заслуживает доверия|можна покластися|можно положиться|can be trusted|is trustworthy|is reliable|is credible)|(?:вірити|верить|довіряти|доверять|trust)[^.]{0,20}(?:цифр\\w*|пробіг\\w*|пробег\\w*|mileage|odometer|figure|reading)");
+const MILEAGE_VERIFIED = rx(MILEAGE_WORD + "[^.]{0,40}(?:підтвердж\\w*|подтвержд\\w*|перевірен\\w*|проверен\\w*|доведен\\w*|доказан\\w*|встановлен\\w*|установлен\\w*|verified|confirmed|proven|established|documented)|(?:підтвердж\\w*|подтвержд\\w*|verified|confirmed|proven)[^.]{0,20}" + MILEAGE_WORD);
+const ROLLBACK_SURE = rx("(?:точно|напевно|наверняка|однозначно|гарантовано|гарантированно|certainly|definitely|surely|for sure|без сумнів\\w*|без сомнен\\w*|ніколи|никогда|never)[^.]{0,30}(?:скру\\w+|відмот\\w+|отмот\\w+|rollback|rolled)|(?:скру\\w+|відмот\\w+|отмот\\w+|rollback)[^.]{0,30}(?:точно|напевно|наверняка|однозначно|гарантовано|гарантированно|certainly|definitely|for sure)");
+/* a cautious negative ("not confirmed", "unknown") is not a certainty */
+const NOT_SURE = rx("(?:не|ні|нельзя|не можна|cannot|can't|not|isn't|is not|wasn't)\\s+(?:\S+\\s+){0,2}(?:підтвердж\\w*|подтвержд\\w*|перевір\\w*|провер\\w*|довед\\w*|доказ\\w*|встановл\\w*|установл\\w*|verif\\w*|confirm\\w*|prov\\w*|establish\\w*|document\\w*|вірити|верить|довіря\\w*|доверя\\w*|trust\\w*|відом\\w*|извест\\w*|known)|невідом\\w*|неизвест\\w*|unknown|не встановлен\\w*|не установлен\\w*");
+/* B. absence certainty. Allowed: "not found", "not recorded", "no record",
+   "not visible in the photos". Not allowed: "there was no accident", "never
+   repainted", "the body was never repaired", "no hidden catch" */
+const EVIDENCE_SCOPE = rx("зафіксован\\w*|зареєстрован\\w*|зарегистрирован\\w*|зафиксирован\\w*|знайден\\w*|найден\\w*|виявлен\\w*|выявлен\\w*|виявити|выявить|запис\\w*|даних|данных|істор\\w*|истор\\w*|реєстр\\w*|реестр\\w*|базі|базе|джерел\\w*|источник\\w*|документ\\w*|офіційн\\w*|официальн\\w*|фото|кадр\\w*|знімк\\w*|снимк\\w*|photo\\w*|не видно|не помітн\\w*|не заметн\\w*|не простежу\\w*|не прослежива\\w*|не відмічен\\w*|не отмечен\\w*|record\\w*|registry|histor\\w*|sources?|data|found|visible|evidence|documented|officially|according|перевірк\\w*|проверк\\w*|check\\w*");
+const ABSENCE_CATEGORICAL = rx("(?:дтп|авар\\w*|accidents?|collisions?|crash\\w*|удар\\w*|ремонт\\w*|repairs?|фарбуван\\w*|покрас\\w*|перекрас\\w*|окрас\\w*|repaint\\w*)[^.]{0,30}(?:не було|не было|никогда не|ніколи не|не попада\\w*|не потрапля\\w*|never|has not|hasn't|had not|hadn't|was not|wasn't|did not|didn't)|(?:не було|не было|никогда не|ніколи не|не попада\\w*|не потрапля\\w*|never (?:been|had|was)|\\bno)\\s+(?:\S+\\s+){0,2}(?:дтп|авар\\w*|accidents?|collisions?|crash\\w*|удар\\w*|ремонт\\w*|repairs?|фарбуван\\w*|покрас\\w*|перекрас\\w*)|(?:<Bне бит\\w*|<Bне крашен\\w*|<Bне фарбован\\w*|<Bне ремонтирован\\w*|<Bне ремонтован\\w*|небит\\w*|некрашен\\w*|нефарбован\\w*|unpainted|unrepaired|never repainted|never repaired|never been (?:painted|repaired|hit))");
+const HIDDEN_NONE = rx("без (?:прихован\\w*|скрыт\\w*|тривожн\\w*|тревожн\\w*) (?:підоплік\\w*|подоплёк\\w*|подоплек\\w*|причин\\w*|проблем\\w*|дефект\\w*|вад|підтекст\\w*|подтекст\\w*)|(?:прихован\\w*|скрыт\\w*) (?:причин\\w*|проблем\\w*|дефект\\w*|підоплік\\w*|подоплёк\\w*|подоплек\\w*)[^.]{0,15}(?:нема[єе]?|нет|відсутн\\w*|отсутству\\w*)|без підводних каменів|без подводных камней|без сюрпризів|без сюрпризов|no hidden (?:reasons?|issues?|problems?|catch|agenda|defects?|motives?)|nothing hidden|no catch|no strings attached|no skeletons");
+/* C. unsupported causality about the price. Allowed: "the seller says the
+   condition is priced in", "the price fits the age and mileage", "this is
+   understandable". Not allowed as CalCar's own statement: "the discount was
+   made for X", "the price is lower precisely because", "explained by", "the
+   seller has priced in", "the market has already accounted for" */
+const CAUSAL_PRICE = rx("(?:знижк\\w*|скидк\\w*|discount)[^.]{0,25}(?:зроблен\\w*|сделан\\w*|дан\\w*|закладен\\w*|заложен\\w*|made|given|built in|baked in)[^.]{0,20}(?:під|под|за |через|из-за|because|for|to cover|on account)|(?:ціна|цена|price|знижк\\w*|скидк\\w*|discount|дешевш\\w*|дешевле|cheaper)[^.]{0,40}(?:саме тому|именно потому|именно из-за|саме через|precisely because|exactly because|тому що|потому что|из-за того|через те, що|because)|(?:пояснюється|объясняется|объясняются|пояснюються|пояснює ціну|объясняет цену|объясняет скидку|пояснює знижку|explains the (?:price|discount)|is explained by|accounts for the (?:price|discount))|(?:продавец|продавець|seller|ринок|рынок|market)[^.]{0,20}(?:заклав|заложил|учёл|учел|врахував|has priced|priced in|accounted for|already reflects|уже отражает|уже враховує)|(?:закладен\\w*|заложен\\w*|priced)[^.]{0,6}(?:в ціну|в цену|у ціну|into the price|in the price)", 'gi');
+/* D. a global condition verdict from photos. Allowed: "looks well kept in
+   the photos", "no wear visible on the seats". Not allowed: almost new,
+   barely worn, excellent condition, "certainly never repainted" */
+/* near-new and no-wear are whole-car verdicts that limited photos never
+   support, even as "looks almost new in the photos": photo scope allows a
+   local observation (looks well kept, no heavy wear visible), not these */
+const NEAR_NEW = rx("(?:майже|почти|практично|практически|practically|almost|nearly|virtually)\\s+(?:нов\\w*|new)|<Bяк нов\\w*|<Bкак нов\\w*|like new|(?:майже|почти|практично|практически|зовсім|совсем|absolutely|hardly|barely|scarcely)\\s+(?:не\\s+)?(?:зношен\\w*|изношен\\w*|worn)|(?:без|нет|no)\\s+(?:жодного|ніякого|никакого|any)?\\s*(?:зносу|износа|wear)");
+const GLOBAL_CONDITION = rx("(?:ідеальн\\w*|идеальн\\w*|відмінн\\w*|отличн\\w*|perfect|excellent|immaculate|mint|pristine|flawless|showroom)\\s+(?:стан\\w*|состоян\\w*|condition|shape)|(?:відмінно|отлично|чудово|прекрасно|perfectly|excellently)\\s+(?:збереж\\w*|сохранил\\w*|сохранив\\w*|preserved|kept)|(?:точно|напевно|наверняка|certainly|definitely)\\s+(?:не|never)\\s+(?:ремонт\\w*|фарбув\\w*|крас\\w*|бит\\w*|repaired|repainted|hit)");
+const PHOTO_SCOPE = rx("на фото|на знімк\\w*|на снимк\\w*|на кадр\\w*|по фото|за фото|на доступн\\w*|на видим\\w*|на опублікован\\w*|на опубликован\\w*|на ракурс\\w*|in the (?:photos?|pictures?|images?|shots?)|on the photos?|from the photos?|on (?:the )?(?:visible|available|published)|visually|візуально|визуально");
+const APPEARANCE_VERB = rx("виглядає|выглядит|виглядають|выглядят|смотрится|має вигляд|looks?|appears?|seems?");
+/* E. a result of a diagnostic stated as a fact: in a Check such a result
+   can only come from the seller. Allowed with attribution ("the seller says
+   the endoscopy found no scoring") and as a future step ("the scan will
+   show"). Not allowed as CalCar's finding: "the endoscopy showed clean cylinders" */
+const DIAG_RESULT = rx("(?:ендоскоп\\w*|эндоскоп\\w*|endoscop\\w*|borescop\\w*|компресі\\w*|компресси\\w*|compression|діагностик\\w*|диагностик\\w*|diagnostic\\w*|сканер\\w*|scanner|scan|перевірк\\w*|проверк\\w*|inspection)[^.]{0,30}(?:показал\\w*|показав|показала|показали|виявил\\w*|выявил\\w*|підтвердил\\w*|подтвердил\\w*|showed|revealed|found|confirmed|turned up)");
+/* F. a conditional purchase verdict that reduces the purchase to one or
+   two checks while the report lists several. Not allowed when the checklist
+   holds three or more items: "if the suspension holds and the engine starts
+   cleanly, this is a sensible buy" */
+const PURCHASE_VERDICT = rx("(?:розумн\\w*|разумн\\w*|хорош\\w*|гарн\\w*|вдал\\w*|удачн\\w*|вигідн\\w*|выгодн\\w*|нормальн\\w*|адекватн\\w*|sensible|reasonable|good|sound|smart|safe)\\s+(?:покупк\\w*|купівл\\w*|придбанн\\w*|варіант\\w*|вариант\\w*|buy|purchase|deal|choice)|можна брати|можно брать|стоит брать|варто брати|worth (?:buying|taking|it)|can be bought");
+const CONDITIONAL = rx("<B(?:якщо|если|if|за умови|при условии|provided|as long as)B>");
+/* the condition refers to the checklist as a whole: allowed */
+const CHECKLIST_REF = rx("чек-?лист\\w*|checklist|(?:все|всех|всі|усі|ключев\\w*|ключов\\w*|основн\\w*|главн\\w*|головн\\w*|all|every|key|main)\\s+(?:проверк\\w*|перевірк\\w*|пункт\\w*|checks|items|points)|пункт\\w*\\s+(?:выше|ниже|вище|нижче)|checks\\s+(?:listed|above|below)|списк\\w*\\s+проверок|перелік\\w*\\s+перевірок");
+/* the components a condition can name; each group counts once */
+const COMPONENT_GROUPS = [
+  "підвіск\\w*|подвеск\\w*|пневм\\w*|suspension|стійк\\w*|стойк\\w*",
+  "мотор\\w*|двигун\\w*|двигател\\w*|engine|дим\\w*|дым\\w*|холодн\\w+ (?:запуск|пуск)|cold start|компресі\\w*|компресси\\w*|compression|цилиндр\\w*|циліндр\\w*|cylinder\\w*|задир\\w*|форсун\\w*|injector\\w*|турбін\\w*|турбин\\w*|turbo\\w*|сажев\\w*|dpf",
+  "коробк\\w*|трансміс\\w*|трансмис\\w*|gearbox|transmission|варіатор\\w*|вариатор\\w*|раздат\\w*|роздав\\w*|transfer case|зчеплен\\w*|сцеплен\\w*|clutch",
+  "кузов\\w*|body|геометр\\w*|geometry|лонжерон\\w*|рам\\w*|frame|покрас\\w*|фарбув\\w*|paint|толщин\\w*|товщин\\w*|зазор\\w*|днищ\\w*|underbody|корроз\\w*|короз\\w*|rust|ржавч\\w*|ірж\\w*",
+  "подуш\\w*|airbag\\w*|\\bsrs\\b|ремн\\w*|belts?",
+  "батаре\\w*|battery|інвертор\\w*|инвертор\\w*|inverter|гібрид\\w*|гибрид\\w*|hybrid",
+  "гальм\\w*|тормоз\\w*|brakes?",
+  "документ\\w*|заказ-наряд\\w*|замовленн\\w*|сервісн\\w*|сервисн\\w*|invoices?|papers|service (?:book|history|records)|history",
+  "електр\\w*|электр\\w*|electr\\w*|проводк\\w*|wiring|блок\\w*|module",
+  "рул\\w*|кермо|steering|розвал\\w*|развал\\w*|alignment",
+].map(x => rx(x));
+const componentsNamed = s => COMPONENT_GROUPS.filter(re => re.test(s)).length;
+/* the clause the causal claim lives in: attribution elsewhere in the
+   sentence ("the seller writes that ... : the discount was made for X")
+   does not cover CalCar's own second half */
+function clauseBefore(s, idx) {
+  const cut = Math.max(s.lastIndexOf(':', idx), s.lastIndexOf(';', idx));
+  return s.slice(cut + 1, idx);
+}
 /* an instruction to check something is not a statement about the car's state */
 const INSTRUCTION = rx("^(?:перевір\\w*|провер\\w*|check|verify|inspect|оглян\\w*|осмотр\\w*|з[’'ʼ]ясу\\w*|выясн\\w*|переконат\\w*|убедит\\w*|запит\\w*|запрос\\w*|попрос\\w*)|(?:перевірити|перевірте|проверить|проверьте|to check|to verify|to inspect|варто перевірити|стоит проверить|слід перевірити|необхідно перевірити|нужно проверить|потрібно перевірити)");
 const LAMP_EXEMPT = rx("самоперевір\\w*|самопроверк\\w*|self-?test|тест ламп|до запуску|до пуска|before start|контекстн\\w*");
@@ -330,6 +415,59 @@ export function sentenceViolations(sentence, facts, { section = '', context = ''
   if (m.rollback === 'applied' && !instruction && (ROLLBACK_NONE.test(s) || MILEAGE_CONFIRMED.test(s))) out.push({ domain: 'mileage', field: 'rollback', found: 'consistent', canonical: 'decreased_between_records' });
   if (m.rollback === 'clean' && !m.unresolved && !hedged && !reported && !instruction && ROLLBACK_CONFIRMED.test(s)) out.push({ domain: 'mileage', field: 'rollback', found: 'rolled_back', canonical: 'clean' });
   if (m.historical_points === 0 && !instruction && MILEAGE_CONFIRMED.test(s)) out.push({ domain: 'mileage', field: 'history', found: 'confirmed_by_history', canonical: 'no_historical_points' });
+  /* ---- rc-v3.3 evidence status ---- */
+  if (!instruction) {
+    const near = re => { re.lastIndex = 0; const m = re.exec(s); return m && !hedgedBefore(s, m.index) ? m : null; };
+    /* A. mileage certainty */
+    if (!reported && !NOT_SURE.test(s)) {
+      const mh = near(MILEAGE_HONEST), mt = near(MILEAGE_TRUST), mv = near(MILEAGE_VERIFIED), rs = near(ROLLBACK_SURE);
+      if (mh) out.push({ domain: 'mileage_certainty', field: 'mileage', found: 'honest_mileage', canonical: 'consistent_points_only' });
+      else if (mt) out.push({ domain: 'mileage_certainty', field: 'mileage', found: 'trusted_figure', canonical: 'consistent_points_only' });
+      else if (mv) out.push({ domain: 'mileage_certainty', field: 'mileage', found: 'confirmed_mileage', canonical: 'consistent_points_only' });
+      else if (rs) out.push({ domain: 'mileage_certainty', field: 'mileage', found: 'rollback_excluded', canonical: 'no_rollback_found' });
+    }
+    /* B. absence certainty */
+    if (!reported) {
+      const hn = near(HIDDEN_NONE);
+      if (hn) out.push({ domain: 'absence_certainty', field: 'hidden', found: 'nothing_hidden', canonical: 'not_found_only' });
+      else if (facts.accident !== 'recorded' && !COUNTERFACTUAL.test(s) && !EVIDENCE_SCOPE.test(s)) {
+        const ab = near(ABSENCE_CATEGORICAL);
+        if (ab) out.push({ domain: 'absence_certainty', field: 'history', found: 'never_happened', canonical: 'not_found_only' });
+      }
+    }
+    /* C. unsupported causality about the price */
+    if (!/(?:об[ъ']ясним|поясню?ван|understandable|explainable)/i.test(s)) {
+      /* every causal phrase is judged in its own clause: the seller's
+         attributed "priced in" in the first half does not cover CalCar's
+         "the discount was made for X" after the colon */
+      CAUSAL_PRICE.lastIndex = 0;
+      let m;
+      while ((m = CAUSAL_PRICE.exec(s))) {
+        if (!m[0].length) { CAUSAL_PRICE.lastIndex++; continue; }
+        if (!hedgedBefore(s, m.index) && !REPORTED.test(clauseBefore(s, m.index))) { out.push({ domain: 'causality', field: 'price', found: 'price_cause_asserted', canonical: 'no_direct_evidence' }); break; }
+      }
+    }
+    /* D. global condition from photos */
+    if (!reported) {
+      const nn = near(NEAR_NEW), gc = near(GLOBAL_CONDITION);
+      if (nn) out.push({ domain: 'global_condition', field: 'condition', found: 'near_new_verdict', canonical: 'photo_appearance_only' });
+      else if (gc && !(PHOTO_SCOPE.test(s) && APPEARANCE_VERB.test(s))) out.push({ domain: 'global_condition', field: 'condition', found: 'global_condition_verdict', canonical: 'photo_appearance_only' });
+    }
+    /* E. a diagnostic result as CalCar's own fact */
+    if (!reported) {
+      const dr = near(DIAG_RESULT);
+      if (dr) out.push({ domain: 'seller_fact', field: 'diagnostic', found: 'diagnostic_result_asserted', canonical: 'seller_claim_or_future_check' });
+    }
+    /* F. false sufficiency: a purchase verdict conditioned on a named
+       subset of components while the checklist holds several material
+       checks. A verdict that refers to the checklist as a whole ("if the
+       key checks on the list pass"), or names no specific component, is
+       the model's own business */
+    if (num3(facts.checklist_items) >= 3 && CONDITIONAL.test(s) && PURCHASE_VERDICT.test(s) && !CHECKLIST_REF.test(s)) {
+      const named = componentsNamed(s);
+      if (named >= 1 && named < facts.checklist_items) out.push({ domain: 'recommendation', field: 'purchase_verdict', found: 'subset_' + named + '_of_' + facts.checklist_items, canonical: 'checklist_not_a_subset' });
+    }
+  }
   /* dashboard: a fault lamp asserted as lit when the assessment has no active lamp and no explicit fault message */
   const d = facts.dashboard;
   if (d && !d.active.length && !d.explicit.length && d.state !== 'unknown' && d.state !== 'running' && d.state !== 'ev_ready'
@@ -380,8 +518,13 @@ function pruneItems(list, partsOf, facts, section, log) {
 export function gateFinalConclusion(fc, facts) {
   if (!isObj(fc) || typeof fc.body !== 'string') return { fc, hidden: false, removed: 0, total: 0, violations: [] };
   const log = [];
+  /* rc-v3.3: a contradicting or over-certain headline is removed on its own
+     (the page hides an empty lead); the body is judged as before. The block
+     is hidden only when the body loses its safe core */
   const headlineV = sentenceViolations(fc.headline, facts, { section: 'final_conclusion.headline' });
-  if (headlineV.length) return { fc: null, hidden: true, reason: 'headline', removed: 0, total: 0, violations: headlineV.map(v => ({ ...v, action: 'block_hidden', text: str(fc.headline).slice(0, 160) })) };
+  const headlineRemoved = headlineV.length > 0;
+  if (headlineRemoved) log.push(...headlineV.map(v => ({ ...v, action: 'headline_removed', text: str(fc.headline).slice(0, 160) })));
+  const headline = headlineRemoved ? '' : fc.headline;
   const paras = fc.body.split(/\n\s*\n/);
   const outParas = [];
   let removed = 0, total = 0, emptyPara = false;
@@ -391,11 +534,11 @@ export function gateFinalConclusion(fc, facts) {
     if (r.text === null && r.total) { emptyPara = true; continue; }
     if (r.text) outParas.push(r.text);
   }
-  if (!removed) return { fc, hidden: false, removed: 0, total, violations: [] };
+  if (!removed && !headlineRemoved) return { fc, hidden: false, removed: 0, total, violations: [] };
   if (emptyPara || !outParas.length || removed / Math.max(1, total) > FC_MAX_REMOVED_SHARE) {
-    return { fc: null, hidden: true, reason: emptyPara ? 'paragraph_lost' : 'too_many_sentences', removed, total, violations: log.map(v => ({ ...v, action: 'block_hidden' })) };
+    return { fc: null, hidden: true, reason: emptyPara ? 'paragraph_lost' : 'too_many_sentences', removed, total, headline_removed: headlineRemoved, violations: log.map(v => ({ ...v, action: v.action === 'headline_removed' ? v.action : 'block_hidden' })) };
   }
-  return { fc: { ...fc, body: outParas.join('\n\n') }, hidden: false, removed, total, violations: log };
+  return { fc: { ...fc, headline, body: outParas.join('\n\n') }, hidden: false, removed, total, headline_removed: headlineRemoved, violations: log };
 }
 
 /* ---------- the gate ---------- */
@@ -453,9 +596,9 @@ export function enforceReportConsistency(report, { lang = 'en' } = {}) {
       report.final_conclusion = null;
       out.hidden.push('final_conclusion');
       if (isObj(report._meta)) report._meta.final_conclusion = { ...(isObj(report._meta.final_conclusion) ? report._meta.final_conclusion : {}), status: 'error', reason: 'consistency_' + g.reason, consistency: { removed: g.removed, total: g.total } };
-    } else if (g.removed) {
+    } else if (g.removed || g.headline_removed) {
       report.final_conclusion = g.fc;
-      if (isObj(report._meta) && isObj(report._meta.final_conclusion)) report._meta.final_conclusion.consistency = { removed: g.removed, total: g.total };
+      if (isObj(report._meta) && isObj(report._meta.final_conclusion)) report._meta.final_conclusion.consistency = { removed: g.removed, total: g.total, ...(g.headline_removed ? { headline_removed: true } : {}) };
     }
   }
   void n0; void lang;

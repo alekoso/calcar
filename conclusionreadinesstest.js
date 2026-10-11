@@ -139,18 +139,19 @@ const ENV = { ANTHROPIC_API_KEY: 'sk-ant-READY-TEST', OPENAI_API_KEY: 'sk-READY-
     for (const h of ['Чистый X5 без аварий в истории', 'No accidents recorded for this X5', 'Аварії не було']) {
       const rr = REPORT(); rr.final_conclusion = { headline: h, body: FC().body }; rr._meta.final_conclusion = { status: 'ok' };
       RC.enforceReportConsistency(rr, { lang: 'ru' });
-      ok('G3. a real no-accident claim against a recorded accident still hides the block: "' + h + '"', rr.final_conclusion === null);
+      ok('G3. a real no-accident claim against a recorded accident still removes the headline, the body stays (rc-v3.3): "' + h + '"', rr.final_conclusion && rr.final_conclusion.headline === '' && rr.final_conclusion.body === FC().body);
     }
     /* the gate hides the block: readiness still gives the summary, and the cause names the gate */
-    const rh = REPORT(); rh.final_conclusion = { headline: 'Чистый X5 без аварий в истории', body: FC().body }; rh._meta.final_conclusion = { status: 'ok', provider: 'anthropic', version: 'fc-v2.5' };
+    /* a body paragraph that is nothing but a no-accident claim is lost whole: the block is hidden */
+    const rh = REPORT(); rh.final_conclusion = { headline: 'Честный X5', body: 'Аварий у этого X5 не было.\n\n' + FC().body }; rh._meta.final_conclusion = { status: 'ok', provider: 'anthropic', version: 'fc-v2.5' };
     RC.enforceReportConsistency(rh, { lang: 'ru' });
     const ready = F.conclusionReadiness(rh);
-    ok('G4. a hidden structured conclusion leaves a visible summary with the gate as the cause', rh.final_conclusion === null && ready.visible === 'verdict_summary' && ready.fallback_cause === 'consistency_headline' && rh._meta.final_conclusion.provider === 'anthropic' && rh._meta.final_conclusion.status === 'error', JSON.stringify(rh._meta.final_conclusion));
+    ok('G4. a hidden structured conclusion leaves a visible summary with the gate as the cause', rh.final_conclusion === null && ready.visible === 'verdict_summary' && ready.fallback_cause === 'consistency_paragraph_lost' && rh._meta.final_conclusion.provider === 'anthropic' && rh._meta.final_conclusion.status === 'error', JSON.stringify(rh._meta.final_conclusion));
     /* the fallback goes through the same gate: a contradicting sentence of the summary is removed too */
     const rs = REPORT(); rs.verdict.summary = 'Авто без ДТП в истории. Кузов ухожен.'; rs.final_conclusion = null;
     RC.enforceReportConsistency(rs, { lang: 'ru' });
     ok('G5. the summary fallback is gated the same way: the contradicting sentence is gone, the rest stays', rs.verdict.summary === 'Кузов ухожен.' && F.conclusionReadiness(rs).visible === 'verdict_summary', JSON.stringify(rs.verdict));
-    ok('G6. gate version bumped', RC.CONSISTENCY_VERSION === 'rc-v3.2');
+    ok('G6. gate version bumped', RC.CONSISTENCY_VERSION === 'rc-v3.3');
   }
 
   /* ---------- H. optional fields ---------- */
