@@ -44,7 +44,10 @@ const DASH = String.fromCharCode(0x2014);
 
   /* ---- C. 204 kW vs 204 PS is a real mismatch ---- */
   s = build(null, { make: 'X', model: 'Y', year: 2021, modification: '2.8D AT (204 к.с.) 4WD', title: 'X Y 2021 дизель', text: 'Потужний дизель 2.76 л (204 кВт), автомат. Двигун Дизель, 2.76 л, (277.44 к.с. / 204 кВт)' }, { engine: '2,76 л дизель' });
-  ok('C. 204 kW (277 PS) against 204 PS is a conflict after normalisation', s.power_hp.conflict && s.power_hp.value === null && vals(s) === '204,277', JSON.stringify(s.power_hp));
+  /* 2026-10-12: the same number under two units inside one page is the
+     source's own unit-label error (source_unit_inconsistency), not a conflict
+     of two figures; see powerunittest.js */
+  ok('C. 204 kW (277 PS) against 204 PS of the same page: a unit-label inconsistency of the source, no value, no conflict', !s.power_hp.conflict && s.power_hp.ambiguous && s.power_hp.ambiguity === 'source_unit_inconsistency' && s.power_hp.value === null && vals(s) === '204,277', JSON.stringify(s.power_hp));
   ok('C1. the decimal "277.44 к.с." never yields a bogus 44', !s.power_hp.candidates.some(c => c.value === 44) && JSON.stringify(M.powerValues('(277.44 к.с. / 204 кВт)')) === '[277]');
   ok('C2. "943.296 к.с." never yields a bogus 296', JSON.stringify(M.powerValues('Потужність двигуна 943.296 к.с. / 694 кВт')) === '[943]');
 
@@ -120,7 +123,9 @@ const DASH = String.fromCharCode(0x2014);
   ok('I3. EV figures of different kinds that agree are confirmed, not ambiguous', (() => { const x = build(null, { make: 'T', model: 'M', year: 2023, modification: 'LR (384 к.с.)', title: 'T M 2023 електро', text: 'Потужність 282 кВт' }, { engine: 'електро, 384 л.с.' }); return x.power_hp.value === 384 && !x.power_hp.ambiguous; })());
 
   /* ---- J. provenance survives normalisation ---- */
-  s = build(null, { make: 'X', model: 'Y', year: 2021, modification: '2.8D AT (204 к.с.) 4WD', title: 'X Y 2021 дизель', text: 'дизель 2.76 л (204 кВт)' }, { engine: '2,76 л дизель' });
+  /* a real conflict of two different page figures (160 PS in the modification, 204 kW in the seller text) */
+  s = build(null, { make: 'X', model: 'Y', year: 2021, modification: '2.8D AT (160 к.с.) 4WD', title: 'X Y 2021 дизель', text: 'дизель 2.76 л (204 кВт)' }, { engine: '2,76 л дизель' });
+  ok('J0. different numbers of the same page stay a real conflict', s.power_hp.conflict && vals(s) === '160,277', JSON.stringify(s.power_hp));
   const kwC = s.power_hp.candidates.find(c => c.unit === 'kw');
   ok('J. the kW candidate keeps source, raw snippet, unit, number, normalised value and the conversion applied', kwC && kwC.source === 'listing' && kwC.raw === '204 кВт' && kwC.raw_value === 204 && kwC.value === 277 && kwC.converted === 'kw_to_ps' && kwC.type === 'engine', JSON.stringify(kwC));
   ok('J1. no candidate pretends its source wrote the normalised number', !s.power_hp.candidates.some(c => /^277 hp$/.test(String(c.raw))));
@@ -143,7 +148,7 @@ const DASH = String.fromCharCode(0x2014);
   r = report(s, { title: 'Toyota Land Cruiser Prado 2021' });
   CM.mergeChecklist(r, { fcChecks: [], snapshot: null, lang: 'ru' });
   const step = r.checklist.find(t => /^Мощность двигателя/.test(t)) || '';
-  ok('M. checklist: a real conflict adds the step and names each candidate in its own unit', /204 л\.с\./.test(step) && /204 кВт \(277 л\.с\.\)/.test(step) && !/44 л/.test(step) && !/277 л\.с\. или/.test(step), step);
+  ok('M. checklist: a real conflict adds the step and names each candidate in its own unit', /160 л\.с\./.test(step) && /204 кВт \(277 л\.с\.\)/.test(step) && !/44 л/.test(step) && !/277 л\.с\. или/.test(step), step);
   ok('M1. the real conflict reaches the Final Conclusion context and the spec conflicts list', s.conflicts.includes('power_hp') && (FC.buildConclusionContext(report(s)).vehicle.identity_conflicts || []).includes('power_hp') && FC.buildConclusionContext(report(s)).vehicle.power_hp === undefined);
   ok('M2. the ambiguous hybrid does not reach the Final Conclusion as a conflict', !(FC.buildConclusionContext(report(rav())).vehicle.identity_conflicts || []).includes('power_hp') && FC.buildConclusionContext(report(rav())).vehicle.power_hp === undefined);
   const dropped = M.identityConflictItem({ title: 'Мощность двигателя', detail: 'В объявлении 219 и 163 л.с.' }, rav());

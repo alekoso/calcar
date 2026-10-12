@@ -180,10 +180,34 @@ export function powerFigures(text) {
   let m;
   while ((m = POWER_FIGURE_RE.exec(t))) {
     const f = figureOf(m);
-    if (f && !out.some(x => powerEquivalent(x.value, f.value))) out.push({ ...f, label_type: powerLabelType(t, m.index) });
+    if (!f) continue;
+    const same = out.find(x => powerEquivalent(x.value, f.value));
+    /* the other unit of the same statement ("530.4 к.с. / 390 кВт") is not
+       a second figure: it is kept on the first one as its alternate spelling,
+       so a unit-label error of the source can be recognised later */
+    if (same) { if (!same.alt && (same.unit === 'kw') !== (f.unit === 'kw')) same.alt = { raw: f.raw, raw_value: f.raw_value, unit: f.unit }; continue; }
+    out.push({ ...f, label_type: powerLabelType(t, m.index) });
   }
   POWER_FIGURE_RE.lastIndex = 0;
   return out;
+}
+/* A source that writes the same number under two incompatible units
+   ("390 к.с." in the modification, "390 кВт / 530.4 к.с." in its technical
+   block) contradicts itself, not another source: the 530.4 is the source's
+   own conversion of its mislabelled 390, not independent evidence. Two
+   figures of the same page family (listing text and the analysis that reads
+   it) whose raw numbers coincide under different units are such a pair */
+const PAGE_FAMILY = new Set(['listing', 'analysis']);
+function powerNumbers(c) {
+  const out = [];
+  if (c.raw_value !== null && c.raw_value !== undefined) out.push({ n: Number(c.raw_value), kw: c.unit === 'kw' });
+  if (c.alt && c.alt.raw_value !== null && c.alt.raw_value !== undefined) out.push({ n: Number(c.alt.raw_value), kw: c.alt.unit === 'kw' });
+  return out;
+}
+export function sourceUnitPair(a, b) {
+  if (!a || !b || !PAGE_FAMILY.has(a.source) || !PAGE_FAMILY.has(b.source)) return null;
+  for (const x of powerNumbers(a)) for (const y of powerNumbers(b)) if (Number.isFinite(x.n) && x.n === y.n && x.kw !== y.kw) return { number: x.n, units: [x.kw ? 'kw' : 'ps', y.kw ? 'kw' : 'ps'] };
+  return null;
 }
 /* every distinct power figure in a text, already normalised */
 export function powerValues(text) { return powerFigures(text).map(f => f.value); }
@@ -370,22 +394,49 @@ function resolveField(cands, isConflict = (a, b) => a !== b) {
    takes part */
 function resolvePower(cands) {
   const pack = c => ({ source: c.source, value: c.value === undefined ? null : c.value, raw: c.raw || null, strength: c.strength || null,
-    unit: c.unit || null, raw_value: c.raw_value === undefined ? null : c.raw_value, type: c.type || null, converted: c.converted || null });
+    unit: c.unit || null, raw_value: c.raw_value === undefined ? null : c.raw_value, type: c.type || null, converted: c.converted || null,
+    ...(c.alt ? { alt: { raw: c.alt.raw, raw_value: c.alt.raw_value, unit: c.alt.unit } } : {}), ...(c.unit_pair ? { unit_pair: true } : {}) });
   const all = cands.filter(c => c && (c.raw || (c.value !== null && c.value !== undefined)));
   const list = all.filter(c => c.value !== null && c.value !== undefined);
   if (!list.length) return { value: null, source: null, strength: null, conflict: false, ambiguous: false, candidates: all.map(pack) };
   const pool = list.filter(c => c.strength !== 'weak');
   if (!pool.length) return { value: null, source: null, strength: 'weak', conflict: false, ambiguous: false, candidates: list.map(pack) };
+  /* 1. a self-inconsistent unit pair of the page (the same number as к.с.
+     and as кВт): both members are marked; a clean decoder that agrees with
+     one member settles it and the other member is the mislabelled side */
+  let inconsistency = null;
+  for (let i = 0; i < pool.length; i++) {
+    for (let j = i + 1; j < pool.length; j++) {
+      if (powerEquivalent(pool[i].value, pool[j].value) || !powerComparable(pool[i].type, pool[j].type)) continue;
+      const pair = sourceUnitPair(pool[i], pool[j]);
+      if (pair) { pool[i].unit_pair = pool[j].unit_pair = true; inconsistency = inconsistency || { kind: 'source_unit_inconsistency', family: 'listing', number: pair.number, units: pair.units, figures: [pool[i].raw, pool[j].raw] }; }
+    }
+  }
+  const dec = inconsistency ? pool.find(c => c.source === 'decoder') : null;
+  const settled = dec ? pool.filter(c => c.unit_pair && powerEquivalent(c.value, dec.value)) : [];
+  const mislabelled = c => c.unit_pair && settled.length > 0 && !powerEquivalent(c.value, dec.value);
+  /* 2. disagreements among the rest */
   let conflict = false, multiType = false, unknownDisagrees = false;
   for (let i = 0; i < pool.length; i++) {
     for (let j = i + 1; j < pool.length; j++) {
+      if (mislabelled(pool[i]) || mislabelled(pool[j])) continue;
+      if (pool[i].unit_pair && pool[j].unit_pair && sourceUnitPair(pool[i], pool[j])) continue;
       if (powerEquivalent(pool[i].value, pool[j].value)) continue;
       if (powerComparable(pool[i].type, pool[j].type)) conflict = true;
       else if (pool[i].type === 'unknown' || pool[j].type === 'unknown' || !pool[i].type || !pool[j].type) unknownDisagrees = true;
       else multiType = true;
     }
   }
-  if (conflict) return { value: null, source: null, strength: null, conflict: true, ambiguous: false, candidates: pool.map(pack) };
+  if (conflict) return { value: null, source: null, strength: null, conflict: true, ambiguous: false, ...(inconsistency ? { inconsistency } : {}), candidates: pool.map(pack) };
+  if (inconsistency) {
+    if (settled.length) {
+      const sources = [...new Set([dec, ...settled].map(c => c.source))];
+      return { value: dec.value, raw: dec.raw || null, source: sources.join('+'), strength: 'strong', conflict: false, ambiguous: false, type: dec.type || null, inconsistency: { ...inconsistency, settled_by: 'decoder' }, candidates: all.map(pack) };
+    }
+    /* no independent source: the exact power stays open internally, but it
+       is the source's own unit-label error, not a question for the buyer */
+    return { value: null, source: null, strength: null, conflict: false, ambiguous: true, ambiguity: 'source_unit_inconsistency', inconsistency, candidates: pool.map(pack) };
+  }
   const rank = { strong: 3, medium: 2, weak: 1 };
   /* each known type resolved on its own: its sources agree, so one value */
   const byType = {};
@@ -453,7 +504,7 @@ function listingCandidates(listing) {
        (seller text, the marketplace technical block), each with its unit and
        original snippet; a structured figure without a unit stays unknown */
     power_figures: (l.power_hp !== undefined && l.power_hp !== null && String(l.power_hp).trim() ? [(() => { const p = parsePower(l.power_hp); return p ? { source: 'listing', value: p.value, raw: p.raw, raw_value: p.raw_value, unit: p.unit, converted: p.converted, strength: 'medium', origin: p.unit === 'unknown' ? 'structured_unit_unknown' : 'structured' } : null; })()] : []).filter(Boolean)
-      .concat(powerFigures(l.text || '').map(f => ({ source: 'listing', value: f.value, raw: f.raw, raw_value: f.raw_value, unit: f.unit, converted: f.converted, strength: 'medium', origin: 'text', label_type: f.label_type }))),
+      .concat(powerFigures(l.text || '').map(f => ({ source: 'listing', value: f.value, raw: f.raw, raw_value: f.raw_value, unit: f.unit, converted: f.converted, strength: 'medium', origin: 'text', label_type: f.label_type, ...(f.alt ? { alt: f.alt } : {}) }))),
     displacement_l: c(normDisplacement(mod) || normDisplacement(title), mod || title),
     forced_induction: c(normForcedInduction(mod) || normForcedInduction(title), mod || title),
     /* the marketplace technical block names the gearbox under a label
@@ -686,7 +737,10 @@ export function vehicleSpecPromptBlock(spec) {
     lines.push('IDENTITY_STATUS: ' + JSON.stringify({ status: ids.status, core_status: ids.core_status, version_status: ids.version_status, core_conflicts: ids.core_conflicts, conditional_fields: ids.conditional_fields })
       + (ids.core_status === 'unresolved' ? '. Базова ідентичність НЕ встановлена: не описуй авто як певну конфігурацію і не роби висновку, який передбачає, що машина ідентифікована.' : '. Базова ідентичність встановлена; непідтверджені лише поля вище: не подавай їх як факт, називай умовно ("за даними оголошення").'));
   }
-  if (powerAmbiguous) {
+  if (powerAmbiguous && spec.power_hp.ambiguity === 'source_unit_inconsistency') {
+    const inc = spec.power_hp.inconsistency || {};
+    lines.push('ПОТУЖНІСТЬ: площадка сама підписала одне число різними одиницями (' + (inc.figures || []).join(' / ') + '; число ' + inc.number + ' як к.с. і як кВт). Це помилка підпису одиниці в ОДНОМУ джерелі, а не два різні значення і не розбіжність джерел: не став жодне число як факт, не проси покупця "уточнити, яка мощність правильна", не роби з цього ризик і не став через це під сумнів версію.');
+  } else if (powerAmbiguous) {
     lines.push('ПОТУЖНІСТЬ НЕ ЗВЕДЕНА ДО ОДНОГО ЧИСЛА: джерела називають показники різних типів (' + powerAmbiguous + '). Для гібрида чи електромобіля системна потужність і потужність двигуна це різні величини: це НЕ розбіжність, НЕ конфлікт і НЕ помилка продавця. Не обирай одне число як факт і не проси уточнити "яке з них правильне".');
   }
   if (spec.decoder && spec.decoder.present && !spec.decoder.strong) {
@@ -715,7 +769,12 @@ export function conflictNotes(spec, lang = 'en') {
   }
   /* power of an electrified car stated as figures of different types: not a conflict */
   const pw = spec && spec.power_hp;
-  if (pw && pw.ambiguous && Array.isArray(pw.candidates)) {
+  if (pw && pw.ambiguous && pw.ambiguity === 'source_unit_inconsistency' && pw.inconsistency) {
+    const figs = (pw.inconsistency.figures || []).join('; ');
+    out.push(L === 'ua' ? `Потужність: у даних оголошення одне й те саме число підписане різними одиницями (${figs}), тому точна потужність не встановлена; це помилка підпису одиниці в джерелі, а не два різні значення.`
+      : L === 'ru' ? `Мощность: в данных объявления одно и то же число подписано разными единицами (${figs}), поэтому точная мощность не установлена; это ошибка подписи единицы в источнике, а не два разных значения.`
+      : `Power: the listing writes the same number under different units (${figs}), so the exact output is not established; this is a unit-label error in the source, not two different figures.`);
+  } else if (pw && pw.ambiguous && Array.isArray(pw.candidates)) {
     /* a figure with a known kind is named by its kind: "системна 219 к.с.; двигуна 163.2 к.с." */
     const KIND = { system: { ua: 'системна', ru: 'системная', en: 'system' }, engine: { ua: 'двигуна', ru: 'двигателя', en: 'engine' }, rated: { ua: 'номінальна', ru: 'номинальная', en: 'rated' } };
     const parts = pw.candidates.filter(c => c.value !== null).map(c => (KIND[c.type] ? KIND[c.type][L] + ', ' : '') + fmt(c));
@@ -823,8 +882,8 @@ export function publicSpec(spec) {
     if (!x) continue;
     out.fields[f] = { value: x.value === undefined ? null : x.value, source: x.source || null, strength: x.strength || null, conflict: !!x.conflict };
     if (f === 'transmission_type') out.fields[f].exact = !!x.exact;
-    if (f === 'power_hp') { out.fields[f].ambiguous = !!x.ambiguous; if (x.ambiguity) out.fields[f].ambiguity = x.ambiguity; if (x.by_type && Object.keys(x.by_type).length) out.fields[f].by_type = Object.fromEntries(Object.entries(x.by_type).map(([t, v]) => [t, { value: v.value, unit: v.unit, raw_value: v.raw_value, source: v.source }])); }
-    if ((x.conflict || x.ambiguous || (f === 'transmission_type' && !x.exact)) && Array.isArray(x.candidates)) out.fields[f].candidates = x.candidates.filter(c => c.value !== null).map(c => ({ source: c.source, value: c.value, raw: c.raw || null, ...(f === 'power_hp' ? { unit: c.unit || null, raw_value: c.raw_value === undefined ? null : c.raw_value, type: c.type || null, converted: c.converted || null } : {}) }));
+    if (f === 'power_hp') { out.fields[f].ambiguous = !!x.ambiguous; if (x.ambiguity) out.fields[f].ambiguity = x.ambiguity; if (x.inconsistency) out.fields[f].inconsistency = x.inconsistency; if (x.by_type && Object.keys(x.by_type).length) out.fields[f].by_type = Object.fromEntries(Object.entries(x.by_type).map(([t, v]) => [t, { value: v.value, unit: v.unit, raw_value: v.raw_value, source: v.source }])); }
+    if ((x.conflict || x.ambiguous || (f === 'transmission_type' && !x.exact)) && Array.isArray(x.candidates)) out.fields[f].candidates = x.candidates.filter(c => c.value !== null).map(c => ({ source: c.source, value: c.value, raw: c.raw || null, ...(f === 'power_hp' ? { unit: c.unit || null, raw_value: c.raw_value === undefined ? null : c.raw_value, type: c.type || null, converted: c.converted || null, ...(c.alt ? { alt: c.alt } : {}), ...(c.unit_pair ? { unit_pair: true } : {}) } : {}) }));
   }
   /* genuinely unknown identity fields: no trusted source gives a value and there is no conflict */
   out.unknown = ['version', 'fuel', 'transmission', 'drivetrain', 'power_hp'].filter(f => spec[f] && spec[f].value === null && !spec[f].conflict && !spec[f].ambiguous);
