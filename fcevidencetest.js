@@ -26,7 +26,7 @@ const FACTS = (over = {}) => ({ fuel: { value: null, trusted: false, conflict: f
   accident: 'none', airbags: null, mileage: { rollback: 'clean', unresolved: false, historical_points: 2 }, dashboard: null, checklist_items: 7, ...over });
 const report = (fc, over = {}) => ({ vehicle: { title: 'Car' }, verdict: { score: 7, summary: 'Summary.' }, checklist: ['a: one', 'b: two', 'c: three', 'd: four', 'e: five', 'f: six', 'g: seven'],
   score_breakdown: { inputs: { mileage_rollback: { status: 'clean', available: true }, accident_history: { status: 'clean', available: true } }, events: [] },
-  final_conclusion: fc, _meta: { lang: 'ru', history_facts: { registry_present: true, accident_recorded: false, mileage_points: [{ km: 30000, date: '2021-01-21' }, { km: 137000, date: '2026-06-23' }] }, vehicle_spec: { fields: {}, conflicts: [], unknown: [] }, final_conclusion: { status: 'ok', provider: 'anthropic', version: 'fc-v2.6' } }, ...over });
+  final_conclusion: fc, _meta: { lang: 'ru', history_facts: { registry_present: true, accident_recorded: false, mileage_points: [{ km: 30000, date: '2021-01-21' }, { km: 137000, date: '2026-06-23' }] }, vehicle_spec: { fields: {}, conflicts: [], unknown: [] }, final_conclusion: { status: 'ok', provider: 'anthropic', version: 'fc-v2.7' } }, ...over });
 const BODY = 'Первый абзац с фактами. Машина выглядит интересной. История в целом понятная. Снаружи на фото выглядит ухоженно. Это хороший знак, но проверка нужна.\n\nВторой абзац. Пробег высокий для возраста. Найденные показания пробега последовательны. Между отметками прошло больше пяти лет, и что было с обслуживанием, из данных не видно. Цена немного ниже средней.\n\nТретий абзац. Главный вопрос здесь батарея. Диагностика покажет её состояние. Днище на фото не показано.';
 
 (async () => {
@@ -144,7 +144,7 @@ const BODY = 'Первый абзац с фактами. Машина выгля
     const gate = fs.readFileSync('api/report-consistency.js', 'utf8');
     ok('21a. check.js calls the production conclusion chain exactly once', (src.match(/runProductionConclusion\(/g) || []).length === 1);
     ok('21b. the gate has no network and no model call', !/fetch\(|callModel|openai|anthropic/i.test(gate));
-    ok('21c. versions: fc-v2.6 rules, rc-v3.3 gate', F.CONCLUSION_VERSION === 'fc-v2.6' && RC.CONSISTENCY_VERSION === 'rc-v3.3');
+    ok('21c. versions: fc-v2.6 rules, rc-v3.3 gate', F.CONCLUSION_VERSION === 'fc-v2.7' && RC.CONSISTENCY_VERSION === 'rc-v3.3');
     ok('21d. a single over-certain sentence never hides the block: share rule unchanged', RC.FC_MAX_REMOVED_SHARE === 0.25);
   }
 

@@ -62,7 +62,7 @@ const KEYS = { ANTHROPIC_API_KEY: 'sk-ant-PROVIDER-TEST-SECRET', OPENAI_API_KEY:
   const ref = [];
   await F.runFinalConclusion({ report: REPORT(), langDirective: 'LANG.', env: { ...env, CONCLUSION_PROVIDER: 'openai' }, callModel: async b => { ref.push(b); return openaiOk; } });
   ok(aBodies[0].system[0].text === ref[0].messages[0].content && aBodies[0].system[0].text === F.CONCLUSION_RULES && aBodies[0].messages[0].content === ref[0].messages[1].content && aBodies[0].messages[0].content === F.conclusionUserMessage({ langDirective: 'LANG.', context: F.buildConclusionContext(REPORT()) }), '3: Claude input differs from the OpenAI input');
-  ok(JSON.stringify(aBodies[0].output_config.format.schema) === JSON.stringify(ref[0].response_format.json_schema.schema) && F.CONCLUSION_VERSION === 'fc-v2.6' && r1.version === 'fc-v2.6' && aBodies[0].output_config.format.schema.required.join() === 'headline,paragraphs,checks', '3: schema is not the fc-v2.5 schema with checks');
+  ok(JSON.stringify(aBodies[0].output_config.format.schema) === JSON.stringify(ref[0].response_format.json_schema.schema) && F.CONCLUSION_VERSION === 'fc-v2.7' && r1.version === 'fc-v2.7' && aBodies[0].output_config.format.schema.required.join() === 'headline,paragraphs,checks', '3: schema is not the fc-v2.5 schema with checks');
   ok(r1.conclusion.headline === 'Claude headline' && Array.isArray(r1.conclusion.checks) && r1.conclusion.checks.length === 2 && JSON.stringify(r1.checklist_snapshot) === JSON.stringify(REPORT().checklist) && r1.context_chars === aBodies[0].messages[0].content.length, 'Claude result lacks checks, snapshot or context size');
   /* an env model or effort override reaches the call */
   const ov = [];
@@ -73,7 +73,7 @@ const KEYS = { ANTHROPIC_API_KEY: 'sk-ant-PROVIDER-TEST-SECRET', OPENAI_API_KEY:
   const rep = REPORT();
   ok(CHK.attachFinalConclusion(rep, r1, 'en') === true, '4: Claude result is not attached');
   const m = rep._meta.final_conclusion;
-  ok(m.provider === 'anthropic' && m.model === 'claude-opus-5-5' && m.effort === 'medium' && m.version === 'fc-v2.6' && m.fallback_reason === null && typeof m.ms === 'number' && m.input_tokens === 4000 && m.output_tokens === 2000 && m.cached_tokens === 7800, 'meta does not record provider, model, effort, latency or tokens: ' + JSON.stringify(m));
+  ok(m.provider === 'anthropic' && m.model === 'claude-opus-5-5' && m.effort === 'medium' && m.version === 'fc-v2.7' && m.fallback_reason === null && typeof m.ms === 'number' && m.input_tokens === 4000 && m.output_tokens === 2000 && m.cached_tokens === 7800, 'meta does not record provider, model, effort, latency or tokens: ' + JSON.stringify(m));
   const fcc = CM.sanitizeFcChecks(r1.conclusion.checks, r1.checklist_snapshot.length);
   const cm = CM.mergeChecklist(rep, { fcChecks: fcc.checks, snapshot: r1.checklist_snapshot, lang: 'en' });
   ok(cm.refined.length === 1 && cm.refined[0].to === CHECKS[0].text && cm.added.some(a => a.source === 'final_conclusion' && a.text === CHECKS[1].text) && rep.checklist[0] === CHECKS[0].text, '4: Claude checks do not reach the checklist merge: ' + JSON.stringify(cm));

@@ -2190,7 +2190,9 @@ function renderValueSection(D) {
   };
   const note = $('valNote');
   note.hidden = false;
-  note.textContent = ((BASIS[vc.new_price.basis] || '') + ' ' + t('The forecast is a model estimate, not a guarantee.')).trim();
+  /* a price matched to a version the listing only declares says so: the version is the car's working name, not a verified fact */
+  const declaredNote = vc.new_price.version_status === 'declared' && /^(?:source_msrp|localized_msrp|msrp_equivalent_version)$/.test(vc.new_price.basis || '') ? ' ' + t('The version is the one stated in the listing.') : '';
+  note.textContent = ((BASIS[vc.new_price.basis] || '') + declaredNote + ' ' + t('The forecast is a model estimate, not a guarantee.')).trim();
   card.style.display = '';
   /* графік малюється вже у видимій картці: ширина полотна береться з неї */
   CalCarValueChart.render($('valChart'), vc, { t, locale: reportLocaleTag() });

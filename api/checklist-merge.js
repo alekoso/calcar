@@ -211,8 +211,16 @@ export function mergeChecklist(report, { fcChecks = [], snapshot = null, lang = 
     add(s.text, 'identity', { field: s.field });
   }
 
-  /* 4. new checks from the conclusion */
-  for (const c of fresh) add(c.text, 'final_conclusion', { area: c.area });
+  /* 4. new checks from the conclusion. A "confirm the version" step has a
+     place only when the canonical identity reports a conflict: a declared,
+     uncontradicted version is not a check */
+  const ids = isObj(spec) && isObj(spec.identity) ? spec.identity : null;
+  /* a power disagreement has its own deterministic step and is not a reason to question the version */
+  const identityInConflict = !ids || (Array.isArray(ids.core_conflicts) && ids.core_conflicts.length > 0) || ids.version_status === 'conflict';
+  for (const c of fresh) {
+    if (c.area === 'identity' && !identityInConflict) { log.skipped.push({ source: 'final_conclusion', reason: 'identity_not_in_conflict', text: c.text, area: c.area }); continue; }
+    add(c.text, 'final_conclusion', { area: c.area });
+  }
 
   report.checklist = list;
   log.after = list.length;

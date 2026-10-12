@@ -645,12 +645,15 @@ export function retentionBasisMeaningful(basis, reference = null, comparable = n
    оголошення; якір "сьогодні" графіка лишається своїм (нижча з двох).
    Ціна нового авто, відновлена зворотною оцінкою з тієї самої базової
    кривої, незалежного висновку не дає: стан unknown */
-export function retentionContext({ newPrice, basis, reference = null, comparable = null, representative, representativeSource, T }) {
+export function retentionContext({ newPrice, basis, reference = null, comparable = null, representative, representativeSource, T, versionDeclared = false }) {
   const p0 = num(newPrice), pc = num(representative), t = num(T);
   const out = { state: 'unknown', basis: basis || null, ...(reference ? { reference, comparable } : {}), representative_current_value: pc !== null ? Math.round(pc) : null, representative_current_value_source: representativeSource || null };
   if (p0 === null || pc === null || t === null || t <= 0 || p0 <= 0 || pc <= 0) return { ...out, reason: 'insufficient_inputs' };
   const observed = pc / p0, expected = retentionFactor(t), index = observed / expected;
   const metrics = { observed_retention: Math.round(observed * 1000) / 1000, expected_retention: Math.round(expected * 1000) / 1000, retention_index: Math.round(index * 1000) / 1000 };
+  /* a price matched to a version the listing only declares is not proven to be
+     the price of this car: the metrics stay, the state is not measured */
+  if (versionDeclared && (reference === 'exact' || reference === 'equivalent')) return { ...out, ...metrics, reason: 'new_price_version_declared' };
   if (!retentionBasisMeaningful(basis, reference, comparable)) {
     const reason = basis === 'msrp_base_floor' ? 'new_price_from_base_floor' : basis === 'reverse_estimate' ? 'new_price_from_reverse_estimate'
       : reference === 'estimate' ? 'new_price_is_estimate' : reference === 'analog' ? 'new_price_is_analog' : 'new_price_other_market_unlocalized';
@@ -658,6 +661,16 @@ export function retentionContext({ newPrice, basis, reference = null, comparable
   }
   const state = index < RETENTION_THRESHOLDS.heavy ? 'heavy_depreciation' : index > RETENTION_THRESHOLDS.strong ? 'strong_retention' : 'normal_depreciation';
   return { ...out, ...metrics, state };
+}
+
+/* version provenance of the price when new: confirmed by the decoder keeps
+   the tier; declared by the listing only, an exact match is at most
+   equivalent and is marked as matched to a declared version */
+export function declaredCap(ref, versionStatus) {
+  if (versionStatus !== 'declared' || !ref) return ref;
+  if (ref.reference === 'exact') return { ...ref, reference: 'equivalent', version_basis: 'declared', reference_uncapped: 'exact' };
+  if (ref.reference === 'equivalent') return { ...ref, version_basis: 'declared' };
+  return ref;
 }
 
 /* ---------- Збірка секції ---------- */
@@ -685,8 +698,10 @@ export function buildValueCurve({ price = null, currency = null, price_context =
     new_price: {
       value: np.value, approx: np.approx, basis: np.basis,
       /* what kind of reference this is and whether it is in the same market
-         terms as the current price (newPriceReference) */
-      ...newPriceReference(np),
+         terms as the current price (newPriceReference). A version the listing
+         only declares caps it at equivalent: a textual match to a claimed
+         version is never independently exact (version_basis says why) */
+      ...declaredCap(newPriceReference(np), identity.version_status),
       /* яким режимом ввезення локалізовано MSRP ринку-джерела */
       ...(np.localization ? { localization: np.localization } : {}),
       /* походження числа одним поглядом: що за джерело, яка ціна і валюта в
@@ -703,6 +718,8 @@ export function buildValueCurve({ price = null, currency = null, price_context =
          with version_status conflict or unknown no exact-version price was
          asked for, and the reader can see it */
       msrp: np.msrp ? { ...np.msrp, selection: np.msrp.selection ? { ...np.msrp.selection, version_status: identity.version_status || null } : np.msrp.selection } : null,
+      /* the version the price was matched to: confirmed by the decoder, or only declared by the listing (its working name, not independently verified) */
+      version_status: identity.version_status || null,
       /* факт із джерела у контракті Model Intelligence (область: марка,
          модель, покоління, версія, рік, ринок, валюта, джерело, довіра).
          Зворотна оцінка фактом не є: fact лишається null */
@@ -721,7 +738,7 @@ export function buildValueCurve({ price = null, currency = null, price_context =
   /* сохранність моделі: середня площадки, інакше ціна оголошення */
   const rep = cur.source === 'marketplace_average' ? { value: cur.value, source: 'marketplace_average' }
     : cur.average ? { value: cur.average.value, source: 'marketplace_average' } : { value: cur.value, source: cur.source };
-  out.retention = retentionContext({ newPrice: np.value, basis: np.basis, reference: out.new_price.reference, comparable: out.new_price.comparable, representative: rep.value, representativeSource: rep.source, T });
+  out.retention = retentionContext({ versionDeclared: out.new_price.version_basis === 'declared', newPrice: np.value, basis: np.basis, reference: out.new_price.reference, comparable: out.new_price.comparable, representative: rep.value, representativeSource: rep.source, T });
   if (np.reason === 'strong_anchor_not_above_market') return { ...out, status: 'hidden', reason: np.reason };
   const c = fitCurve(np.value, cur.value, T);
   if (!c) return { ...out, status: 'hidden', reason: 'curve_not_credible' };

@@ -236,6 +236,40 @@ export function versionKind(raw) {
   return 'trim';
 }
 const trimOnly = raw => (versionKind(raw) === 'trim' ? clean(raw) : null);
+/* The marketplace modification string is "<version> <engine> <gearbox>
+   (<power>) <drive>" ("AMG 43 G-tronic (390 к.с.) 4Matic", "35i Steptronic
+   (306 к.с.) xDrive", "2.5 ECVT (219 к.с.) Hybrid"). The version the listing
+   DECLARES is the part before the gearbox or the power figure, without
+   battery capacity; a part that starts with a displacement ("2.0 Td4 MHEV")
+   is an engine spec, not a version, and gives nothing. Nothing is guessed */
+const GEARBOX_TOKEN = /\s(?:at|mt|amt|cvt|e-?cvt|dsg|dct|pdk|steptronic|xtronic|g-?tronic|tiptronic|multitronic|s[- ]?tronic|powershift|7g|9g|8hp|робот\S*|автомат\S*|механ\S*|ат|мт|акпп|мкпп)(?=\s|$)/i;
+const DRIVE_ONLY = /^(?:rwd|awd|fwd|4wd|4x4|quattro|xdrive|4matic|4motion|hybrid|гібрид|гибрид)$/i;
+export function declaredVersionFromModification(raw) {
+  let t = clean(raw);
+  if (!t) return null;
+  /* a generation string ("95B (FL)", "III покоління/T33") names no version */
+  if (versionKind(t) === 'generation') return null;
+  const cut = Math.min(...[t.indexOf('('), t.search(GEARBOX_TOKEN)].filter(i => i >= 0));
+  if (Number.isFinite(cut)) t = t.slice(0, cut);
+  t = t.replace(/\d+(?:[.,]\d+)?\s*kwh\b/gi, '').replace(/\s+/g, ' ').trim();
+  if (!t || /^\d{1,2}[.,]\d/.test(t) || DRIVE_ONLY.test(t) || /^(?:new|base)$/i.test(t)) return null;
+  const kind = versionKind(t);
+  if (kind === 'generation') return null;
+  /* "50 TDI", "45 TFSI": a two- or three-digit designation plus the engine
+     family is a version name, not an engine spec */
+  if (kind === 'powertrain' && !/^\d{2,3}\s+(?:tdi|tfsi|tsi|cdi)$/i.test(t)) return null;
+  return t;
+}
+/* two version names agree when one names a subset of the other's words
+   ("AMG 43" and "GLE 43 AMG", "GL63 AMG" and "GL63"); words of the make and
+   the model do not count; "S" against "GTS" are different words */
+export function versionCompatible(a, b, skip = new Set()) {
+  const toks = v => new Set(low(v).split(/[^a-z0-9а-яіїєґ]+/).filter(x => x && !skip.has(x)));
+  const A = toks(a), B = toks(b);
+  if (!A.size || !B.size) return key(a) === key(b);
+  const sub = (x, y) => [...x].every(t => y.has(t));
+  return sub(A, B) || sub(B, A);
+}
 /* гібрид має ДВЗ: не суперечить бензину чи дизелю; конфлікт лише
    бензин проти дизеля і електро проти ДВЗ */
 function fuelConflict(a, b) {
@@ -410,7 +444,7 @@ function listingCandidates(listing) {
   return {
     make: c(l.make ? clean(l.make) : null, l.make),
     model: c(l.model ? clean(l.model) : null, l.model),
-    version: c(trimOnly(mod), mod),
+    version: (() => { const exact = trimOnly(mod); const declared = exact || declaredVersionFromModification(mod); return { ...c(declared, mod), origin: exact ? 'modification' : (declared ? 'modification_declared' : null) }; })(),
     production_year: c(normYear(l.year), l.year),
     fuel: c(normFuel(mod) || normFuel(title), mod || title),
     electrification: c(normElectrification(mod) || normElectrification(title), mod || title),
@@ -500,8 +534,12 @@ function assemble(dec0, lst, ana, prev = null) {
   const spec = {};
   const line = decoderModelLine(dec0, lst);
   const dec = line ? { ...dec0, model: line.model, version: line.version } : dec0;
+  /* words of the make and the model never decide a version comparison */
+  const skip = new Set();
+  for (const src of [dec, lst, ana]) for (const f of ['make', 'model']) if (src && src[f] && src[f].value) for (const t of low(src[f].value).split(/[^a-z0-9а-яіїєґ]+/)) if (t) skip.add(t);
   for (const f of ['make', 'model', 'version', 'model_year', 'production_year', 'fuel', 'electrification', 'displacement_l', 'forced_induction', 'transmission', 'drivetrain', 'body', 'generation']) {
-    spec[f] = resolveField([dec[f], lst[f], ana[f]], CONFLICT_RULES[f] || ((a, b) => a !== b));
+    const rule = f === 'version' ? (a, b) => !versionCompatible(a, b, skip) : (CONFLICT_RULES[f] || ((a, b) => a !== b));
+    spec[f] = resolveField([dec[f], lst[f], ana[f]], rule);
   }
   if (line) spec.model.line_source = 'decoder_series';
   /* power: every figure of every source is its own typed candidate; the
@@ -552,10 +590,18 @@ export function identityStatus(spec) {
   const conflict_fields = conflicts.filter(n => fields.includes(n));
   const unknown_fields = ['version', 'fuel', 'transmission', 'drivetrain', 'power_hp'].filter(n => f(n) && f(n).value === null && !f(n).conflict && !f(n).ambiguous);
   const conditional_fields = [...conflicts.filter(n => !IDENTITY_CORE_FIELDS.includes(n) && fields.includes(n)), ...(f('power_hp') && f('power_hp').ambiguous ? ['power_hp'] : [])];
-  const version_status = f('version') && f('version').conflict ? 'conflict' : (confirmed('version') ? 'confirmed' : 'unknown');
+  /* version: confirmed only with the clean decoder among its sources;
+     stated by the listing or the analysis alone it is DECLARED: the working
+     name of the car, not independently verified and not contradicted.
+     Not verified is not conflicted */
+  const v = f('version');
+  const independent = !!(v && String(v.source || '').split('+').includes('decoder'));
+  const version_status = v && v.conflict ? 'conflict' : (confirmed('version') ? (independent ? 'confirmed' : 'declared') : 'unknown');
+  const declared_fields = version_status === 'declared' ? ['version'] : [];
   const core_status = core_conflicts.length ? 'unresolved' : 'resolved';
   const status = core_status === 'unresolved' ? 'unresolved' : (version_status === 'conflict' || conditional_fields.length ? 'partial' : 'resolved');
-  return { version: IDENTITY_STATUS_VERSION, status, core_status, version_status, core_conflicts, conflict_fields, conditional_fields, confirmed_fields, unknown_fields,
+  return { version: IDENTITY_STATUS_VERSION, status, core_status, version_status, core_conflicts, conflict_fields, conditional_fields,
+    confirmed_fields: confirmed_fields.filter(n => !(n === 'version' && version_status === 'declared')), declared_fields, unknown_fields,
     model_line_source: f('model') && f('model').line_source ? f('model').line_source : null };
 }
 
@@ -633,6 +679,9 @@ export function vehicleSpecPromptBlock(spec) {
     + (unknown.length ? '\nНЕВІДОМО (жодне джерело не дає значення): ' + unknown.join(', ') + '. Невідоме не виводь із загальних знань про модель: лиши null у шапці і не стверджуй у текстах.' : '')
     + (spec.transmission_type && !spec.transmission_type.exact && spec.transmission_type.family ? '\nКОРОБКА: сімейство встановлене (' + spec.transmission_type.family + '), точний тип ні (кандидати: ' + spec.transmission_type.candidates.map(c => c.value + ' від ' + c.source).join(', ') + '). Варіатор і ступінчастий автомат це одне сімейство: це НЕ "несумісні характеристики" і не розбіжність із продавцем, а невстановлений точний тип; у discrepancies його не клади, у checklist можна лишити перевірку коду агрегату.' : '')];
   const ids = identityStatus(spec);
+  if (ids && ids.version_status === 'declared') {
+    lines.push('ВЕРСІЯ ЗАЯВЛЕНА (' + (spec.version.source || 'listing') + ', без незалежного підтвердження, без суперечності): "' + spec.version.value + '". Це робоча назва авто: називай машину цією версією природно. Відсутність незалежного підтвердження НЕ є ризиком, НЕ є розбіжністю і НЕ потребує кроку "підтвердити версію"; не пиши "якщо це справді ...". Заводським фактом версія від цього не стає.');
+  }
   if (ids && ids.status !== 'resolved') {
     lines.push('IDENTITY_STATUS: ' + JSON.stringify({ status: ids.status, core_status: ids.core_status, version_status: ids.version_status, core_conflicts: ids.core_conflicts, conditional_fields: ids.conditional_fields })
       + (ids.core_status === 'unresolved' ? '. Базова ідентичність НЕ встановлена: не описуй авто як певну конфігурацію і не роби висновку, який передбачає, що машина ідентифікована.' : '. Базова ідентичність встановлена; непідтверджені лише поля вище: не подавай їх як факт, називай умовно ("за даними оголошення").'));

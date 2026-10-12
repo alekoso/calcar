@@ -81,7 +81,7 @@ const ENV = { ANTHROPIC_API_KEY: 'sk-ant-TEST-SECRET', OPENAI_API_KEY: 'sk-TEST-
   ok(Array.isArray(body.system) && body.system.length === 1 && body.system[0].text === 'RULES' && body.system[0].cache_control && body.system[0].cache_control.type === 'ephemeral', 'rules are not the system block with a cache breakpoint');
   ok(body.messages.length === 1 && body.messages[0].role === 'user' && body.messages[0].content === 'USER', 'user message is not the single user turn');
   ok(body.output_config && body.output_config.effort === 'medium' && body.output_config.format.type === 'json_schema' && JSON.stringify(body.output_config.format.schema) === JSON.stringify(F.conclusionResponseFormat().json_schema.schema), 'schema or effort differ from the production call');
-  ok(F.CONCLUSION_VERSION === 'fc-v2.6' && body.output_config.format.schema.required.join() === 'headline,paragraphs,checks' && body.output_config.format.schema.properties.checks.items.required.join() === 'text,area,refines', 'shadow schema is not the fc-v2.5 schema with checks');
+  ok(F.CONCLUSION_VERSION === 'fc-v2.7' && body.output_config.format.schema.required.join() === 'headline,paragraphs,checks' && body.output_config.format.schema.properties.checks.items.required.join() === 'text,area,refines', 'shadow schema is not the fc-v2.5 schema with checks');
   for (const k of ['thinking', 'temperature', 'top_p', 'tools', 'tool_choice', 'fallbacks', 'stream', 'metadata']) ok(!(k in body), 'unexpected request field ' + k);
   const cfg = A.anthropicConclusionModel({});
   ok(cfg.model === 'claude-opus-5-5' && cfg.effort === 'medium', 'defaults are not claude-opus-5-5 medium');
@@ -184,7 +184,7 @@ const ENV = { ANTHROPIC_API_KEY: 'sk-ant-TEST-SECRET', OPENAI_API_KEY: 'sk-TEST-
   ok(openaiBodies.length === 1 && anthBodies.length === 1, 'each provider is not called exactly once');
   ok(openaiBodies[0].messages[0].role === 'system' && openaiBodies[0].messages[0].content === fz.system && openaiBodies[0].messages[1].content === fz.user, 'control did not get the frozen input');
   ok(anthBodies[0].system[0].text === fz.system && anthBodies[0].messages[0].content === fz.user, 'shadow did not get the same bytes as the control');
-  ok(pair.input.input_hash === fz.input_hash && pair.input.control_sent_hash === fz.input_hash && pair.input.shadow_sent_hash === fz.input_hash && pair.input.identical_input === true && pair.input.rules_version === 'fc-v2.6' && pair.input.schema_hash === fz.schema_hash && pair.input.control_attempts_sent === 1 && pair.input.shadow_attempts_sent === 1 && pair.input.checklist_snapshot_items === 2, 'pair does not prove identical input: ' + JSON.stringify(pair.input));
+  ok(pair.input.input_hash === fz.input_hash && pair.input.control_sent_hash === fz.input_hash && pair.input.shadow_sent_hash === fz.input_hash && pair.input.identical_input === true && pair.input.rules_version === 'fc-v2.7' && pair.input.schema_hash === fz.schema_hash && pair.input.control_attempts_sent === 1 && pair.input.shadow_attempts_sent === 1 && pair.input.checklist_snapshot_items === 2, 'pair does not prove identical input: ' + JSON.stringify(pair.input));
   /* a shadow that is sent something else is caught */
   const pairBad = await S.runShadowPair({ token: 'tokx', report: REPORT, lang: 'ru', langDirective: 'LANG.', env: ENV, callOpenAI: async () => OPENAI_GOOD,
     callAnthropic: async b => anthropicGood(), shadowModel: null });
