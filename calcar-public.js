@@ -15,7 +15,7 @@ window.CALCAR_PUBLIC = {
   analytics: {
     posthog_key: 'phc_oLA6beJDywTJPmpwrZRkhyFywBREYTQUqjnCfdSfwHEe',
     posthog_host: 'https://eu.i.posthog.com',
-    ga4_id: '',
+    ga4_id: 'G-559M4RVTFV',
   },
   contacts: {
     telegram: 'https://t.me/calcar_ai',

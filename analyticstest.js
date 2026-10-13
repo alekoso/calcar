@@ -52,6 +52,22 @@ function browser(opts) {
   return { win, store, listeners, scripts, fire: (t, ev) => (listeners[t] || []).forEach(fn => fn(ev)) };
 }
 
+/* GA4: реальна подія раз на job, без приватних адрес і зайвих page_view. */
+{
+  const b = browser({ path: '/check/r/bmw/AbCdEfGh123',
+    search: '?r=secret&vin=WBA12345678901234&utm_source=google&utm_medium=cpc&gclid=click123',
+    referrer: 'https://calcar.io/?token=secret',
+    pub: { analytics: { ga4_id: 'G-TEST123456' } } });
+  const config = b.win.dataLayer.find(x => x[0] === 'config')[2];
+  if (config.page_location !== 'https://calcar.io/check/r/*?utm_source=google&utm_medium=cpc&gclid=click123') errs.push('GA4: unsafe URL or lost attribution');
+  if (config.page_referrer !== 'https://calcar.io' || config.page_title !== 'CalCar check') errs.push('GA4: unsafe referrer/title');
+  b.win.calcar.checkCompleted('job-1', { product: 'check' });
+  b.win.calcar.checkCompleted('job-1', { product: 'check' });
+  if (b.win.dataLayer.filter(x => x[0] === 'event' && x[1] === 'check_completed').length !== 1) errs.push('GA4: duplicate completion');
+  b.win.calcar.identify('test-user');
+  if (b.win.dataLayer.filter(x => x[0] === 'config').length !== 1) errs.push('GA4: identify repeats page view');
+}
+
 /* ---------- 1. без ключів: вхолосту, у мережу нічого ---------- */
 {
   const b = browser({ path: '/check' });

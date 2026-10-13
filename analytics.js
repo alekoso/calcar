@@ -133,7 +133,7 @@
     var prev = ls(true, UID_KEY);
     ls(false, UID_KEY, userId);
     if (ph) { try { ph.identify(userId); } catch (e) {} }
-    if (ga) { try { window.gtag('config', PUB.ga4_id, { user_id: userId }); } catch (e) {} }
+    if (ga) { try { window.gtag('set', { user_id: userId }); } catch (e) {} }
     if (prev !== userId) buffer.push({ name: '$identify', props: { signed_in: true }, at: Date.now() });
   }
   function setPerson(props) {
@@ -210,7 +210,23 @@
     window.dataLayer = window.dataLayer || [];
     window.gtag = function () { window.dataLayer.push(arguments); };
     window.gtag('js', new Date());
-    var cfg = { send_page_view: true };
+    /* GA4 не має отримувати токени звітів, VIN, URL оголошень чи заголовки.
+       Зберігаємо лише рекламні параметри для атрибуції кампанії. */
+    var query = new URLSearchParams(location.search), safeQuery = new URLSearchParams();
+    ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'gclid', 'gbraid', 'wbraid'].forEach(function (k) {
+      var v = query.get(k);
+      if (v && v.length <= 200 && !DENY_VALUE.test(v)) safeQuery.set(k, v);
+    });
+    var ref = '';
+    try { if (document.referrer) ref = new URL(document.referrer).origin; } catch (e) {}
+    var cfg = {
+      send_page_view: true,
+      page_location: 'https://calcar.io' + page() + (safeQuery.toString() ? '?' + safeQuery.toString() : ''),
+      page_referrer: ref,
+      page_title: 'CalCar ' + product(),
+      allow_google_signals: false,
+      allow_ad_personalization_signals: false,
+    };
     var uid = ls(true, UID_KEY); if (uid) cfg.user_id = uid;
     window.gtag('config', PUB.ga4_id, cfg);
     ga = true;
