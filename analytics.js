@@ -230,6 +230,34 @@
     var uid = ls(true, UID_KEY); if (uid) cfg.user_id = uid;
     window.gtag('config', PUB.ga4_id, cfg);
     ga = true;
+    if (/^AW-\d+$/.test(PUB.google_ads_id || '') && /^[A-Za-z0-9_-]+$/.test(PUB.google_ads_check_label || '')) {
+      /* Keep ordinary GA4 events out of the Ads destination's default group. */
+      window.gtag('config', PUB.google_ads_id, {
+        groups: 'calcar_ads', send_page_view: false,
+        page_location: cfg.page_location, page_referrer: cfg.page_referrer,
+        page_title: cfg.page_title, allow_ad_personalization_signals: false,
+      });
+      ads = true;
+    }
+  }
+
+  var ads = false, adsPending = Object.create(null);
+  function adsCheckCompleted(ref) {
+    if (!ads || adsPending[ref] || !window.crypto || !window.crypto.subtle) return;
+    adsPending[ref] = true;
+    /* Never transmit the private report token. The stable digest also lets
+       Google deduplicate the same job across tabs or cleared browser storage. */
+    window.crypto.subtle.digest('SHA-256', new TextEncoder().encode('calcar-check:' + ref)).then(function (bytes) {
+      var id = Array.from(new Uint8Array(bytes)).map(function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+      var marker = 'calcar_ads_check_' + id;
+      if (ls(true, marker)) return;
+      /* Unlike the GA4 recent-jobs list, these markers are not evicted. */
+      ls(false, marker, '1');
+      window.gtag('event', 'conversion', {
+        send_to: PUB.google_ads_id + '/' + PUB.google_ads_check_label,
+        transaction_id: id,
+      });
+    }).catch(function () { /* Analytics must never interrupt a completed report. */ });
   }
 
   /* ---------- номер перевірки і завершення ---------- */
@@ -251,7 +279,9 @@
     var key = String(ref).slice(0, 80);
     if (done.indexOf(key) > -1) return false;
     done.push(key); ls(false, DONE_KEY, JSON.stringify(done.slice(-50)));
-    return track('check_completed', props);
+    var sent = track('check_completed', props);
+    if (sent) adsCheckCompleted(String(ref));
+    return sent;
   }
   function bucketSec(ms) {
     var s = ms / 1000;
