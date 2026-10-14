@@ -1226,6 +1226,7 @@
 <!-- публічні ідентифікатори (не секрети) і тонкий шар подій: без ключів працює вхолосту -->
 <script src="/calcar-public.js"></script>
 <script src="/analytics.js"></script>
+<script src="/check-wait.js"></script>
 <script src="/chat.js"></script>
 <!-- шкала інтенсивності пробігу: лише презентація осі Пробіг звіту -->
 <script src="/mileage-intensity.js"></script>
@@ -1630,6 +1631,9 @@ function localizeReportStatic(code){
 const SB = (typeof supabase !== 'undefined' && window.CALCAR_SUPABASE?.url)
   ? supabase.createClient(window.CALCAR_SUPABASE.url, window.CALCAR_SUPABASE.anon)
   : null;
+if (window.CalCarWait) window.CalCarWait.configure(async () => {
+  const { data } = SB ? await SB.auth.getSession() : { data: null }; return data?.session || null;
+});
 /* стан входу в шапці: "Кабінет" лише за реальною сесією, інакше "Увійти" */
 if (SB) SB.auth.getSession().then(({ data }) => { window.CALCAR_USER_ID = data?.session?.user?.id || null; window.CALCAR_SIGNED_IN = !!data?.session; if (window.calcarAuthState) window.calcarAuthState(window.CALCAR_SIGNED_IN); });
 
@@ -1849,6 +1853,7 @@ async function jobReadResilient(q, sleep) {
   return res;
 }
 function jobLoadFailed() {
+  if (window.CalCarWait) window.CalCarWait.failed();
   loadingStop(); ld = null;
   if (AWAIT_TITLE) { document.title = AWAIT_TITLE; AWAIT_TITLE = null; }
   document.body.classList.add('await-job');
@@ -1880,6 +1885,7 @@ async function loadByToken(sleep) {
       return j;
     }
     if (j.status === 'error') {
+      if (window.CalCarWait) window.CalCarWait.failed();
       /* аналіз не встиг завершитись (retryable): замість вічного очікування
          повідомлення і повторний запуск зі сторінки Check з тією ж адресою */
       const retry = j.retryable ? ' <a class="job-retry" href="/' + (j.url ? '?url=' + encodeURIComponent(j.url) : '') + '">' + esc(t('Try again')) + '</a>' : '';
@@ -1889,6 +1895,7 @@ async function loadByToken(sleep) {
        багатоетапний індикатор, що й на сторінці запуску, і рухаємо його
        реальною стадією з сервера */
     if (!ld) { document.body.classList.add('await-job'); AWAIT_TITLE = document.title; document.title = t('The report is not ready yet'); loadingStart(); }
+    if (window.CalCarWait) window.CalCarWait.stage(j.stage);
     if (ld && ld.setStage && STAGE_IDX[j.stage] != null) ld.setStage(STAGE_IDX[j.stage]);
     await sleep(document.visibilityState === 'visible' ? 3000 : 8000);
   }
@@ -1896,6 +1903,7 @@ async function loadByToken(sleep) {
   return null;
 }
 async function openTokenReport() {
+  if (window.CalCarWait) window.CalCarWait.resumeToken(OPEN_TOKEN);
   const j = await loadByToken(ms => new Promise(r => setTimeout(r, ms)));
   if (!j) return;
   DATA = j.report;
@@ -2226,6 +2234,8 @@ function bootRender(){
   /* відео про модель уже ПІСЛЯ готового звіту і без await: повільний або
      мертвий YouTube не затримує і не ламає звіт */
   try { videosInit(DATA); } catch (e) {}
+  /* перший показ звіту для телеметрії очікування: за токеном job (у кабінеті це share_token звіту) */
+  if (window.CalCarWait) window.CalCarWait.viewed(OPEN_TOKEN || (DATA._meta && DATA._meta.share_token) || null);
   /* report_viewed: лише готовий звіт і лише коли вкладка видима; далі
      активний час і глибина прокрутки до кінця звіту. Збій аналітики звіт не чіпає */
   try {

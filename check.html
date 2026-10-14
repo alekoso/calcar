@@ -794,6 +794,7 @@
 <!-- публічні ідентифікатори (не секрети) і тонкий шар подій: без ключів працює вхолосту -->
 <script src="/calcar-public.js"></script>
 <script src="/analytics.js"></script>
+<script src="/check-wait.js"></script>
 <script src="/chat.js"></script>
 </head>
 <body>
@@ -973,6 +974,9 @@
 const SB = (typeof supabase !== 'undefined' && window.CALCAR_SUPABASE?.url)
   ? supabase.createClient(window.CALCAR_SUPABASE.url, window.CALCAR_SUPABASE.anon)
   : null;
+if (window.CalCarWait) window.CalCarWait.configure(async () => {
+  const { data } = SB ? await SB.auth.getSession() : { data: null }; return data?.session || null;
+});
 /* стан входу в шапці: "Кабінет" лише за реальною сесією, інакше "Увійти" */
 if (SB) SB.auth.getSession().then(({ data }) => { window.CALCAR_USER_ID = data?.session?.user?.id || null; window.CALCAR_SIGNED_IN = !!data?.session; if (window.calcarAuthState) window.calcarAuthState(window.CALCAR_SIGNED_IN); });
 
@@ -1198,6 +1202,7 @@ async function pollJob(token){
       if (r.status === 404) throw new Error(j.error || t('Report not found'));
       if (!r.ok) { lastErr = new Error(j.error || t('Server error')); continue; }
     } catch (e) { lastErr = e; if (/not found|не знайдено|не найден/i.test(String(e.message))) throw e; continue; }
+    if (window.CalCarWait) window.CalCarWait.stage(j.stage);
     if (ld && ld.setStage && STAGE_IDX[j.stage] != null) ld.setStage(STAGE_IDX[j.stage]);
     if (j.status === 'done' && j.report) return j.report;
     if (j.status === 'error') throw new Error(j.error || t('Server error'));
@@ -1372,6 +1377,7 @@ async function resumePending(){
   if (pj.url) input.value = pj.url;
   btn.disabled = true;
   statusEl.className = 'hf-status';
+  if (window.CalCarWait) window.CalCarWait.resumeToken(pj.token);
   const rid = loadingStart();
   const note = document.getElementById('ldNote'); if (note) { note.textContent = t('Resuming your analysis…'); note.className = 'ld-note on'; }
   emailBoxShow(pj.token);
@@ -1381,10 +1387,12 @@ async function resumePending(){
     const finPromise = loadingFinish(rid);
     const dest = await finalizeReport(report, pj.token);
     await finPromise;
+    if (window.CalCarWait) window.CalCarWait.handoff();
     location.href = dest;
   } catch (e) {
     pendingSet(null);
     emailBoxHide();
+    if (window.CalCarWait) window.CalCarWait.failed();
     loadingError(rid, e.message || t('Something went wrong, please try again'));
   } finally { btn.disabled = false; }
   return true;
@@ -1610,6 +1618,8 @@ async function run() {
   /* поле втрачає фокус зі стартом перевірки: клавіатура ховається */
   try { input.blur(); } catch (e) {}
   const runStart = Date.now();
+  /* телеметрія очікування: лише спроба і її приватний ключ, без даних авто; у запит /api/check нічого не додається */
+  if (window.CalCarWait) window.CalCarWait.begin();
   const marketplace = marketplaceOf(url);
   try { if (window.calcar) { const n = window.calcar.nextCheckNumber(checkIndex()); window.calcar.track('check_started', { product: 'check', marketplace, check_number: n }); window.calcar.setPerson({ checks_started: n }); } } catch (e) {}
   const reqLang = window.calcarLang();
@@ -1632,6 +1642,8 @@ async function run() {
          заблокувати екран, аналіз на сервері від цього не зупиниться */
       token = data.job;
       pendingSet({ token, url, at: Date.now(), lang: reqLang });
+      /* телеметрія очікування привʼязує спробу до job окремим запитом, не через тіло /api/check */
+      if (window.CalCarWait) window.CalCarWait.accepted(token);
       tokenReady(token);
       data = await pollJob(token);
     } else {
@@ -1644,10 +1656,12 @@ async function run() {
     const finPromise = loadingFinish(rid);
     const dest = await finalizeReport(data, token);
     await finPromise;
+    if (window.CalCarWait) window.CalCarWait.handoff();
     location.href = dest;
   } catch (e) {
     tokenReady(null);
     emailBoxHide();
+    if (window.CalCarWait) window.CalCarWait.failed();
     loadingError(rid, e.message || t('Something went wrong, please try again'));
   } finally {
     btn.disabled = false;
