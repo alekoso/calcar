@@ -65,3 +65,16 @@ async function settle() { await new Promise(resolve => setTimeout(resolve, 30));
   assert.equal(conversions(blocked)[0][2].transaction_id, conversions(w)[0][2].transaction_id, 'Google deduplication survives cleared storage');
   console.log('Ads conversion tests passed');
 })().catch(e => { console.error(e); process.exitCode = 1; });
+// Production config: conversions go only to the beta Ads account (521-514-7158).
+(() => {
+  const pub = {};
+  vm.runInNewContext(fs.readFileSync('calcar-public.js', 'utf8'), { window: pub });
+  assert.equal(pub.CALCAR_PUBLIC.analytics.google_ads_id, 'AW-18513793819');
+  assert.equal(pub.CALCAR_PUBLIC.analytics.google_ads_check_label, 'FaNeCMzn0p0dEJumiPxE');
+  assert.equal(pub.CALCAR_PUBLIC.analytics.ga4_id, 'G-559M4RVTFV', 'GA4 stays as is');
+  for (const f of ['calcar-public.js', 'analytics.js', 'check.html', 'result-check.html']) {
+    const src = fs.readFileSync(f, 'utf8');
+    assert(!src.includes('881320682') && !src.includes('82jpCIusspwdEOrFn6QD'), f + ' still references the old Ads account');
+  }
+  console.log('Production Ads config test passed');
+})();
