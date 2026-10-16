@@ -127,7 +127,7 @@ export default async function handler(req, res) {
   try {
     if (!token) return res.status(400).json({ error: 'token required' });
     if (!TOKEN_RE.test(token)) return res.status(404).json({ error: 'not found' });
-    const read = await readJobRow(root + '/rest/v1/check_jobs?token=eq.' + encodeURIComponent(token) + '&select=status,stage,report,error,url,vin,lang,created_at,updated_at,finished_at&limit=1', hdr, token);
+    const read = await readJobRow(root + '/rest/v1/check_jobs?token=eq.' + encodeURIComponent(token) + '&select=status,stage,report,error,url,vin,lang,created_at,updated_at,finished_at,analytics_ref&limit=1', hdr, token);
     /* збій читання не маскується під "job ще триває": 503 для тимчасового
        збою (сторінка повторить), 500 для постійного */
     if (!read.ok) {
@@ -163,6 +163,8 @@ export default async function handler(req, res) {
       report: done ? publicReport(row.report) : null,
       url: row.url || null, vin: row.vin || null, lang: row.lang || null,
       created_at: row.created_at, updated_at: row.updated_at, finished_at: row.finished_at || null,
+      /* аналітичний id Check (не токен): сторінка кладе його в check_ref подій перегляду */
+      ref: row.analytics_ref || null,
     });
   } catch (e) {
     return res.status(500).json({ error: errText(lang, 'internal', e.message) });

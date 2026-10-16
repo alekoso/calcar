@@ -2454,6 +2454,20 @@ export function mainPayloadBreakdown(system, content, extra = {}, schemaJson = n
    read-only звіту /check/r/<token>. Без waitUntil чи без таблиці
    поведінка стара: синхронний запит з повним звітом у відповіді */
 export function makeJobToken() { return makeToken(); }
+/* аналітичні заголовки сторінки: лише uuid, інакше ігноруються.
+   x-calcar-check-ref: id однієї спроби (check_ref у подіях PostHog);
+   x-calcar-aid: стабільний анонімний id браузера (calcar_aid). Обидва
+   кладуться в рядок job і в розбір авто не потрапляють */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export function headerUuid(req, name) {
+  const v = req && req.headers ? req.headers[name] : null;
+  return typeof v === 'string' && UUID_RE.test(v) ? v.toLowerCase() : null;
+}
+export function jobIdentity(req) {
+  let ref = headerUuid(req, 'x-calcar-check-ref');
+  if (!ref) { try { ref = globalThis.crypto.randomUUID(); } catch (e) { ref = null; } }
+  return { analytics_ref: ref, anon_id: headerUuid(req, 'x-calcar-aid') };
+}
 export function vercelWaitUntil() {
   try {
     const ctx = globalThis[Symbol.for('@vercel/request-context')];
@@ -2512,7 +2526,7 @@ export default async function handler(req, res) {
   if (!durable) return runCheck(req, res, null);
   if (!/^https?:\/\/.+\..+/.test(jobUrl)) return res.status(400).json({ error: errText(jobLang, 'bad_listing_url') });
   const token = makeJobToken();
-  const created = await jobCreate({ token, status: 'queued', stage: 'queued', url: jobUrl.split('#')[0], lang: jobLang, user_id: null });
+  const created = await jobCreate({ token, status: 'queued', stage: 'queued', url: jobUrl.split('#')[0], lang: jobLang, user_id: null, ...jobIdentity(req) });
   if (!created) return runCheck(req, res, null);   /* таблиці ще нема: стара синхронна поведінка */
   res.status(202).json({ job: token });
   waitUntil((async () => {

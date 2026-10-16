@@ -1706,6 +1706,10 @@ const httpsOnly = a => (a || []).filter(u => typeof u === 'string' && /^https:/.
 /* ---------- завантаження: ?id лишається в адресі, це і є посилання на звіт ---------- */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 let ROW_ID = null; /* uuid рядка в reports: для збереження перекладів */
+/* аналітичний id Check (check_jobs.analytics_ref): із відповіді job або з
+   локального списку автора; для подій перегляду, не ключ доступу */
+let ANALYTICS_REF = null;
+function localRef(token){ const e = token ? localRecent().find(x => x && x.token === token) : null; return e && e.ref ? e.ref : null; }
 
 /* Стадії Check: ті самі, що на сторінці запуску аналізу. Автор, який
    повернувся до ще не готового звіту, бачить не фальшивий скелетон звіту,
@@ -1877,9 +1881,10 @@ async function loadByToken(sleep) {
     if (res.kind !== 'ok') { jobLoadFailed(); return null; }
     const j = res.job;
     if (j.status === 'done' && j.report && j.report.vehicle) {
+      ANALYTICS_REF = j.ref || null;
       if (ld) {
         /* автор дочекався аналізу тут: check_completed раз на job (той самий ключ, що й на сторінці запуску) */
-        try { if (window.calcar && isLocalAuthor(OPEN_TOKEN)) window.calcar.checkCompleted(OPEN_TOKEN, { product: 'check', generation_time_bucket: 'unknown', score_bucket: window.calcar.scoreBucket(j.report.score_breakdown && j.report.score_breakdown.final) }); } catch (e) {}
+        try { if (window.calcar && isLocalAuthor(OPEN_TOKEN)) window.calcar.checkCompleted(OPEN_TOKEN, { product: 'check', check_ref: ANALYTICS_REF || undefined, generation_time_bucket: 'unknown', score_bucket: window.calcar.scoreBucket(j.report.score_breakdown && j.report.score_breakdown.final) }); } catch (e) {}
         await loadingFinish(ld.rid); document.body.classList.remove('await-job'); if (AWAIT_TITLE) document.title = AWAIT_TITLE;
       }
       return j;
@@ -2240,7 +2245,12 @@ function bootRender(){
      активний час і глибина прокрутки до кінця звіту. Збій аналітики звіт не чіпає */
   try {
     const lvl = { 'Data is limited': 'limited', 'Partially checked': 'partial', 'Enough data': 'enough', 'Studied in detail': 'detailed' };
+    /* автор: запускав цей Check у цьому браузері або це його збережений звіт;
+       усі інші (публічне посилання) це visitor, і перегляд автору не приписується */
+    const roleToken = OPEN_TOKEN || (DATA._meta && DATA._meta.share_token) || null;
+    const viewerRole = (!READONLY || isLocalAuthor(roleToken)) ? 'author' : 'visitor';
     if (window.calcar) window.calcar.reportViewed({ product: 'check', readonly: !!READONLY, shared_link: !!OPEN_TOKEN,
+      check_ref: ANALYTICS_REF || localRef(roleToken) || undefined, viewer_role: viewerRole,
       score_bucket: window.calcar.scoreBucket(DATA.score_breakdown && DATA.score_breakdown.final),
       confidence_level: lvl[DATA.confidence && DATA.confidence.text_key] || 'none' }, document.querySelector('.wrap'));
     if (FROM_EMAIL && window.calcar) window.calcar.track('report_opened_from_email', { product: 'check' });

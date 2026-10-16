@@ -31,6 +31,10 @@
      chat_opened, chat_message_sent, settings_opened, memory_opened, memory_updated,
      report_email_opted_in, report_opened_from_email (з браузера),
      report_email_sent (із сервера після відправки листа; без адреси).
+   Звʼязок подій з конкретним Check: check_ref (uuid однієї спроби, див.
+   newCheckRef) і viewer_role (author: той, хто запускав перевірку в цьому
+   браузері або чий це збережений звіт; visitor: відкрив звіт за публічним
+   посиланням). Перегляд чужого звіту автору не приписується.
    Номер перевірки: лічильник браузера calcar_checks_n (стартує не нижче
    кількості вже збережених локальних перевірок), плюс властивість людини
    checks_started; після входу identify склеює анонімну історію з акаунтом. */
@@ -68,6 +72,13 @@
     if (!v || !/^[0-9a-f-]{36}$/.test(v)) { v = uuid(); ls(false, AID_KEY, v); }
     return v;
   }
+  /* аналітичний id одного Check: випадковий uuid на спробу, без VIN, адреси
+     чи токена звіту. Сторінка шле його в /api/check заголовком, сервер
+     зберігає його в check_jobs.analytics_ref, і далі всі події цього Check
+     (check_started, check_completed, report_viewed, report_active_*) несуть
+     його як check_ref: один і той самий для автора і для кожного, хто
+     відкрив звіт за публічним посиланням */
+  function newCheckRef() { return uuid(); }
   /* перше торкання: utm і реферер запамʼятовуються один раз на браузер */
   function firstTouch() {
     var saved = null;
@@ -331,7 +342,8 @@
       viewed = true;
       document.removeEventListener('visibilitychange', start);
       track('report_viewed', base);
-      var fire = function (n) { track(n, { product: base.product }); };
+      /* пороги активності і прокрутки несуть той самий check_ref і роль глядача */
+      var fire = function (n) { track(n, { product: base.product, check_ref: base.check_ref, viewer_role: base.viewer_role }); };
       var timer = makeActiveTimer(fire);
       timer.visible(true);
       var iv = setInterval(function () { timer.tick(); if (timer.done()) clearInterval(iv); }, 1000);
@@ -361,7 +373,7 @@
 
   aid(); firstTouch();
   loadPostHog(); loadGA();
-  window.calcar = { track: track, identify: identify, setPerson: setPerson, aid: aid, acquisition: firstTouch, events: EVENTS,
+  window.calcar = { track: track, identify: identify, setPerson: setPerson, aid: aid, acquisition: firstTouch, events: EVENTS, newCheckRef: newCheckRef,
     nextCheckNumber: nextCheckNumber, checkCompleted: checkCompleted, reportViewed: reportViewed, bucketSec: bucketSec, scoreBucket: scoreBucket,
     _activeTimer: makeActiveTimer, _scrollDepth: makeScrollDepth,
     enabled: function () { return { posthog: !!PUB.posthog_key, ga4: !!PUB.ga4_id }; } };

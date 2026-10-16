@@ -268,8 +268,8 @@ function browser(opts) {
   /* check_completed лише на успіху: у catch завершення нема */
   const runFn = S['check.html'].slice(S['check.html'].indexOf("statusEl.className = 'hf-status';\n"), S['check.html'].indexOf('/* Спільна поведінка шапки'));
   if (/catch \(e\) \{[^}]*trackCompleted/.test(runFn)) errs.push('check_completed шлеться на помилці');
-  if (!/data = await pollJob\(token\);\n    \} else \{[\s\S]{0,160}?\n    \}\n\n    trackCompleted\(data, token, runStart\);/.test(S['check.html'])) errs.push('check_completed не після готового звіту');
-  if (!/const report = await pollJob\(pj\.token\);\n    trackCompleted\(report, pj\.token, pj\.at\);/.test(S['check.html'])) errs.push('відновлене опитування не шле check_completed');
+  if (!/data = await pollJob\(token\);\n    \} else \{[\s\S]{0,160}?\n    \}\n\n    trackCompleted\(data, token, runStart, checkRef\);/.test(S['check.html'])) errs.push('check_completed не після готового звіту');
+  if (!/const report = await pollJob\(pj\.token\);\n    trackCompleted\(report, pj\.token, pj\.at, pj\.ref \|\| null\);/.test(S['check.html'])) errs.push('відновлене опитування не шле check_completed');
   /* CalCar AI: кнопка шапки і CTA висновку */
   if (!/closest\('#aiBtn, #pdChatBtn'\)/.test(an)) errs.push('calcar_ai_clicked не слухає #aiBtn/#pdChatBtn');
   /* chat_opened лише на перехід закрито -> відкрито; chat_message_sent лише після успішної відповіді */

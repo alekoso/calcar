@@ -86,7 +86,7 @@ const NAME = { ru: 'російською', ua: 'українською', en: 'а
   /* ---- 3. сторінка: локаль фіксується на старті ---- */
   const ch = fs.readFileSync('check.html', 'utf8');
   ok(/const reqLang = window\.calcarLang\(\);/.test(ch) && /body: JSON\.stringify\(\{ url, lang: reqLang \}\)/.test(ch), 'check.html: старт Check не передає мову інтерфейсу');
-  ok(/pendingSet\(\{ token, url, at: Date\.now\(\), lang: reqLang \}\);/.test(ch), 'check.html: задача, що триває, не памʼятає мову, якою її запущено');
+  ok(/pendingSet\(\{ token, url, at: Date\.now\(\), lang: reqLang, ref: checkRef \}\);/.test(ch), 'check.html: задача, що триває, не памʼятає мову, якою її запущено');
   ok((ch.match(/fetch\('\/api\/check',/g) || []).length === 1, 'check.html: Check стартує не з одного місця');
   const resume = ch.slice(ch.indexOf('async function resumePending('), ch.indexOf('async function safeJson('));
   ok(!/\/api\/check'/.test(resume), 'check.html: відновлення аналізу перезапускає Check з новою мовою');
@@ -115,7 +115,7 @@ const NAME = { ru: 'російською', ua: 'українською', en: 'а
         document: { getElementById: () => null },
         t: s => s, setStatus() {}, esc: s => s, marketplaceOf: () => 'x', checkIndex: () => [],
         loadingStart: () => 1, loadingFinish: async () => {}, loadingError() {}, emailBoxShow() {}, emailBoxHide() {},
-        trackCompleted() {}, findExistingCheck: async () => { calls.existing = true; return null; },
+        trackCompleted() {}, checkHeaders: () => ({ 'content-type': 'application/json' }), findExistingCheck: async () => { calls.existing = true; return null; },
         fetch: async (u, o) => { calls.bodies.push(JSON.parse(o.body)); return { ok: true, status: 202, json: async () => ({ job: 'tok-new-' + calls.bodies.length }) }; },
         safeJson: r => r.json(),
         pollJob: async tok => { calls.polled.push(tok); return { _meta: { lang: JSON.parse(store.calcar_pending_check || '{}').lang } }; },
